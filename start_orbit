@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""
+ORBIT - OpenDrive Road Builder from Imagery Tool
+
+A GUI application for annotating roads in aerial/satellite imagery
+and exporting to ASAM OpenDrive format.
+
+Usage:
+    start_orbit [image_path]
+
+    image_path: Optional path to image file to load on startup
+"""
+
+import sys
+import argparse
+from pathlib import Path
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
+
+from gui.main_window import MainWindow
+
+
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="ORBIT - OpenDrive Road Builder from Imagery Tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  orbit.py                          Start with empty project
+  orbit.py image.jpg                Load image on startup
+  orbit.py /path/to/aerial.jpg      Load image with full path
+        """
+    )
+
+    parser.add_argument(
+        'image',
+        nargs='?',
+        type=str,
+        default=None,
+        help='Optional path to image file to load on startup'
+    )
+
+    parser.add_argument(
+        '--version',
+        action='version',
+        version='ORBIT 0.2.0'
+    )
+
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='Enable verbose debug output'
+    )
+
+    return parser.parse_args()
+
+
+def main():
+    """Main entry point for ORBIT application."""
+    # Parse command line arguments
+    args = parse_arguments()
+
+    # Validate image path if provided
+    image_path = None
+    if args.image:
+        image_path = Path(args.image)
+        if not image_path.exists():
+            print(f"Error: Image file not found: {image_path}", file=sys.stderr)
+            return 1
+        if not image_path.is_file():
+            print(f"Error: Path is not a file: {image_path}", file=sys.stderr)
+            return 1
+
+    # Enable high DPI scaling (must be set before creating QApplication)
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
+
+    # Create Qt application
+    app = QApplication(sys.argv)
+    app.setApplicationName("ORBIT")
+    app.setOrganizationName("SAVANT")
+
+    # Create and show main window
+    main_window = MainWindow(image_path=image_path, verbose=args.verbose)
+    main_window.show()
+
+    # Start event loop
+    return app.exec()
+
+
+if __name__ == '__main__':
+    sys.exit(main())

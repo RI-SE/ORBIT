@@ -1,0 +1,3009 @@
+"""
+Image view widget for ORBIT.
+
+Provides interactive image display with zoom, pan, and polyline drawing/editing.
+"""
+
+from pathlib import Path
+from typing import Optional, List, Dict, Tuple
+import cv2
+import numpy as np
+
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsItem, QMenu, QMessageBox, QGraphicsPolygonItem
+from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF
+from PyQt6.QtGui import (
+    QPixmap, QImage, QPen, QColor, QBrush, QPainter,
+    QWheelEvent, QMouseEvent, QKeyEvent, QFont
+)
+
+from models import Polyline, Project, Junction, LineType, RoadMarkType, Road, Signal, RoadObject, ObjectType
+from utils.geometry import create_lane_polygon
+from gui.signal_graphics_item import SignalGraphicsItem
+from gui.object_graphics_item import ObjectGraphicsItem
+from gui.message_helpers import show_warning, ask_yes_no
+
+
+class PolylineGraphicsItem:
+    """Graphics representation of a polyline."""
+
+    def __init__(self, polyline: Polyline, scene: QGraphicsScene):
+        self.polyline = polyline
+        self.scene = scene
+        self.line_items = []
+        self.point_items = []
+        self.arrow_items = []  # Store arrow graphics for centerline direction
+        self.selected = False
+        self.selected_point_index = -1
+
+        self.update_graphics()
+
+    def update_graphics(self):
+        """Update the graphics items based on polyline data."""
+        # Clear existing items
+        for item in self.line_items + self.point_items + self.arrow_items:
+            self.scene.removeItem(item)
+        self.line_items.clear()
+        self.point_items.clear()
+        self.arrow_items.clear()
+
+        if self.polyline.point_count() < 1:
+            return
+
+        # Create pen based on line type and road mark type
+        pen = self._create_pen_for_polyline()
+
+        # Draw lines between points
+        points = self.polyline.points
+        for i in range(len(points) - 1):
+            x1, y1 = points[i]
+            x2, y2 = points[i + 1]
+            line = self.scene.addLine(x1, y1, x2, y2, pen)
+            line.setZValue(1)
+            self.line_items.append(line)
+
+        # Draw closing line if closed
+        if self.polyline.closed and len(points) > 2:
+            x1, y1 = points[-1]
+            x2, y2 = points[0]
+            line = self.scene.addLine(x1, y1, x2, y2, pen)
+            line.setZValue(1)
+            self.line_items.append(line)
+
+        # Draw directional arrows for centerlines
+        if self.polyline.line_type == LineType.CENTERLINE and len(points) >= 2:
+            self._draw_direction_arrows(points, pen)
+
+        # Draw points
+        color = QColor(*self.polyline.color)
+        point_brush = QBrush(color)
+        if self.selected:
+            point_brush.setColor(QColor(255, 255, 0))
+
+        for i, (x, y) in enumerate(points):
+            radius = 5
+            if i == self.selected_point_index:
+                radius = 7
+                point_brush = QBrush(QColor(255, 128, 0))  # Orange for selected point
+
+            point = self.scene.addEllipse(
+                x - radius, y - radius, radius * 2, radius * 2,
+                pen, point_brush
+            )
+            point.setZValue(2)
+            self.point_items.append(point)
+
+            # Reset brush for next point
+            if i == self.selected_point_index:
+                point_brush = QBrush(QColor(255, 255, 0) if self.selected else color)
+
+    def _create_pen_for_polyline(self) -> QPen:
+        """Create a pen with appropriate style for the polyline's type and mark type."""
+        # Base color based on line type
+        if self.polyline.line_type == LineType.CENTERLINE:
+            color = QColor(255, 165, 0)  # Orange for centerline
+        else:
+            color = QColor(0, 255, 255)  # Cyan for lane boundaries
+
+        # Override with selection color
+        if self.selected:
+            color = QColor(255, 255, 0)  # Yellow when selected
+
+        # Base width
+        width = 3 if self.selected else 2
+
+        # Create pen
+        pen = QPen(color, width)
+
+        # Set pen style based on road mark type
+        mark_type = self.polyline.road_mark_type
+
+        if mark_type == RoadMarkType.SOLID:
+            pen.setStyle(Qt.PenStyle.SolidLine)
+        elif mark_type == RoadMarkType.BROKEN:
+            pen.setStyle(Qt.PenStyle.DashLine)
+            pen.setDashPattern([10, 10])  # 10 pixels line, 10 pixels space
+        elif mark_type == RoadMarkType.SOLID_SOLID:
+            pen.setStyle(Qt.PenStyle.SolidLine)
+            # Note: Double lines would require drawing two parallel lines
+        elif mark_type == RoadMarkType.SOLID_BROKEN:
+            pen.setStyle(Qt.PenStyle.DashLine)
+            pen.setDashPattern([15, 5])  # Longer dashes
+        elif mark_type == RoadMarkType.BROKEN_SOLID:
+            pen.setStyle(Qt.PenStyle.DashLine)
+            pen.setDashPattern([5, 15])  # Shorter dashes, longer gaps
+        elif mark_type == RoadMarkType.BROKEN_BROKEN:
+            pen.setStyle(Qt.PenStyle.DashLine)
+            pen.setDashPattern([5, 5])  # Short dashes
+        elif mark_type == RoadMarkType.BOTTS_DOTS:
+            pen.setStyle(Qt.PenStyle.DotLine)
+        elif mark_type == RoadMarkType.GRASS:
+            pen.setStyle(Qt.PenStyle.DashDotLine)
+        elif mark_type == RoadMarkType.CURB:
+            pen.setStyle(Qt.PenStyle.SolidLine)
+            pen.setWidth(width + 1)  # Slightly thicker for curbs
+        elif mark_type == RoadMarkType.EDGE:
+            pen.setStyle(Qt.PenStyle.SolidLine)
+        elif mark_type == RoadMarkType.NONE:
+            pen.setStyle(Qt.PenStyle.DashLine)
+            pen.setDashPattern([3, 7])  # Very faint
+        else:  # CUSTOM or unknown
+            pen.setStyle(Qt.PenStyle.DashDotDotLine)
+
+        return pen
+
+    def _draw_direction_arrows(self, points: List[Tuple[float, float]], pen: QPen):
+        """
+        Draw direction arrows on centerline to show the positive direction.
+
+        Arrows are drawn at the end and at intervals along the centerline.
+        """
+        import math
+        from PyQt6.QtGui import QPolygonF
+
+        # Arrow parameters
+        arrow_size = 15  # Length of arrow head
+        arrow_angle = 25  # Angle of arrow head in degrees
+
+        # Color for arrows
+        if self.selected:
+            arrow_color = QColor(255, 255, 0)  # Yellow when selected
+        else:
+            arrow_color = QColor(255, 165, 0)  # Orange for centerline
+
+        arrow_pen = QPen(arrow_color, 2)
+        arrow_brush = QBrush(arrow_color)
+
+        # Draw arrow at the end of the centerline
+        if len(points) >= 2:
+            # Use last two points to determine direction
+            p1 = points[-2]
+            p2 = points[-1]  # End point
+
+            self._draw_arrow_at_point(p2, p1, arrow_size, arrow_angle, arrow_pen, arrow_brush)
+
+            # Draw arrows at regular intervals along the centerline (every ~200 pixels)
+            total_length = 0
+            segment_lengths = []
+            for i in range(len(points) - 1):
+                x1, y1 = points[i]
+                x2, y2 = points[i + 1]
+                seg_len = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+                segment_lengths.append(seg_len)
+                total_length += seg_len
+
+            # Place arrows every 200 pixels (but skip if too short)
+            if total_length > 300:
+                arrow_interval = 200
+                current_length = 0
+                target_length = arrow_interval
+
+                for i in range(len(points) - 1):
+                    seg_len = segment_lengths[i]
+
+                    # Check if we should place an arrow in this segment
+                    while current_length + seg_len >= target_length:
+                        # Calculate position along this segment
+                        t = (target_length - current_length) / seg_len
+                        if 0 < t < 1:  # Don't place at endpoints
+                            x1, y1 = points[i]
+                            x2, y2 = points[i + 1]
+                            arrow_x = x1 + t * (x2 - x1)
+                            arrow_y = y1 + t * (y2 - y1)
+
+                            self._draw_arrow_at_point(
+                                (arrow_x, arrow_y), points[i],
+                                arrow_size * 0.7, arrow_angle,  # Slightly smaller intermediate arrows
+                                arrow_pen, arrow_brush
+                            )
+
+                        target_length += arrow_interval
+
+                    current_length += seg_len
+
+    def _draw_arrow_at_point(
+        self,
+        tip_point: Tuple[float, float],
+        prev_point: Tuple[float, float],
+        arrow_size: float,
+        arrow_angle: float,
+        pen: QPen,
+        brush: QBrush
+    ):
+        """Draw a single arrow at the specified point."""
+        import math
+        from PyQt6.QtGui import QPolygonF
+
+        tx, ty = tip_point
+        px, py = prev_point
+
+        # Calculate direction angle
+        dx = tx - px
+        dy = ty - py
+        angle = math.atan2(dy, dx)
+
+        # Calculate arrow head points
+        angle_rad = math.radians(arrow_angle)
+
+        left_x = tx - arrow_size * math.cos(angle - angle_rad)
+        left_y = ty - arrow_size * math.sin(angle - angle_rad)
+
+        right_x = tx - arrow_size * math.cos(angle + angle_rad)
+        right_y = ty - arrow_size * math.sin(angle + angle_rad)
+
+        # Create arrow polygon (filled triangle)
+        arrow_polygon = QPolygonF()
+        arrow_polygon.append(QPointF(tx, ty))  # Tip
+        arrow_polygon.append(QPointF(left_x, left_y))
+        arrow_polygon.append(QPointF(right_x, right_y))
+
+        # Add arrow to scene
+        arrow_item = self.scene.addPolygon(arrow_polygon, pen, brush)
+        arrow_item.setZValue(1.5)  # Above lines, below points
+        self.arrow_items.append(arrow_item)
+
+    def set_selected(self, selected: bool):
+        """Set selection state."""
+        self.selected = selected
+        self.update_graphics()
+
+    def set_selected_point(self, index: int):
+        """Set selected point index."""
+        self.selected_point_index = index
+        self.update_graphics()
+
+    def get_point_at(self, pos: QPointF, tolerance: float = 10.0) -> int:
+        """Get the index of the point at the given position, or -1 if none."""
+        for i, (x, y) in enumerate(self.polyline.points):
+            dx = pos.x() - x
+            dy = pos.y() - y
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist <= tolerance:
+                return i
+        return -1
+
+    def is_near_line(self, pos: QPointF, tolerance: float = 10.0) -> bool:
+        """Check if position is near any line segment."""
+        points = self.polyline.points
+        for i in range(len(points) - 1):
+            if self._point_to_segment_distance(pos, points[i], points[i + 1]) <= tolerance:
+                return True
+        return False
+
+    def get_segment_at(self, pos: QPointF, tolerance: float = 10.0) -> int:
+        """Get the index of the segment at the given position, or -1 if none.
+
+        Returns the index of the first point of the segment (0 means between points 0 and 1).
+        """
+        points = self.polyline.points
+        for i in range(len(points) - 1):
+            if self._point_to_segment_distance(pos, points[i], points[i + 1]) <= tolerance:
+                return i
+        return -1
+
+    @staticmethod
+    def _point_to_segment_distance(point: QPointF, seg_start: tuple, seg_end: tuple) -> float:
+        """Calculate distance from point to line segment."""
+        px, py = point.x(), point.y()
+        x1, y1 = seg_start
+        x2, y2 = seg_end
+
+        dx = x2 - x1
+        dy = y2 - y1
+        if dx == 0 and dy == 0:
+            return ((px - x1) ** 2 + (py - y1) ** 2) ** 0.5
+
+        t = max(0, min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)))
+        proj_x = x1 + t * dx
+        proj_y = y1 + t * dy
+
+        return ((px - proj_x) ** 2 + (py - proj_y) ** 2) ** 0.5
+
+    def remove(self):
+        """Remove all graphics items from scene."""
+        for item in self.line_items + self.point_items:
+            if item.scene() == self.scene:
+                self.scene.removeItem(item)
+        self.line_items.clear()
+        self.point_items.clear()
+
+
+class JunctionMarkerItem:
+    """Graphics representation of a junction marker."""
+
+    def __init__(self, junction: Junction, scene: QGraphicsScene):
+        self.junction = junction
+        self.scene = scene
+        self.marker_items = []
+        self.text_item = None
+        self.selected = False
+
+        self.update_graphics()
+
+    def update_graphics(self):
+        """Update the graphics items based on junction data."""
+        # Clear existing items
+        for item in self.marker_items:
+            self.scene.removeItem(item)
+        self.marker_items.clear()
+        if self.text_item:
+            self.scene.removeItem(self.text_item)
+            self.text_item = None
+
+        if not self.junction.center_point:
+            return
+
+        x, y = self.junction.center_point
+
+        # Draw junction marker (diamond shape)
+        color = QColor(255, 0, 255)  # Magenta for junctions
+        if self.selected:
+            color = QColor(255, 255, 0)  # Yellow when selected
+
+        pen = QPen(color, 3)
+        brush = QBrush(QColor(255, 0, 255, 100))  # Semi-transparent
+        if self.selected:
+            brush = QBrush(QColor(255, 255, 0, 100))
+
+        size = 20
+        # Draw diamond (rotated square)
+        from PyQt6.QtGui import QPolygonF
+        polygon = QPolygonF()
+        polygon.append(QPointF(x, y - size))  # Top
+        polygon.append(QPointF(x + size, y))  # Right
+        polygon.append(QPointF(x, y + size))  # Bottom
+        polygon.append(QPointF(x - size, y))  # Left
+
+        marker = self.scene.addPolygon(polygon, pen, brush)
+        marker.setZValue(3)  # Above polylines
+        self.marker_items.append(marker)
+
+        # Add text label
+        from PyQt6.QtWidgets import QGraphicsTextItem
+        self.text_item = QGraphicsTextItem(self.junction.name)
+        self.text_item.setDefaultTextColor(color)
+        self.text_item.setPos(x + size + 5, y - 10)
+        self.text_item.setZValue(3)
+        self.scene.addItem(self.text_item)
+
+    def set_selected(self, selected: bool):
+        """Set selection state."""
+        self.selected = selected
+        self.update_graphics()
+
+    def is_at_position(self, pos: QPointF, tolerance: float = 20.0) -> bool:
+        """Check if position is near the junction marker."""
+        if not self.junction.center_point:
+            return False
+
+        x, y = self.junction.center_point
+        dx = pos.x() - x
+        dy = pos.y() - y
+        dist = (dx * dx + dy * dy) ** 0.5
+        return dist <= tolerance
+
+    def remove(self):
+        """Remove all graphics items from scene."""
+        for item in self.marker_items:
+            if item.scene() == self.scene:
+                self.scene.removeItem(item)
+        self.marker_items.clear()
+        if self.text_item and self.text_item.scene() == self.scene:
+            self.scene.removeItem(self.text_item)
+            self.text_item = None
+
+
+class InteractiveLanePolygon(QGraphicsPolygonItem):
+    """Interactive polygon for a lane section with hover and click support."""
+
+    # Default alpha values (0-255)
+    DEFAULT_ALPHA = 77    # ~30% opacity
+    HOVER_ALPHA = 204     # ~80% opacity
+    SELECTED_ALPHA = 204  # ~80% opacity (same as hover)
+
+    def __init__(self, lane_id: int, section_number: int, road_id: str,
+                 polygon_points: List[tuple], parent_view):
+        """
+        Create an interactive lane polygon.
+
+        Args:
+            lane_id: Lane ID (positive=right, negative=left, 0=center)
+            section_number: Section number this polygon belongs to
+            road_id: Road ID this polygon belongs to
+            polygon_points: List of (x, y) points forming the lane polygon
+            parent_view: Parent ImageView for signaling
+        """
+        from PyQt6.QtGui import QPolygonF
+
+        # Create polygon
+        polygon = QPolygonF()
+        for x, y in polygon_points:
+            polygon.append(QPointF(x, y))
+
+        super().__init__(polygon)
+
+        # Store metadata
+        self.lane_id = lane_id
+        self.section_number = section_number
+        self.road_id = road_id
+        self.parent_view = parent_view
+        self.is_selected = False
+
+        # Choose base color based on lane side
+        if lane_id > 0:
+            # Right-hand lanes: light green
+            self.base_color = QColor(100, 255, 100)
+        elif lane_id < 0:
+            # Left-hand lanes: light blue
+            self.base_color = QColor(100, 180, 255)
+        else:
+            # Center lane
+            self.base_color = QColor(200, 200, 200)
+
+        # Set appearance
+        self.setAcceptHoverEvents(True)
+        self.setZValue(0.5)  # Between image (0) and polylines (1+)
+
+        # Set default appearance
+        self._update_appearance()
+
+    def _update_appearance(self):
+        """Update brush and pen based on current state."""
+        if self.is_selected:
+            # Selected: dark border and higher opacity
+            pen = QPen(QColor(0, 0, 0, 255), 3)  # Black border, 3px width
+            self.setPen(pen)
+            self._update_brush(self.SELECTED_ALPHA)
+        else:
+            # Not selected: default gray border and default opacity
+            pen = QPen(QColor(200, 200, 200, 150), 1)
+            self.setPen(pen)
+            self._update_brush(self.DEFAULT_ALPHA)
+
+    def _update_brush(self, alpha: int):
+        """Update the brush with the specified alpha value."""
+        color = QColor(self.base_color)
+        color.setAlpha(alpha)
+        self.setBrush(QBrush(color))
+
+    def set_selected(self, selected: bool):
+        """Set selection state and update appearance."""
+        self.is_selected = selected
+        self._update_appearance()
+        if not selected:
+            # If not selected, restore default opacity
+            self._update_brush(self.DEFAULT_ALPHA)
+
+    def hoverEnterEvent(self, event):
+        """Handle mouse enter - make more opaque."""
+        if not self.is_selected:
+            self._update_brush(self.HOVER_ALPHA)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        """Handle mouse leave - restore default transparency."""
+        if not self.is_selected:
+            self._update_brush(self.DEFAULT_ALPHA)
+        super().hoverLeaveEvent(event)
+
+    def mousePressEvent(self, event):
+        """Handle mouse click - emit selection signal."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Emit signal to select this lane in the tree
+            if hasattr(self.parent_view, 'lane_segment_clicked'):
+                self.parent_view.lane_segment_clicked.emit(
+                    self.road_id,
+                    self.section_number,
+                    self.lane_id
+                )
+        super().mousePressEvent(event)
+
+    def set_visible(self, visible: bool):
+        """Set visibility of the lane polygon."""
+        self.setVisible(visible)
+
+
+class LaneGraphicsItem:
+    """Graphics representation of a single lane (deprecated, kept for compatibility)."""
+
+    def __init__(self, lane_number: int, polygon_points: List[tuple],
+                 scene: QGraphicsScene):
+        """
+        Create a lane graphics item.
+
+        Args:
+            lane_number: Lane ID (positive=right, negative=left, 0=center)
+            polygon_points: List of (x, y) points forming the lane polygon
+            scene: Graphics scene to add items to
+        """
+        self.lane_number = lane_number
+        self.polygon_points = polygon_points
+        self.scene = scene
+        self.polygon_item = None
+
+        self.update_graphics()
+
+    def update_graphics(self):
+        """Update the graphics items based on lane data."""
+        # Remove existing polygon
+        if self.polygon_item:
+            self.scene.removeItem(self.polygon_item)
+            self.polygon_item = None
+
+        if not self.polygon_points or len(self.polygon_points) < 3:
+            return
+
+        # Create polygon
+        from PyQt6.QtGui import QPolygonF
+        polygon = QPolygonF()
+        for x, y in self.polygon_points:
+            polygon.append(QPointF(x, y))
+
+        # Choose color based on lane side
+        if self.lane_number > 0:
+            # Right-hand lanes: light green
+            color = QColor(100, 255, 100, 77)  # Updated to ~30% alpha
+        elif self.lane_number < 0:
+            # Left-hand lanes: light blue
+            color = QColor(100, 180, 255, 77)  # Updated to ~30% alpha
+        else:
+            # Center lane (shouldn't happen, but handle it)
+            color = QColor(200, 200, 200, 77)
+
+        # Create pen for lane divider
+        pen = QPen(QColor(200, 200, 200, 150), 1)  # Thin light gray
+        brush = QBrush(color)
+
+        # Add polygon to scene
+        self.polygon_item = self.scene.addPolygon(polygon, pen, brush)
+        self.polygon_item.setZValue(0.5)  # Between image (0) and polylines (1+)
+
+    def remove(self):
+        """Remove graphics item from scene."""
+        if self.polygon_item and self.polygon_item.scene() == self.scene:
+            self.scene.removeItem(self.polygon_item)
+            self.polygon_item = None
+
+    def set_visible(self, visible: bool):
+        """Set visibility of lane graphics."""
+        if self.polygon_item:
+            self.polygon_item.setVisible(visible)
+
+
+class RoadLanesGraphicsItem:
+    """Graphics representation of all lanes in a road."""
+
+    # Default scale in meters per pixel (will be updated from georeferencing later)
+    DEFAULT_SCALE = 0.058  # 5.8 cm/px
+
+    def __init__(self, road: Road, centerline: Polyline, scene: QGraphicsScene,
+                 scale_factors: tuple = None, verbose: bool = False):
+        """
+        Create road lanes graphics.
+
+        Args:
+            road: Road object with lane configuration
+            centerline: Centerline polyline
+            scene: Graphics scene
+            scale_factors: Tuple of (scale_x, scale_y) in m/px, or None for default
+            verbose: Enable verbose debug output
+        """
+        self.road = road
+        self.centerline = centerline
+        self.scene = scene
+        self.scale_factors = scale_factors  # Store as tuple
+        self.lane_items: List[LaneGraphicsItem] = []
+        self.verbose = verbose
+
+        self.update_graphics()
+
+    def _calculate_directional_scale(self) -> float:
+        """
+        Calculate the appropriate scale factor based on road direction.
+
+        For roads running primarily horizontal (east-west), use scale_x.
+        For roads running primarily vertical (north-south), use scale_y.
+        For diagonal roads, interpolate between scale_x and scale_y.
+
+        Returns:
+            Scale factor in meters per pixel appropriate for this road's direction
+        """
+        # Use default scale if no georeferencing available
+        if not self.scale_factors:
+            return self.DEFAULT_SCALE
+
+        scale_x, scale_y = self.scale_factors
+
+        # Calculate dominant direction of the road from centerline
+        centerline_points = self.centerline.points
+        if len(centerline_points) < 2:
+            # Can't determine direction, use average
+            return (scale_x + scale_y) / 2
+
+        # Calculate total displacement in x and y
+        total_dx = 0
+        total_dy = 0
+        for i in range(len(centerline_points) - 1):
+            p1 = centerline_points[i]
+            p2 = centerline_points[i + 1]
+            dx = abs(p2[0] - p1[0])
+            dy = abs(p2[1] - p1[1])
+            total_dx += dx
+            total_dy += dy
+
+        # Calculate total distance
+        total_dist = total_dx + total_dy
+        if total_dist == 0:
+            return (scale_x + scale_y) / 2
+
+        # Calculate weights based on direction
+        # weight_x: proportion of horizontal movement
+        # weight_y: proportion of vertical movement
+        weight_x = total_dx / total_dist
+        weight_y = total_dy / total_dist
+
+        # Interpolate between scale_x and scale_y based on direction
+        directional_scale = weight_x * scale_x + weight_y * scale_y
+
+        return directional_scale
+
+    def update_graphics(self):
+        """Update all lane graphics based on current road configuration."""
+        # Remove existing lanes
+        for lane_item in self.lane_items:
+            if hasattr(lane_item, 'remove'):
+                lane_item.remove()
+            elif hasattr(lane_item, 'scene') and lane_item.scene() == self.scene:
+                self.scene.removeItem(lane_item)
+        self.lane_items.clear()
+
+        if not self.centerline or self.centerline.point_count() < 2:
+            return
+
+        # Get centerline points
+        centerline_points = self.centerline.points
+
+        # Calculate directional scale
+        scale = self._calculate_directional_scale()
+
+        # Verbose output for debugging
+        if self.verbose:
+            print(f"\n{'='*60}")
+            print(f"LANE VISUALIZATION: {self.road.name} (ID: {self.road.id[:8]}...)")
+            print(f"{'='*60}")
+
+        # Use lane sections if available, otherwise fall back to old method
+        if self.road.lane_sections:
+            self._create_section_based_lanes(centerline_points, scale)
+        else:
+            self._create_legacy_lanes(centerline_points, scale)
+
+    def _create_section_based_lanes(self, centerline_points: List[Tuple[float, float]], scale: float):
+        """Create lane polygons separated by section boundaries."""
+        # Calculate s-coordinates for all centerline points
+        s_coords = self.road.calculate_centerline_s_coordinates(centerline_points)
+
+        # Update last section's s_end to match actual centerline length
+        if self.road.lane_sections and s_coords:
+            self.road.lane_sections[-1].s_end = s_coords[-1]
+
+        if self.verbose:
+            print(f"  Creating section-based lane polygons:")
+            print(f"    Sections: {len(self.road.lane_sections)}")
+
+        # For each section, create polygons for each lane
+        for section_idx, section in enumerate(self.road.lane_sections):
+            # Find points belonging to this section
+            section_point_indices = []
+            is_last_section = (section_idx == len(self.road.lane_sections) - 1)
+
+            for i, s in enumerate(s_coords):
+                if is_last_section:
+                    # For last section, include all points from s_start onwards
+                    if s >= section.s_start:
+                        section_point_indices.append(i)
+                else:
+                    # For other sections, use closed interval [s_start, s_end] to avoid gaps
+                    if section.s_start <= s <= section.s_end:
+                        section_point_indices.append(i)
+
+            if len(section_point_indices) < 2:
+                continue  # Need at least 2 points
+
+            # Extract section centerline points
+            section_centerline = [centerline_points[i] for i in section_point_indices]
+
+            if self.verbose:
+                print(f"    Section {section.section_number}: {len(section_centerline)} points, {len(section.lanes)} lanes")
+
+            # Create polygons for each lane in this section
+            for lane in section.lanes:
+                if lane.id == 0:
+                    continue  # Skip center lane
+
+                # Calculate offsets based on lane position
+                lane_width_m = lane.width
+                lane_width_px = lane_width_m / scale
+
+                # Determine inner and outer offsets
+                if lane.id > 0:
+                    # Right-hand lane
+                    inner_offset = (lane.id - 1) * lane_width_px
+                    outer_offset = lane.id * lane_width_px
+                else:
+                    # Left-hand lane
+                    inner_offset = -(abs(lane.id) - 1) * lane_width_px
+                    outer_offset = -abs(lane.id) * lane_width_px
+
+                # Create polygon for this lane section
+                polygon_points = create_lane_polygon(
+                    section_centerline,
+                    inner_offset,
+                    outer_offset,
+                    closed=False  # Sections are not closed
+                )
+
+                if polygon_points and len(polygon_points) >= 3:
+                    # Create interactive polygon
+                    from gui.image_view import ImageView
+                    parent_view = None
+                    # Find parent ImageView from scene
+                    if self.scene.views():
+                        for view in self.scene.views():
+                            if isinstance(view, ImageView):
+                                parent_view = view
+                                break
+
+                    if parent_view:
+                        lane_polygon = InteractiveLanePolygon(
+                            lane.id,
+                            section.section_number,
+                            self.road.id,
+                            polygon_points,
+                            parent_view
+                        )
+                        self.scene.addItem(lane_polygon)
+                        self.lane_items.append(lane_polygon)
+
+    def _create_legacy_lanes(self, centerline_points: List[Tuple[float, float]], scale: float):
+        """Create continuous lane polygons (old behavior for backward compatibility)."""
+        # Get lane configuration
+        left_count = self.road.lane_info.left_count
+        right_count = self.road.lane_info.right_count
+        lane_width_m = self.road.lane_info.lane_width
+
+        # Convert lane width to pixels
+        lane_width_px = lane_width_m / scale
+
+        # Verbose output for debugging
+        if self.verbose:
+            print(f"  Lane configuration:")
+            print(f"    Left lanes:  {left_count}")
+            print(f"    Right lanes: {right_count}")
+            print(f"    Total lanes: {left_count + right_count}")
+            print(f"  Lane width:")
+            print(f"    Configured: {lane_width_m:.3f} m")
+
+            # Enhanced scale output
+            if self.scale_factors:
+                scale_x, scale_y = self.scale_factors
+                print(f"  Scale from georeferencing:")
+                print(f"    X (horizontal): {scale_x:.6f} m/px = {scale_x*100:.4f} cm/px")
+                print(f"    Y (vertical):   {scale_y:.6f} m/px = {scale_y*100:.4f} cm/px")
+                print(f"    Directional:    {scale:.6f} m/px = {scale*100:.4f} cm/px")
+            else:
+                print(f"  Scale:")
+                print(f"    {scale:.6f} m/px = {scale*100:.4f} cm/px")
+                print(f"    Source: default (no georef)")
+
+            print(f"  Calculated lane width in image:")
+            print(f"    {lane_width_px:.2f} pixels")
+            print(f"  Total road width in image:")
+            total_width_px = (left_count + right_count) * lane_width_px
+            print(f"    {total_width_px:.2f} pixels = {total_width_px * scale:.3f} m")
+            print(f"{'='*60}\n")
+
+        # Create right-hand lanes (positive IDs: 1, 2, 3, ...)
+        for lane_num in range(1, right_count + 1):
+            inner_offset = (lane_num - 1) * lane_width_px
+            outer_offset = lane_num * lane_width_px
+
+            polygon_points = create_lane_polygon(
+                centerline_points,
+                inner_offset,
+                outer_offset,
+                closed=self.centerline.closed
+            )
+
+            if polygon_points:
+                lane_item = LaneGraphicsItem(lane_num, polygon_points, self.scene)
+                self.lane_items.append(lane_item)
+
+        # Create left-hand lanes (negative IDs: -1, -2, -3, ...)
+        for lane_num in range(1, left_count + 1):
+            inner_offset = -(lane_num - 1) * lane_width_px
+            outer_offset = -lane_num * lane_width_px
+
+            polygon_points = create_lane_polygon(
+                centerline_points,
+                inner_offset,
+                outer_offset,
+                closed=self.centerline.closed
+            )
+
+            if polygon_points:
+                lane_item = LaneGraphicsItem(-lane_num, polygon_points, self.scene)
+                self.lane_items.append(lane_item)
+
+    def remove(self):
+        """Remove all lane graphics from scene."""
+        for lane_item in self.lane_items:
+            lane_item.remove()
+        self.lane_items.clear()
+
+    def set_visible(self, visible: bool):
+        """Set visibility of all lane graphics."""
+        for lane_item in self.lane_items:
+            lane_item.set_visible(visible)
+
+    def update_scale(self, scale_factors: tuple):
+        """
+        Update scale factors and regenerate graphics.
+
+        Args:
+            scale_factors: Tuple of (scale_x, scale_y) in m/px
+        """
+        self.scale_factors = scale_factors
+        self.update_graphics()
+
+
+class ImageView(QGraphicsView):
+    """Interactive image view with polyline drawing and editing."""
+
+    # Signals
+    polyline_added = pyqtSignal(object)  # Emits Polyline
+    polyline_modified = pyqtSignal()
+    polyline_deleted = pyqtSignal(str)  # Emits polyline ID
+    polyline_edit_requested = pyqtSignal(str)  # Emits polyline ID for editing
+    polyline_selected = pyqtSignal(str)  # Emits polyline ID when selected in view
+    junction_added = pyqtSignal(object)  # Emits Junction
+    junction_modified = pyqtSignal(str)  # Emits junction ID
+    junction_deleted = pyqtSignal(str)  # Emits junction ID
+    junction_edit_requested = pyqtSignal(str)  # Emits junction ID for editing
+    junction_selected = pyqtSignal(str)  # Emits junction ID when selected in view
+    signal_added = pyqtSignal(object)  # Emits Signal
+    signal_modified = pyqtSignal(str)  # Emits signal ID
+    signal_deleted = pyqtSignal(str)  # Emits signal ID
+    signal_edit_requested = pyqtSignal(str)  # Emits signal ID for editing
+    signal_selected = pyqtSignal(str)  # Emits signal ID when selected in view
+    signal_placement_requested = pyqtSignal(float, float)  # Emits x, y coordinates for signal placement
+    object_added = pyqtSignal(object)  # Emits RoadObject
+    object_modified = pyqtSignal(str)  # Emits object ID
+    object_deleted = pyqtSignal(str)  # Emits object ID
+    object_edit_requested = pyqtSignal(str)  # Emits object ID for editing
+    object_selected = pyqtSignal(str)  # Emits object ID when selected in view
+    object_placement_requested = pyqtSignal(float, float, object)  # Emits x, y coordinates and ObjectType
+    section_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index
+    section_modified = pyqtSignal(str)  # Emits road ID
+    lane_segment_clicked = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id
+    point_picked = pyqtSignal(float, float)  # Emits x, y coordinates
+    mouse_moved = pyqtSignal(float, float)  # Emits x, y mouse position in scene coordinates
+
+    def __init__(self, parent=None, verbose: bool = False):
+        super().__init__(parent)
+
+        # Debug flag
+        self.verbose = verbose
+
+        # Setup scene
+        self.scene = QGraphicsScene(self)
+        self.setScene(self.scene)
+
+        # Image
+        self.image_path: Optional[Path] = None
+        self.image_item: Optional[QGraphicsPixmapItem] = None
+        self.image_np: Optional[np.ndarray] = None
+
+        # Polylines
+        self.polyline_items: Dict[str, PolylineGraphicsItem] = {}
+        self.current_polyline: Optional[Polyline] = None
+        self.current_polyline_item: Optional[PolylineGraphicsItem] = None
+
+        # Junctions
+        self.junction_items: Dict[str, JunctionMarkerItem] = {}
+        self.selected_junction_id: Optional[str] = None
+
+        # Signals
+        self.signal_items: Dict[str, SignalGraphicsItem] = {}
+        self.selected_signal_id: Optional[str] = None
+
+        # Objects
+        self.object_items: Dict[str, ObjectGraphicsItem] = {}
+        self.selected_object_id: Optional[str] = None
+
+        # Control points (for georeferencing visualization)
+        self.control_point_items: List = []
+
+        # Road lanes (visual representation of lanes)
+        self.road_lanes_items: Dict[str, RoadLanesGraphicsItem] = {}
+        self.selected_lane_key: Optional[Tuple[str, int, int]] = None  # (road_id, section_number, lane_id)
+        self.project: Optional[Project] = None  # Reference to project for road lookups
+
+        # Section boundaries (visual representation of lane section boundaries)
+        self.section_boundary_items: Dict[str, List] = {}  # road_id -> list of graphics items
+
+        # Interaction state
+        self.drawing_mode = False
+        self.junction_mode = False
+        self.signal_mode = False
+        self.object_mode = False
+        self.object_type_to_place: Optional[ObjectType] = None  # Type of object to place
+        self.drawing_guardrail = False  # True when dragging to create guardrail
+        self.guardrail_points: List[Tuple[float, float]] = []  # Points for current guardrail
+        self.pick_point_mode = False
+        self.measure_mode = False
+        self.selected_polyline_id: Optional[str] = None
+        self.dragging_point = False
+        self.drag_polyline_id: Optional[str] = None
+        self.drag_point_index: int = -1
+        self.dragging_junction = False
+        self.drag_junction_id: Optional[str] = None
+        self.dragging_guardrail_point = False
+        self.drag_object_id: Optional[str] = None
+        # drag_point_index is shared with polyline dragging
+
+        # Measure mode state
+        self.measure_points: List[QPointF] = []  # Current pair being measured
+        self.measurement_items: List = []  # All graphics items for cleanup
+
+        # Show scale mode state
+        self.show_scale_mode = False
+        self.scale_items: List = []  # All graphics items for cleanup
+
+        # Uncertainty overlay
+        self.uncertainty_overlay = None
+
+        # S-offset labels
+        self.soffsets_visible = False
+        self.soffset_labels: Dict[str, List] = {}  # polyline_id -> list of (text_item, bg_item) tuples
+
+        # View settings
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setMouseTracking(True)  # Enable mouse tracking for position updates
+
+    def load_image(self, image_path: Path):
+        """Load an image file."""
+        self.image_path = image_path
+
+        # Load image with OpenCV
+        self.image_np = cv2.imread(str(image_path))
+        if self.image_np is None:
+            return
+
+        # Convert BGR to RGB
+        self.image_np = cv2.cvtColor(self.image_np, cv2.COLOR_BGR2RGB)
+
+        # Convert to QPixmap
+        height, width, channel = self.image_np.shape
+        bytes_per_line = 3 * width
+        q_image = QImage(
+            self.image_np.data,
+            width,
+            height,
+            bytes_per_line,
+            QImage.Format.Format_RGB888
+        )
+        pixmap = QPixmap.fromImage(q_image)
+
+        # Clear scene and add image
+        self.scene.clear()
+        self.polyline_items.clear()
+        self.image_item = self.scene.addPixmap(pixmap)
+        self.image_item.setZValue(0)
+
+        # Fit to view
+        self.fit_to_window()
+
+    def load_project(self, project: Project, scale_factors: tuple = None):
+        """
+        Load polylines, junctions, control points, and road lanes from a project.
+
+        Args:
+            project: Project to load
+            scale_factors: Optional tuple of (scale_x, scale_y) in m/px from georeferencing
+        """
+        # Clear all existing graphics safely
+        # Note: We don't call full clear() because we want to keep the image
+
+        # Clear scene items (this removes everything from the scene at once)
+        # We need to keep the image item
+        image_item_backup = self.image_item
+        for item in list(self.scene.items()):
+            if item != image_item_backup:
+                self.scene.removeItem(item)
+
+        # Clear tracking dictionaries
+        self.polyline_items.clear()
+        self.junction_items.clear()
+        self.signal_items.clear()
+        self.object_items.clear()
+        self.control_point_items.clear()
+        self.road_lanes_items.clear()
+        self.soffset_labels.clear()
+
+        # Store project reference for road lookups
+        self.project = project
+
+        # Add polylines from project
+        for polyline in project.polylines:
+            self.add_polyline_graphics(polyline)
+
+        # Add junctions from project
+        for junction in project.junctions:
+            self.add_junction_graphics(junction)
+
+        # Add signals from project
+        for signal in project.signals:
+            self.add_signal_graphics(signal)
+
+        # Add objects from project
+        scale_factor = scale_factors[0] if scale_factors else 0.0
+        for obj in project.objects:
+            self.add_object_graphics(obj, scale_factor)
+
+        # Add control points from project
+        for cp in project.control_points:
+            self.add_control_point_graphics(cp)
+
+        # Add road lanes for all roads with centerlines
+        for road in project.roads:
+            if road.centerline_id:
+                self.add_road_lanes_graphics(road, scale_factors)
+
+    def add_polyline_graphics(self, polyline: Polyline):
+        """Add a polyline to the graphics scene."""
+        item = PolylineGraphicsItem(polyline, self.scene)
+        self.polyline_items[polyline.id] = item
+        # Update s-offset labels if visible and this is a centerline
+        if self.soffsets_visible:
+            self._update_soffset_labels(polyline.id)
+
+    def add_junction_graphics(self, junction: Junction):
+        """Add a junction marker to the graphics scene."""
+        item = JunctionMarkerItem(junction, self.scene)
+        self.junction_items[junction.id] = item
+
+    def remove_junction_graphics(self, junction_id: str):
+        """Remove a junction marker from the scene."""
+        if junction_id in self.junction_items:
+            self.junction_items[junction_id].remove()
+            del self.junction_items[junction_id]
+
+    def refresh_junction_graphics(self, junction_id: str):
+        """Refresh junction graphics after modification."""
+        if junction_id in self.junction_items:
+            self.junction_items[junction_id].update_graphics()
+
+    def add_signal_graphics(self, signal: Signal):
+        """Add a signal to the graphics scene."""
+        item = SignalGraphicsItem(signal, project=self.project)
+        item.signal_changed = lambda s: self.signal_modified.emit(s.id)
+        self.signal_items[signal.id] = item
+        self.scene.addItem(item)
+
+    def remove_signal_graphics(self, signal_id: str):
+        """Remove a signal from the scene."""
+        if signal_id in self.signal_items:
+            item = self.signal_items[signal_id]
+            self.safe_remove_item(item)
+            del self.signal_items[signal_id]
+
+    def refresh_signal_graphics(self, signal_id: str):
+        """Refresh signal graphics after modification."""
+        if signal_id in self.signal_items:
+            self.signal_items[signal_id].update_graphics()
+
+    def add_object_graphics(self, obj: RoadObject, scale_factor: float = 0.0):
+        """Add an object to the graphics scene."""
+        item = ObjectGraphicsItem(obj, scale_factor)
+        item.object_changed = lambda o: self.object_modified.emit(o.id)
+        self.object_items[obj.id] = item
+        self.scene.addItem(item)
+
+    def remove_object_graphics(self, object_id: str):
+        """Remove an object from the scene."""
+        if object_id in self.object_items:
+            item = self.object_items[object_id]
+            self.safe_remove_item(item)
+            del self.object_items[object_id]
+
+    def refresh_object_graphics(self, object_id: str):
+        """Refresh object graphics after modification."""
+        if object_id in self.object_items:
+            item = self.object_items[object_id]
+            obj = item.obj
+
+            # Update position for point objects (non-polyline)
+            if obj.type.get_shape_type() != "polyline":
+                item.setPos(obj.position[0], obj.position[1])
+
+            # Update graphics (shape, color, dimensions, orientation)
+            item.update_graphics()
+
+    def update_object_scale_factors(self, scale_factor: float):
+        """Update scale factors for all objects when georeferencing changes."""
+        for item in self.object_items.values():
+            item.update_scale_factor(scale_factor)
+
+    def add_control_point_graphics(self, control_point):
+        """Add a control point marker to the graphics scene."""
+        from models import ControlPoint
+
+        # Draw a dark blue dot at the control point location
+        x, y = control_point.pixel_x, control_point.pixel_y
+
+        # Create outer circle (larger, dark blue)
+        outer_radius = 12
+        outer_pen = QPen(QColor(0, 50, 150), 3)  # Dark blue border
+        outer_brush = QBrush(QColor(100, 150, 255, 180))  # Semi-transparent blue
+        outer_circle = self.scene.addEllipse(
+            x - outer_radius, y - outer_radius,
+            outer_radius * 2, outer_radius * 2,
+            outer_pen, outer_brush
+        )
+        outer_circle.setZValue(10)  # Above everything else
+        self.control_point_items.append(outer_circle)
+
+        # Create inner circle (smaller, bright blue)
+        inner_radius = 5
+        inner_pen = QPen(QColor(255, 255, 255), 1)  # White border
+        inner_brush = QBrush(QColor(0, 100, 255))  # Bright blue
+        inner_circle = self.scene.addEllipse(
+            x - inner_radius, y - inner_radius,
+            inner_radius * 2, inner_radius * 2,
+            inner_pen, inner_brush
+        )
+        inner_circle.setZValue(11)  # Above outer circle
+        self.control_point_items.append(inner_circle)
+
+        # Add label with CP name
+        if control_point.name:
+            from PyQt6.QtWidgets import QGraphicsTextItem
+            from PyQt6.QtGui import QFont
+            text_item = QGraphicsTextItem(control_point.name)
+            text_item.setDefaultTextColor(QColor(0, 100, 255))  # Bright blue
+            font = QFont()
+            font.setBold(True)
+            font.setPointSize(10)
+            text_item.setFont(font)
+            text_item.setPos(x + 15, y - 10)
+            text_item.setZValue(11)
+            self.scene.addItem(text_item)
+            self.control_point_items.append(text_item)
+
+    def add_road_lanes_graphics(self, road: Road, scale_factors: tuple = None):
+        """
+        Add lane visualization for a road.
+
+        Args:
+            road: Road object with centerline and lane configuration
+            scale_factors: Tuple of (scale_x, scale_y) in m/px, or None for default
+        """
+        # Check if road has a centerline
+        if not road.centerline_id:
+            return
+
+        # Get centerline polyline
+        if road.centerline_id not in self.polyline_items:
+            return
+
+        centerline_item = self.polyline_items[road.centerline_id]
+        centerline = centerline_item.polyline
+
+        # Remove existing lane graphics for this road if any
+        if road.id in self.road_lanes_items:
+            self.road_lanes_items[road.id].remove()
+
+        # Create new lane graphics (with verbose flag for debugging)
+        lanes_item = RoadLanesGraphicsItem(road, centerline, self.scene, scale_factors, self.verbose)
+        self.road_lanes_items[road.id] = lanes_item
+
+    def update_road_lanes(self, road_id: str, scale_factors: tuple = None):
+        """
+        Update lane graphics for a road.
+
+        Args:
+            road_id: ID of road to update
+            scale_factors: Tuple of (scale_x, scale_y) in m/px, or None for current/default
+        """
+        if not self.project:
+            return
+
+        road = self.project.get_road(road_id)
+        if not road:
+            return
+
+        # Update or create lane graphics
+        if road_id in self.road_lanes_items:
+            if scale_factors is not None:
+                self.road_lanes_items[road_id].update_scale(scale_factors)
+            else:
+                self.road_lanes_items[road_id].update_graphics()
+        else:
+            self.add_road_lanes_graphics(road, scale_factors)
+
+    def remove_road_lanes(self, road_id: str):
+        """Remove lane graphics for a road."""
+        if road_id in self.road_lanes_items:
+            self.road_lanes_items[road_id].remove()
+            del self.road_lanes_items[road_id]
+
+    def draw_section_boundaries(self, road: Road):
+        """
+        Draw visual markers for lane section boundaries.
+
+        Draws perpendicular lines at each section boundary point.
+
+        Args:
+            road: Road whose section boundaries to draw
+        """
+        # Remove existing boundary graphics
+        self.remove_section_boundaries(road.id)
+
+        if not road.centerline_id or not road.lane_sections:
+            return
+
+        # Get centerline polyline
+        centerline = self.project.get_polyline(road.centerline_id) if self.project else None
+        if not centerline:
+            return
+
+        # Calculate s-coordinates for all points
+        s_coords = road.calculate_centerline_s_coordinates(centerline.points)
+
+        boundary_items = []
+
+        # Draw boundary at each section split (not at start/end)
+        for i, section in enumerate(road.lane_sections):
+            if i == 0:
+                continue  # Skip first section's start (road start)
+
+            # Find the point index closest to this section's s_start
+            boundary_s = section.s_start
+            point_index = self._find_closest_point_index(s_coords, boundary_s)
+
+            if point_index >= 0 and point_index < len(centerline.points):
+                # Draw perpendicular line at this point
+                items = self._draw_perpendicular_marker(
+                    centerline.points,
+                    point_index,
+                    road
+                )
+                boundary_items.extend(items)
+
+        self.section_boundary_items[road.id] = boundary_items
+
+    def _find_closest_point_index(self, s_coords: List[float], target_s: float) -> int:
+        """
+        Find the index of the point closest to the target s-coordinate.
+
+        Args:
+            s_coords: List of s-coordinates
+            target_s: Target s-coordinate to find
+
+        Returns:
+            Index of closest point, or -1 if not found
+        """
+        if not s_coords:
+            return -1
+
+        min_dist = float('inf')
+        closest_idx = -1
+
+        for i, s in enumerate(s_coords):
+            dist = abs(s - target_s)
+            if dist < min_dist:
+                min_dist = dist
+                closest_idx = i
+
+        return closest_idx
+
+    def _draw_perpendicular_marker(
+        self,
+        points: List[Tuple[float, float]],
+        point_index: int,
+        road: Road
+    ) -> List:
+        """
+        Draw a perpendicular line at a point on the centerline.
+
+        Args:
+            points: List of centerline points
+            point_index: Index of the point where to draw
+            road: Road object (for estimating width)
+
+        Returns:
+            List of graphics items created
+        """
+        import math
+
+        items = []
+
+        if point_index < 0 or point_index >= len(points):
+            return items
+
+        # Get the point
+        px, py = points[point_index]
+
+        # Calculate tangent vector (direction along centerline)
+        if point_index > 0 and point_index < len(points) - 1:
+            # Use average of adjacent segments
+            x1, y1 = points[point_index - 1]
+            x2, y2 = points[point_index + 1]
+            dx = x2 - x1
+            dy = y2 - y1
+        elif point_index == 0 and len(points) > 1:
+            # Use next segment
+            x2, y2 = points[point_index + 1]
+            dx = x2 - px
+            dy = y2 - py
+        elif point_index == len(points) - 1 and len(points) > 1:
+            # Use previous segment
+            x1, y1 = points[point_index - 1]
+            dx = px - x1
+            dy = py - y1
+        else:
+            return items
+
+        # Normalize
+        length = math.sqrt(dx * dx + dy * dy)
+        if length < 0.01:
+            return items
+
+        dx /= length
+        dy /= length
+
+        # Perpendicular vector (rotate 90 degrees)
+        perp_x = -dy
+        perp_y = dx
+
+        # Estimate road width (use total lanes * default lane width, or fixed value)
+        # For simplicity, use a fixed visual length
+        half_width = 50.0  # pixels
+
+        # Calculate endpoints of perpendicular line
+        start_x = px - perp_x * half_width
+        start_y = py - perp_y * half_width
+        end_x = px + perp_x * half_width
+        end_y = py + perp_y * half_width
+
+        # Draw the line
+        pen = QPen(QColor(0, 255, 255), 2, Qt.PenStyle.DashLine)  # Cyan dashed line
+        line = self.scene.addLine(start_x, start_y, end_x, end_y, pen)
+        line.setZValue(3)  # Above polylines and lanes
+        items.append(line)
+
+        # Draw a marker dot at the center
+        marker_brush = QBrush(QColor(0, 255, 255))
+        marker_pen = QPen(QColor(0, 200, 200), 1)
+        marker = self.scene.addEllipse(
+            px - 4, py - 4, 8, 8,
+            marker_pen, marker_brush
+        )
+        marker.setZValue(4)
+        items.append(marker)
+
+        return items
+
+    def remove_section_boundaries(self, road_id: str):
+        """Remove section boundary graphics for a road."""
+        if road_id in self.section_boundary_items:
+            for item in self.section_boundary_items[road_id]:
+                if item.scene() == self.scene:
+                    self.scene.removeItem(item)
+            del self.section_boundary_items[road_id]
+
+    def update_section_boundaries(self, road_id: str):
+        """Update section boundary graphics for a road."""
+        if not self.project:
+            return
+
+        road = self.project.get_road(road_id)
+        if road:
+            self.draw_section_boundaries(road)
+
+    def set_lanes_visible(self, visible: bool):
+        """Set visibility for all lane graphics."""
+        for lanes_item in self.road_lanes_items.values():
+            lanes_item.set_visible(visible)
+
+    def set_soffsets_visible(self, visible: bool):
+        """Set visibility for s-offset labels."""
+        self.soffsets_visible = visible
+
+        if visible:
+            # Create labels for all centerline polylines
+            self._update_all_soffset_labels()
+        else:
+            # Hide all labels
+            self._clear_all_soffset_labels()
+
+    def _calculate_soffsets(self, polyline: Polyline) -> List[float]:
+        """
+        Calculate s-offset for each point in a polyline.
+
+        Args:
+            polyline: Polyline to calculate s-offsets for
+
+        Returns:
+            List of s-offsets (cumulative distances from start) in pixels or meters
+        """
+        import math
+
+        points = polyline.points
+        if len(points) == 0:
+            return []
+
+        # Check if we should use metric distances
+        use_metric = self.project and self.project.has_georeferencing()
+
+        if use_metric:
+            try:
+                from export import create_transformer
+                transformer = create_transformer(self.project.control_points)
+                if transformer:
+                    # Convert all points to meters first
+                    metric_points = []
+                    for x, y in points:
+                        mx, my = transformer.pixel_to_meters(x, y)
+                        metric_points.append((mx, my))
+
+                    # Calculate cumulative distances in meters
+                    soffsets = [0.0]  # First point is at s=0
+                    cumulative = 0.0
+                    for i in range(1, len(metric_points)):
+                        x1, y1 = metric_points[i - 1]
+                        x2, y2 = metric_points[i]
+                        dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+                        cumulative += dist
+                        soffsets.append(cumulative)
+                    return soffsets
+            except Exception:
+                pass
+
+        # Fall back to pixel distances
+        soffsets = [0.0]  # First point is at s=0
+        cumulative = 0.0
+        for i in range(1, len(points)):
+            x1, y1 = points[i - 1]
+            x2, y2 = points[i]
+            dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+            cumulative += dist
+            soffsets.append(cumulative)
+        return soffsets
+
+    def _format_soffset(self, soffset: float) -> str:
+        """
+        Format s-offset value for display.
+
+        Args:
+            soffset: S-offset value in pixels or meters
+
+        Returns:
+            Formatted string like "s=12.5m" or "s=150px"
+        """
+        # Check if we have georeferencing
+        use_metric = self.project and self.project.has_georeferencing()
+
+        if use_metric:
+            # Format in meters
+            if soffset < 1.0:
+                return f"s={soffset * 100:.1f}cm"
+            elif soffset < 1000:
+                return f"s={soffset:.2f}m"
+            else:
+                return f"s={soffset / 1000:.3f}km"
+        else:
+            # Format in pixels
+            return f"s={soffset:.1f}px"
+
+    def _create_soffset_label(self, x: float, y: float, soffset: float):
+        """
+        Create a s-offset label at the given position.
+
+        Args:
+            x, y: Position of the point
+            soffset: S-offset value
+
+        Returns:
+            Tuple of (text_item, bg_item)
+        """
+        from PyQt6.QtWidgets import QGraphicsTextItem
+        from PyQt6.QtGui import QFont
+
+        # Create text item
+        text = self._format_soffset(soffset)
+        text_item = QGraphicsTextItem(text)
+        text_item.setDefaultTextColor(QColor(255, 255, 255))
+        font = QFont()
+        font.setBold(True)
+        font.setPointSize(10)
+        text_item.setFont(font)
+
+        # Position above-right of the point
+        offset_x = 10
+        offset_y = -20
+        text_item.setPos(x + offset_x, y + offset_y)
+        text_item.setZValue(15)
+
+        # Create background rectangle
+        text_rect = text_item.boundingRect()
+        bg_rect = text_rect.adjusted(-3, -1, 3, 1)  # Add padding
+        bg_pen = QPen(QColor(0, 0, 0, 0))  # Transparent border
+        bg_brush = QBrush(QColor(0, 0, 0, 180))  # Semi-transparent dark background
+        bg_item = self.scene.addRect(
+            x + offset_x + bg_rect.x() - 3,
+            y + offset_y + bg_rect.y() - 1,
+            bg_rect.width(),
+            bg_rect.height(),
+            bg_pen, bg_brush
+        )
+        bg_item.setZValue(14)
+
+        # Add items to scene
+        self.scene.addItem(text_item)
+
+        return (text_item, bg_item)
+
+    def _update_soffset_labels(self, polyline_id: str):
+        """Update s-offset labels for a specific polyline."""
+        # Remove existing labels for this polyline
+        if polyline_id in self.soffset_labels:
+            for text_item, bg_item in self.soffset_labels[polyline_id]:
+                self.safe_remove_item(text_item)
+                self.safe_remove_item(bg_item)
+            del self.soffset_labels[polyline_id]
+
+        # Only create labels if visible and polyline exists
+        if not self.soffsets_visible:
+            return
+
+        if polyline_id not in self.polyline_items:
+            return
+
+        polyline_item = self.polyline_items[polyline_id]
+        polyline = polyline_item.polyline
+
+        # Only show s-offsets for centerlines
+        if polyline.line_type != LineType.CENTERLINE:
+            return
+
+        # Calculate s-offsets
+        soffsets = self._calculate_soffsets(polyline)
+
+        # Create labels for each point
+        labels = []
+        for i, (x, y) in enumerate(polyline.points):
+            text_item, bg_item = self._create_soffset_label(x, y, soffsets[i])
+            labels.append((text_item, bg_item))
+
+        self.soffset_labels[polyline_id] = labels
+
+    def _update_all_soffset_labels(self):
+        """Update s-offset labels for all centerline polylines."""
+        for polyline_id in self.polyline_items:
+            self._update_soffset_labels(polyline_id)
+
+    def _clear_all_soffset_labels(self):
+        """Clear all s-offset labels."""
+        for polyline_id in list(self.soffset_labels.keys()):
+            for text_item, bg_item in self.soffset_labels[polyline_id]:
+                self.safe_remove_item(text_item)
+                self.safe_remove_item(bg_item)
+        self.soffset_labels.clear()
+
+    def update_polyline(self, polyline_id: str):
+        """Update polyline graphics after properties change."""
+        if polyline_id in self.polyline_items:
+            self.polyline_items[polyline_id].update_graphics()
+            # Update s-offset labels (in case line type changed to/from centerline)
+            if self.soffsets_visible:
+                self._update_soffset_labels(polyline_id)
+
+    def safe_remove_item(self, item: QGraphicsItem) -> bool:
+        """
+        Safely remove a graphics item from the scene.
+
+        Checks that the item belongs to this view's scene before removal to
+        prevent "item's scene is different from this scene" crashes.
+
+        Args:
+            item: Graphics item to remove
+
+        Returns:
+            True if item was removed, False if item was None or not in scene
+        """
+        if item and item.scene() == self.scene:
+            self.scene.removeItem(item)
+            return True
+        return False
+
+    def safe_remove_items(self, items: List[QGraphicsItem]):
+        """
+        Safely remove multiple graphics items from the scene.
+
+        Args:
+            items: List of graphics items to remove
+        """
+        for item in items:
+            self.safe_remove_item(item)
+
+    def clear(self):
+        """Clear the view."""
+        self.scene.clear()
+        self.polyline_items.clear()
+        self.junction_items.clear()
+        self.control_point_items.clear()
+        self.road_lanes_items.clear()
+        self.soffset_labels.clear()  # Clear s-offset labels
+        self.project = None
+        self.image_item = None
+        self.image_np = None
+        self.current_polyline = None
+        self.current_polyline_item = None
+        self.selected_polyline_id = None
+        self.selected_junction_id = None
+
+    def set_drawing_mode(self, enabled: bool):
+        """Enable or disable drawing mode."""
+        self.drawing_mode = enabled
+
+        if enabled:
+            # Start a new polyline
+            self.current_polyline = Polyline()
+            self.current_polyline_item = PolylineGraphicsItem(self.current_polyline, self.scene)
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        else:
+            # Finish current polyline
+            if self.current_polyline and self.current_polyline.is_valid():
+                self.polyline_items[self.current_polyline.id] = self.current_polyline_item
+                self.polyline_added.emit(self.current_polyline)
+            else:
+                # Remove orphan graphics if polyline is invalid
+                if self.current_polyline_item:
+                    self.current_polyline_item.remove()
+
+            self.current_polyline = None
+            self.current_polyline_item = None
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+
+    def finish_current_polyline(self):
+        """Finish current polyline and start a new one (keeping drawing mode active)."""
+        if self.drawing_mode and self.current_polyline and self.current_polyline.is_valid():
+            # Save the current polyline
+            self.polyline_items[self.current_polyline.id] = self.current_polyline_item
+            self.polyline_added.emit(self.current_polyline)
+
+            # Start a new polyline
+            self.current_polyline = Polyline()
+            self.current_polyline_item = PolylineGraphicsItem(self.current_polyline, self.scene)
+
+    def set_junction_mode(self, enabled: bool):
+        """Enable or disable junction placement mode."""
+        self.junction_mode = enabled
+        if enabled:
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        else:
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+
+    def set_signal_mode(self, enabled: bool):
+        """Enable or disable signal placement mode."""
+        self.signal_mode = enabled
+        if enabled:
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        else:
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+
+    def set_object_mode(self, enabled: bool, object_type: Optional[ObjectType] = None):
+        """Enable or disable object placement mode."""
+        self.object_mode = enabled
+        self.object_type_to_place = object_type
+        if enabled:
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        else:
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+            # Clean up any partial guardrail
+            if self.drawing_guardrail:
+                self.drawing_guardrail = False
+                self.guardrail_points.clear()
+
+    def set_pick_point_mode(self, enabled: bool):
+        """Enable or disable point picking mode for georeferencing."""
+        self.pick_point_mode = enabled
+        if enabled:
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        else:
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+
+    def set_measure_mode(self, enabled: bool):
+        """Enable or disable measure mode."""
+        self.measure_mode = enabled
+        if enabled:
+            self.measure_points.clear()
+        else:
+            # Clear all measurement graphics
+            self._clear_measurements()
+
+    def _clear_measurements(self):
+        """Clear all measurement graphics from the scene."""
+        for item in self.measurement_items:
+            self.scene.removeItem(item)
+        self.measurement_items.clear()
+        self.measure_points.clear()
+
+    def set_show_scale_mode(self, enabled: bool):
+        """Enable or disable show scale mode."""
+        self.show_scale_mode = enabled
+        if not enabled:
+            # Clear all scale graphics
+            self._clear_scale_displays()
+
+    def _clear_scale_displays(self):
+        """Clear all scale display graphics from the scene."""
+        for item in self.scale_items:
+            self.scene.removeItem(item)
+        self.scale_items.clear()
+
+    def set_uncertainty_overlay(self, overlay):
+        """
+        Add or remove uncertainty overlay.
+
+        Args:
+            overlay: UncertaintyOverlay instance or None to remove
+        """
+        # Remove existing overlay
+        if self.uncertainty_overlay is not None:
+            if self.uncertainty_overlay.scene() == self.scene:
+                self.scene.removeItem(self.uncertainty_overlay)
+            self.uncertainty_overlay = None
+
+        # Add new overlay
+        if overlay is not None:
+            self.uncertainty_overlay = overlay
+            self.scene.addItem(overlay)
+            overlay.setZValue(50)  # Above image, below polylines
+
+    def _display_scale_at_point(self, pos: QPointF):
+        """Display scale factor at a clicked point."""
+        x, y = pos.x(), pos.y()
+
+        # Draw a small dot at the click location
+        radius = 3
+        pen = QPen(QColor(255, 200, 0), 2)  # Orange/yellow
+        brush = QBrush(QColor(255, 200, 0))
+
+        dot = self.scene.addEllipse(
+            x - radius, y - radius,
+            radius * 2, radius * 2,
+            pen, brush
+        )
+        dot.setZValue(20)
+        self.scale_items.append(dot)
+
+        # Calculate scale at this point (returns text and background color)
+        scale_text, bg_color = self._calculate_scale_at_point(x, y)
+
+        # Draw text with background
+        font = QFont("Arial", 10, QFont.Weight.Bold)
+        text_item = self.scene.addText(scale_text, font)
+        text_item.setDefaultTextColor(QColor(255, 255, 255))
+        text_item.setZValue(21)
+
+        # Get text bounding rect
+        text_rect = text_item.boundingRect()
+
+        # Position text slightly offset from point
+        offset_x = 10
+        offset_y = -10
+        text_x = x + offset_x
+        text_y = y + offset_y - text_rect.height()
+
+        # Create background rectangle with uncertainty-based color
+        padding = 4
+        bg_rect = text_rect.adjusted(-padding, -padding, padding, padding)
+        bg_item = self.scene.addRect(
+            text_x + bg_rect.x(),
+            text_y + bg_rect.y(),
+            bg_rect.width(),
+            bg_rect.height(),
+            QPen(Qt.PenStyle.NoPen),
+            QBrush(bg_color)  # Use color-coded background
+        )
+        bg_item.setZValue(20)
+
+        text_item.setPos(text_x, text_y)
+
+        # Add to cleanup list
+        self.scale_items.append(bg_item)
+        self.scale_items.append(text_item)
+
+    def _calculate_scale_at_point(self, x: float, y: float) -> Tuple[str, QColor]:
+        """
+        Calculate scale factor and uncertainty at a specific point.
+
+        For homography, calculates local scale by checking distances
+        in pixel space vs meter space.
+
+        Returns:
+            (display_text, background_color)
+        """
+        if not self.project or not self.project.has_georeferencing():
+            return ("No georef", QColor(255, 255, 255, 200))
+
+        try:
+            from utils import create_transformer, TransformMethod
+            from utils.uncertainty_estimator import UncertaintyEstimator
+
+            # Get transform method from project
+            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
+            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+
+            if not transformer:
+                return ("Transform error", QColor(255, 255, 255, 200))
+
+            # Calculate scale at this point by sampling nearby points
+            # Use small offset to calculate local scale
+            offset = 5.0  # pixels
+
+            # Horizontal scale (X direction)
+            mx1, my1 = transformer.pixel_to_meters(x, y)
+            mx2, my2 = transformer.pixel_to_meters(x + offset, y)
+            dist_m_x = ((mx2 - mx1)**2 + (my2 - my1)**2)**0.5
+            scale_x = dist_m_x / offset  # meters per pixel
+
+            # Vertical scale (Y direction)
+            mx3, my3 = transformer.pixel_to_meters(x, y + offset)
+            dist_m_y = ((mx3 - mx1)**2 + (my3 - my1)**2)**0.5
+            scale_y = dist_m_y / offset  # meters per pixel
+
+            # NEW: Calculate uncertainty
+            try:
+                # Create uncertainty estimator
+                if self.image_item:
+                    pixmap = self.image_item.pixmap()
+                    estimator = UncertaintyEstimator(transformer,
+                                                     pixmap.width(),
+                                                     pixmap.height(),
+                                                     baseline_uncertainty=self.project.baseline_uncertainty_m)
+
+                    # Load cached grid if available
+                    if self.project.uncertainty_grid_cache:
+                        import numpy as np
+                        estimator._cached_grid = np.array(self.project.uncertainty_grid_cache)
+
+                    # Get scale uncertainty
+                    unc_x, unc_y = estimator.estimate_scale_uncertainty_at_point(x, y)
+
+                    # Get position uncertainty
+                    pos_unc = estimator.estimate_position_uncertainty_at_point(x, y)
+
+                    # Format with uncertainty ranges
+                    text = (f"X: {scale_x * 100:.2f} ± {unc_x:.2f} cm/px\n"
+                           f"Y: {scale_y * 100:.2f} ± {unc_y:.2f} cm/px\n"
+                           f"Confidence: {self._get_confidence_label(pos_unc)} ({pos_unc:.2f}m)")
+
+                    # Get background color based on uncertainty
+                    bg_color = self._get_uncertainty_color(pos_unc)
+
+                    return (text, bg_color)
+                else:
+                    # Fallback if no image
+                    text = f"X: {scale_x * 100:.2f} cm/px\nY: {scale_y * 100:.2f} cm/px"
+                    return (text, QColor(255, 255, 255, 200))
+
+            except Exception:
+                # Fallback to existing format if uncertainty calculation fails
+                text = f"X: {scale_x * 100:.2f} cm/px\nY: {scale_y * 100:.2f} cm/px"
+                return (text, QColor(255, 255, 255, 200))
+
+        except Exception as e:
+            return (f"Error: {str(e)}", QColor(255, 255, 255, 200))
+
+    def _get_confidence_label(self, uncertainty: float) -> str:
+        """
+        Get confidence label based on uncertainty.
+
+        Args:
+            uncertainty: Position uncertainty in meters
+
+        Returns:
+            Confidence label string
+        """
+        if uncertainty < 0.1:
+            return "Excellent"
+        elif uncertainty < 0.2:
+            return "Good"
+        elif uncertainty < 0.4:
+            return "Warning"
+        else:
+            return "Poor"
+
+    def _get_uncertainty_color(self, uncertainty: float) -> QColor:
+        """
+        Get background color based on uncertainty level.
+
+        Args:
+            uncertainty: Position uncertainty in meters
+
+        Returns:
+            QColor for background
+        """
+        alpha = 150  # Semi-transparent background
+
+        if uncertainty < 0.1:
+            return QColor(0, 255, 0, alpha)       # Green
+        elif uncertainty < 0.2:
+            return QColor(255, 255, 0, alpha)     # Yellow
+        elif uncertainty < 0.4:
+            return QColor(255, 165, 0, alpha)     # Orange
+        else:
+            return QColor(255, 0, 0, alpha)       # Red
+
+    def _draw_measure_point(self, pos: QPointF):
+        """Draw a white dot at the measurement point."""
+        radius = 4  # 2/3 of previous 6 (diameter 8 vs 12)
+        pen = QPen(QColor(255, 255, 255), 2)
+        brush = QBrush(QColor(255, 255, 255))
+
+        dot = self.scene.addEllipse(
+            pos.x() - radius, pos.y() - radius,
+            radius * 2, radius * 2,
+            pen, brush
+        )
+        dot.setZValue(20)  # Above everything else
+        self.measurement_items.append(dot)
+
+    def _draw_measurement(self):
+        """Draw line and distance text between two measurement points."""
+        if len(self.measure_points) != 2:
+            return
+
+        p1 = self.measure_points[0]
+        p2 = self.measure_points[1]
+
+        # Draw white line between points
+        pen = QPen(QColor(255, 255, 255), 2)
+        line = self.scene.addLine(p1.x(), p1.y(), p2.x(), p2.y(), pen)
+        line.setZValue(19)
+        self.measurement_items.append(line)
+
+        # Calculate distance
+        distance_text = self._calculate_distance(p1.x(), p1.y(), p2.x(), p2.y())
+
+        # Draw text with background at midpoint
+        mid_x = (p1.x() + p2.x()) / 2
+        mid_y = (p1.y() + p2.y()) / 2
+
+        # Create text item
+        from PyQt6.QtWidgets import QGraphicsTextItem
+        from PyQt6.QtGui import QFont
+        text_item = QGraphicsTextItem(distance_text)
+        text_item.setDefaultTextColor(QColor(255, 255, 255))
+        font = QFont()
+        font.setBold(True)
+        font.setPointSize(12)
+        text_item.setFont(font)
+
+        # Position text centered at midpoint
+        text_rect = text_item.boundingRect()
+        text_item.setPos(mid_x - text_rect.width() / 2, mid_y - text_rect.height() / 2)
+        text_item.setZValue(21)
+
+        # Create background rectangle
+        bg_rect = text_item.boundingRect()
+        bg_rect.adjust(-5, -2, 5, 2)  # Add padding
+        bg_pen = QPen(QColor(0, 0, 0, 0))  # Transparent border
+        bg_brush = QBrush(QColor(0, 0, 0, 180))  # Semi-transparent dark background
+        bg_item = self.scene.addRect(
+            mid_x + bg_rect.x() - 5,
+            mid_y + bg_rect.y() - 2,
+            bg_rect.width(),
+            bg_rect.height(),
+            bg_pen, bg_brush
+        )
+        bg_item.setZValue(20)
+
+        # Add items to list for cleanup
+        self.measurement_items.append(bg_item)
+        self.scene.addItem(text_item)
+        self.measurement_items.append(text_item)
+
+    def _calculate_distance(self, x1: float, y1: float, x2: float, y2: float) -> str:
+        """
+        Calculate distance between two points in pixels and meters.
+
+        Returns formatted string with both pixel and meter distances (two lines).
+        """
+        import math
+
+        # Calculate pixel distance
+        dx = x2 - x1
+        dy = y2 - y1
+        pixel_distance = math.sqrt(dx * dx + dy * dy)
+
+        pixel_str = f"{pixel_distance:.1f} px"
+        meter_str = None
+
+        # Check if we have georeferencing to convert to meters
+        if self.project and self.project.has_georeferencing():
+            try:
+                from utils import create_transformer, TransformMethod
+
+                # Get transform method from project
+                method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
+                transformer = create_transformer(self.project.control_points, method, use_validation=True)
+
+                if transformer:
+                    # Convert both points to meters
+                    mx1, my1 = transformer.pixel_to_meters(x1, y1)
+                    mx2, my2 = transformer.pixel_to_meters(x2, y2)
+
+                    # Calculate metric distance
+                    meter_distance = math.sqrt((mx2 - mx1) ** 2 + (my2 - my1) ** 2)
+
+                    # Format based on distance
+                    if meter_distance < 1.0:
+                        meter_str = f"{meter_distance * 100:.1f} cm"
+                    elif meter_distance < 1000:
+                        meter_str = f"{meter_distance:.2f} m"
+                    else:
+                        meter_str = f"{meter_distance / 1000:.3f} km"
+            except Exception:
+                pass
+
+        # Return both pixel and meter (if available) on separate lines
+        if meter_str:
+            return f"{pixel_str}\n{meter_str}"
+        else:
+            return pixel_str
+
+    def delete_selected(self):
+        """Delete the currently selected polyline or junction."""
+        if self.selected_polyline_id and self.selected_polyline_id in self.polyline_items:
+            item = self.polyline_items[self.selected_polyline_id]
+            item.remove()
+            # Remove s-offset labels for this polyline
+            if self.selected_polyline_id in self.soffset_labels:
+                for text_item, bg_item in self.soffset_labels[self.selected_polyline_id]:
+                    if text_item.scene() == self.scene:
+                        self.scene.removeItem(text_item)
+                    if bg_item.scene() == self.scene:
+                        self.scene.removeItem(bg_item)
+                del self.soffset_labels[self.selected_polyline_id]
+            del self.polyline_items[self.selected_polyline_id]
+            self.polyline_deleted.emit(self.selected_polyline_id)
+            self.selected_polyline_id = None
+        elif self.selected_junction_id and self.selected_junction_id in self.junction_items:
+            item = self.junction_items[self.selected_junction_id]
+            item.remove()
+            del self.junction_items[self.selected_junction_id]
+            self.junction_deleted.emit(self.selected_junction_id)
+            self.selected_junction_id = None
+
+    def highlight_polyline(self, polyline_id: str):
+        """Highlight a specific polyline."""
+        # Clear previous selection
+        if self.selected_polyline_id and self.selected_polyline_id in self.polyline_items:
+            self.polyline_items[self.selected_polyline_id].set_selected(False)
+
+        # Select the new polyline
+        if polyline_id in self.polyline_items:
+            self.selected_polyline_id = polyline_id
+            self.polyline_items[polyline_id].set_selected(True)
+
+            # Center view on the polyline
+            polyline = self.polyline_items[polyline_id].polyline
+            if polyline.points:
+                # Calculate center of polyline
+                xs = [p[0] for p in polyline.points]
+                ys = [p[1] for p in polyline.points]
+                center_x = sum(xs) / len(xs)
+                center_y = sum(ys) / len(ys)
+                self.centerOn(center_x, center_y)
+
+    def highlight_junction(self, junction_id: str):
+        """Highlight a specific junction."""
+        # Clear previous junction selection
+        for jid, item in self.junction_items.items():
+            if jid == junction_id:
+                item.set_selected(True)
+            else:
+                item.set_selected(False)
+
+        # Center view on the junction
+        if junction_id in self.junction_items:
+            junction = self.junction_items[junction_id].junction
+            if junction.center_point:
+                x, y = junction.center_point
+                self.centerOn(x, y)
+
+    def select_signal(self, signal_id: str):
+        """
+        Select and highlight a signal on the map.
+
+        Args:
+            signal_id: ID of the signal to select
+        """
+        # Clear previous selections
+        if self.selected_polyline_id and self.selected_polyline_id in self.polyline_items:
+            self.polyline_items[self.selected_polyline_id].set_selected(False)
+            self.selected_polyline_id = None
+        if self.selected_junction_id and self.selected_junction_id in self.junction_items:
+            self.junction_items[self.selected_junction_id].set_selected(False)
+            self.selected_junction_id = None
+        if self.selected_object_id and self.selected_object_id in self.object_items:
+            self.object_items[self.selected_object_id].set_selected(False)
+            self.selected_object_id = None
+        if self.selected_signal_id and self.selected_signal_id in self.signal_items:
+            self.signal_items[self.selected_signal_id].setSelected(False)
+
+        # Select the new signal
+        if signal_id in self.signal_items:
+            self.selected_signal_id = signal_id
+            self.signal_items[signal_id].setSelected(True)
+
+            # Center view on the signal
+            signal = self.signal_items[signal_id].signal
+            if signal.position:
+                x, y = signal.position
+                self.centerOn(x, y)
+
+    def select_object(self, object_id: str):
+        """
+        Select and highlight an object on the map.
+
+        Args:
+            object_id: ID of the object to select
+        """
+        # Clear previous selections
+        if self.selected_polyline_id and self.selected_polyline_id in self.polyline_items:
+            self.polyline_items[self.selected_polyline_id].set_selected(False)
+            self.selected_polyline_id = None
+        if self.selected_junction_id and self.selected_junction_id in self.junction_items:
+            self.junction_items[self.selected_junction_id].set_selected(False)
+            self.selected_junction_id = None
+        if self.selected_signal_id and self.selected_signal_id in self.signal_items:
+            self.signal_items[self.selected_signal_id].setSelected(False)
+            self.selected_signal_id = None
+        if self.selected_object_id and self.selected_object_id in self.object_items:
+            self.object_items[self.selected_object_id].set_selected(False)
+
+        # Select the new object
+        if object_id in self.object_items:
+            self.selected_object_id = object_id
+            self.object_items[object_id].set_selected(True)
+
+            # Center view on the object
+            obj = self.object_items[object_id].obj
+            if obj.position:
+                x, y = obj.position
+                self.centerOn(x, y)
+
+    def select_lane(self, road_id: str, section_number: int, lane_id: int):
+        """
+        Select and highlight a lane on the map.
+
+        Args:
+            road_id: ID of the road
+            section_number: Section number containing the lane
+            lane_id: Lane ID within the section
+        """
+        # Deselect previous lane
+        if self.selected_lane_key:
+            prev_road_id, prev_section, prev_lane = self.selected_lane_key
+            if prev_road_id in self.road_lanes_items:
+                lanes_item = self.road_lanes_items[prev_road_id]
+                for lane_polygon in lanes_item.lane_items:
+                    if (isinstance(lane_polygon, InteractiveLanePolygon) and
+                        lane_polygon.road_id == prev_road_id and
+                        lane_polygon.section_number == prev_section and
+                        lane_polygon.lane_id == prev_lane):
+                        lane_polygon.set_selected(False)
+
+        # Select new lane
+        if road_id in self.road_lanes_items:
+            lanes_item = self.road_lanes_items[road_id]
+            for lane_polygon in lanes_item.lane_items:
+                if (isinstance(lane_polygon, InteractiveLanePolygon) and
+                    lane_polygon.road_id == road_id and
+                    lane_polygon.section_number == section_number and
+                    lane_polygon.lane_id == lane_id):
+                    lane_polygon.set_selected(True)
+                    self.selected_lane_key = (road_id, section_number, lane_id)
+                    break
+
+    # View controls
+    def zoom_in(self):
+        """Zoom in by 20%."""
+        self.scale(1.2, 1.2)
+
+    def zoom_out(self):
+        """Zoom out by 20%."""
+        self.scale(1.0 / 1.2, 1.0 / 1.2)
+
+    def fit_to_window(self):
+        """Fit the image to the window."""
+        if self.image_item:
+            self.fitInView(self.image_item, Qt.AspectRatioMode.KeepAspectRatio)
+
+    def reset_view(self):
+        """Reset view to 100% scale."""
+        self.resetTransform()
+
+    def _show_signal_menu(self, view_pos, signal_id: str):
+        """
+        Show context menu for signal with Edit and Remove options.
+
+        Args:
+            view_pos: Position in view coordinates
+            signal_id: ID of the signal
+        """
+        menu = QMenu()
+        edit_action = menu.addAction("Edit Properties...")
+        remove_action = menu.addAction("Remove Signal")
+
+        # Show menu and get selected action
+        action = menu.exec(self.mapToGlobal(view_pos))
+
+        if action == edit_action:
+            self.signal_edit_requested.emit(signal_id)
+        elif action == remove_action:
+            self.signal_deleted.emit(signal_id)
+
+    def _is_click_on_object(self, item, scene_pos: QPointF, tolerance: float = 15.0) -> bool:
+        """
+        Check if a click is on an object, with better detection for different object types.
+
+        Args:
+            item: ObjectGraphicsItem to check
+            scene_pos: Position in scene coordinates
+            tolerance: Distance tolerance in pixels
+
+        Returns:
+            True if click is on the object, False otherwise
+        """
+        obj = item.obj
+
+        # For polyline objects (guardrails), check if click is near any segment
+        if obj.type.get_shape_type() == "polyline":
+            if not obj.points or len(obj.points) < 2:
+                return False
+
+            for i in range(len(obj.points) - 1):
+                x1, y1 = obj.points[i]
+                x2, y2 = obj.points[i + 1]
+
+                # Point to line segment distance
+                dx = x2 - x1
+                dy = y2 - y1
+                length_sq = dx * dx + dy * dy
+
+                if length_sq == 0:
+                    continue
+
+                t = max(0, min(1, ((scene_pos.x() - x1) * dx + (scene_pos.y() - y1) * dy) / length_sq))
+                proj_x = x1 + t * dx
+                proj_y = y1 + t * dy
+
+                dist = ((scene_pos.x() - proj_x) ** 2 + (scene_pos.y() - proj_y) ** 2) ** 0.5
+
+                if dist <= tolerance:
+                    return True
+
+            return False
+
+        # For point objects, check if click is within tolerance radius of the object position
+        else:
+            obj_x, obj_y = obj.position
+            dist = ((scene_pos.x() - obj_x) ** 2 + (scene_pos.y() - obj_y) ** 2) ** 0.5
+
+            # Use larger tolerance for point objects based on their dimensions
+            radius = tolerance
+            if obj.type.get_shape_type() == "circle":
+                radius = max(tolerance, obj.dimensions.get('radius', 1.0) * 10)  # Assuming ~10 px per meter
+            elif obj.type.get_shape_type() in ("rectangle", "cylinder"):
+                # Use larger dimension as radius
+                width = obj.dimensions.get('width', 1.0) * 10
+                length = obj.dimensions.get('length', 1.0) * 10
+                radius = max(tolerance, max(width, length) / 2)
+
+            return dist <= radius
+
+    def _show_object_menu(self, view_pos, object_id: str, scene_pos=None):
+        """
+        Show context menu for object with Edit and Remove options.
+        For guardrails, also shows Delete Point option if over a point.
+
+        Args:
+            view_pos: Position in view coordinates
+            object_id: ID of the object
+            scene_pos: Optional scene position for checking point clicks
+        """
+        menu = QMenu()
+        edit_action = menu.addAction("Edit Properties...")
+
+        # Check if this is a guardrail and if we're over a point
+        delete_point_action = None
+        point_index = -1
+        if scene_pos and object_id in self.object_items:
+            item = self.object_items[object_id]
+            if item.obj.type.get_shape_type() == "polyline":
+                point_index = item.get_point_at(scene_pos)
+                if point_index >= 0:
+                    delete_point_action = menu.addAction("Delete Point")
+                    menu.addSeparator()
+
+        remove_action = menu.addAction("Remove Object")
+
+        # Show menu and get selected action
+        action = menu.exec(self.mapToGlobal(view_pos))
+
+        if action == edit_action:
+            self.object_edit_requested.emit(object_id)
+        elif action == remove_action:
+            self.object_deleted.emit(object_id)
+        elif delete_point_action and action == delete_point_action:
+            self._delete_guardrail_point(object_id, point_index)
+
+    def _show_centerline_point_menu(self, view_pos, polyline_id: str, point_index: int):
+        """
+        Show context menu for centerline point with Delete and Split Section options.
+
+        Args:
+            view_pos: Position in view coordinates
+            polyline_id: ID of the polyline
+            point_index: Index of the point clicked
+        """
+        menu = QMenu()
+        delete_action = menu.addAction("Delete Point")
+        split_action = menu.addAction("Split Section Here")
+
+        # Get the road that owns this centerline
+        road = self._find_road_by_centerline(polyline_id)
+        if not road or not road.lane_sections:
+            # No road or no sections - disable split option
+            split_action.setEnabled(False)
+
+        # Show menu and get selected action
+        action = menu.exec(self.mapToGlobal(view_pos))
+
+        if action == delete_action:
+            self._delete_point(polyline_id, point_index)
+        elif action == split_action and road:
+            # Warn if creating a small section
+            polyline = self.polyline_items[polyline_id].polyline
+            s_coords = road.calculate_centerline_s_coordinates(polyline.points)
+            if point_index < len(s_coords):
+                s = s_coords[point_index]
+                section = road.get_section_at_s(s)
+                if section:
+                    section_length = section.get_length_pixels()
+                    distance_from_start = s - section.s_start
+                    distance_from_end = section.s_end - s
+                    min_distance = min(distance_from_start, distance_from_end)
+
+                    # Warn if within 5% of section length
+                    if min_distance < section_length * 0.05:
+                        if not ask_yes_no(self, f"This will create a very small section ({min_distance:.1f} pixels).\n\nContinue anyway?", "Small Section Warning"):
+                            return
+
+            # Emit signal for MainWindow to handle
+            self.section_split_requested.emit(road.id, polyline_id, point_index)
+
+    def _find_road_by_centerline(self, polyline_id: str) -> Optional[Road]:
+        """
+        Find the road that has this polyline as its centerline.
+
+        Args:
+            polyline_id: ID of the polyline to search for
+
+        Returns:
+            Road if found, None otherwise
+        """
+        if not self.project:
+            return None
+
+        for road in self.project.roads:
+            if road.centerline_id == polyline_id:
+                return road
+        return None
+
+    def _delete_point(self, polyline_id: str, point_index: int):
+        """
+        Delete a point from a polyline.
+
+        Args:
+            polyline_id: ID of the polyline
+            point_index: Index of the point to delete
+        """
+        item = self.polyline_items[polyline_id]
+        polyline = item.polyline
+
+        # If this is a centerline, update section boundaries before deleting
+        affected_road = None
+        if polyline.line_type == LineType.CENTERLINE and self.project:
+            for road in self.project.roads:
+                if road.centerline_id == polyline_id:
+                    affected_road = road
+                    road.adjust_section_indices_after_deletion(point_index)
+                    break
+
+        item.polyline.remove_point(point_index)
+
+        # Check if polyline has no points left - delete it
+        if item.polyline.point_count() == 0:
+            item.remove()
+            del self.polyline_items[polyline_id]
+            # Remove s-offset labels if they exist
+            if polyline_id in self.soffset_labels:
+                for text_item, bg_item in self.soffset_labels[polyline_id]:
+                    if text_item.scene() == self.scene:
+                        self.scene.removeItem(text_item)
+                    if bg_item.scene() == self.scene:
+                        self.scene.removeItem(bg_item)
+                del self.soffset_labels[polyline_id]
+            self.polyline_deleted.emit(polyline_id)
+        else:
+            # Update section boundaries with new point list
+            if affected_road:
+                affected_road.update_section_boundaries(polyline.points)
+                # Refresh lane graphics
+                if affected_road.id in self.road_lanes_items:
+                    self.road_lanes_items[affected_road.id].update_graphics()
+
+            item.update_graphics()
+            self.polyline_modified.emit()
+            # Update s-offset labels after point deletion
+            if self.soffsets_visible:
+                self._update_soffset_labels(polyline_id)
+
+    def _delete_guardrail_point(self, object_id: str, point_index: int):
+        """
+        Delete a point from a guardrail.
+
+        Args:
+            object_id: ID of the guardrail object
+            point_index: Index of the point to delete
+        """
+        if object_id not in self.object_items:
+            return
+
+        item = self.object_items[object_id]
+        obj = item.obj
+
+        # Don't delete if only 2 points left (minimum for a line)
+        if len(obj.points) <= 2:
+            show_warning(self, "A guardrail must have at least 2 points.", "Cannot Delete Point")
+            return
+
+        # Delete the point
+        obj.points.pop(point_index)
+
+        # Update validity length
+        if obj.points and len(obj.points) >= 2:
+            total_length = 0.0
+            for i in range(len(obj.points) - 1):
+                x1, y1 = obj.points[i]
+                x2, y2 = obj.points[i + 1]
+                total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+            obj.validity_length = total_length
+
+        # Refresh graphics
+        item.update_graphics()
+        self.object_modified.emit(object_id)
+
+    # Event handlers
+    def wheelEvent(self, event: QWheelEvent):
+        """Handle mouse wheel for zooming."""
+        if event.angleDelta().y() > 0:
+            self.scale(1.1, 1.1)
+        else:
+            self.scale(1.0 / 1.1, 1.0 / 1.1)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        """Handle mouse press events."""
+        scene_pos = self.mapToScene(event.pos())
+
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.drawing_mode:
+                # Add point to current polyline
+                self.current_polyline.add_point(scene_pos.x(), scene_pos.y())
+                self.current_polyline_item.update_graphics()
+
+            elif self.junction_mode:
+                # Create junction at click position
+                junction = Junction()
+                junction.center_point = (scene_pos.x(), scene_pos.y())
+                self.junction_added.emit(junction)
+
+            elif self.signal_mode:
+                # Signal placement requires dialog - emit request to open dialog
+                # The MainWindow will handle showing SignalSelectionDialog
+                self.signal_placement_requested.emit(scene_pos.x(), scene_pos.y())
+
+            elif self.object_mode:
+                # Object placement - handle differently for guardrails (polyline) vs point objects
+                if self.object_type_to_place and self.object_type_to_place.get_shape_type() == "polyline":
+                    # Start drawing guardrail polyline
+                    self.drawing_guardrail = True
+                    self.guardrail_points = [(scene_pos.x(), scene_pos.y())]
+                else:
+                    # Point object - emit request to open dialog (MainWindow will create object)
+                    self.object_placement_requested.emit(scene_pos.x(), scene_pos.y(), self.object_type_to_place)
+
+            elif self.pick_point_mode:
+                # Emit picked point coordinates
+                self.point_picked.emit(scene_pos.x(), scene_pos.y())
+                # Turn off pick mode after selecting
+                self.pick_point_mode = False
+                self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+
+            else:
+                # Check if Ctrl+Click on a line segment to insert a point
+                if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                    # First check guardrails
+                    for object_id, object_item in self.object_items.items():
+                        if object_item.obj.type.get_shape_type() == "polyline":
+                            segment_index = object_item.get_segment_at(scene_pos)
+                            if segment_index >= 0:
+                                insert_index = segment_index + 1
+                                obj = object_item.obj
+                                # Insert point after the first point of the segment
+                                obj.points.insert(insert_index, (scene_pos.x(), scene_pos.y()))
+                                # Update validity length
+                                if obj.points and len(obj.points) >= 2:
+                                    total_length = 0.0
+                                    for i in range(len(obj.points) - 1):
+                                        x1, y1 = obj.points[i]
+                                        x2, y2 = obj.points[i + 1]
+                                        total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+                                    obj.validity_length = total_length
+                                object_item.update_graphics()
+                                self.object_modified.emit(object_id)
+                                return
+
+                    # Then check polylines
+                    for polyline_id, item in self.polyline_items.items():
+                        segment_index = item.get_segment_at(scene_pos)
+                        if segment_index >= 0:
+                            insert_index = segment_index + 1
+                            polyline = item.polyline
+
+                            # If this is a centerline, adjust section indices before inserting
+                            affected_road = None
+                            if polyline.line_type == LineType.CENTERLINE and self.project:
+                                for road in self.project.roads:
+                                    if road.centerline_id == polyline_id:
+                                        affected_road = road
+                                        road.adjust_section_indices_after_insertion(insert_index)
+                                        break
+
+                            # Insert point after the first point of the segment
+                            polyline.insert_point(insert_index, scene_pos.x(), scene_pos.y())
+
+                            # Update section boundaries with new point list
+                            if affected_road:
+                                affected_road.update_section_boundaries(polyline.points)
+                                # Refresh lane graphics
+                                if affected_road.id in self.road_lanes_items:
+                                    self.road_lanes_items[affected_road.id].update_graphics()
+
+                            item.update_graphics()
+                            self.polyline_modified.emit()
+                            # Update s-offset labels after point insertion
+                            if self.soffsets_visible:
+                                self._update_soffset_labels(polyline_id)
+                            return
+
+                # Check if clicking on a junction to drag
+                for junction_id, item in self.junction_items.items():
+                    if item.is_at_position(scene_pos):
+                        self.dragging_junction = True
+                        self.drag_junction_id = junction_id
+                        return
+
+                # Check if clicking on a guardrail point to drag
+                for object_id, item in self.object_items.items():
+                    if item.obj.type.get_shape_type() == "polyline":
+                        point_index = item.get_point_at(scene_pos)
+                        if point_index >= 0:
+                            self.dragging_guardrail_point = True
+                            self.drag_object_id = object_id
+                            self.drag_point_index = point_index
+                            return
+
+                # Check if clicking on a point to drag
+                for polyline_id, item in self.polyline_items.items():
+                    point_index = item.get_point_at(scene_pos)
+                    if point_index >= 0:
+                        self.dragging_point = True
+                        self.drag_polyline_id = polyline_id
+                        self.drag_point_index = point_index
+                        item.set_selected_point(point_index)
+                        return
+
+                # Check if clicking on a junction to select
+                clicked_junction_id = None
+                for junction_id, item in self.junction_items.items():
+                    if item.is_at_position(scene_pos):
+                        clicked_junction_id = junction_id
+                        break
+
+                # Check if clicking on a signal to select
+                clicked_signal_id = None
+                if not clicked_junction_id:
+                    for signal_id, item in self.signal_items.items():
+                        # Check if click is near signal position (within 20 pixels)
+                        if item.signal.position:
+                            sx, sy = item.signal.position
+                            dist = ((scene_pos.x() - sx) ** 2 + (scene_pos.y() - sy) ** 2) ** 0.5
+                            if dist < 20:
+                                clicked_signal_id = signal_id
+                                break
+
+                # Check if clicking on an object to select
+                clicked_object_id = None
+                if not clicked_junction_id and not clicked_signal_id:
+                    for object_id, item in self.object_items.items():
+                        if self._is_click_on_object(item, scene_pos):
+                            clicked_object_id = object_id
+                            break
+
+                # Check if clicking on a polyline to select
+                clicked_polyline_id = None
+                if not clicked_junction_id and not clicked_signal_id and not clicked_object_id:
+                    for polyline_id, item in self.polyline_items.items():
+                        if item.is_near_line(scene_pos):
+                            clicked_polyline_id = polyline_id
+                            break
+
+                # Update selection
+                if clicked_junction_id:
+                    # Select junction
+                    if self.selected_polyline_id:
+                        self.polyline_items[self.selected_polyline_id].set_selected(False)
+                        self.selected_polyline_id = None
+                    if self.selected_signal_id and self.selected_signal_id in self.signal_items:
+                        self.signal_items[self.selected_signal_id].setSelected(False)
+                        self.selected_signal_id = None
+                    if self.selected_object_id and self.selected_object_id in self.object_items:
+                        self.object_items[self.selected_object_id].set_selected(False)
+                        self.selected_object_id = None
+                    if self.selected_junction_id:
+                        self.junction_items[self.selected_junction_id].set_selected(False)
+                    self.selected_junction_id = clicked_junction_id
+                    self.junction_items[clicked_junction_id].set_selected(True)
+                    # Emit signal so tree can update selection
+                    self.junction_selected.emit(clicked_junction_id)
+                elif clicked_signal_id:
+                    # Select signal
+                    if self.selected_junction_id:
+                        self.junction_items[self.selected_junction_id].set_selected(False)
+                        self.selected_junction_id = None
+                    if self.selected_polyline_id:
+                        self.polyline_items[self.selected_polyline_id].set_selected(False)
+                        self.selected_polyline_id = None
+                    if self.selected_object_id and self.selected_object_id in self.object_items:
+                        self.object_items[self.selected_object_id].set_selected(False)
+                        self.selected_object_id = None
+                    if self.selected_signal_id and self.selected_signal_id in self.signal_items:
+                        self.signal_items[self.selected_signal_id].setSelected(False)
+                    self.selected_signal_id = clicked_signal_id
+                    self.signal_items[clicked_signal_id].setSelected(True)
+                    # Emit signal so tree can update selection
+                    self.signal_selected.emit(clicked_signal_id)
+                elif clicked_object_id:
+                    # Select object
+                    if self.selected_junction_id:
+                        self.junction_items[self.selected_junction_id].set_selected(False)
+                        self.selected_junction_id = None
+                    if self.selected_signal_id and self.selected_signal_id in self.signal_items:
+                        self.signal_items[self.selected_signal_id].setSelected(False)
+                        self.selected_signal_id = None
+                    if self.selected_polyline_id:
+                        self.polyline_items[self.selected_polyline_id].set_selected(False)
+                        self.selected_polyline_id = None
+                    if self.selected_object_id and self.selected_object_id in self.object_items:
+                        self.object_items[self.selected_object_id].set_selected(False)
+                    self.selected_object_id = clicked_object_id
+                    self.object_items[clicked_object_id].set_selected(True)
+                    # Emit signal so tree can update selection
+                    self.object_selected.emit(clicked_object_id)
+                elif clicked_polyline_id:
+                    # Select polyline
+                    if self.selected_junction_id:
+                        self.junction_items[self.selected_junction_id].set_selected(False)
+                        self.selected_junction_id = None
+                    if self.selected_signal_id and self.selected_signal_id in self.signal_items:
+                        self.signal_items[self.selected_signal_id].setSelected(False)
+                        self.selected_signal_id = None
+                    if self.selected_object_id and self.selected_object_id in self.object_items:
+                        self.object_items[self.selected_object_id].set_selected(False)
+                        self.selected_object_id = None
+                    if self.selected_polyline_id:
+                        self.polyline_items[self.selected_polyline_id].set_selected(False)
+                    self.selected_polyline_id = clicked_polyline_id
+                    self.polyline_items[clicked_polyline_id].set_selected(True)
+                    # Emit signal so tree can update selection
+                    self.polyline_selected.emit(clicked_polyline_id)
+                else:
+                    # Deselect all
+                    if self.selected_polyline_id:
+                        self.polyline_items[self.selected_polyline_id].set_selected(False)
+                        self.selected_polyline_id = None
+                    if self.selected_junction_id:
+                        self.junction_items[self.selected_junction_id].set_selected(False)
+                        self.selected_junction_id = None
+                    if self.selected_signal_id and self.selected_signal_id in self.signal_items:
+                        self.signal_items[self.selected_signal_id].setSelected(False)
+                        self.selected_signal_id = None
+                    if self.selected_object_id and self.selected_object_id in self.object_items:
+                        self.object_items[self.selected_object_id].set_selected(False)
+                        self.selected_object_id = None
+
+        elif event.button() == Qt.MouseButton.RightButton:
+            if self.measure_mode:
+                # Add point to measurement
+                self.measure_points.append(scene_pos)
+
+                # Draw white dot at click location
+                self._draw_measure_point(scene_pos)
+
+                # If we have two points, draw line and distance
+                if len(self.measure_points) == 2:
+                    self._draw_measurement()
+                    # Reset for next measurement pair
+                    self.measure_points.clear()
+
+            elif self.show_scale_mode:
+                # Display scale factor at this point
+                self._display_scale_at_point(scene_pos)
+
+            elif self.drawing_guardrail:
+                # Right-click while drawing guardrail - add point
+                self.guardrail_points.append((scene_pos.x(), scene_pos.y()))
+                return
+
+            elif not self.drawing_mode and not self.signal_mode and not self.object_mode:
+                # Check if right-clicking on a signal
+                for signal_id, item in self.signal_items.items():
+                    # Check if click is within signal bounds
+                    if item.contains(item.mapFromScene(scene_pos)):
+                        self._show_signal_menu(event.pos(), signal_id)
+                        return
+
+                # Check if right-clicking on an object
+                for object_id, item in self.object_items.items():
+                    if self._is_click_on_object(item, scene_pos):
+                        self._show_object_menu(event.pos(), object_id, scene_pos)
+                        return
+
+                # Right-click to show context menu or delete point
+                for polyline_id, item in self.polyline_items.items():
+                    point_index = item.get_point_at(scene_pos)
+                    if point_index >= 0:
+                        # Check if this is a centerline - if so, show context menu
+                        if item.polyline.line_type == LineType.CENTERLINE:
+                            self._show_centerline_point_menu(event.pos(), polyline_id, point_index)
+                        else:
+                            # For non-centerline polylines, just delete the point
+                            self._delete_point(polyline_id, point_index)
+                        return
+
+            elif self.signal_mode:
+                # In signal mode, also allow right-click context menu on existing signals
+                for signal_id, item in self.signal_items.items():
+                    if item.contains(item.mapFromScene(scene_pos)):
+                        self._show_signal_menu(event.pos(), signal_id)
+                        return
+
+            elif self.object_mode:
+                # In object mode, allow right-click context menu on existing objects
+                for object_id, item in self.object_items.items():
+                    if self._is_click_on_object(item, scene_pos):
+                        self._show_object_menu(event.pos(), object_id, scene_pos)
+                        return
+
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        """Handle mouse move events."""
+        # Always emit mouse position for status bar
+        scene_pos = self.mapToScene(event.pos())
+        self.mouse_moved.emit(scene_pos.x(), scene_pos.y())
+
+        if self.drawing_guardrail and event.buttons() & Qt.MouseButton.LeftButton:
+            # Dragging to create guardrail - add points continuously
+            if not self.guardrail_points or \
+               ((scene_pos.x() - self.guardrail_points[-1][0])**2 +
+                (scene_pos.y() - self.guardrail_points[-1][1])**2) > 100:  # Min 10px spacing
+                self.guardrail_points.append((scene_pos.x(), scene_pos.y()))
+        elif self.dragging_guardrail_point and self.drag_object_id:
+            # Dragging a guardrail point
+            item = self.object_items[self.drag_object_id]
+            obj = item.obj
+            if self.drag_point_index >= 0 and self.drag_point_index < len(obj.points):
+                # Update the point position
+                obj.points[self.drag_point_index] = (scene_pos.x(), scene_pos.y())
+                # Refresh graphics
+                item.update_graphics()
+        elif self.dragging_junction and self.drag_junction_id:
+            # Update junction position directly through the junction item
+            item = self.junction_items[self.drag_junction_id]
+            item.junction.center_point = (scene_pos.x(), scene_pos.y())
+            item.update_graphics()
+        elif self.dragging_point and self.drag_polyline_id:
+            item = self.polyline_items[self.drag_polyline_id]
+            item.polyline.update_point(self.drag_point_index, scene_pos.x(), scene_pos.y())
+            item.update_graphics()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """Handle mouse release events."""
+        if self.drawing_guardrail and event.button() == Qt.MouseButton.LeftButton:
+            # Finish guardrail drawing
+            if len(self.guardrail_points) >= 2:
+                # Create guardrail object with the points
+                obj = RoadObject(
+                    position=self.guardrail_points[0],
+                    object_type=ObjectType.GUARDRAIL
+                )
+                obj.points = self.guardrail_points.copy()
+                # Calculate validity length
+                total_length = 0.0
+                for i in range(len(obj.points) - 1):
+                    x1, y1 = obj.points[i]
+                    x2, y2 = obj.points[i + 1]
+                    total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+                obj.validity_length = total_length
+                self.object_added.emit(obj)
+
+            # Reset guardrail drawing state
+            self.drawing_guardrail = False
+            self.guardrail_points.clear()
+        elif self.dragging_guardrail_point:
+            self.dragging_guardrail_point = False
+            if self.drag_object_id:
+                # Update validity length after dragging
+                item = self.object_items[self.drag_object_id]
+                obj = item.obj
+                if obj.points and len(obj.points) >= 2:
+                    total_length = 0.0
+                    for i in range(len(obj.points) - 1):
+                        x1, y1 = obj.points[i]
+                        x2, y2 = obj.points[i + 1]
+                        total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+                    obj.validity_length = total_length
+                # Emit modification signal
+                self.object_modified.emit(self.drag_object_id)
+            self.drag_object_id = None
+            self.drag_point_index = -1
+        elif self.dragging_junction:
+            self.dragging_junction = False
+            if self.drag_junction_id:
+                self.junction_modified.emit(self.drag_junction_id)
+            self.drag_junction_id = None
+        elif self.dragging_point:
+            self.dragging_point = False
+            if self.drag_polyline_id:
+                item = self.polyline_items[self.drag_polyline_id]
+                polyline = item.polyline
+
+                # If this is a centerline, update section boundaries after dragging
+                if polyline.line_type == LineType.CENTERLINE and self.project:
+                    for road in self.project.roads:
+                        if road.centerline_id == self.drag_polyline_id:
+                            road.update_section_boundaries(polyline.points)
+                            # Refresh lane graphics
+                            if road.id in self.road_lanes_items:
+                                self.road_lanes_items[road.id].update_graphics()
+                            break
+
+                item.set_selected_point(-1)
+                self.polyline_modified.emit()
+                # Update s-offset labels after point drag
+                if self.soffsets_visible:
+                    self._update_soffset_labels(self.drag_polyline_id)
+            self.drag_polyline_id = None
+            self.drag_point_index = -1
+        else:
+            super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
+        """Handle double-click to finish polyline, edit polyline, or edit junction."""
+        if self.drawing_mode and event.button() == Qt.MouseButton.LeftButton:
+            self.finish_current_polyline()
+        elif event.button() == Qt.MouseButton.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+
+            # Check if double-clicking on a junction to edit
+            for junction_id, item in self.junction_items.items():
+                if item.is_at_position(scene_pos):
+                    self.junction_edit_requested.emit(junction_id)
+                    return
+
+            # Check if double-clicking on an object to edit
+            for object_id, item in self.object_items.items():
+                if self._is_click_on_object(item, scene_pos):
+                    self.object_edit_requested.emit(object_id)
+                    return
+
+            # Check if double-clicking on a polyline to edit
+            for polyline_id, item in self.polyline_items.items():
+                if item.is_near_line(scene_pos, tolerance=15):
+                    self.polyline_edit_requested.emit(polyline_id)
+                    return
+
+            super().mouseDoubleClickEvent(event)
+        else:
+            super().mouseDoubleClickEvent(event)
+
+    def leaveEvent(self, event):
+        """Handle mouse leaving the view."""
+        # Emit negative coordinates to signal mouse left the view
+        self.mouse_moved.emit(-1, -1)
+        super().leaveEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        """Handle key press events."""
+        if self.drawing_mode:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                # Finish polyline and start a new one
+                self.finish_current_polyline()
+            elif event.key() == Qt.Key.Key_Escape:
+                # Cancel current polyline
+                if self.current_polyline_item:
+                    self.current_polyline_item.remove()
+                self.current_polyline = None
+                self.current_polyline_item = None
+                self.drawing_mode = False
+                self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        elif self.measure_mode:
+            if event.key() == Qt.Key.Key_Escape:
+                # Exit measure mode - will be handled by MainWindow
+                # Just clear any pending measurement points
+                if len(self.measure_points) == 1:
+                    # Remove the first dot if user pressed Escape after first click
+                    self._clear_measurements()
+        else:
+            if event.key() == Qt.Key.Key_Delete:
+                # Delete selected polyline
+                self.delete_selected()
+            else:
+                super().keyPressEvent(event)

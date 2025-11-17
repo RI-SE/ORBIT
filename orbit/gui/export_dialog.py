@@ -1,0 +1,302 @@
+"""
+Export preview dialog for ORBIT.
+
+Shows transformation information and export options before generating OpenDrive.
+"""
+
+from typing import Optional
+from pathlib import Path
+
+from PyQt6.QtWidgets import (
+    QVBoxLayout, QHBoxLayout,
+    QPushButton, QGroupBox, QLabel, QDialogButtonBox,
+    QTextEdit, QDoubleSpinBox, QFileDialog, QMessageBox,
+    QLineEdit, QCheckBox
+)
+from PyQt6.QtGui import QFont
+
+from models import Project
+from export import CoordinateTransformer, create_transformer, export_to_opendrive, TransformMethod
+from gui.base_dialog import BaseDialog
+from gui.message_helpers import show_error, show_warning, show_info
+
+
+class ExportDialog(BaseDialog):
+    """Dialog for OpenDrive export with preview."""
+
+    def __init__(self, project: Project, parent=None):
+        super().__init__("Export to OpenDrive", parent, min_width=700, min_height=600)
+
+        self.project = project
+        self.transformer: Optional[CoordinateTransformer] = None
+        self.output_path: Optional[Path] = None
+
+        self.setup_ui()
+        self.load_properties()
+        self.analyze_project()
+
+    def setup_ui(self):
+        """Setup the dialog UI."""
+        # Project summary
+        summary_layout = self.add_form_group("Project Summary")
+
+        self.polylines_label = QLabel()
+        summary_layout.addRow("Polylines:", self.polylines_label)
+
+        self.roads_label = QLabel()
+        summary_layout.addRow("Roads:", self.roads_label)
+
+        self.junctions_label = QLabel()
+        summary_layout.addRow("Junctions:", self.junctions_label)
+
+        self.control_points_label = QLabel()
+        summary_layout.addRow("Control Points:", self.control_points_label)
+
+        # Georeferencing status (custom group with VBoxLayout)
+        georef_group = QGroupBox("Georeferencing Status")
+        georef_layout = QVBoxLayout()
+
+        self.georef_status_label = QLabel()
+        self.georef_status_label.setWordWrap(True)
+        georef_layout.addWidget(self.georef_status_label)
+
+        # Transformation info text
+        self.transform_info = QTextEdit()
+        self.transform_info.setReadOnly(True)
+        self.transform_info.setMaximumHeight(150)
+        font = QFont("Courier")
+        font.setPointSize(9)
+        self.transform_info.setFont(font)
+        georef_layout.addWidget(self.transform_info)
+
+        georef_group.setLayout(georef_layout)
+        self.get_main_layout().addWidget(georef_group)
+
+        # Export options
+        options_layout = self.add_form_group("Export Options")
+
+        self.line_tolerance_spin = QDoubleSpinBox()
+        self.line_tolerance_spin.setRange(0.01, 10.0)
+        self.line_tolerance_spin.setValue(0.05)
+        self.line_tolerance_spin.setSingleStep(0.01)
+        self.line_tolerance_spin.setSuffix(" m")
+        self.line_tolerance_spin.setToolTip("Maximum deviation for line fitting")
+        options_layout.addRow("Line Tolerance:", self.line_tolerance_spin)
+
+        self.arc_tolerance_spin = QDoubleSpinBox()
+        self.arc_tolerance_spin.setRange(0.01, 10.0)
+        self.arc_tolerance_spin.setValue(0.1)
+        self.arc_tolerance_spin.setSingleStep(0.01)
+        self.arc_tolerance_spin.setSuffix(" m")
+        self.arc_tolerance_spin.setToolTip("Maximum deviation for arc fitting")
+        options_layout.addRow("Arc Tolerance:", self.arc_tolerance_spin)
+
+        # Preserve geometry checkbox
+        self.preserve_geometry_checkbox = QCheckBox("Preserve all polyline points")
+        self.preserve_geometry_checkbox.setChecked(True)
+        self.preserve_geometry_checkbox.setToolTip(
+            "If checked, creates one line segment per polyline point, preserving exact geometry.\n"
+            "If unchecked, uses curve fitting to simplify the geometry (tolerances above apply)."
+        )
+        # Enable/disable tolerance inputs based on preserve geometry
+        self.preserve_geometry_checkbox.stateChanged.connect(self.on_preserve_geometry_changed)
+        options_layout.addRow("Geometry:", self.preserve_geometry_checkbox)
+
+        # Output file selection
+        output_layout = QHBoxLayout()
+        self.output_path_edit = QLineEdit()
+        self.output_path_edit.setPlaceholderText("Select output file...")
+        output_layout.addWidget(self.output_path_edit)
+
+        self.browse_btn = QPushButton("Browse...")
+        self.browse_btn.clicked.connect(self.browse_output_file)
+        output_layout.addWidget(self.browse_btn)
+
+        options_layout.addRow("Output File:", output_layout)
+
+        # Initialize tolerance enabled state
+        self.on_preserve_geometry_changed()
+
+        # Status message
+        self.status_label = QLabel()
+        self.status_label.setWordWrap(True)
+        self.get_main_layout().addWidget(self.status_label)
+
+        # Custom button box (Export/Cancel instead of OK/Cancel)
+        button_box = QDialogButtonBox()
+
+        self.export_btn = QPushButton("Export")
+        self.export_btn.clicked.connect(self.do_export)
+        button_box.addButton(self.export_btn, QDialogButtonBox.ButtonRole.AcceptRole)
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        button_box.addButton(cancel_btn, QDialogButtonBox.ButtonRole.RejectRole)
+
+        self.get_main_layout().addWidget(button_box)
+
+    def load_properties(self):
+        """Load project data (no-op for export dialog)."""
+        # Export dialog doesn't load properties from the project
+        # Data is populated by analyze_project() instead
+        pass
+
+    def analyze_project(self):
+        """Analyze the project and display information."""
+        # Count elements
+        num_polylines = len(self.project.polylines)
+        num_roads = len(self.project.roads)
+        num_junctions = len(self.project.junctions)
+        num_control_points = len(self.project.control_points)
+
+        self.polylines_label.setText(str(num_polylines))
+        self.roads_label.setText(str(num_roads))
+        self.junctions_label.setText(str(num_junctions))
+        self.control_points_label.setText(str(num_control_points))
+
+        # Check georeferencing
+        if self.project.has_georeferencing():
+            # Use project's transform method
+            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
+            self.transformer = create_transformer(self.project.control_points, method, use_validation=True)
+
+            if self.transformer:
+                self.georef_status_label.setText(
+                    f"<b style='color: green;'>✓ Georeferencing Active ({self.project.transform_method.upper()})</b><br>"
+                    "Project has sufficient control points for coordinate transformation."
+                )
+                self.georef_status_label.setStyleSheet("color: green;")
+
+                # Display transformation info
+                info = self.transformer.get_transformation_info()
+                info_text = (
+                    f"Method: {info['method']}\n"
+                    f"Training Points (GCP): {info['num_training_points']}\n"
+                    f"Validation Points (GVP): {info['num_validation_points']}\n"
+                    f"Mean Latitude: {info['reference_latitude']:.6f}°\n"
+                    f"Scale X: {info['scale_x_meters_per_pixel']:.4f} m/pixel\n"
+                    f"Scale Y: {info['scale_y_meters_per_pixel']:.4f} m/pixel\n"
+                )
+
+                # Add reprojection error if available
+                if 'reprojection_error' in info and info['reprojection_error']:
+                    err = info['reprojection_error']
+                    info_text += f"\nReprojection RMSE: {err['rmse_pixels']:.2f} px ({err['rmse_meters']:.3f} m)"
+
+                # Add validation error if available
+                if 'validation_error' in info and info['validation_error']:
+                    err = info['validation_error']
+                    info_text += f"\nValidation RMSE: {err['rmse_pixels']:.2f} px ({err['rmse_meters']:.3f} m)"
+
+                self.transform_info.setText(info_text)
+
+                self.export_btn.setEnabled(True)
+                self.status_label.setText(
+                    "<b>Ready to export.</b> Select output file and click Export."
+                )
+            else:
+                self.georef_status_label.setText(
+                    "<b style='color: red;'>✗ Georeferencing Error</b><br>"
+                    "Failed to create coordinate transformation. Check control points."
+                )
+                self.georef_status_label.setStyleSheet("color: red;")
+                self.export_btn.setEnabled(False)
+                self.status_label.setText(
+                    "<b style='color: red;'>Cannot export: Georeferencing error</b>"
+                )
+        else:
+            self.georef_status_label.setText(
+                f"<b style='color: orange;'>⚠ No Georeferencing</b><br>"
+                f"Need at least {3 - num_control_points} more control points.<br>"
+                f"Go to Tools → Georeferencing to add control points."
+            )
+            self.georef_status_label.setStyleSheet("color: orange;")
+            self.transform_info.setText("Georeferencing not configured.")
+            self.export_btn.setEnabled(False)
+            self.status_label.setText(
+                "<b style='color: orange;'>Cannot export: Georeferencing required</b>"
+            )
+
+    def on_preserve_geometry_changed(self):
+        """Handle preserve geometry checkbox change."""
+        preserve = self.preserve_geometry_checkbox.isChecked()
+        # Disable tolerance inputs when preserving geometry
+        self.line_tolerance_spin.setEnabled(not preserve)
+        self.arc_tolerance_spin.setEnabled(not preserve)
+
+    def browse_output_file(self):
+        """Browse for output file location."""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export to OpenDrive",
+            str(Path.home()),
+            "OpenDrive Files (*.xodr);;All Files (*)"
+        )
+
+        if file_path:
+            self.output_path = Path(file_path)
+            # Ensure .xodr extension
+            if self.output_path.suffix != '.xodr':
+                self.output_path = self.output_path.with_suffix('.xodr')
+
+            self.output_path_edit.setText(str(self.output_path))
+
+    def do_export(self):
+        """Perform the export."""
+        if not self.output_path:
+            show_warning(self, "Please select an output file location.", "No Output File")
+            return
+
+        if not self.transformer:
+            show_error(self, "Georeferencing is not properly configured.", "Export Error")
+            return
+
+        # Validate that all roads have centerlines
+        roads_without_centerline = []
+        for road in self.project.roads:
+            if not road.has_centerline():
+                roads_without_centerline.append(road.name)
+
+        if roads_without_centerline:
+            road_list = "\n• ".join(roads_without_centerline)
+            show_error(self, f"The following roads do not have a road reference line assigned:\n\n• {road_list}\n\n"
+                "Every road must have exactly one road reference line for OpenDRIVE export.\n\n"
+                "Please edit each road's properties to select a road reference line, or\n"
+                "mark one of the road's polylines as a road reference line (double-click the polyline).", "Invalid Road Configuration")
+            return
+
+        # Show progress message
+        self.status_label.setText("<b>Exporting...</b>")
+        self.export_btn.setEnabled(False)
+
+        try:
+            # Perform export using country code and traffic direction from preferences
+            country_code = self.project.country_code.strip().lower()
+            if not country_code:
+                country_code = "se"  # Default to Sweden
+
+            success = export_to_opendrive(
+                self.project,
+                self.transformer,
+                str(self.output_path),
+                line_tolerance=self.line_tolerance_spin.value(),
+                arc_tolerance=self.arc_tolerance_spin.value(),
+                preserve_geometry=self.preserve_geometry_checkbox.isChecked(),
+                right_hand_traffic=self.project.right_hand_traffic,
+                country_code=country_code
+            )
+
+            if success:
+                show_info(self, f"OpenDrive file exported successfully to:\n{self.output_path}\n\n"
+                    f"Roads: {len(self.project.roads)}\n"
+                    f"Junctions: {len(self.project.junctions)}", "Export Successful")
+                self.accept()
+            else:
+                show_error(self, "Failed to export OpenDrive file. Check console for errors.", "Export Failed")
+                self.status_label.setText("<b style='color: red;'>Export failed</b>")
+                self.export_btn.setEnabled(True)
+
+        except Exception as e:
+            show_error(self, f"An error occurred during export:\n{str(e)}", "Export Error")
+            self.status_label.setText(f"<b style='color: red;'>Error: {str(e)}</b>")
+            self.export_btn.setEnabled(True)
