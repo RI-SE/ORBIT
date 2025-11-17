@@ -9,7 +9,7 @@ import numpy as np
 from dataclasses import dataclass
 import math
 
-from models import Road, Polyline, Project, LineType
+from orbit.models import Road, Polyline, Project, LineType
 
 
 @dataclass

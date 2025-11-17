@@ -7,12 +7,11 @@ A PyQt6-based GUI application for annotating roads in drone/aerial/satellite ima
 ## 📋 Documentation
 
 - **[README.md](README.md)** - This file (quick start)
-- **[USAGE_GUIDE.md](USAGE_GUIDE.md)** - Detailed user guide with tips and shortcuts
-- **[COMPLETE_WORKFLOW.md](COMPLETE_WORKFLOW.md)** - End-to-end workflow tutorial
-- **[GEOREFERENCING_GUIDE.md](GEOREFERENCING_GUIDE.md)** - Complete georeferencing guide with uncertainty analysis
-- **[VALIDATION_AND_UNCERTAINTY.md](VALIDATION_AND_UNCERTAINTY.md)** - Technical deep-dive: validation metrics, uncertainty estimation, and GCP suggestions
-- **[OSM_IMPORT_GUIDE.md](OSM_IMPORT_GUIDE.md)** - OpenStreetMap import feature guide
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development status and architecture
+- **[USAGE_GUIDE.md](docs/USAGE_GUIDE.md)** - Detailed user guide with tips and shortcuts
+- **[COMPLETE_WORKFLOW.md](docs/COMPLETE_WORKFLOW.md)** - End-to-end workflow tutorial
+- **[GEOREFERENCING_GUIDE.md](docs/GEOREFERENCING_GUIDE.md)** - Complete georeferencing guide with uncertainty analysis
+- **[VALIDATION_AND_UNCERTAINTY.md](docs/VALIDATION_AND_UNCERTAINTY.md)** - Technical deep-dive: validation metrics, uncertainty estimation, and GCP suggestions
+- **[OSM_IMPORT_GUIDE.md](docs/OSM_IMPORT_GUIDE.md)** - OpenStreetMap import feature guide
 
 ## 🎯 Overview
 
@@ -54,12 +53,12 @@ pip install -r requirements.txt
 
 ### Start with an image
 ```bash
-python orbit.py path/to/image.jpg
+./start_orbit path/to/image.jpg
 ```
 
 ### Start without image (load later via GUI)
 ```bash
-python orbit.py
+./start_orbit
 ```
 
 ## Workflow
@@ -75,19 +74,19 @@ python orbit.py
 8. **Apply Measured Width**: Review calculated lane width from boundaries, apply if accurate
 9. **Mark Junctions**: Define intersections and connecting roads
 10. **Save Project**: File → Save Project (saves as .orbit file with pixel coordinates)
-11. **Georeference**: Tools → Georeferencing to add control points with lat/lon (see [GEOREFERENCING_GUIDE.md](GEOREFERENCING_GUIDE.md))
+11. **Georeference**: Tools → Georeferencing to add control points with lat/lon (see [GEOREFERENCING_GUIDE.md](docs/GEOREFERENCING_GUIDE.md))
 12. **Export**: File → Export to OpenDrive (generates XML with centerline geometry and real road marks)
 
 ### OSM Import (Alternative/Supplement)
 1. **Load Image**: Start with an aerial/satellite image
-2. **Georeference**: Tools → Georeferencing (add 3+ control points with lat/lon, see [GEOREFERENCING_GUIDE.md](GEOREFERENCING_GUIDE.md))
+2. **Georeference**: Tools → Georeferencing (add 3+ control points with lat/lon, see [GEOREFERENCING_GUIDE.md](docs/GEOREFERENCING_GUIDE.md))
 3. **Import OSM**: File → Import OpenStreetMap Data (`Ctrl+Shift+I`)
 4. **Configure**: Choose detail level (Moderate/Full), import mode, lane width
 5. **Review**: Inspect imported roads, junctions, signals, and objects
 6. **Refine**: Manually adjust imported data if needed
 7. **Export**: File → Export to OpenDrive
 
-See [OSM_IMPORT_GUIDE.md](OSM_IMPORT_GUIDE.md) for detailed OSM import instructions.
+See [OSM_IMPORT_GUIDE.md](docs/OSM_IMPORT_GUIDE.md) for detailed OSM import instructions.
 
 ## Project File Format
 

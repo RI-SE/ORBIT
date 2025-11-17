@@ -11,7 +11,7 @@ Import Guidelines:
     - from export import CoordinateTransformer, create_transformer
       (Preferred for export-related code)
 
-    - from utils.coordinate_transform import CoordinateTransformer, create_transformer
+    - from orbit.utils.coordinate_transform import CoordinateTransformer, create_transformer
       (Preferred for non-export code, shows actual module location)
 
     Both are valid and functionally identical. The re-export exists because
@@ -20,7 +20,7 @@ Import Guidelines:
 
 # Re-export coordinate transformation from utils for convenience
 # Actual implementation: utils/coordinate_transform.py
-from utils import CoordinateTransformer, create_transformer, TransformMethod
+from orbit.utils import CoordinateTransformer, create_transformer, TransformMethod
 from .curve_fitting import CurveFitter, GeometryElement, GeometryType, simplify_polyline
 from .opendrive_writer import OpenDriveWriter, export_to_opendrive
 

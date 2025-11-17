@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QPushButton, QTextBrowser, QDialogButtonBox
 )
 
-from gui.base_dialog import BaseDialog
+from orbit.gui.base_dialog import BaseDialog
 
 
 class ImportReportDialog(BaseDialog):

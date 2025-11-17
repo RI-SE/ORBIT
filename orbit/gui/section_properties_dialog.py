@@ -12,9 +12,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from models import LaneSection
-from export import CoordinateTransformer
-from gui.base_dialog import BaseDialog
+from orbit.models import LaneSection
+from orbit.export import CoordinateTransformer
+from orbit.gui.base_dialog import BaseDialog
 
 
 class SectionPropertiesDialog(BaseDialog):

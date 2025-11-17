@@ -1,0 +1,125 @@
+{
+  "metadata": {
+    "version": "0.1.0",
+    "created": "2025-11-06T07:41:10.480803",
+    "modified": "2025-11-11T21:44:34.013722"
+  },
+  "image_path": "/home/fredrik/fwrise/SAVANT/orbit/examples/out3_stabilized_vidrectify_first.jpg",
+  "polylines": [],
+  "roads": [],
+  "junctions": [],
+  "signals": [],
+  "objects": [],
+  "control_points": [
+    {
+      "pixel_x": 2893.7736205461174,
+      "pixel_y": 848.8916701114586,
+      "longitude": 12.895378639918784,
+      "latitude": 57.74224960674061,
+      "name": "aruco_0a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 1013.6618000070512,
+      "pixel_y": 1119.6775268866172,
+      "longitude": 12.894386331984077,
+      "latitude": 57.742858303833906,
+      "name": "aruco_17a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 1356.4024833122292,
+      "pixel_y": 836.3790892425163,
+      "longitude": 12.894721275250026,
+      "latitude": 57.74281531399519,
+      "name": "aruco_24a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 2914.120503994209,
+      "pixel_y": 813.9015435803543,
+      "longitude": 12.895413625022556,
+      "latitude": 57.74224863375953,
+      "name": "aruco_0c",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 977.6202984643286,
+      "pixel_y": 1154.851560082983,
+      "longitude": 12.894351519345468,
+      "latitude": 57.74286163338458,
+      "name": "arocu_17c",
+      "is_validation": true
+    },
+    {
+      "pixel_x": 1390.8495826215208,
+      "pixel_y": 803.1815285911644,
+      "longitude": 12.894756245159218,
+      "latitude": 57.74281221061146,
+      "name": "aruco_24c",
+      "is_validation": true
+    }
+  ],
+  "right_hand_traffic": true,
+  "transform_method": "affine",
+  "country_code": "se",
+  "georef_validation": {
+    "transform_method": "affine",
+    "reprojection_error": {
+      "rmse_pixels": 1.7694777052107246e-08,
+      "mean_error_pixels": 1.6109912832655114e-08,
+      "max_error_pixels": 2.3611110464348184e-08,
+      "rmse_meters": 0.15917065214805648,
+      "mean_error_meters": 0.1261997412056858,
+      "max_error_meters": 0.22477781812249906,
+      "per_point_errors": [
+        {
+          "name": "aruco_0a",
+          "error_pixels": 2.3611110464348184e-08,
+          "error_meters": 0.221594743449604
+        },
+        {
+          "name": "aruco_17a",
+          "error_pixels": 1.1412071161930454e-08,
+          "error_meters": 0.0276216806326691
+        },
+        {
+          "name": "aruco_24a",
+          "error_pixels": 6.583079801426414e-09,
+          "error_meters": 0.030804722617971046
+        },
+        {
+          "name": "aruco_0c",
+          "error_pixels": 2.2833389902915408e-08,
+          "error_meters": 0.22477781812249906
+        }
+      ]
+    },
+    "validation_error": {
+      "rmse_pixels": 4.208062528579128,
+      "mean_error_pixels": 3.9941661459524713,
+      "max_error_pixels": 5.31871400954931,
+      "rmse_meters": 0.1961266913838603,
+      "mean_error_meters": 0.1858585687066365,
+      "max_error_meters": 0.2484866096427895,
+      "per_point_errors": [
+        {
+          "name": "arocu_17c",
+          "error_pixels": 5.31871400954931,
+          "error_meters": 0.2484866096427895
+        },
+        {
+          "name": "aruco_24c",
+          "error_pixels": 2.6696182823556325,
+          "error_meters": 0.1232305277704835
+        }
+      ]
+    },
+    "scale_factors": {
+      "x": 0.048131746867467,
+      "y": 0.05060374501818737
+    },
+    "num_training_points": 4,
+    "num_validation_points": 2
+  }
+}

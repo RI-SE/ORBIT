@@ -13,8 +13,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from models import Road, RoadType, LaneInfo, Project, LineType
-from utils import format_enum_name
+from orbit.models import Road, RoadType, LaneInfo, Project, LineType
+from orbit.utils import format_enum_name
 
 
 class RoadPropertiesDialog(QDialog):
@@ -385,13 +385,13 @@ class RoadPropertiesDialog(QDialog):
             print(f"[DEBUG] Verbose mode: {self.verbose}")
 
         try:
-            from export.lane_analyzer import LaneAnalyzer
+            from orbit.export.lane_analyzer import LaneAnalyzer
 
             # Get scale factors from georeferencing if available
             scale_factors = None
             if self.project.has_georeferencing():
                 try:
-                    from export import create_transformer
+                    from orbit.export import create_transformer
                     transformer = create_transformer(self.project.control_points)
                     if transformer:
                         scale_factors = transformer.get_scale_factor()

@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (QHBoxLayout, QFormLayout,
                             QLineEdit, QDoubleSpinBox, QComboBox, QPushButton,
                             QLabel, QGroupBox, QCheckBox, QVBoxLayout)
 from PyQt6.QtCore import Qt
-from models.object import RoadObject, ObjectType
-from gui.base_dialog import BaseDialog
+from orbit.models.object import RoadObject, ObjectType
+from orbit.gui.base_dialog import BaseDialog
 
 
 class ObjectPropertiesDialog(BaseDialog):
@@ -254,7 +254,7 @@ class ObjectPropertiesDialog(BaseDialog):
 
                         if self.project.has_georeferencing():
                             try:
-                                from export import create_transformer
+                                from orbit.export import create_transformer
                                 transformer = create_transformer(self.project.control_points)
                                 if transformer:
                                     scale_x, scale_y = transformer.get_scale_factor()
@@ -290,7 +290,7 @@ class ObjectPropertiesDialog(BaseDialog):
 
             if self.project.has_georeferencing():
                 try:
-                    from export import create_transformer
+                    from orbit.export import create_transformer
                     transformer = create_transformer(self.project.control_points)
                     if transformer:
                         scale_x, scale_y = transformer.get_scale_factor()

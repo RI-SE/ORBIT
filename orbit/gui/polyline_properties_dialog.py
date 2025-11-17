@@ -13,9 +13,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
-from models import Polyline, LineType, RoadMarkType
-from gui.base_dialog import BaseDialog
-from gui.message_helpers import show_info
+from orbit.models import Polyline, LineType, RoadMarkType
+from orbit.gui.base_dialog import BaseDialog
+from orbit.gui.message_helpers import show_info
 
 
 class PolylinePropertiesDialog(BaseDialog):

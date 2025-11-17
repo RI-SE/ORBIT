@@ -8,8 +8,8 @@ from PyQt6.QtWidgets import (QHBoxLayout, QGroupBox,
                             QPushButton, QLabel, QGridLayout)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
-from models.object import ObjectType
-from gui.base_dialog import BaseDialog
+from orbit.models.object import ObjectType
+from orbit.gui.base_dialog import BaseDialog
 
 
 class ObjectSelectionDialog(BaseDialog):
@@ -130,7 +130,7 @@ class ObjectSelectionDialog(BaseDialog):
         Returns:
             QPixmap with the icon rendered
         """
-        from gui.object_graphics import get_object_color
+        from orbit.gui.object_graphics import get_object_color
 
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.GlobalColor.transparent)

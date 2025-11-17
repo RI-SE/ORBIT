@@ -7,7 +7,7 @@ with appropriate shapes, colors, and dimension labels.
 
 from PyQt6.QtGui import QPainterPath, QColor, QFont, QPainter, QPolygonF
 from PyQt6.QtCore import Qt, QPointF, QRectF
-from models.object import RoadObject, ObjectType
+from orbit.models.object import RoadObject, ObjectType
 import math
 from typing import Tuple, Optional
 

@@ -9,8 +9,8 @@ from PyQt6.QtWidgets import (
     QComboBox, QLabel, QLineEdit
 )
 
-from models import Project
-from gui.base_dialog import BaseDialog
+from orbit.models import Project
+from orbit.gui.base_dialog import BaseDialog
 
 
 class PreferencesDialog(BaseDialog):

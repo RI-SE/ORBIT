@@ -5,9 +5,9 @@ Dialog for selecting signal type when placing a new signal.
 from PyQt6.QtWidgets import (QHBoxLayout, QGroupBox,
                             QPushButton, QGridLayout, QVBoxLayout)
 from PyQt6.QtGui import QIcon
-from models.signal import SignalType, SpeedUnit
-from gui.signal_graphics import create_signal_pixmap
-from gui.base_dialog import BaseDialog
+from orbit.models.signal import SignalType, SpeedUnit
+from orbit.gui.signal_graphics import create_signal_pixmap
+from orbit.gui.base_dialog import BaseDialog
 
 
 class SignalSelectionDialog(BaseDialog):

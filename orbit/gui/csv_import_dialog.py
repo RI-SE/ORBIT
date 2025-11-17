@@ -16,9 +16,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from models import Project, ControlPoint
-from gui.base_dialog import BaseDialog
-from gui.message_helpers import show_error, show_warning, show_info
+from orbit.models import Project, ControlPoint
+from orbit.gui.base_dialog import BaseDialog
+from orbit.gui.message_helpers import show_error, show_warning, show_info
 
 
 @dataclass

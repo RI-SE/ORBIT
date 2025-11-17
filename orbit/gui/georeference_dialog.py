@@ -19,9 +19,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent
 from PyQt6.QtGui import QFont
 
-from models import Project, ControlPoint
-from gui.base_dialog import BaseDialog
-from gui.message_helpers import show_error, show_warning, show_info, ask_yes_no
+from orbit.models import Project, ControlPoint
+from orbit.gui.base_dialog import BaseDialog
+from orbit.gui.message_helpers import show_error, show_warning, show_info, ask_yes_no
 
 
 class GeoreferenceDialog(BaseDialog):
@@ -508,7 +508,7 @@ class GeoreferenceDialog(BaseDialog):
 
     def update_validation(self):
         """Compute and display validation results."""
-        from utils import create_transformer, TransformMethod
+        from orbit.utils import create_transformer, TransformMethod
 
         # Count training points
         training_points = [cp for cp in self.project.control_points if not cp.is_validation]
@@ -641,8 +641,8 @@ class GeoreferenceDialog(BaseDialog):
         self.compute_monte_carlo_btn.setEnabled(True)
 
         try:
-            from utils import create_transformer, TransformMethod
-            from utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
             parent_window = self.parent()
@@ -735,8 +735,8 @@ class GeoreferenceDialog(BaseDialog):
             return
 
         try:
-            from utils import create_transformer, TransformMethod
-            from utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
             parent_window = self.parent()
@@ -814,8 +814,8 @@ class GeoreferenceDialog(BaseDialog):
             return
 
         try:
-            from utils import create_transformer, TransformMethod
-            from utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
             parent_window = self.parent()
@@ -909,8 +909,8 @@ class GeoreferenceDialog(BaseDialog):
     def suggest_gcp_locations(self):
         """Suggest where to add new control points based on uncertainty analysis."""
         try:
-            from utils import create_transformer, TransformMethod
-            from utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
             parent_window = self.parent()

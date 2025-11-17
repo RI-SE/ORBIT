@@ -14,9 +14,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from models import Junction, JunctionConnection, Project
-from gui.base_dialog import BaseDialog
-from gui.message_helpers import show_warning
+from orbit.models import Junction, JunctionConnection, Project
+from orbit.gui.base_dialog import BaseDialog
+from orbit.gui.message_helpers import show_warning
 
 
 class JunctionDialog(BaseDialog):

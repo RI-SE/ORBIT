@@ -10,14 +10,14 @@ from enum import Enum
 import uuid
 import math
 
-from models import Project, Road, Junction, Signal, RoadObject, Polyline, ControlPoint
-from models.polyline import LineType, RoadMarkType
-from models.road import RoadType, LaneInfo
-from models.lane import Lane, LaneType as ORBITLaneType
-from models.lane_section import LaneSection
-from models.junction import JunctionConnection
-from models.signal import SignalType, SpeedUnit
-from models.object import ObjectType
+from orbit.models import Project, Road, Junction, Signal, RoadObject, Polyline, ControlPoint
+from orbit.models.polyline import LineType, RoadMarkType
+from orbit.models.road import RoadType, LaneInfo
+from orbit.models.lane import Lane, LaneType as ORBITLaneType
+from orbit.models.lane_section import LaneSection
+from orbit.models.junction import JunctionConnection
+from orbit.models.signal import SignalType, SpeedUnit
+from orbit.models.object import ObjectType
 
 from .opendrive_parser import OpenDriveParser, OpenDriveData, ODRRoad, ODRLane, ODRSignal, ODRObject
 from .opendrive_geometry import GeometryConverter, calculate_s_offsets, sample_elevation_profile

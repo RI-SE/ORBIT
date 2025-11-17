@@ -13,8 +13,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 
-from models import Project, Road, Polyline
-from gui.message_helpers import show_info, ask_yes_no
+from orbit.models import Project, Road, Polyline, LaneType
+from orbit.gui.message_helpers import show_info, ask_yes_no
 
 
 class RoadTreeWidget(QWidget):
@@ -153,7 +153,7 @@ class RoadTreeWidget(QWidget):
 
     def create_section_item(self, section, road_id: str) -> QTreeWidgetItem:
         """Create a tree item for a lane section."""
-        from models import LaneSection
+        from orbit.models import LaneSection
 
         # Format section display name
         text = f"Section {section.section_number}"
@@ -176,7 +176,7 @@ class RoadTreeWidget(QWidget):
 
     def create_lane_item(self, lane, road_id: str, section_number: Optional[int] = None) -> QTreeWidgetItem:
         """Create a tree item for a lane."""
-        from models import Lane, LaneType
+        from orbit.models import Lane, LaneType
 
         # Format lane display name with type
         lane_type_name = lane.lane_type.value.title() if lane.lane_type != LaneType.NONE else "None"
@@ -384,7 +384,7 @@ class RoadTreeWidget(QWidget):
     def edit_section(self, section_number: int, road_id: str):
         """Edit a lane section's properties."""
         from ..section_properties_dialog import SectionPropertiesDialog
-        from export import create_transformer
+        from orbit.export import create_transformer
 
         road = self.project.get_road(road_id)
         if road:

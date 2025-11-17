@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtGui import QAction, QKeySequence
 
-from models import Project
+from orbit.models import Project, LineType
 from .image_view import ImageView
 from .widgets.road_tree import RoadTreeWidget
 from .widgets.elements_tree import ElementsTreeWidget
@@ -557,7 +557,7 @@ class MainWindow(QMainWindow):
 
             # Update georef validation in project if we have control points
             if self.project.has_georeferencing():
-                from export import create_transformer, TransformMethod
+                from orbit.export import create_transformer, TransformMethod
                 method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
                 transformer = create_transformer(self.project.control_points, method, use_validation=True)
                 if transformer:
@@ -596,15 +596,15 @@ class MainWindow(QMainWindow):
         from .osm_import_dialog import OSMImportDialog
         # Import from the 'import' module using importlib (since 'import' is a Python keyword)
         import importlib
-        osm_import_module = importlib.import_module('import')
-        osm_parser_module = importlib.import_module('import.osm_parser')
+        osm_import_module = importlib.import_module('orbit.import')
+        osm_parser_module = importlib.import_module('orbit.import.osm_parser')
         OSMImporter = osm_import_module.OSMImporter
         ImportOptions = osm_import_module.ImportOptions
         ImportMode = osm_import_module.ImportMode
         DetailLevel = osm_import_module.DetailLevel
         OSMParser = osm_parser_module.OSMParser
-        calculate_bbox_from_image = importlib.import_module('import.osm_to_orbit').calculate_bbox_from_image
-        from export import create_transformer, TransformMethod
+        calculate_bbox_from_image = importlib.import_module('orbit.import.osm_to_orbit').calculate_bbox_from_image
+        from orbit.export import create_transformer, TransformMethod
         from PyQt6.QtWidgets import QProgressDialog
         from PyQt6.QtCore import QCoreApplication
 
@@ -773,11 +773,11 @@ class MainWindow(QMainWindow):
         from .opendrive_import_dialog import OpenDriveImportDialog
         from .import_report_dialog import show_opendrive_import_report
         import importlib
-        opendrive_import_module = importlib.import_module('import.opendrive_importer')
+        opendrive_import_module = importlib.import_module('orbit.import.opendrive_importer')
         OpenDriveImporter = opendrive_import_module.OpenDriveImporter
         ImportOptions = opendrive_import_module.ImportOptions
         ImportMode = opendrive_import_module.ImportMode
-        from export import create_transformer, TransformMethod
+        from orbit.export import create_transformer, TransformMethod
         from PyQt6.QtWidgets import QProgressDialog
         from PyQt6.QtCore import QCoreApplication
 
@@ -896,7 +896,7 @@ class MainWindow(QMainWindow):
     def group_to_road(self):
         """Group selected polylines into a road."""
         from .properties_dialog import RoadPropertiesDialog
-        from models import LineType
+        from orbit.models import LineType
 
         # Get selected polylines from image view
         selected_polyline_id = self.image_view.selected_polyline_id
@@ -974,7 +974,7 @@ class MainWindow(QMainWindow):
 
     def add_object(self):
         """Add a roadside object by selecting type and clicking on the map."""
-        from gui.object_selection_dialog import ObjectSelectionDialog
+        from orbit.gui.object_selection_dialog import ObjectSelectionDialog
 
         # Check if object mode is already active - if so, toggle it off
         if hasattr(self, 'object_mode_active') and self.object_mode_active:
@@ -1140,7 +1140,7 @@ class MainWindow(QMainWindow):
                 try:
                     # Use cached transformer for performance
                     if self._cached_transformer is None:
-                        from export import create_transformer, TransformMethod
+                        from orbit.export import create_transformer, TransformMethod
                         method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
                         self._cached_transformer = create_transformer(self.project.control_points, method, use_validation=True)
 
@@ -1166,7 +1166,7 @@ class MainWindow(QMainWindow):
 
         # Calculate average scale from control points
         try:
-            from export import create_transformer, TransformMethod
+            from orbit.export import create_transformer, TransformMethod
 
             if self.verbose:
                 print("\n" + "="*60)
@@ -1193,12 +1193,20 @@ class MainWindow(QMainWindow):
             avg_scale_x, avg_scale_y = transformer.get_scale_factor()
 
             if self.verbose:
-                print(f"\nScale factors from affine transformation:")
+                print(f"\nScale factors from transformation:")
                 print(f"  X (horizontal): {avg_scale_x:.6f} m/px = {avg_scale_x*100:.4f} cm/px")
                 print(f"  Y (vertical):   {avg_scale_y:.6f} m/px = {avg_scale_y*100:.4f} cm/px")
-                print(f"  RMS error: {transformer.get_rms_error():.8f} degrees")
-                mean_lat = sum(cp.latitude for cp in self.project.control_points) / len(self.project.control_points)
-                print(f"  RMS error: {transformer.get_rms_error_meters(mean_lat):.3f} meters")
+
+                # Compute and display reprojection error
+                reproj_error = transformer.compute_reprojection_error()
+                if reproj_error:
+                    print(f"  Reprojection RMSE: {reproj_error['rmse_meters']:.3f} meters ({reproj_error['rmse_pixels']:.2f} pixels)")
+
+                # Compute and display validation error if validation points exist
+                val_error = transformer.compute_validation_error()
+                if val_error:
+                    print(f"  Validation RMSE: {val_error['rmse_meters']:.3f} meters ({val_error['rmse_pixels']:.2f} pixels)")
+
                 print("="*60 + "\n")
 
             # Format scale nicely - show both X and Y
@@ -1343,9 +1351,9 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            from utils import create_transformer, TransformMethod
-            from utils.uncertainty_estimator import UncertaintyEstimator
-            from gui.uncertainty_overlay import UncertaintyOverlay
+            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit.gui.uncertainty_overlay import UncertaintyOverlay
 
             # Create transformer
             method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
@@ -1413,7 +1421,7 @@ class MainWindow(QMainWindow):
             return None
 
         try:
-            from export import create_transformer, TransformMethod
+            from orbit.export import create_transformer, TransformMethod
             method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
             transformer = create_transformer(self.project.control_points, method, use_validation=True)
             if transformer:
@@ -1509,8 +1517,8 @@ class MainWindow(QMainWindow):
 
     def on_signal_placement_requested(self, x: float, y: float):
         """Handle signal placement request - show selection dialog."""
-        from gui.signal_selection_dialog import SignalSelectionDialog
-        from models.signal import Signal
+        from orbit.gui.signal_selection_dialog import SignalSelectionDialog
+        from orbit.models.signal import Signal
 
         # Show dialog to select signal type
         dialog = SignalSelectionDialog(self)
@@ -1608,7 +1616,7 @@ class MainWindow(QMainWindow):
 
     def edit_signal_properties(self, signal_id: str):
         """Edit properties of a signal."""
-        from gui.signal_properties_dialog import SignalPropertiesDialog
+        from orbit.gui.signal_properties_dialog import SignalPropertiesDialog
 
         signal = self.project.get_signal(signal_id)
         if not signal:
@@ -1625,7 +1633,7 @@ class MainWindow(QMainWindow):
 
     def on_object_placement_requested(self, x: float, y: float, object_type):
         """Handle object placement request from ImageView (for point objects)."""
-        from models import RoadObject
+        from orbit.models import RoadObject
 
         # Create object at clicked position
         obj = RoadObject(
@@ -1662,7 +1670,7 @@ class MainWindow(QMainWindow):
 
     def on_object_added(self, obj):
         """Handle object added signal (for guardrails)."""
-        from models import RoadObject
+        from orbit.models import RoadObject
 
         # Find closest road and assign
         closest_road_id = self.project.find_closest_road(obj.position)
@@ -1707,7 +1715,7 @@ class MainWindow(QMainWindow):
 
     def edit_object_properties(self, object_id: str):
         """Edit properties of an object."""
-        from gui.object_properties_dialog import ObjectPropertiesDialog
+        from orbit.gui.object_properties_dialog import ObjectPropertiesDialog
 
         obj = self.project.get_object(object_id)
         if not obj:
@@ -1817,7 +1825,7 @@ class MainWindow(QMainWindow):
         msg_box.setWindowTitle("About ORBIT")
 
         # Try to load logo
-        logo_path = Path(__file__).parent.parent / "images" / "orbit_logo_t.png"
+        logo_path = Path(__file__).parent.parent.parent / "docs" / "orbit_logo_t.png"
         if logo_path.exists():
             pixmap = QPixmap(str(logo_path))
             # Scale logo to reasonable size (200px width, maintain aspect ratio)

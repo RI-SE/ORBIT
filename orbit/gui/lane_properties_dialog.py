@@ -11,9 +11,9 @@ from PyQt6.QtWidgets import (
     QComboBox, QLabel, QDoubleSpinBox
 )
 
-from models import Lane, LaneType, RoadMarkType, Project, LineType
-from utils import format_enum_name
-from gui.base_dialog import BaseDialog
+from orbit.models import Lane, LaneType, RoadMarkType, Project, LineType
+from orbit.utils import format_enum_name
+from orbit.gui.base_dialog import BaseDialog
 
 
 class LanePropertiesDialog(BaseDialog):

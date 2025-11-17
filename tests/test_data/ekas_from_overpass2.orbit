@@ -1,0 +1,1597 @@
+{
+  "metadata": {
+    "version": "0.1.0",
+    "created": "2025-11-06T07:41:10.480803",
+    "modified": "2025-11-13T08:49:16.048374"
+  },
+  "image_path": "/home/fredrik/fwrise/SAVANT/orbit/examples/out3_stabilized_vidrectify_first.jpg",
+  "polylines": [
+    {
+      "id": "e0f40690-363f-4f38-9baa-b56e97d59761",
+      "points": [
+        [
+          1646.3236462324858,
+          601.533157736063
+        ],
+        [
+          1649.2504641632545,
+          736.6438785132674
+        ],
+        [
+          1613.1218719035387,
+          831.0038867890835
+        ],
+        [
+          1549.8929725140333,
+          942.9649578034878
+        ],
+        [
+          1485.3140682429075,
+          1018.3712768554688
+        ],
+        [
+          1397.9364459961653,
+          1086.051843509078
+        ],
+        [
+          1247.5501936525106,
+          1172.3482992351055
+        ],
+        [
+          989.2376744300127,
+          1266.8098143339157
+        ],
+        [
+          520.7482366859913,
+          1376.6334158331156
+        ],
+        [
+          44.7667850703001,
+          1530.394147530198
+        ],
+        [
+          -224.45952394604683,
+          1647.2651245594025
+        ],
+        [
+          -409.08684523403645,
+          1741.6747219711542
+        ],
+        [
+          -686.4342705309391,
+          1916.0314505845308
+        ],
+        [
+          -1135.3232719898224,
+          2326.8191166073084
+        ],
+        [
+          -1537.7128917723894,
+          2758.8123033493757
+        ],
+        [
+          -1832.1251910328865,
+          3001.6126523315907
+        ],
+        [
+          -2075.204828515649,
+          3173.3375443965197
+        ],
+        [
+          -2298.9861373007298,
+          3290.686220243573
+        ],
+        [
+          -2555.87876804173,
+          3387.1449803709984
+        ],
+        [
+          -3241.3950217813253,
+          3586.1339132487774
+        ],
+        [
+          -4006.7177523374557,
+          3788.429457589984
+        ],
+        [
+          -4673.688101157546,
+          3970.1856922507286
+        ],
+        [
+          -5970.100055024028,
+          4221.814296379685
+        ],
+        [
+          -6730.729606732726,
+          4282.714969232678
+        ],
+        [
+          -7337.494951471686,
+          4282.222778707743
+        ],
+        [
+          -9394.79369533062,
+          4313.808527499437
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none"
+    },
+    {
+      "id": "df2d694a-b360-443a-8bfb-cbaca59e9e1c",
+      "points": [
+        [
+          675.2272072583437,
+          626.4585727602243
+        ],
+        [
+          715.3651971668005,
+          402.00996594130993
+        ],
+        [
+          704.7686246037483,
+          261.32396055758
+        ],
+        [
+          689.8063634037971,
+          149.9387817531824
+        ],
+        [
+          620.0977146625519,
+          85.67837478220463
+        ],
+        [
+          296.9985404610634,
+          135.5112698674202
+        ],
+        [
+          140.25277364253998,
+          70.25212083756924
+        ],
+        [
+          -19.571869418025017,
+          -52.12660777568817
+        ],
+        [
+          -848.9842733442783,
+          -651.9392580091953
+        ],
+        [
+          -1247.4812208861113,
+          -965.6083309203386
+        ],
+        [
+          -1621.709383442998,
+          -1189.9939844757318
+        ],
+        [
+          -2040.5540659427643,
+          -1583.079901382327
+        ],
+        [
+          -2110.7145398259163,
+          -1707.435098618269
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none"
+    },
+    {
+      "id": "cb3706ee-5228-43d5-8d19-b388d25cb5a5",
+      "points": [
+        [
+          -19.571869418025017,
+          -52.12660777568817
+        ],
+        [
+          301.5143149346113,
+          -547.5151133686304
+        ],
+        [
+          384.0585071146488,
+          -820.3836432397366
+        ],
+        [
+          285.3422071784735,
+          -1440.8561067730188
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none"
+    },
+    {
+      "id": "54326554-71b1-46e8-8a6c-637bf9da8e5d",
+      "points": [
+        [
+          4840.664762422442,
+          505.2430374920368
+        ],
+        [
+          5445.428219735622,
+          486.2048048079014
+        ],
+        [
+          6228.50279854238,
+          478.6314987242222
+        ],
+        [
+          6572.842405498028,
+          499.84878170490265
+        ],
+        [
+          7053.738986983895,
+          543.5895437896252
+        ],
+        [
+          7425.764536574483,
+          589.106077760458
+        ],
+        [
+          7932.274091914296,
+          655.6294758319855
+        ],
+        [
+          8585.587799102068,
+          740.3439103066921
+        ],
+        [
+          8787.054922685027,
+          763.5640709996223
+        ],
+        [
+          9052.512778684497,
+          790.3662740886211
+        ],
+        [
+          9373.384314239025,
+          829.5215101838112
+        ],
+        [
+          9692.385161161423,
+          843.4654514342546
+        ],
+        [
+          9987.309218883514,
+          852.3328624665737
+        ],
+        [
+          10266.611762180924,
+          846.8172643333673
+        ],
+        [
+          10681.335371494293,
+          830.4467510133982
+        ],
+        [
+          11079.580908179283,
+          807.3248396962881
+        ],
+        [
+          11390.945873945951,
+          786.7979629635811
+        ],
+        [
+          11994.40351614356,
+          728.0469067692757
+        ],
+        [
+          14063.195146426558,
+          560.605610921979
+        ],
+        [
+          14428.029453501105,
+          532.483924984932
+        ],
+        [
+          14600.230260059237,
+          516.8568005263805
+        ],
+        [
+          14783.004697695374,
+          506.82543927431107
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none"
+    },
+    {
+      "id": "9a2e5cdf-3f70-413b-bd6c-4a7054d26ec1",
+      "points": [
+        [
+          1485.3140682429075,
+          1018.3712768554688
+        ],
+        [
+          1655.411236986518,
+          1145.692211061716
+        ],
+        [
+          1756.9401224851608,
+          1190.0770196914673
+        ],
+        [
+          1854.3648646324873,
+          1195.1831293702126
+        ],
+        [
+          2030.0172524154186,
+          1158.3042085021734
+        ],
+        [
+          2547.8249574154615,
+          1012.3518566191196
+        ],
+        [
+          2817.4763726890087,
+          950.0943647027016
+        ],
+        [
+          2949.8250694274902,
+          903.8272380083799
+        ],
+        [
+          3042.6278982311487,
+          853.0743778645992
+        ],
+        [
+          3171.2860872149467,
+          754.5969162583351
+        ],
+        [
+          3230.9279223382473,
+          701.2855843901634
+        ],
+        [
+          3284.4627017229795,
+          552.2843898832798
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none"
+    },
+    {
+      "id": "325daf09-72bd-4b20-9742-3e02c1edbe09",
+      "points": [
+        [
+          19388.176797941327,
+          370.3778696209192
+        ],
+        [
+          19117.104469135404,
+          393.7573760151863
+        ],
+        [
+          18919.397564187646,
+          408.527085095644
+        ],
+        [
+          18857.71976350248,
+          357.9015382230282
+        ],
+        [
+          18809.027005448937,
+          330.85057109594345
+        ],
+        [
+          18724.902116194367,
+          312.0391677469015
+        ],
+        [
+          17983.246834903955,
+          341.72281588613987
+        ],
+        [
+          17172.70091663301,
+          426.06509456038475
+        ],
+        [
+          15458.762752443552,
+          567.3124164193869
+        ],
+        [
+          14937.069630205631,
+          604.7712723016739
+        ],
+        [
+          14702.145025804639,
+          664.8509188443422
+        ],
+        [
+          14232.255059167743,
+          699.2334300875664
+        ],
+        [
+          14057.98933403194,
+          710.9209227412939
+        ],
+        [
+          13563.380289077759,
+          730.6978307813406
+        ],
+        [
+          12600.488370761275,
+          804.8865893930197
+        ],
+        [
+          11632.622045993805,
+          885.361691236496
+        ],
+        [
+          11476.191078096628,
+          941.7256601005793
+        ],
+        [
+          11370.537146449089,
+          955.6363826692104
+        ],
+        [
+          10783.663600072265,
+          985.8462751656771
+        ],
+        [
+          10407.417945072055,
+          1003.5710892528296
+        ],
+        [
+          9898.64752523601,
+          998.8471490889788
+        ],
+        [
+          9476.217126145959,
+          978.4236108362675
+        ],
+        [
+          8976.590175926685,
+          926.296766474843
+        ],
+        [
+          8395.787902623415,
+          853.3545014709234
+        ],
+        [
+          7311.294441372156,
+          717.5656927078962
+        ],
+        [
+          6849.73335313797,
+          655.594400152564
+        ],
+        [
+          6195.655233278871,
+          601.489487990737
+        ],
+        [
+          5527.935904070735,
+          572.5513959228992
+        ],
+        [
+          4234.634531855583,
+          614.8126551806927
+        ],
+        [
+          3230.9279223382473,
+          701.2855843901634
+        ],
+        [
+          3020.8739796876907,
+          733.7268577963114
+        ],
+        [
+          2123.914909258485,
+          778.0210618078709
+        ],
+        [
+          1953.022486075759,
+          846.111365377903
+        ],
+        [
+          1790.0011045634747,
+          992.840563967824
+        ],
+        [
+          1655.411236986518,
+          1145.692211061716
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none"
+    },
+    {
+      "id": "576f44eb-41da-4d56-a596-2d7c23862107",
+      "points": [
+        [
+          -1666.7595536708832,
+          695.5282544642687
+        ],
+        [
+          675.2272072583437,
+          626.4585727602243
+        ],
+        [
+          1646.3236462324858,
+          601.533157736063
+        ],
+        [
+          3088.3176752477884,
+          553.3607693761587
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none"
+    },
+    {
+      "id": "698568b7-992b-464d-8de5-d455aad1bbea",
+      "points": [
+        [
+          3088.3176752477884,
+          553.3607693761587
+        ],
+        [
+          3284.4627017229795,
+          552.2843898832798
+        ],
+        [
+          4840.664762422442,
+          505.2430374920368
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none"
+    }
+  ],
+  "roads": [
+    {
+      "id": "aafca4e6-770d-49be-96f8-9f2007ac50e0",
+      "name": "Ek\u00e5sv\u00e4gen",
+      "polyline_ids": [
+        "e0f40690-363f-4f38-9baa-b56e97d59761"
+      ],
+      "centerline_id": "e0f40690-363f-4f38-9baa-b56e97d59761",
+      "road_type": "town",
+      "lane_info": {
+        "left_count": 1,
+        "right_count": 1,
+        "lane_width": 3.0,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 464.0439846370021,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 4
+        },
+        {
+          "section_number": 2,
+          "s_start": 464.0439846370021,
+          "s_end": 12182.713684354965,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "lanes": [],
+      "speed_limit": null,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "fc05f760-bf64-4b6c-84a1-7904de66bd06",
+      "name": "OSM Way 74617083",
+      "polyline_ids": [
+        "df2d694a-b360-443a-8bfb-cbaca59e9e1c"
+      ],
+      "centerline_id": "df2d694a-b360-443a-8bfb-cbaca59e9e1c",
+      "road_type": "town",
+      "lane_info": {
+        "left_count": 1,
+        "right_count": 1,
+        "lane_width": 2.75,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 1274.292751213401,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 7
+        },
+        {
+          "section_number": 2,
+          "s_start": 1274.292751213401,
+          "s_end": 3958.538166815956,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "lanes": [],
+      "speed_limit": null,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "e0937cc2-5334-46f9-b88f-746b52b4b65a",
+      "name": "OSM Way 74617086",
+      "polyline_ids": [
+        "cb3706ee-5228-43d5-8d19-b388d25cb5a5"
+      ],
+      "centerline_id": "cb3706ee-5228-43d5-8d19-b388d25cb5a5",
+      "road_type": "town",
+      "lane_info": {
+        "left_count": 1,
+        "right_count": 1,
+        "lane_width": 2.75,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 1503.7005633864196,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "lanes": [],
+      "speed_limit": null,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "4cc91dd8-ba12-486a-8054-a58d16ef466a",
+      "name": "Alings\u00e5sv\u00e4gen",
+      "polyline_ids": [
+        "54326554-71b1-46e8-8a6c-637bf9da8e5d"
+      ],
+      "centerline_id": "54326554-71b1-46e8-8a6c-637bf9da8e5d",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 1,
+        "right_count": 1,
+        "lane_width": 3.25,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 9976.816259548323,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "lanes": [],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": "649fb03c-fd68-4e45-9ab9-e801ed7decf3",
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "9d513c89-6e13-4af6-b0f4-333d0be8d9ce",
+      "name": "OSM Way 125947958",
+      "polyline_ids": [
+        "9a2e5cdf-3f70-413b-bd6c-4a7054d26ec1"
+      ],
+      "centerline_id": "9a2e5cdf-3f70-413b-bd6c-4a7054d26ec1",
+      "road_type": "town",
+      "lane_info": {
+        "left_count": 1,
+        "right_count": 1,
+        "lane_width": 2.75,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 212.47039111778335,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 1
+        },
+        {
+          "section_number": 2,
+          "s_start": 212.47039111778335,
+          "s_end": 1903.0401648870197,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 10
+        },
+        {
+          "section_number": 3,
+          "s_start": 1903.0401648870197,
+          "s_end": 2061.366816365064,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 2.75,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "lanes": [],
+      "speed_limit": null,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "de65d842-0bf4-4941-8bba-7ae833c46d79",
+      "name": "Shared Cycle/Pedestrian Path",
+      "polyline_ids": [
+        "325daf09-72bd-4b20-9742-3e02c1edbe09"
+      ],
+      "centerline_id": "325daf09-72bd-4b20-9742-3e02c1edbe09",
+      "road_type": "town",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 2.0,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 16253.549506312078,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "biking",
+              "road_mark_type": "solid",
+              "width": 2.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 29
+        },
+        {
+          "section_number": 2,
+          "s_start": 16253.549506312078,
+          "s_end": 17971.094956883848,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "biking",
+              "road_mark_type": "solid",
+              "width": 2.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "lanes": [],
+      "speed_limit": 20.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "13ac7d97-f608-42b7-8f79-55b2dbe59fe1",
+      "name": "Alings\u00e5sv\u00e4gen",
+      "polyline_ids": [
+        "576f44eb-41da-4d56-a596-2d7c23862107"
+      ],
+      "centerline_id": "576f44eb-41da-4d56-a596-2d7c23862107",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 1,
+        "right_count": 1,
+        "lane_width": 3.25,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 2343.005038257167,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 1
+        },
+        {
+          "section_number": 2,
+          "s_start": 2343.005038257167,
+          "s_end": 3314.4213085050906,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 2
+        },
+        {
+          "section_number": 3,
+          "s_start": 3314.4213085050906,
+          "s_end": 4757.219755522581,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "lanes": [],
+      "speed_limit": 50.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": "649fb03c-fd68-4e45-9ab9-e801ed7decf3",
+      "successor_contact": "start"
+    },
+    {
+      "id": "649fb03c-fd68-4e45-9ab9-e801ed7decf3",
+      "name": "Alings\u00e5sv\u00e4gen",
+      "polyline_ids": [
+        "698568b7-992b-464d-8de5-d455aad1bbea"
+      ],
+      "centerline_id": "698568b7-992b-464d-8de5-d455aad1bbea",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 1,
+        "right_count": 1,
+        "lane_width": 3.25,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 196.14797986154767,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 1
+        },
+        {
+          "section_number": 2,
+          "s_start": 196.14797986154767,
+          "s_end": 1753.0608684202018,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": 1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "lanes": [],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": "13ac7d97-f608-42b7-8f79-55b2dbe59fe1",
+      "predecessor_contact": "end",
+      "successor_id": "4cc91dd8-ba12-486a-8054-a58d16ef466a",
+      "successor_contact": "start"
+    }
+  ],
+  "junctions": [
+    {
+      "id": "bec17d0c-8c83-4e1f-8d2a-35b86ae3639b",
+      "name": "Junction 1",
+      "center_point": [
+        1646.3236462324858,
+        601.533157736063
+      ],
+      "connected_road_ids": [
+        "13ac7d97-f608-42b7-8f79-55b2dbe59fe1",
+        "aafca4e6-770d-49be-96f8-9f2007ac50e0"
+      ],
+      "connections": [],
+      "junction_type": "default"
+    },
+    {
+      "id": "97647a92-6346-4d6a-9d70-fb0582269ad1",
+      "name": "Junction 2",
+      "center_point": [
+        1485.3140682429075,
+        1018.3712768554688
+      ],
+      "connected_road_ids": [
+        "9d513c89-6e13-4af6-b0f4-333d0be8d9ce",
+        "aafca4e6-770d-49be-96f8-9f2007ac50e0"
+      ],
+      "connections": [],
+      "junction_type": "default"
+    },
+    {
+      "id": "1247e060-8633-45e4-9a00-b71b1feb5fe1",
+      "name": "Junction 3",
+      "center_point": [
+        675.2272072583437,
+        626.4585727602243
+      ],
+      "connected_road_ids": [
+        "fc05f760-bf64-4b6c-84a1-7904de66bd06",
+        "13ac7d97-f608-42b7-8f79-55b2dbe59fe1"
+      ],
+      "connections": [],
+      "junction_type": "default"
+    },
+    {
+      "id": "7ef87404-f093-42aa-96c8-8832090da077",
+      "name": "Junction 4",
+      "center_point": [
+        -19.571869418025017,
+        -52.12660777568817
+      ],
+      "connected_road_ids": [
+        "fc05f760-bf64-4b6c-84a1-7904de66bd06",
+        "e0937cc2-5334-46f9-b88f-746b52b4b65a"
+      ],
+      "connections": [],
+      "junction_type": "default"
+    },
+    {
+      "id": "70001dcf-4c84-4b4b-9b22-a638144de945",
+      "name": "Junction 5",
+      "center_point": [
+        3284.4627017229795,
+        552.2843898832798
+      ],
+      "connected_road_ids": [
+        "9d513c89-6e13-4af6-b0f4-333d0be8d9ce",
+        "649fb03c-fd68-4e45-9ab9-e801ed7decf3"
+      ],
+      "connections": [],
+      "junction_type": "default"
+    },
+    {
+      "id": "c0246b7a-b8e9-4de2-aedb-deb904bfc0b7",
+      "name": "Path Crossing 1",
+      "center_point": [
+        1655.411236986518,
+        1145.692211061716
+      ],
+      "connected_road_ids": [
+        "9d513c89-6e13-4af6-b0f4-333d0be8d9ce",
+        "de65d842-0bf4-4941-8bba-7ae833c46d79"
+      ],
+      "connections": [],
+      "junction_type": "virtual"
+    },
+    {
+      "id": "ceb72e84-2a97-4ff3-b2e9-3a0bde88ef5c",
+      "name": "Path Crossing 2",
+      "center_point": [
+        3230.9279223382473,
+        701.2855843901634
+      ],
+      "connected_road_ids": [
+        "9d513c89-6e13-4af6-b0f4-333d0be8d9ce",
+        "de65d842-0bf4-4941-8bba-7ae833c46d79"
+      ],
+      "connections": [],
+      "junction_type": "virtual"
+    }
+  ],
+  "signals": [
+    {
+      "id": "95fe901d-aced-4f40-997c-5c2fb5deeec6",
+      "position": [
+        1849.718928315047,
+        854.0751095953132
+      ],
+      "type": "give_way",
+      "value": null,
+      "speed_unit": "km/h",
+      "road_id": "aafca4e6-770d-49be-96f8-9f2007ac50e0",
+      "name": "OSM Signal 9428779591 (give_way)",
+      "orientation": "+",
+      "h_offset": 0.0,
+      "z_offset": 2.0,
+      "sign_width": 0.9,
+      "sign_height": 0.9,
+      "s_position": 129.70619400304292,
+      "validity_range": null
+    }
+  ],
+  "objects": [
+    {
+      "id": "e7fad310-ff96-4a93-87b7-fb7d65b02300",
+      "position": [
+        2224.7568498235196,
+        -744.083275783807
+      ],
+      "points": [
+        [
+          2115.2461589872837,
+          -706.986864104867
+        ],
+        [
+          2223.494595438242,
+          -673.5066465139389
+        ],
+        [
+          2230.215516909957,
+          -688.2045806497335
+        ],
+        [
+          2259.1026334017515,
+          -751.5962788909674
+        ],
+        [
+          2313.00804489851,
+          -734.9243478029966
+        ],
+        [
+          2351.818625897169,
+          -820.1633807867765
+        ],
+        [
+          2189.92306406796,
+          -870.2972434163094
+        ],
+        [
+          2115.2461589872837,
+          -706.986864104867
+        ]
+      ],
+      "type": "building",
+      "name": "OSM Building 1427591062",
+      "orientation": 0.0,
+      "z_offset": 0.0,
+      "dimensions": {
+        "width": 11.386646093118816,
+        "length": 9.958341187624447,
+        "height": 6.0
+      },
+      "road_id": "13ac7d97-f608-42b7-8f79-55b2dbe59fe1",
+      "s_position": 3826.771456691202,
+      "t_offset": 1292.134008599933,
+      "validity_length": null
+    }
+  ],
+  "control_points": [
+    {
+      "pixel_x": 2893.7736205461174,
+      "pixel_y": 848.8916701114586,
+      "longitude": 12.895378639918784,
+      "latitude": 57.74224960674061,
+      "name": "aruco_0a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 1013.6618000070512,
+      "pixel_y": 1119.6775268866172,
+      "longitude": 12.894386331984077,
+      "latitude": 57.742858303833906,
+      "name": "aruco_17a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 1356.4024833122292,
+      "pixel_y": 836.3790892425163,
+      "longitude": 12.894721275250026,
+      "latitude": 57.74281531399519,
+      "name": "aruco_24a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 2914.120503994209,
+      "pixel_y": 813.9015435803543,
+      "longitude": 12.895413625022556,
+      "latitude": 57.74224863375953,
+      "name": "aruco_0c",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 977.6202984643286,
+      "pixel_y": 1154.851560082983,
+      "longitude": 12.894351519345468,
+      "latitude": 57.74286163338458,
+      "name": "arocu_17c",
+      "is_validation": true
+    },
+    {
+      "pixel_x": 1390.8495826215208,
+      "pixel_y": 803.1815285911644,
+      "longitude": 12.894756245159218,
+      "latitude": 57.74281221061146,
+      "name": "aruco_24c",
+      "is_validation": true
+    }
+  ],
+  "right_hand_traffic": true,
+  "transform_method": "affine",
+  "country_code": "se",
+  "map_name": "BorasEkas",
+  "openstreetmap_used": true,
+  "georef_validation": {
+    "transform_method": "affine",
+    "reprojection_error": {
+      "rmse_pixels": 1.7694777052107246e-08,
+      "mean_error_pixels": 1.6109912832655114e-08,
+      "max_error_pixels": 2.3611110464348184e-08,
+      "rmse_meters": 0.15917065214805648,
+      "mean_error_meters": 0.1261997412056858,
+      "max_error_meters": 0.22477781812249906,
+      "per_point_errors": [
+        {
+          "name": "aruco_0a",
+          "error_pixels": 2.3611110464348184e-08,
+          "error_meters": 0.221594743449604
+        },
+        {
+          "name": "aruco_17a",
+          "error_pixels": 1.1412071161930454e-08,
+          "error_meters": 0.0276216806326691
+        },
+        {
+          "name": "aruco_24a",
+          "error_pixels": 6.583079801426414e-09,
+          "error_meters": 0.030804722617971046
+        },
+        {
+          "name": "aruco_0c",
+          "error_pixels": 2.2833389902915408e-08,
+          "error_meters": 0.22477781812249906
+        }
+      ]
+    },
+    "validation_error": {
+      "rmse_pixels": 4.208062528579128,
+      "mean_error_pixels": 3.9941661459524713,
+      "max_error_pixels": 5.31871400954931,
+      "rmse_meters": 0.1961266913838603,
+      "mean_error_meters": 0.1858585687066365,
+      "max_error_meters": 0.2484866096427895,
+      "per_point_errors": [
+        {
+          "name": "arocu_17c",
+          "error_pixels": 5.31871400954931,
+          "error_meters": 0.2484866096427895
+        },
+        {
+          "name": "aruco_24c",
+          "error_pixels": 2.6696182823556325,
+          "error_meters": 0.1232305277704835
+        }
+      ]
+    },
+    "scale_factors": {
+      "x": 0.048131746867467,
+      "y": 0.05060374501818737
+    },
+    "num_training_points": 4,
+    "num_validation_points": 2
+  },
+  "uncertainty_grid_cache": null,
+  "uncertainty_grid_resolution": [
+    50,
+    50
+  ],
+  "uncertainty_bootstrap_grid": null,
+  "uncertainty_last_computed": null,
+  "mc_sigma_pixels": 1.5,
+  "baseline_uncertainty_m": 0.05,
+  "gcp_suggestion_threshold": 0.2
+}

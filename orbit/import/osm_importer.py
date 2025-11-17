@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Set, Dict
 from enum import Enum
 
-from utils import CoordinateTransformer
-from models import Project, Road, Junction, Signal, RoadObject
-from models.polyline import Polyline
+from orbit.utils import CoordinateTransformer
+from orbit.models import Project, Road, Junction, Signal, RoadObject
+from orbit.models.polyline import Polyline
 
 from .osm_query import OverpassAPIClient, OverpassAPIError
 from .osm_parser import OSMParser, OSMData

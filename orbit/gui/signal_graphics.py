@@ -6,7 +6,7 @@ Creates simple placeholder icons that can be replaced with actual sign images la
 
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen, QFont, QPainterPath
 from PyQt6.QtCore import Qt, QPointF
-from models.signal import SignalType
+from orbit.models.signal import SignalType
 
 
 def create_give_way_sign(size: int = 48) -> QPixmap:

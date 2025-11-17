@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (QFormLayout,
                             QLineEdit, QDoubleSpinBox, QComboBox, QPushButton,
                             QLabel, QGroupBox, QCheckBox, QVBoxLayout)
 from PyQt6.QtCore import Qt
-from models.signal import Signal, SignalType, SpeedUnit
-from gui.base_dialog import BaseDialog
+from orbit.models.signal import Signal, SignalType, SpeedUnit
+from orbit.gui.base_dialog import BaseDialog
 
 
 class SignalPropertiesDialog(BaseDialog):
@@ -215,7 +215,7 @@ class SignalPropertiesDialog(BaseDialog):
                         if self.project.has_georeferencing():
                             # Compute scale directly from control points
                             try:
-                                from export import create_transformer
+                                from orbit.export import create_transformer
                                 transformer = create_transformer(self.project.control_points)
                                 if transformer:
                                     scale_x, scale_y = transformer.get_scale_factor()

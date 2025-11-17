@@ -8,8 +8,8 @@ from PyQt6.QtWidgets import (
     QLineEdit, QFileDialog, QMessageBox, QVBoxLayout
 )
 from PyQt6.QtCore import Qt
-from gui.base_dialog import BaseDialog
-from gui.message_helpers import show_warning
+from orbit.gui.base_dialog import BaseDialog
+from orbit.gui.message_helpers import show_warning
 
 
 class OpenDriveImportDialog(BaseDialog):

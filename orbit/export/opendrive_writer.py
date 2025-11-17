@@ -9,10 +9,10 @@ from datetime import datetime
 from lxml import etree
 import numpy as np
 
-from models import Project, Road, Junction, Polyline, LineType, RoadMarkType, Signal
-from models.signal import SignalType, SpeedUnit
-from models.object import RoadObject, ObjectType
-from utils import CoordinateTransformer
+from orbit.models import Project, Road, Junction, Polyline, LineType, RoadMarkType, Signal
+from orbit.models.signal import SignalType, SpeedUnit
+from orbit.models.object import RoadObject, ObjectType
+from orbit.utils import CoordinateTransformer
 from .curve_fitting import CurveFitter, GeometryElement, GeometryType
 from .lane_analyzer import LaneAnalyzer, BoundaryInfo
 
@@ -451,7 +451,7 @@ class OpenDriveWriter:
         boundary_info: Optional[BoundaryInfo] = None
     ) -> etree.Element:
         """Create a single lane element with data-driven road mark."""
-        from models import Lane
+        from orbit.models import Lane
 
         lane = etree.Element('lane')
         lane.set('id', str(lane_obj.id))

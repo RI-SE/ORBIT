@@ -11,7 +11,7 @@ from PyQt6.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QFont
 from PyQt6.QtCore import QRectF, Qt
 import numpy as np
 
-from utils.uncertainty_estimator import UncertaintyEstimator
+from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
 
 class UncertaintyOverlay(QGraphicsItem):

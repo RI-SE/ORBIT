@@ -9,14 +9,14 @@ from typing import List, Dict, Tuple, Optional, Set
 from collections import defaultdict
 import uuid
 
-from utils import CoordinateTransformer
-from models import ControlPoint, Road, Junction, Signal, RoadObject
-from models.polyline import Polyline, LineType, RoadMarkType
-from models.road import RoadType
-from models.lane import Lane, LaneType
-from models.lane_section import LaneSection
-from models.signal import SignalType
-from models.object import ObjectType
+from orbit.utils import CoordinateTransformer
+from orbit.models import ControlPoint, Road, Junction, Signal, RoadObject
+from orbit.models.polyline import Polyline, LineType, RoadMarkType
+from orbit.models.road import RoadType
+from orbit.models.lane import Lane, LaneType
+from orbit.models.lane_section import LaneSection
+from orbit.models.signal import SignalType
+from orbit.models.object import ObjectType
 
 from .osm_parser import OSMData, OSMWay, OSMNode
 from .osm_mappings import (
@@ -718,7 +718,7 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
         path_width = get_path_width_from_osm(osm_way.tags, lane_type)
 
         # Create road with path type
-        from models.road import LaneInfo
+        from orbit.models.road import LaneInfo
         road = Road(
             name=road_name,
             road_type=RoadType.TOWN,  # Paths are typically in town/urban areas
@@ -804,7 +804,7 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
         lane_width = get_lane_width_for_highway(highway, default_lane_width)
 
     # Create road with lane info
-    from models.road import LaneInfo
+    from orbit.models.road import LaneInfo
     road = Road(
         name=road_name,
         road_type=RoadType[get_road_type_for_highway(highway).upper()],

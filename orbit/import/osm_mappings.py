@@ -2,9 +2,9 @@
 Mappings between OpenStreetMap tags and ORBIT/OpenDrive constructs.
 """
 
-from models.signal import SignalType
-from models.object import ObjectType
-from models.lane import LaneType
+from orbit.models.signal import SignalType
+from orbit.models.object import ObjectType
+from orbit.models.lane import LaneType
 
 
 # OSM highway types to OpenDrive road types

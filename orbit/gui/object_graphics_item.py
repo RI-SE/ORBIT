@@ -5,8 +5,8 @@ Graphics item for displaying roadside objects on the map.
 from PyQt6.QtWidgets import QGraphicsItemGroup, QGraphicsPathItem, QGraphicsItem
 from PyQt6.QtGui import QPen, QColor, QPainter, QBrush
 from PyQt6.QtCore import Qt, QPointF
-from models.object import RoadObject, ObjectType
-from gui.object_graphics import (
+from orbit.models.object import RoadObject, ObjectType
+from orbit.gui.object_graphics import (
     get_object_color, create_lamppost_path, create_guardrail_path,
     create_polygon_path, create_building_path, create_tree_circle_path,
     create_cone_path, create_bush_path, draw_dimension_label, rotate_path

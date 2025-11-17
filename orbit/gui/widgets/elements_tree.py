@@ -13,8 +13,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 
-from models import Project, Junction, Signal
-from gui.message_helpers import ask_yes_no
+from orbit.models import Project, Junction, Signal
+from orbit.gui.message_helpers import ask_yes_no
 
 
 class ElementsTreeWidget(QWidget):
@@ -105,7 +105,7 @@ class ElementsTreeWidget(QWidget):
 
     def create_signal_item(self, signal: Signal) -> QTreeWidgetItem:
         """Create a tree item for a signal."""
-        from models.signal import SignalType
+        from orbit.models.signal import SignalType
 
         # Build display text
         display_name = signal.get_display_name()
@@ -126,7 +126,7 @@ class ElementsTreeWidget(QWidget):
 
     def create_object_item(self, obj) -> QTreeWidgetItem:
         """Create a tree item for an object."""
-        from models.object import RoadObject
+        from orbit.models.object import RoadObject
 
         # Build display text
         display_name = obj.get_display_name()
@@ -210,7 +210,7 @@ class ElementsTreeWidget(QWidget):
 
     def edit_signal(self, signal_id: str):
         """Edit a signal's properties."""
-        from gui.signal_properties_dialog import SignalPropertiesDialog
+        from orbit.gui.signal_properties_dialog import SignalPropertiesDialog
 
         signal = self.project.get_signal(signal_id)
         if signal:
@@ -228,7 +228,7 @@ class ElementsTreeWidget(QWidget):
 
     def edit_object(self, object_id: str):
         """Edit an object's properties."""
-        from gui.object_properties_dialog import ObjectPropertiesDialog
+        from orbit.gui.object_properties_dialog import ObjectPropertiesDialog
 
         obj = self.project.get_object(object_id)
         if obj:

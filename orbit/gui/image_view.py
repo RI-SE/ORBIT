@@ -16,11 +16,11 @@ from PyQt6.QtGui import (
     QWheelEvent, QMouseEvent, QKeyEvent, QFont
 )
 
-from models import Polyline, Project, Junction, LineType, RoadMarkType, Road, Signal, RoadObject, ObjectType
-from utils.geometry import create_lane_polygon
-from gui.signal_graphics_item import SignalGraphicsItem
-from gui.object_graphics_item import ObjectGraphicsItem
-from gui.message_helpers import show_warning, ask_yes_no
+from orbit.models import Polyline, Project, Junction, LineType, RoadMarkType, Road, Signal, RoadObject, ObjectType
+from orbit.utils.geometry import create_lane_polygon
+from orbit.gui.signal_graphics_item import SignalGraphicsItem
+from orbit.gui.object_graphics_item import ObjectGraphicsItem
+from orbit.gui.message_helpers import show_warning, ask_yes_no
 
 
 class PolylineGraphicsItem:
@@ -764,7 +764,7 @@ class RoadLanesGraphicsItem:
 
                 if polygon_points and len(polygon_points) >= 3:
                     # Create interactive polygon
-                    from gui.image_view import ImageView
+                    from orbit.gui.image_view import ImageView
                     parent_view = None
                     # Find parent ImageView from scene
                     if self.scene.views():
@@ -1162,7 +1162,7 @@ class ImageView(QGraphicsView):
 
     def add_control_point_graphics(self, control_point):
         """Add a control point marker to the graphics scene."""
-        from models import ControlPoint
+        from orbit.models import ControlPoint
 
         # Draw a dark blue dot at the control point location
         x, y = control_point.pixel_x, control_point.pixel_y
@@ -1474,7 +1474,7 @@ class ImageView(QGraphicsView):
 
         if use_metric:
             try:
-                from export import create_transformer
+                from orbit.export import create_transformer
                 transformer = create_transformer(self.project.control_points)
                 if transformer:
                     # Convert all points to meters first
@@ -1866,8 +1866,8 @@ class ImageView(QGraphicsView):
             return ("No georef", QColor(255, 255, 255, 200))
 
         try:
-            from utils import create_transformer, TransformMethod
-            from utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get transform method from project
             method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
@@ -2062,7 +2062,7 @@ class ImageView(QGraphicsView):
         # Check if we have georeferencing to convert to meters
         if self.project and self.project.has_georeferencing():
             try:
-                from utils import create_transformer, TransformMethod
+                from orbit.utils import create_transformer, TransformMethod
 
                 # Get transform method from project
                 method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
