@@ -4,7 +4,7 @@
     "created": "2025-11-06T07:41:10.480803",
     "modified": "2025-11-13T08:49:16.048374"
   },
-  "image_path": "/home/fredrik/fwrise/SAVANT/orbit/examples/out3_stabilized_vidrectify_first.jpg",
+  "image_path": "examples/out3_stabilized_vidrectify_first.jpg",
   "polylines": [
     {
       "id": "e0f40690-363f-4f38-9baa-b56e97d59761",

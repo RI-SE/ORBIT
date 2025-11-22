@@ -143,7 +143,7 @@ class OpenDriveWriter:
         # Add tool information as userData
         tool_data = etree.SubElement(header, 'userData')
         tool_data.set('code', 'tool')
-        tool_data.text = 'Produced by ORBIT (https://github.com/fwrise/SAVANT/tree/main/orbit)'
+        tool_data.text = 'Produced by ORBIT (https://github.com/fwrise/ORBIT)'
 
         # Add license information as userData
         # License userData is always included

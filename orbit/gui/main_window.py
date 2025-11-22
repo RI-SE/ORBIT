@@ -1839,8 +1839,7 @@ class MainWindow(QMainWindow):
         )
         msg_box.setInformativeText(
             "A tool for annotating roads in drone/aerial/satellite imagery "
-            "and exporting to ASAM OpenDrive format.\n\n"
-            "Part of the SAVANT Tools project."
+            "and exporting to ASAM OpenDrive format."
         )
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg_box.exec()

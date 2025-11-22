@@ -114,5 +114,3 @@ The export process:
 9. Supports configurable traffic direction (right/left-hand)
 
 ## License
-
-Part of the SAVANT Tools project.

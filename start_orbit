@@ -80,7 +80,7 @@ def main():
     # Create Qt application
     app = QApplication(sys.argv)
     app.setApplicationName("ORBIT")
-    app.setOrganizationName("SAVANT")
+    app.setOrganizationName("RISE Research Institutes of Sweden")
 
     # Create and show main window
     main_window = MainWindow(image_path=image_path, verbose=args.verbose)
