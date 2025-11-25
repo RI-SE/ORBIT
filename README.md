@@ -40,13 +40,31 @@ A PyQt6-based GUI application for annotating roads in drone/aerial/satellite ima
 
 ## Installation
 
+### Using uv (recommended)
+
 ```bash
-# Create virtual environment (recommended)
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies
+uv sync
+
+# Install with dev dependencies (for testing)
+uv sync --extra dev
+```
+
+### Using pip (alternative)
+
+```bash
+# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install from pyproject.toml
+pip install -e .
+
+# Install with dev dependencies
+pip install -e ".[dev]"
 ```
 
 ## Usage
