@@ -109,7 +109,7 @@ class Project:
         """Initialize metadata if not provided."""
         if not self.metadata:
             self.metadata = {
-                'version': '0.2.0',
+                'version': '0.3.0',
                 'created': datetime.now().isoformat(),
                 'modified': datetime.now().isoformat()
             }
@@ -326,7 +326,27 @@ class Project:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Project':
-        """Create project from dictionary."""
+        """
+        Create project from dictionary.
+
+        Handles backward compatibility with older project versions.
+        Old projects (v0.2.x) will be automatically migrated to v0.3.0 format.
+        """
+        # Check version and perform migration if needed
+        metadata = data.get('metadata', {})
+        version = metadata.get('version', '0.1.0')
+
+        # Migration from v0.2.x to v0.3.0
+        if version.startswith('0.2') or version.startswith('0.1'):
+            print(f"Migrating project from version {version} to 0.3.0...")
+            # Junction.from_dict() handles backward compatibility automatically
+            # by providing empty lists for new fields (connecting_roads, lane_connections)
+            # Update metadata version
+            metadata['version'] = '0.3.0'
+            data['metadata'] = metadata
+            print("Migration complete. Junctions will have empty connection lists.")
+            print("Use 'Auto-Generate Connections' in junction dialogs to populate connections.")
+
         image_path = data.get('image_path')
         if image_path:
             image_path = Path(image_path)
@@ -389,7 +409,7 @@ class Project:
         self.control_points.clear()
         self.image_path = None
         self.metadata = {
-            'version': '0.2.0',
+            'version': '0.3.0',
             'created': datetime.now().isoformat(),
             'modified': datetime.now().isoformat()
         }
