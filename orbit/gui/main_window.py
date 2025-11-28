@@ -228,6 +228,12 @@ class MainWindow(QMainWindow):
         self.toggle_soffsets_action.setChecked(False)  # S-offsets hidden by default
         self.toggle_soffsets_action.triggered.connect(self.toggle_soffset_visibility)
 
+        self.toggle_junction_debug_action = QAction("Show &Junction Debug", self)
+        self.toggle_junction_debug_action.setStatusTip("Show debug visualization for junction connections (endpoints, headings, paths)")
+        self.toggle_junction_debug_action.setCheckable(True)
+        self.toggle_junction_debug_action.setChecked(False)  # Hidden by default
+        self.toggle_junction_debug_action.triggered.connect(self.toggle_junction_debug_visibility)
+
         # Uncertainty overlay actions
         self.uncertainty_none_action = QAction("None", self)
         self.uncertainty_none_action.setStatusTip("Hide uncertainty overlay")
@@ -336,6 +342,7 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
         view_menu.addAction(self.toggle_lanes_action)
         view_menu.addAction(self.toggle_soffsets_action)
+        view_menu.addAction(self.toggle_junction_debug_action)
         view_menu.addSeparator()
 
         # Uncertainty overlay submenu
@@ -1324,6 +1331,13 @@ class MainWindow(QMainWindow):
         self.image_view.set_soffsets_visible(visible)
         status = "shown" if visible else "hidden"
         self.statusBar().showMessage(f"S-offset labels {status}")
+
+    def toggle_junction_debug_visibility(self):
+        """Toggle visibility of junction debug graphics."""
+        visible = self.toggle_junction_debug_action.isChecked()
+        self.image_view.set_junction_debug_visible(visible)
+        status = "shown" if visible else "hidden"
+        self.statusBar().showMessage(f"Junction debug visualization {status}")
 
     def set_uncertainty_overlay(self, mode: str):
         """

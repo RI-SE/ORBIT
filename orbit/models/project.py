@@ -95,6 +95,7 @@ class Project:
     country_code: str = 'se'  # Default to Sweden
     map_name: str = ''  # Name for OpenDrive export (defaults to image filename when loaded)
     openstreetmap_used: bool = False  # Flag for OpenStreetMap attribution
+    junction_offset_distance_meters: float = 8.0  # Distance to offset road endpoints from junction centers (meters)
     georef_validation: Dict[str, Any] = field(default_factory=dict)
     uncertainty_grid_cache: Optional[List[List[float]]] = None  # Cached uncertainty grid
     uncertainty_grid_resolution: Tuple[int, int] = (50, 50)  # Grid resolution
@@ -109,7 +110,7 @@ class Project:
         """Initialize metadata if not provided."""
         if not self.metadata:
             self.metadata = {
-                'version': '0.3.0',
+                'version': '0.3.1',
                 'created': datetime.now().isoformat(),
                 'modified': datetime.now().isoformat()
             }
@@ -314,6 +315,7 @@ class Project:
             'country_code': self.country_code,
             'map_name': self.map_name,
             'openstreetmap_used': self.openstreetmap_used,
+            'junction_offset_distance_meters': self.junction_offset_distance_meters,
             'georef_validation': self.georef_validation,
             'uncertainty_grid_cache': self.uncertainty_grid_cache,
             'uncertainty_grid_resolution': self.uncertainty_grid_resolution,
@@ -336,16 +338,19 @@ class Project:
         metadata = data.get('metadata', {})
         version = metadata.get('version', '0.1.0')
 
-        # Migration from v0.2.x to v0.3.0
-        if version.startswith('0.2') or version.startswith('0.1'):
-            print(f"Migrating project from version {version} to 0.3.0...")
+        # Migration from v0.2.x/v0.3.0 to v0.3.1
+        if version.startswith('0.2') or version.startswith('0.1') or version == '0.3.0':
+            if version != '0.3.0':
+                print(f"Migrating project from version {version} to 0.3.1...")
             # Junction.from_dict() handles backward compatibility automatically
             # by providing empty lists for new fields (connecting_roads, lane_connections)
+            # Polyline.from_dict() handles osm_node_ids (optional field, defaults to None)
             # Update metadata version
-            metadata['version'] = '0.3.0'
+            metadata['version'] = '0.3.1'
             data['metadata'] = metadata
-            print("Migration complete. Junctions will have empty connection lists.")
-            print("Use 'Auto-Generate Connections' in junction dialogs to populate connections.")
+            if version != '0.3.0':
+                print("Migration complete. Junctions will have empty connection lists.")
+                print("Use 'Auto-Generate Connections' in junction dialogs to populate connections.")
 
         image_path = data.get('image_path')
         if image_path:
@@ -371,6 +376,7 @@ class Project:
             country_code=data.get('country_code', 'se'),
             map_name=data.get('map_name', ''),  # Default to empty string for backward compatibility
             openstreetmap_used=data.get('openstreetmap_used', False),  # Default to False
+            junction_offset_distance_meters=data.get('junction_offset_distance_meters', 8.0),  # Default to 8.0m
             georef_validation=data.get('georef_validation', {}),
             uncertainty_grid_cache=data.get('uncertainty_grid_cache'),
             uncertainty_grid_resolution=tuple(data.get('uncertainty_grid_resolution', [50, 50])),
@@ -409,7 +415,7 @@ class Project:
         self.control_points.clear()
         self.image_path = None
         self.metadata = {
-            'version': '0.3.0',
+            'version': '0.3.1',
             'created': datetime.now().isoformat(),
             'modified': datetime.now().isoformat()
         }

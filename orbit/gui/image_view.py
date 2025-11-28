@@ -986,6 +986,10 @@ class ImageView(QGraphicsView):
         self.soffsets_visible = False
         self.soffset_labels: Dict[str, List] = {}  # polyline_id -> list of (text_item, bg_item) tuples
 
+        # Junction debug visualization
+        self.junction_debug_visible = False
+        self.junction_debug_items: Dict[str, List] = {}  # junction_id -> list of graphics items
+
         # View settings
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
@@ -1627,6 +1631,99 @@ class ImageView(QGraphicsView):
                 self.safe_remove_item(bg_item)
         self.soffset_labels.clear()
 
+    def set_junction_debug_visible(self, visible: bool):
+        """
+        Set visibility for junction debug graphics.
+
+        Shows road endpoint markers and connection paths for debugging.
+
+        Args:
+            visible: True to show debug graphics, False to hide
+        """
+        self.junction_debug_visible = visible
+
+        if visible:
+            # Create debug graphics for all junctions
+            self._update_all_junction_debug()
+        else:
+            # Hide all debug graphics
+            self._clear_all_junction_debug()
+
+    def _update_all_junction_debug(self):
+        """Create debug graphics for all junctions."""
+        if not self.project:
+            return
+
+        # Clear existing
+        self._clear_all_junction_debug()
+
+        # Build dictionaries for junction analyzer
+        roads_dict = {road.id: road for road in self.project.roads}
+        polylines_dict = {p.id: p for p in self.project.polylines}
+
+        # Create debug graphics for each junction
+        from orbit.gui.junction_debug_graphics import JunctionDebugOverlay
+
+        for junction in self.project.junctions:
+            overlay = JunctionDebugOverlay(junction, roads_dict, polylines_dict)
+            items = overlay.create_graphics_items()
+
+            # Add items to scene
+            for item in items:
+                self.scene.addItem(item)
+
+            # Store for later removal
+            self.junction_debug_items[junction.id] = items
+
+    def _clear_all_junction_debug(self):
+        """Clear all junction debug graphics."""
+        for junction_id in list(self.junction_debug_items.keys()):
+            for item in self.junction_debug_items[junction_id]:
+                self.safe_remove_item(item)
+        self.junction_debug_items.clear()
+
+    def update_junction_debug(self, junction_id: str):
+        """
+        Update debug graphics for a specific junction.
+
+        Args:
+            junction_id: ID of junction to update
+        """
+        if not self.junction_debug_visible or not self.project:
+            return
+
+        # Find the junction
+        junction = None
+        for j in self.project.junctions:
+            if j.id == junction_id:
+                junction = j
+                break
+
+        if not junction:
+            return
+
+        # Clear old debug graphics for this junction
+        if junction_id in self.junction_debug_items:
+            for item in self.junction_debug_items[junction_id]:
+                self.safe_remove_item(item)
+            del self.junction_debug_items[junction_id]
+
+        # Create new debug graphics
+        roads_dict = {road.id: road for road in self.project.roads}
+        polylines_dict = {p.id: p for p in self.project.polylines}
+
+        from orbit.gui.junction_debug_graphics import JunctionDebugOverlay
+
+        overlay = JunctionDebugOverlay(junction, roads_dict, polylines_dict)
+        items = overlay.create_graphics_items()
+
+        # Add items to scene
+        for item in items:
+            self.scene.addItem(item)
+
+        # Store for later removal
+        self.junction_debug_items[junction_id] = items
+
     def update_polyline(self, polyline_id: str):
         """Update polyline graphics after properties change."""
         if polyline_id in self.polyline_items:
@@ -1648,9 +1745,13 @@ class ImageView(QGraphicsView):
         Returns:
             True if item was removed, False if item was None or not in scene
         """
-        if item and item.scene() == self.scene:
-            self.scene.removeItem(item)
-            return True
+        try:
+            if item and item.scene() == self.scene:
+                self.scene.removeItem(item)
+                return True
+        except RuntimeError:
+            # C++ object has been deleted already (e.g., child of a removed parent item)
+            pass
         return False
 
     def safe_remove_items(self, items: List[QGraphicsItem]):

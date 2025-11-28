@@ -6,7 +6,7 @@ traffic side, and country code.
 """
 
 from PyQt6.QtWidgets import (
-    QComboBox, QLabel, QLineEdit
+    QComboBox, QDoubleSpinBox, QLabel, QLineEdit
 )
 
 from orbit.models import Project
@@ -97,6 +97,27 @@ class PreferencesDialog(BaseDialog):
         traffic_layout.addRow("Country Code:", self.country_code_edit)
         traffic_layout.addRow("", country_help)
 
+        # Junction settings section
+        junction_layout = self.add_form_group("Junction Settings")
+
+        # Junction offset distance
+        self.junction_offset_spin = QDoubleSpinBox()
+        self.junction_offset_spin.setRange(0.0, 50.0)  # 0-50 meters
+        self.junction_offset_spin.setSingleStep(1.0)
+        self.junction_offset_spin.setDecimals(1)
+        self.junction_offset_spin.setSuffix(" m")
+        self.junction_offset_spin.setToolTip("Distance to offset road endpoints from junction centers when importing from OSM")
+
+        junction_offset_help = QLabel(
+            "<small>When importing from OSM, road endpoints are moved away from junction centers "
+            "by this distance to create space for connecting roads. Typical values: 5-15m.</small>"
+        )
+        junction_offset_help.setWordWrap(True)
+        junction_offset_help.setStyleSheet("QLabel { color: gray; }")
+
+        junction_layout.addRow("Junction Offset Distance:", self.junction_offset_spin)
+        junction_layout.addRow("", junction_offset_help)
+
         # Create standard OK/Cancel buttons
         self.create_button_box()
 
@@ -120,6 +141,9 @@ class PreferencesDialog(BaseDialog):
         # Country code
         self.country_code_edit.setText(self.project.country_code.lower())
 
+        # Junction offset distance
+        self.junction_offset_spin.setValue(self.project.junction_offset_distance_meters)
+
     def accept(self):
         """Save preferences and close dialog."""
         # Save map name
@@ -133,5 +157,8 @@ class PreferencesDialog(BaseDialog):
 
         # Save country code
         self.project.country_code = self.country_code_edit.text().strip().lower()
+
+        # Save junction offset distance
+        self.project.junction_offset_distance_meters = self.junction_offset_spin.value()
 
         super().accept()

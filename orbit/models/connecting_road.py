@@ -21,7 +21,7 @@ class ConnectingRoad:
     a junction, including the geometry and lane configuration.
 
     Attributes:
-        id: Unique identifier for this connecting road
+        id: Unique identifier for this connecting road (UUID string)
         path: List of (x, y) points in pixel coordinates defining the path
         lane_count_left: Number of lanes on left side (positive IDs: 1, 2, 3...)
         lane_count_right: Number of lanes on right side (negative IDs: -1, -2, -3...)
@@ -30,6 +30,7 @@ class ConnectingRoad:
         successor_road_id: ID of the outgoing road (road exiting junction)
         contact_point_start: Contact point at start ('start' or 'end' of predecessor)
         contact_point_end: Contact point at end ('start' or 'end' of successor)
+        road_id: Optional numeric OpenDRIVE road ID (assigned during export)
     """
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     path: List[Tuple[float, float]] = field(default_factory=list)
@@ -44,6 +45,9 @@ class ConnectingRoad:
     successor_road_id: str = ""
     contact_point_start: str = "end"   # Where predecessor connects
     contact_point_end: str = "start"   # Where successor connects
+
+    # OpenDRIVE export
+    road_id: Optional[int] = None  # Numeric road ID for OpenDRIVE (assigned during export)
 
     def get_length_pixels(self) -> float:
         """
@@ -109,7 +113,7 @@ class ConnectingRoad:
         Returns:
             Dictionary representation of the connecting road
         """
-        return {
+        data = {
             'id': self.id,
             'path': [[x, y] for x, y in self.path],
             'lane_count_left': self.lane_count_left,
@@ -120,6 +124,12 @@ class ConnectingRoad:
             'contact_point_start': self.contact_point_start,
             'contact_point_end': self.contact_point_end
         }
+
+        # Only include road_id if it's set
+        if self.road_id is not None:
+            data['road_id'] = self.road_id
+
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ConnectingRoad':
@@ -146,6 +156,7 @@ class ConnectingRoad:
         cr.successor_road_id = data.get('successor_road_id', '')
         cr.contact_point_start = data.get('contact_point_start', 'end')
         cr.contact_point_end = data.get('contact_point_end', 'start')
+        cr.road_id = data.get('road_id')  # Optional, defaults to None
 
         return cr
 

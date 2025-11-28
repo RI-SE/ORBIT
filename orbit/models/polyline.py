@@ -47,6 +47,7 @@ class Polyline:
         elevations: Optional elevation values in meters for each point (from OpenDrive import)
         s_offsets: Optional s-coordinate values along polyline for each point (for display)
         opendrive_id: Optional OpenDrive road/element ID (for round-trip consistency)
+        osm_node_ids: Optional OSM node IDs for each point (from OSM import, enables road splitting)
     """
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     points: List[Tuple[float, float]] = field(default_factory=list)
@@ -57,6 +58,7 @@ class Polyline:
     elevations: Optional[List[float]] = None  # Elevation in meters for each point (if available)
     s_offsets: Optional[List[float]] = None  # S-coordinate for each point (if available)
     opendrive_id: Optional[str] = None  # OpenDrive ID for round-trip import/export
+    osm_node_ids: Optional[List[Optional[int]]] = None  # OSM node IDs for each point (from OSM import)
 
     def add_point(self, x: float, y: float) -> None:
         """Add a point to the end of the polyline."""
@@ -114,6 +116,8 @@ class Polyline:
             data['s_offsets'] = self.s_offsets
         if self.opendrive_id is not None:
             data['opendrive_id'] = self.opendrive_id
+        if self.osm_node_ids is not None:
+            data['osm_node_ids'] = self.osm_node_ids
         return data
 
     @classmethod
@@ -142,7 +146,8 @@ class Polyline:
             road_mark_type=road_mark_type,
             elevations=data.get('elevations'),
             s_offsets=data.get('s_offsets'),
-            opendrive_id=data.get('opendrive_id')
+            opendrive_id=data.get('opendrive_id'),
+            osm_node_ids=data.get('osm_node_ids')
         )
 
     def __repr__(self) -> str:

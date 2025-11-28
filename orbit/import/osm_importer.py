@@ -7,6 +7,7 @@ Coordinates the full import process: query, parse, convert, and create ORBIT obj
 from dataclasses import dataclass, field
 from typing import List, Optional, Set, Dict
 from enum import Enum
+import importlib
 
 from orbit.utils import CoordinateTransformer
 from orbit.models import Project, Road, Junction, Signal, RoadObject
@@ -25,6 +26,7 @@ from .osm_to_orbit import (
     create_signal_from_osm,
     create_object_from_osm,
 )
+from .junction_analyzer import generate_junction_connections
 
 
 class ImportMode(Enum):
@@ -180,19 +182,40 @@ class OSMImporter:
         # Step 5: Import roads
         roads, polylines_dict = self._import_roads(osm_data, options, result)
 
-        # Step 6: Detect and set predecessor/successor links
+        # Step 6: Detect junction node IDs (for road splitting)
+        if options.import_junctions:
+            import importlib
+            osm_to_orbit = importlib.import_module('orbit.import.osm_to_orbit')
+            detect_junction_node_ids_from_osm = osm_to_orbit.detect_junction_node_ids_from_osm
+            split_roads_at_junction_nodes = osm_to_orbit.split_roads_at_junction_nodes
+
+            junction_node_ids = detect_junction_node_ids_from_osm(osm_data, self.road_to_osm_way)
+
+            if options.verbose:
+                print(f"DEBUG: Detected {len(junction_node_ids)} junction nodes for road splitting")
+
+            # Step 7: Split roads at junction nodes (BEFORE linking!)
+            if junction_node_ids:
+                roads, polylines_dict, updated_road_to_osm_way = split_roads_at_junction_nodes(
+                    roads, polylines_dict, junction_node_ids,
+                    road_to_osm_way=self.road_to_osm_way,
+                    verbose=options.verbose
+                )
+
+                # Update project with split roads and polylines
+                self.project.roads = roads
+                self.project.polylines = list(polylines_dict.values())
+
+                # Update road_to_osm_way mapping with split roads
+                if updated_road_to_osm_way is not None:
+                    self.road_to_osm_way = updated_road_to_osm_way
+
+        # Step 8: Detect and set predecessor/successor links (after splitting!)
         detect_road_links(roads, polylines_dict, tolerance=5.0)
 
-        # Step 7: Import junctions using OSM node IDs
+        # Step 9: Import junctions and generate connections
         if options.import_junctions:
             junctions = self._import_junctions_from_osm(osm_data, options, result)
-
-            # Split road sections at junctions
-            for road in roads:
-                if road.centerline_id:
-                    centerline = polylines_dict.get(road.centerline_id)
-                    if centerline:
-                        split_road_at_junctions(road, centerline, junctions)
         else:
             junctions = []
 
@@ -248,19 +271,40 @@ class OSMImporter:
         # Step 2: Import roads
         roads, polylines_dict = self._import_roads(osm_data, options, result)
 
-        # Step 3: Detect and set predecessor/successor links
+        # Step 3: Detect junction node IDs (for road splitting)
+        if options.import_junctions:
+            import importlib
+            osm_to_orbit = importlib.import_module('orbit.import.osm_to_orbit')
+            detect_junction_node_ids_from_osm = osm_to_orbit.detect_junction_node_ids_from_osm
+            split_roads_at_junction_nodes = osm_to_orbit.split_roads_at_junction_nodes
+
+            junction_node_ids = detect_junction_node_ids_from_osm(osm_data, self.road_to_osm_way)
+
+            if options.verbose:
+                print(f"DEBUG: Detected {len(junction_node_ids)} junction nodes for road splitting")
+
+            # Step 4: Split roads at junction nodes (BEFORE linking!)
+            if junction_node_ids:
+                roads, polylines_dict, updated_road_to_osm_way = split_roads_at_junction_nodes(
+                    roads, polylines_dict, junction_node_ids,
+                    road_to_osm_way=self.road_to_osm_way,
+                    verbose=options.verbose
+                )
+
+                # Update project with split roads and polylines
+                self.project.roads = roads
+                self.project.polylines = list(polylines_dict.values())
+
+                # Update road_to_osm_way mapping with split roads
+                if updated_road_to_osm_way is not None:
+                    self.road_to_osm_way = updated_road_to_osm_way
+
+        # Step 5: Detect and set predecessor/successor links (after splitting!)
         detect_road_links(roads, polylines_dict, tolerance=5.0)
 
-        # Step 4: Import junctions using OSM node IDs
+        # Step 6: Import junctions and generate connections
         if options.import_junctions:
             junctions = self._import_junctions_from_osm(osm_data, options, result)
-
-            # Split road sections at junctions
-            for road in roads:
-                if road.centerline_id:
-                    centerline = polylines_dict.get(road.centerline_id)
-                    if centerline:
-                        split_road_at_junctions(road, centerline, junctions)
         else:
             junctions = []
 
@@ -348,6 +392,143 @@ class OSMImporter:
             if options.verbose:
                 print(f"DEBUG: Added junction '{junction.name}' at {junction.center_point} connecting {len(junction.connected_road_ids)} roads")
 
+        # IMPORTANT ORDER: Analyze connections BEFORE offsetting endpoints
+        # This way we detect which roads connect while they're still at the junction center
+
+        roads_dict = {road.id: road for road in self.project.roads}
+        polylines_dict = {p.id: p for p in self.project.polylines}
+
+        # Step 1: Analyze junction geometry and detect connection patterns (before offsetting)
+        if junctions and options.verbose:
+            print(f"DEBUG: Analyzing geometry for {len(junctions)} junctions before offsetting...")
+
+        # Import junction_analyzer to access analysis functions
+        import importlib
+        junction_analyzer_module = importlib.import_module('orbit.import.junction_analyzer')
+        analyze_junction_geometry = junction_analyzer_module.analyze_junction_geometry
+        detect_connection_patterns = junction_analyzer_module.detect_connection_patterns
+        filter_unlikely_connections = junction_analyzer_module.filter_unlikely_connections
+
+        # Store geometry info and patterns for each junction (before offsetting)
+        junction_patterns = {}
+        for junction in junctions:
+            geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
+            patterns = detect_connection_patterns(geometry_info)
+            patterns = filter_unlikely_connections(patterns, roads_dict)
+            junction_patterns[junction.id] = patterns
+
+        # Step 2: Offset road endpoints from junctions to create space for connecting roads
+        if junctions:
+            osm_to_orbit = importlib.import_module('orbit.import.osm_to_orbit')
+            offset_road_endpoints_from_junctions = osm_to_orbit.offset_road_endpoints_from_junctions
+
+            offset_road_endpoints_from_junctions(
+                roads=self.project.roads,
+                polylines_dict=polylines_dict,
+                junctions=junctions,
+                offset_distance_meters=self.project.junction_offset_distance_meters,
+                transformer=self.transformer,
+                verbose=options.verbose
+            )
+
+            # Update project polylines with modified endpoints
+            self.project.polylines = list(polylines_dict.values())
+
+        # Step 3: Generate connecting roads using pre-detected patterns but with updated (offset) positions
+        if junctions and options.verbose:
+            print(f"DEBUG: Generating connections for {len(junctions)} junctions...")
+
+        # Refresh dicts after offset
+        roads_dict = {road.id: road for road in self.project.roads}
+        polylines_dict = {p.id: p for p in self.project.polylines}
+
+        for junction in junctions:
+            # Use the pre-detected patterns from before offsetting
+            patterns = junction_patterns.get(junction.id, [])
+
+            # Re-analyze geometry to get UPDATED endpoint positions (after offset)
+            # Skip distance check since roads have been offset from junction center
+            geometry_info_updated = analyze_junction_geometry(junction, roads_dict, polylines_dict, skip_distance_check=True)
+
+            # Create endpoint lookup by road_id for quick access
+            endpoint_lookup = {}
+            for endpoint in geometry_info_updated['endpoints']:
+                endpoint_lookup[endpoint.road_id] = endpoint
+
+            # Generate connecting roads using patterns from BEFORE offset but positions from AFTER offset
+            generate_simple_connection_path = junction_analyzer_module.generate_simple_connection_path
+            ConnectingRoad = importlib.import_module('orbit.models.connecting_road').ConnectingRoad
+            LaneConnection = importlib.import_module('orbit.models.lane_connection').LaneConnection
+            generate_lane_links_for_connection = junction_analyzer_module.generate_lane_links_for_connection
+
+            for pattern in patterns:
+                # Get UPDATED endpoints (with offset positions)
+                from_endpoint_updated = endpoint_lookup.get(pattern.from_road_id)
+                to_endpoint_updated = endpoint_lookup.get(pattern.to_road_id)
+
+                if not from_endpoint_updated or not to_endpoint_updated:
+                    continue
+
+                # Calculate average lane width
+                avg_lane_width = (from_endpoint_updated.lane_width + to_endpoint_updated.lane_width) / 2
+
+                # Determine lane count
+                conn_lane_count_right = min(
+                    from_endpoint_updated.right_lane_count if from_endpoint_updated.at_junction == "end" else from_endpoint_updated.left_lane_count,
+                    to_endpoint_updated.right_lane_count if to_endpoint_updated.at_junction == "start" else to_endpoint_updated.left_lane_count
+                )
+                conn_lane_count_left = 0
+
+                # Generate path with UPDATED (offset) positions
+                path = generate_simple_connection_path(
+                    from_pos=from_endpoint_updated.position,
+                    from_heading=from_endpoint_updated.heading,
+                    to_pos=to_endpoint_updated.position,
+                    to_heading=to_endpoint_updated.heading,
+                    num_points=10
+                )
+
+                if not path:
+                    continue
+
+                # Create connecting road
+                connecting_road = ConnectingRoad(
+                    path=path,
+                    lane_count_left=conn_lane_count_left,
+                    lane_count_right=max(1, conn_lane_count_right),
+                    lane_width=avg_lane_width,
+                    predecessor_road_id=pattern.from_road_id,
+                    successor_road_id=pattern.to_road_id,
+                    contact_point_start="end",
+                    contact_point_end="start"
+                )
+
+                junction.add_connecting_road(connecting_road)
+
+                # Generate lane links
+                lane_links = generate_lane_links_for_connection(
+                    from_endpoint_updated,
+                    to_endpoint_updated,
+                    pattern.turn_type
+                )
+
+                for from_lane_id, to_lane_id in lane_links:
+                    lane_connection = LaneConnection(
+                        from_road_id=pattern.from_road_id,
+                        from_lane_id=from_lane_id,
+                        to_road_id=pattern.to_road_id,
+                        to_lane_id=to_lane_id,
+                        connecting_road_id=connecting_road.id,
+                        turn_type=pattern.turn_type,
+                        priority=pattern.priority
+                    )
+                    junction.add_lane_connection(lane_connection)
+
+            if options.verbose:
+                summary = junction.get_connection_summary()
+                print(f"DEBUG: Generated {summary['total_connections']} connections for '{junction.name}': "
+                      f"{summary['straight']} straight, {summary['left']} left, {summary['right']} right")
+
         # Detect virtual junctions for path crossings
         path_crossings = detect_path_crossings_from_osm(
             osm_data,
@@ -363,6 +544,125 @@ class OSMImporter:
             result.junctions_imported += 1
             if options.verbose:
                 print(f"DEBUG: Added virtual junction '{crossing.name}' at {crossing.center_point}")
+
+        # IMPORTANT ORDER: Analyze connections BEFORE offsetting endpoints for path crossings
+
+        # Step 1: Analyze geometry and detect connection patterns (before offsetting)
+        crossing_patterns = {}
+        for crossing in path_crossings:
+            geometry_info = analyze_junction_geometry(crossing, roads_dict, polylines_dict)
+            patterns = detect_connection_patterns(geometry_info)
+            patterns = filter_unlikely_connections(patterns, roads_dict)
+            crossing_patterns[crossing.id] = patterns
+
+        # Step 2: Offset road endpoints from path crossings to create space for connecting roads
+        if path_crossings:
+            offset_road_endpoints_from_junctions(
+                roads=self.project.roads,
+                polylines_dict=polylines_dict,
+                junctions=path_crossings,
+                offset_distance_meters=self.project.junction_offset_distance_meters,
+                transformer=self.transformer,
+                verbose=options.verbose
+            )
+
+            # Update project polylines with modified endpoints
+            self.project.polylines = list(polylines_dict.values())
+
+        # Step 3: Generate connecting roads using pre-detected patterns with updated positions
+        if path_crossings and options.verbose:
+            print(f"DEBUG: Generating connections for {len(path_crossings)} path crossings...")
+
+        # Refresh dictionaries after offset
+        roads_dict = {road.id: road for road in self.project.roads}
+        polylines_dict = {p.id: p for p in self.project.polylines}
+
+        for crossing in path_crossings:
+            # Use the pre-detected patterns from before offsetting
+            patterns = crossing_patterns.get(crossing.id, [])
+
+            # Re-analyze geometry to get UPDATED endpoint positions (after offset)
+            # Skip distance check since roads have been offset from junction center
+            geometry_info_updated = analyze_junction_geometry(crossing, roads_dict, polylines_dict, skip_distance_check=True)
+
+            # Create endpoint lookup by road_id
+            endpoint_lookup = {}
+            for endpoint in geometry_info_updated['endpoints']:
+                endpoint_lookup[endpoint.road_id] = endpoint
+
+            # Generate connecting roads using patterns from BEFORE offset but positions from AFTER offset
+            generate_simple_connection_path = junction_analyzer_module.generate_simple_connection_path
+            ConnectingRoad = importlib.import_module('orbit.models.connecting_road').ConnectingRoad
+            LaneConnection = importlib.import_module('orbit.models.lane_connection').LaneConnection
+            generate_lane_links_for_connection = junction_analyzer_module.generate_lane_links_for_connection
+
+            for pattern in patterns:
+                # Get UPDATED endpoints (with offset positions)
+                from_endpoint_updated = endpoint_lookup.get(pattern.from_road_id)
+                to_endpoint_updated = endpoint_lookup.get(pattern.to_road_id)
+
+                if not from_endpoint_updated or not to_endpoint_updated:
+                    continue
+
+                # Calculate average lane width
+                avg_lane_width = (from_endpoint_updated.lane_width + to_endpoint_updated.lane_width) / 2
+
+                # Determine lane count
+                conn_lane_count_right = min(
+                    from_endpoint_updated.right_lane_count if from_endpoint_updated.at_junction == "end" else from_endpoint_updated.left_lane_count,
+                    to_endpoint_updated.right_lane_count if to_endpoint_updated.at_junction == "start" else to_endpoint_updated.left_lane_count
+                )
+                conn_lane_count_left = 0
+
+                # Generate path with UPDATED (offset) positions
+                path = generate_simple_connection_path(
+                    from_pos=from_endpoint_updated.position,
+                    from_heading=from_endpoint_updated.heading,
+                    to_pos=to_endpoint_updated.position,
+                    to_heading=to_endpoint_updated.heading,
+                    num_points=10
+                )
+
+                if not path:
+                    continue
+
+                # Create connecting road
+                connecting_road = ConnectingRoad(
+                    path=path,
+                    lane_count_left=conn_lane_count_left,
+                    lane_count_right=max(1, conn_lane_count_right),
+                    lane_width=avg_lane_width,
+                    predecessor_road_id=pattern.from_road_id,
+                    successor_road_id=pattern.to_road_id,
+                    contact_point_start="end",
+                    contact_point_end="start"
+                )
+
+                crossing.add_connecting_road(connecting_road)
+
+                # Generate lane links
+                lane_links = generate_lane_links_for_connection(
+                    from_endpoint_updated,
+                    to_endpoint_updated,
+                    pattern.turn_type
+                )
+
+                for from_lane_id, to_lane_id in lane_links:
+                    lane_connection = LaneConnection(
+                        from_road_id=pattern.from_road_id,
+                        from_lane_id=from_lane_id,
+                        to_road_id=pattern.to_road_id,
+                        to_lane_id=to_lane_id,
+                        connecting_road_id=connecting_road.id,
+                        turn_type=pattern.turn_type,
+                        priority=pattern.priority
+                    )
+                    crossing.add_lane_connection(lane_connection)
+
+            if options.verbose:
+                summary = crossing.get_connection_summary()
+                print(f"DEBUG: Generated {summary['total_connections']} connections for '{crossing.name}': "
+                      f"{summary['straight']} straight, {summary['left']} left, {summary['right']} right")
 
         # Return both regular junctions and path crossings
         all_junctions = junctions + path_crossings

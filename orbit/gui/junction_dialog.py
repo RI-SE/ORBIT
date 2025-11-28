@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout,
     QLineEdit, QComboBox, QPushButton,
     QListWidget, QLabel, QMessageBox,
-    QListWidgetItem
+    QListWidgetItem, QGroupBox
 )
 from PyQt6.QtCore import Qt
 
@@ -86,6 +86,35 @@ class JunctionDialog(BaseDialog):
         roads_group.setLayout(roads_layout)
         self.get_main_layout().addWidget(roads_group)
 
+        # Junction Connections section
+        connections_group = QGroupBox("Junction Connections")
+        connections_layout = QVBoxLayout()
+
+        connections_info_label = QLabel(
+            "<i>Automatically generate connecting roads and lane links based on junction geometry</i>"
+        )
+        connections_info_label.setWordWrap(True)
+        connections_layout.addWidget(connections_info_label)
+
+        # Connection summary label
+        self.connections_summary_label = QLabel("No connections generated yet")
+        self.connections_summary_label.setStyleSheet("font-weight: bold;")
+        connections_layout.addWidget(self.connections_summary_label)
+
+        # Auto-generate button
+        self.auto_generate_btn = QPushButton("Auto-Generate Connections")
+        self.auto_generate_btn.setToolTip(
+            "Automatically analyze junction geometry and generate:\n"
+            "• Connecting roads with smooth paths\n"
+            "• Lane-to-lane connections\n"
+            "• Turn type classification (straight, left, right, u-turn)"
+        )
+        self.auto_generate_btn.clicked.connect(self.auto_generate_connections)
+        connections_layout.addWidget(self.auto_generate_btn)
+
+        connections_group.setLayout(connections_layout)
+        self.get_main_layout().addWidget(connections_group)
+
         # Info section
         info_label = QLabel(
             "<i>Note: At least 2 roads should be connected to a junction.</i>"
@@ -121,6 +150,9 @@ class JunctionDialog(BaseDialog):
                     item = QListWidgetItem(f"{road.name} ({road.road_type.value})")
                     item.setData(Qt.ItemDataRole.UserRole, road.id)
                     self.connected_roads_list.addItem(item)
+
+        # Update connection summary
+        self.update_connection_summary()
 
     def add_selected_roads(self):
         """Add selected roads from available to connected."""
@@ -178,6 +210,104 @@ class JunctionDialog(BaseDialog):
         """Set the center point of the junction."""
         self.junction.center_point = (x, y)
         self.center_label.setText(f"({x:.1f}, {y:.1f}) pixels")
+
+    def update_connection_summary(self):
+        """Update the connection summary label."""
+        summary = self.junction.get_connection_summary()
+        total = summary['total_connections']
+
+        if total == 0:
+            self.connections_summary_label.setText("No connections generated yet")
+            self.connections_summary_label.setStyleSheet("font-weight: bold; color: gray;")
+        else:
+            text = f"✓ {total} connection(s): "
+            parts = []
+            if summary['straight'] > 0:
+                parts.append(f"{summary['straight']} straight")
+            if summary['left'] > 0:
+                parts.append(f"{summary['left']} left")
+            if summary['right'] > 0:
+                parts.append(f"{summary['right']} right")
+            if summary['uturn'] > 0:
+                parts.append(f"{summary['uturn']} u-turn")
+
+            text += ", ".join(parts)
+            self.connections_summary_label.setText(text)
+            self.connections_summary_label.setStyleSheet("font-weight: bold; color: green;")
+
+    def auto_generate_connections(self):
+        """Auto-generate junction connections based on geometry."""
+        if not self.project:
+            QMessageBox.warning(
+                self,
+                "No Project",
+                "Cannot generate connections without a project context."
+            )
+            return
+
+        # First save current road selections
+        self.save_data()
+
+        # Check if we have enough roads
+        if len(self.junction.connected_road_ids) < 2:
+            QMessageBox.warning(
+                self,
+                "Insufficient Roads",
+                "At least 2 roads must be connected to generate junction connections.\n\n"
+                "Please add roads to the junction first."
+            )
+            return
+
+        # Import the junction analyzer (using importlib to avoid 'import' keyword conflict)
+        try:
+            import importlib
+            junction_analyzer = importlib.import_module('orbit.import.junction_analyzer')
+            generate_junction_connections = junction_analyzer.generate_junction_connections
+        except ImportError as e:
+            QMessageBox.critical(
+                self,
+                "Import Error",
+                f"Failed to import junction analyzer: {e}"
+            )
+            return
+
+        # Build dictionaries for roads and polylines
+        roads_dict = {road.id: road for road in self.project.roads}
+        polylines_dict = {p.id: p for p in self.project.polylines}
+
+        # Clear existing connections
+        self.junction.connecting_roads.clear()
+        self.junction.lane_connections.clear()
+
+        # Generate connections
+        try:
+            generate_junction_connections(self.junction, roads_dict, polylines_dict)
+
+            # Update summary
+            self.update_connection_summary()
+
+            # Show success message
+            summary = self.junction.get_connection_summary()
+            QMessageBox.information(
+                self,
+                "Connections Generated",
+                f"Successfully generated {summary['total_connections']} connection(s):\n\n"
+                f"• Straight: {summary['straight']}\n"
+                f"• Left turns: {summary['left']}\n"
+                f"• Right turns: {summary['right']}\n"
+                f"• U-turns: {summary['uturn']}\n\n"
+                f"Connecting roads: {len(self.junction.connecting_roads)}\n"
+                f"Lane connections: {len(self.junction.lane_connections)}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Generation Failed",
+                f"Failed to generate connections:\n\n{str(e)}"
+            )
+            import traceback
+            traceback.print_exc()
 
     @classmethod
     def edit_junction(cls, junction: Junction, project: Project, parent=None) -> Optional[Junction]:

@@ -8,8 +8,10 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from lxml import etree
 import numpy as np
+import math
 
 from orbit.models import Project, Road, Junction, Polyline, LineType, RoadMarkType, Signal
+from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.signal import SignalType, SpeedUnit
 from orbit.models.object import RoadObject, ObjectType
 from orbit.utils import CoordinateTransformer
@@ -48,6 +50,9 @@ class OpenDriveWriter:
         self.polyline_map = {p.id: p for p in project.polylines}
         self.road_map = {r.id: r for r in project.roads}
         self.junction_map = {j.id: j for j in project.junctions}
+
+        # Junction numeric IDs (assigned during export)
+        self.junction_numeric_ids = {}
 
         # Get scale factors for lane width calculations
         scale_factors = transformer.get_scale_factor() if transformer else None
@@ -96,21 +101,103 @@ class OpenDriveWriter:
         header = self._create_header()
         root.append(header)
 
-        # Add roads
+        # Assign numeric IDs to junctions (sequential)
+        self.junction_numeric_ids = {}
+        for idx, junction in enumerate(self.project.junctions):
+            if junction.is_valid():
+                # Use opendrive_id if set, otherwise sequential numbering
+                if junction.opendrive_id and junction.opendrive_id.isdigit():
+                    self.junction_numeric_ids[junction.id] = int(junction.opendrive_id)
+                else:
+                    self.junction_numeric_ids[junction.id] = idx + 1
+
+        # Export order:
+        # 1. Regular roads (junction="-1")
+        # 2. Connecting roads for each junction (junction="<id>")
+        # 3. Junction definitions
+
+        # 1. Add regular roads (non-junction roads)
         for road in self.project.roads:
-            if road.is_valid():
+            if road.is_valid() and not road.junction_id:
                 road_elem = self._create_road(road)
                 if road_elem is not None:
                     root.append(road_elem)
 
-        # Add junctions
+        # 2. Add connecting roads for each junction
         for junction in self.project.junctions:
             if junction.is_valid():
-                junction_elem = self._create_junction(junction)
+                junction_numeric_id = self.junction_numeric_ids.get(junction.id)
+                if junction_numeric_id is None:
+                    continue
+
+                # Export each connecting road as a Road element
+                for idx, connecting_road in enumerate(junction.connecting_roads):
+                    conn_road_elem = self._create_connecting_road(
+                        connecting_road,
+                        junction_numeric_id
+                    )
+                    if conn_road_elem is not None:
+                        root.append(conn_road_elem)
+                    else:
+                        print(f"WARNING: Connecting road {idx} for junction {junction_numeric_id} returned None!")
+
+        # 3. Add junction definitions
+        for junction in self.project.junctions:
+            if junction.is_valid():
+                junction_numeric_id = self.junction_numeric_ids.get(junction.id)
+                if junction_numeric_id is None:
+                    continue
+
+                junction_elem = self._create_junction(junction, junction_numeric_id)
                 if junction_elem is not None:
                     root.append(junction_elem)
 
         return root
+
+    def _find_junction_for_road_endpoint(self, road_id: str, is_predecessor: bool) -> Optional[int]:
+        """
+        Find if a road endpoint connects to a junction.
+
+        Args:
+            road_id: ID of the road
+            is_predecessor: True to check predecessor end, False for successor end
+
+        Returns:
+            Junction numeric ID if road endpoint is at a junction, None otherwise
+        """
+        # Get the road and its centerline
+        road = self.road_map.get(road_id)
+        if not road or not road.centerline_id:
+            return None
+
+        centerline = self.polyline_map.get(road.centerline_id)
+        if not centerline or len(centerline.points) < 2:
+            return None
+
+        # Get the endpoint we're checking
+        check_point = centerline.points[0] if is_predecessor else centerline.points[-1]
+
+        # Check each junction to see if THIS endpoint is at the junction
+        for junction in self.project.junctions:
+            if road_id not in junction.connected_road_ids:
+                continue
+
+            if not junction.center_point:
+                continue
+
+            # Calculate distance from endpoint to junction center
+            dx = check_point[0] - junction.center_point[0]
+            dy = check_point[1] - junction.center_point[1]
+            dist = math.sqrt(dx*dx + dy*dy)
+
+            # If within tolerance (15 pixels), this endpoint is at this junction
+            # Using 15 pixels to account for offset that will be applied
+            if dist < 15.0:
+                junction_numeric_id = self.junction_numeric_ids.get(junction.id)
+                if junction_numeric_id is not None:
+                    return junction_numeric_id
+
+        return None
 
     def _create_header(self) -> etree.Element:
         """Create OpenDrive header element."""
@@ -226,15 +313,33 @@ class OpenDriveWriter:
         # Add road link with predecessor/successor if available
         link = etree.SubElement(road_elem, 'link')
 
-        # Add predecessor if specified
-        if road.predecessor_id:
+        # Check if this road connects to a junction
+        predecessor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=True)
+        successor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=False)
+
+        # Add predecessor - check if junction or road
+        if predecessor_junction is not None:
+            # Road predecessor connects to a junction
+            predecessor = etree.SubElement(link, 'predecessor')
+            predecessor.set('elementType', 'junction')
+            predecessor.set('elementId', str(predecessor_junction))
+            # No contactPoint for junction links
+        elif road.predecessor_id:
+            # Road predecessor connects to another road
             predecessor = etree.SubElement(link, 'predecessor')
             predecessor.set('elementType', 'road')
             predecessor.set('elementId', road.predecessor_id)
             predecessor.set('contactPoint', road.predecessor_contact)
 
-        # Add successor if specified
-        if road.successor_id:
+        # Add successor - check if junction or road
+        if successor_junction is not None:
+            # Road successor connects to a junction
+            successor = etree.SubElement(link, 'successor')
+            successor.set('elementType', 'junction')
+            successor.set('elementId', str(successor_junction))
+            # No contactPoint for junction links
+        elif road.successor_id:
+            # Road successor connects to another road
             successor = etree.SubElement(link, 'successor')
             successor.set('elementType', 'road')
             successor.set('elementId', road.successor_id)
@@ -284,6 +389,170 @@ class OpenDriveWriter:
             road_elem.append(objects)
 
         return road_elem
+
+    def _create_connecting_road(self, connecting_road: ConnectingRoad,
+                               junction_numeric_id: int) -> Optional[etree.Element]:
+        """
+        Create a road element for a junction connecting road.
+
+        Args:
+            connecting_road: ConnectingRoad object with path and lane configuration
+            junction_numeric_id: Numeric ID of the junction this road belongs to
+
+        Returns:
+            Road XML element with junction="<junction_id>", or None if invalid
+        """
+        if not connecting_road.path or len(connecting_road.path) < 2:
+            return None
+
+        # Use road_id if set, otherwise generate one
+        road_id = connecting_road.road_id
+        if road_id is None:
+            # Generate road ID: junction_id * 1000 + hash of connecting_road.id
+            road_id = junction_numeric_id * 1000 + (hash(connecting_road.id) % 1000)
+            connecting_road.road_id = road_id  # Store for future reference
+
+        # Transform path points from pixels to meters
+        path_meters = self.transformer.pixels_to_meters_batch(connecting_road.path)
+
+        # Fit geometry to the path
+        geometry_elements = self.curve_fitter.fit_polyline(path_meters)
+
+        if not geometry_elements:
+            return None
+
+        # Calculate total road length
+        road_length = sum(elem.length for elem in geometry_elements)
+
+        # Create road element
+        road_elem = etree.Element('road')
+        road_elem.set('id', str(road_id))
+        road_elem.set('name', '')  # Connecting roads typically have no name
+        road_elem.set('length', f'{road_length:.4f}')
+        road_elem.set('junction', str(junction_numeric_id))
+
+        # Add road link with predecessor/successor
+        link = etree.SubElement(road_elem, 'link')
+
+        # Add predecessor (incoming road)
+        if connecting_road.predecessor_road_id:
+            predecessor = etree.SubElement(link, 'predecessor')
+            predecessor.set('elementType', 'road')
+            predecessor.set('elementId', connecting_road.predecessor_road_id)
+            predecessor.set('contactPoint', connecting_road.contact_point_start)
+
+        # Add successor (outgoing road)
+        if connecting_road.successor_road_id:
+            successor = etree.SubElement(link, 'successor')
+            successor.set('elementType', 'road')
+            successor.set('elementId', connecting_road.successor_road_id)
+            successor.set('contactPoint', connecting_road.contact_point_end)
+
+        # Add road type (junction internal road)
+        type_elem = etree.SubElement(road_elem, 'type')
+        type_elem.set('s', '0.0')
+        type_elem.set('type', 'town')  # Default type for junction roads
+
+        # Add plan view (reference line geometry)
+        plan_view = self._create_plan_view(geometry_elements)
+        road_elem.append(plan_view)
+
+        # Add elevation profile (flat)
+        elevation = etree.SubElement(road_elem, 'elevationProfile')
+        elev = etree.SubElement(elevation, 'elevation')
+        elev.set('s', '0.0')
+        elev.set('a', '0.0')
+        elev.set('b', '0.0')
+        elev.set('c', '0.0')
+        elev.set('d', '0.0')
+
+        # Add lateral profile (no superelevation)
+        lateral = etree.SubElement(road_elem, 'lateralProfile')
+
+        # Add lanes (simplified - no boundary analysis for connecting roads)
+        lanes = self._create_connecting_road_lanes(connecting_road, road_length)
+        road_elem.append(lanes)
+
+        # No signals or objects for connecting roads
+
+        return road_elem
+
+    def _create_connecting_road_lanes(self, connecting_road: ConnectingRoad,
+                                     road_length: float) -> etree.Element:
+        """
+        Create simplified lanes element for a connecting road.
+
+        Args:
+            connecting_road: ConnectingRoad with lane configuration
+            road_length: Total length of the road in meters
+
+        Returns:
+            Lanes XML element
+        """
+        lanes = etree.Element('lanes')
+
+        # Single lane section covering the entire connecting road
+        lane_section = etree.SubElement(lanes, 'laneSection')
+        lane_section.set('s', '0.0')
+
+        # Center lane (always required)
+        center = etree.SubElement(lane_section, 'center')
+        center_lane = etree.SubElement(center, 'lane')
+        center_lane.set('id', '0')
+        center_lane.set('type', 'none')
+        center_lane.set('level', 'false')
+
+        # Left lanes (positive IDs: 1, 2, 3...)
+        if connecting_road.lane_count_left > 0:
+            left = etree.SubElement(lane_section, 'left')
+            for lane_id in range(1, connecting_road.lane_count_left + 1):
+                lane = etree.SubElement(left, 'lane')
+                lane.set('id', str(lane_id))
+                lane.set('type', 'driving')
+                lane.set('level', 'false')
+
+                # Lane width (constant)
+                width = etree.SubElement(lane, 'width')
+                width.set('sOffset', '0.0')
+                width.set('a', f'{connecting_road.lane_width:.2f}')
+                width.set('b', '0.0')
+                width.set('c', '0.0')
+                width.set('d', '0.0')
+
+                # Road mark (default: solid white)
+                roadMark = etree.SubElement(lane, 'roadMark')
+                roadMark.set('sOffset', '0.0')
+                roadMark.set('type', 'solid')
+                roadMark.set('weight', 'standard')
+                roadMark.set('color', 'white')
+                roadMark.set('width', '0.12')
+
+        # Right lanes (negative IDs: -1, -2, -3...)
+        if connecting_road.lane_count_right > 0:
+            right = etree.SubElement(lane_section, 'right')
+            for lane_id in range(-1, -(connecting_road.lane_count_right + 1), -1):
+                lane = etree.SubElement(right, 'lane')
+                lane.set('id', str(lane_id))
+                lane.set('type', 'driving')
+                lane.set('level', 'false')
+
+                # Lane width (constant)
+                width = etree.SubElement(lane, 'width')
+                width.set('sOffset', '0.0')
+                width.set('a', f'{connecting_road.lane_width:.2f}')
+                width.set('b', '0.0')
+                width.set('c', '0.0')
+                width.set('d', '0.0')
+
+                # Road mark (default: solid white)
+                roadMark = etree.SubElement(lane, 'roadMark')
+                roadMark.set('sOffset', '0.0')
+                roadMark.set('type', 'solid')
+                roadMark.set('weight', 'standard')
+                roadMark.set('color', 'white')
+                roadMark.set('width', '0.12')
+
+        return lanes
 
     def _create_plan_view(self, geometry_elements: List[GeometryElement]) -> etree.Element:
         """Create planView element with geometry."""
@@ -863,40 +1132,62 @@ class OpenDriveWriter:
 
         return outline if len(outline) > 0 else None
 
-    def _create_junction(self, junction: Junction) -> Optional[etree.Element]:
-        """Create a junction element."""
+    def _create_junction(self, junction: Junction, junction_numeric_id: int) -> Optional[etree.Element]:
+        """
+        Create a junction element.
+
+        Args:
+            junction: Junction object with connecting roads and lane connections
+            junction_numeric_id: Numeric ID for this junction in OpenDRIVE
+
+        Returns:
+            Junction XML element, or None if invalid
+        """
         if len(junction.connected_road_ids) < 2:
             return None
 
         junction_elem = etree.Element('junction')
-        junction_elem.set('id', junction.id)
+        junction_elem.set('id', str(junction_numeric_id))
         junction_elem.set('name', junction.name)
         junction_elem.set('type', junction.junction_type)
 
-        # Create connections between roads
-        # In a real implementation, this would need more sophisticated logic
-        # For now, we create basic connections
+        # Group lane connections by (from_road_id, connecting_road_id) to create connection elements
+        # Each unique pair becomes one <connection> with multiple <laneLink> elements
+        connection_groups = {}
+        for lane_conn in junction.lane_connections:
+            key = (lane_conn.from_road_id, lane_conn.connecting_road_id)
+            if key not in connection_groups:
+                connection_groups[key] = []
+            connection_groups[key].append(lane_conn)
+
+        # Create connection elements
         connection_id = 0
-        for i, incoming_road_id in enumerate(junction.connected_road_ids):
-            for j, connecting_road_id in enumerate(junction.connected_road_ids):
-                if i != j:
-                    connection = etree.SubElement(junction_elem, 'connection')
-                    connection.set('id', str(connection_id))
-                    connection.set('incomingRoad', incoming_road_id)
-                    connection.set('connectingRoad', connecting_road_id)
-                    connection.set('contactPoint', 'start')
+        for (from_road_id, connecting_road_uuid), lane_connections in connection_groups.items():
+            # Find the connecting road to get its numeric road_id
+            connecting_road = junction.get_connecting_road_by_id(connecting_road_uuid)
+            if not connecting_road or connecting_road.road_id is None:
+                # Skip if connecting road not found or doesn't have numeric ID
+                continue
 
-                    # Lane links (simplified: connect all lanes)
-                    incoming_road = self.road_map.get(incoming_road_id)
-                    connecting_road = self.road_map.get(connecting_road_id)
+            connection = etree.SubElement(junction_elem, 'connection')
+            connection.set('id', str(connection_id))
+            connection.set('incomingRoad', from_road_id)
+            connection.set('connectingRoad', str(connecting_road.road_id))
+            connection.set('contactPoint', 'start')  # Connecting roads start at junction
 
-                    if incoming_road and connecting_road:
-                        # Connect one lane as example
-                        lane_link = etree.SubElement(connection, 'laneLink')
-                        lane_link.set('from', '-1')
-                        lane_link.set('to', '-1')
+            # Add priority if available (use highest priority in group)
+            if lane_connections:
+                max_priority = max(lc.priority for lc in lane_connections if lc.priority is not None)
+                if max_priority is not None and max_priority > 0:
+                    connection.set('priority', str(max_priority))
 
-                    connection_id += 1
+            # Add lane links for this connection
+            for lane_conn in lane_connections:
+                lane_link = etree.SubElement(connection, 'laneLink')
+                lane_link.set('from', str(lane_conn.from_lane_id))
+                lane_link.set('to', str(lane_conn.to_lane_id))
+
+            connection_id += 1
 
         return junction_elem
 
