@@ -421,16 +421,17 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
     SELECTED_ALPHA = 204  # ~80% opacity (same as hover)
 
     def __init__(self, lane_id: int, section_number: int, road_id: str,
-                 polygon_points: List[tuple], parent_view):
+                 polygon_points: List[tuple], parent_view, is_connecting_road: bool = False):
         """
         Create an interactive lane polygon.
 
         Args:
             lane_id: Lane ID (positive=right, negative=left, 0=center)
             section_number: Section number this polygon belongs to
-            road_id: Road ID this polygon belongs to
+            road_id: Road ID this polygon belongs to (or connecting road ID if is_connecting_road=True)
             polygon_points: List of (x, y) points forming the lane polygon
             parent_view: Parent ImageView for signaling
+            is_connecting_road: True if this is a connecting road lane, False for regular road lane
         """
         from PyQt6.QtGui import QPolygonF
 
@@ -447,6 +448,7 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
         self.road_id = road_id
         self.parent_view = parent_view
         self.is_selected = False
+        self.is_connecting_road = is_connecting_road
 
         # Choose base color based on lane side
         if lane_id > 0:
@@ -509,13 +511,47 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
         """Handle mouse click - emit selection signal."""
         if event.button() == Qt.MouseButton.LeftButton:
             # Emit signal to select this lane in the tree
-            if hasattr(self.parent_view, 'lane_segment_clicked'):
-                self.parent_view.lane_segment_clicked.emit(
-                    self.road_id,
-                    self.section_number,
-                    self.lane_id
-                )
-        super().mousePressEvent(event)
+            if self.is_connecting_road:
+                # Connecting road lane - emit connecting_road_lane_clicked
+                if hasattr(self.parent_view, 'connecting_road_lane_clicked'):
+                    self.parent_view.connecting_road_lane_clicked.emit(
+                        self.road_id,  # This is the connecting road ID
+                        self.lane_id
+                    )
+            else:
+                # Regular road lane - emit lane_segment_clicked
+                if hasattr(self.parent_view, 'lane_segment_clicked'):
+                    self.parent_view.lane_segment_clicked.emit(
+                        self.road_id,
+                        self.section_number,
+                        self.lane_id
+                    )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        """Handle double-click to open lane properties dialog."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Emit signal to open lane properties dialog
+            if self.is_connecting_road:
+                # Connecting road lane - emit connecting_road_lane_edit_requested
+                if hasattr(self.parent_view, 'connecting_road_lane_edit_requested'):
+                    self.parent_view.connecting_road_lane_edit_requested.emit(
+                        self.road_id,  # This is the connecting road ID
+                        self.lane_id
+                    )
+            else:
+                # Regular road lane - emit lane_edit_requested
+                if hasattr(self.parent_view, 'lane_edit_requested'):
+                    self.parent_view.lane_edit_requested.emit(
+                        self.road_id,
+                        self.section_number,
+                        self.lane_id
+                    )
+            event.accept()
+        else:
+            super().mouseDoubleClickEvent(event)
 
     def set_visible(self, visible: bool):
         """Set visibility of the lane polygon."""
@@ -876,12 +912,416 @@ class RoadLanesGraphicsItem:
         self.update_graphics()
 
 
+class ConnectingRoadGraphicsItem:
+    """Graphics representation of a connecting road centerline."""
+
+    def __init__(self, connecting_road, scene: QGraphicsScene):
+        """
+        Create graphics for a connecting road centerline.
+
+        Args:
+            connecting_road: ConnectingRoad object
+            scene: Graphics scene to add items to
+        """
+        from orbit.models.connecting_road import ConnectingRoad
+
+        self.connecting_road: ConnectingRoad = connecting_road
+        self.scene = scene
+        self.line_items = []
+        self.point_items = []
+        self.arrow_items = []
+        self.selected = False
+        self.selected_point_index = -1
+
+        self.update_graphics()
+
+    def update_graphics(self):
+        """Update the graphics items based on connecting road data."""
+        # Clear existing items
+        for item in self.line_items + self.point_items + self.arrow_items:
+            self.scene.removeItem(item)
+        self.line_items.clear()
+        self.point_items.clear()
+        self.arrow_items.clear()
+
+        if len(self.connecting_road.path) < 1:
+            return
+
+        # Create pen for connecting road (magenta)
+        color = QColor(255, 0, 255)  # Magenta
+        if self.selected:
+            color = QColor(255, 255, 0)  # Yellow when selected
+
+        width = 3 if self.selected else 2
+        pen = QPen(color, width)
+        pen.setStyle(Qt.PenStyle.SolidLine)
+
+        # Draw lines between points
+        points = self.connecting_road.path
+        for i in range(len(points) - 1):
+            x1, y1 = points[i]
+            x2, y2 = points[i + 1]
+            line = self.scene.addLine(x1, y1, x2, y2, pen)
+            line.setZValue(1)
+            self.line_items.append(line)
+
+        # Draw directional arrows
+        if len(points) >= 2:
+            self._draw_direction_arrows(points, pen)
+
+        # Only draw points for polyline geometry (not for ParamPoly3D curves)
+        # ParamPoly3D curves are read-only and don't show editable points
+        if self.connecting_road.geometry_type == "polyline":
+            point_brush = QBrush(color)
+
+            for i, (x, y) in enumerate(points):
+                radius = 5
+                if i == self.selected_point_index:
+                    radius = 7
+                    point_brush = QBrush(QColor(255, 128, 0))  # Orange for selected point
+
+                point = self.scene.addEllipse(
+                    x - radius, y - radius, radius * 2, radius * 2,
+                    pen, point_brush
+                )
+                point.setZValue(2)
+                self.point_items.append(point)
+
+                # Reset brush for next point
+                if i == self.selected_point_index:
+                    point_brush = QBrush(QColor(255, 255, 0) if self.selected else color)
+
+    def _draw_direction_arrows(self, points: List[Tuple[float, float]], pen: QPen):
+        """Draw direction arrows to show the positive direction."""
+        import math
+        from PyQt6.QtGui import QPolygonF
+
+        # Arrow parameters
+        arrow_size = 15  # Length of arrow head
+        arrow_angle = 25  # Angle of arrow head in degrees
+
+        # Color for arrows
+        if self.selected:
+            arrow_color = QColor(255, 255, 0)  # Yellow when selected
+        else:
+            arrow_color = QColor(255, 0, 255)  # Magenta
+
+        arrow_pen = QPen(arrow_color, 2)
+        arrow_brush = QBrush(arrow_color)
+
+        # Draw arrow at the end
+        if len(points) >= 2:
+            p1 = points[-2]
+            p2 = points[-1]  # End point
+            self._draw_arrow_at_point(p2, p1, arrow_size, arrow_angle, arrow_pen, arrow_brush)
+
+            # Draw arrows at regular intervals (~200 pixels)
+            total_length = 0
+            segment_lengths = []
+            for i in range(len(points) - 1):
+                x1, y1 = points[i]
+                x2, y2 = points[i + 1]
+                seg_len = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+                segment_lengths.append(seg_len)
+                total_length += seg_len
+
+            # Place arrows every 200 pixels
+            arrow_interval = 200.0
+            if total_length > arrow_interval:
+                num_intermediate_arrows = int(total_length / arrow_interval)
+                for arrow_idx in range(1, num_intermediate_arrows + 1):
+                    target_distance = arrow_idx * arrow_interval
+
+                    # Find segment containing this distance
+                    accumulated = 0
+                    for i, seg_len in enumerate(segment_lengths):
+                        if accumulated + seg_len >= target_distance:
+                            # Interpolate within this segment
+                            t = (target_distance - accumulated) / seg_len if seg_len > 0 else 0
+                            x1, y1 = points[i]
+                            x2, y2 = points[i + 1]
+                            arrow_x = x1 + t * (x2 - x1)
+                            arrow_y = y1 + t * (y2 - y1)
+                            arrow_point = (arrow_x, arrow_y)
+                            prev_point = (x1, y1)
+                            self._draw_arrow_at_point(arrow_point, prev_point, arrow_size,
+                                                     arrow_angle, arrow_pen, arrow_brush)
+                            break
+                        accumulated += seg_len
+
+    def _draw_arrow_at_point(self, end_point: Tuple[float, float],
+                            prev_point: Tuple[float, float],
+                            arrow_size: float, arrow_angle: float,
+                            arrow_pen: QPen, arrow_brush: QBrush):
+        """Draw a single arrow at a specific point."""
+        import math
+        from PyQt6.QtGui import QPolygonF
+
+        x2, y2 = end_point
+        x1, y1 = prev_point
+
+        # Calculate direction angle
+        angle = math.atan2(y2 - y1, x2 - x1)
+
+        # Calculate arrow head points
+        angle1 = angle + math.radians(180 - arrow_angle)
+        angle2 = angle + math.radians(180 + arrow_angle)
+
+        arrow_p1_x = x2 + arrow_size * math.cos(angle1)
+        arrow_p1_y = y2 + arrow_size * math.sin(angle1)
+        arrow_p2_x = x2 + arrow_size * math.cos(angle2)
+        arrow_p2_y = y2 + arrow_size * math.sin(angle2)
+
+        # Create arrow polygon
+        arrow_polygon = QPolygonF()
+        arrow_polygon.append(QPointF(x2, y2))
+        arrow_polygon.append(QPointF(arrow_p1_x, arrow_p1_y))
+        arrow_polygon.append(QPointF(arrow_p2_x, arrow_p2_y))
+
+        arrow_item = self.scene.addPolygon(arrow_polygon, arrow_pen, arrow_brush)
+        arrow_item.setZValue(2)
+        self.arrow_items.append(arrow_item)
+
+    def get_point_at(self, pos: QPointF, tolerance: float = 10.0) -> int:
+        """
+        Check if a position is near a point in the connecting road path.
+
+        Args:
+            pos: Position to check
+            tolerance: Distance tolerance in pixels
+
+        Returns:
+            Index of the point if found, -1 otherwise
+        """
+        for i, (x, y) in enumerate(self.connecting_road.path):
+            dx = pos.x() - x
+            dy = pos.y() - y
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist <= tolerance:
+                return i
+        return -1
+
+    def get_segment_at(self, pos: QPointF, tolerance: float = 10.0) -> int:
+        """
+        Check if a position is near a line segment.
+
+        Args:
+            pos: Position to check
+            tolerance: Distance tolerance in pixels
+
+        Returns:
+            Index of the segment (0-based) if found, -1 otherwise
+        """
+        points = self.connecting_road.path
+        for i in range(len(points) - 1):
+            x1, y1 = points[i]
+            x2, y2 = points[i + 1]
+
+            # Calculate distance from point to line segment
+            px, py = pos.x(), pos.y()
+
+            # Vector from p1 to p2
+            dx = x2 - x1
+            dy = y2 - y1
+            length_sq = dx * dx + dy * dy
+
+            if length_sq == 0:
+                continue
+
+            # Project point onto line
+            t = max(0, min(1, ((px - x1) * dx + (py - y1) * dy) / length_sq))
+            proj_x = x1 + t * dx
+            proj_y = y1 + t * dy
+
+            # Distance from point to projection
+            dist_dx = px - proj_x
+            dist_dy = py - proj_y
+            dist = (dist_dx * dist_dx + dist_dy * dist_dy) ** 0.5
+
+            if dist <= tolerance:
+                return i
+
+        return -1
+
+    def set_selected(self, selected: bool):
+        """Set selection state."""
+        self.selected = selected
+        self.update_graphics()
+
+    def remove(self):
+        """Remove all graphics items from scene."""
+        for item in self.line_items + self.point_items + self.arrow_items:
+            if item.scene() == self.scene:
+                self.scene.removeItem(item)
+        self.line_items.clear()
+        self.point_items.clear()
+        self.arrow_items.clear()
+
+
+class ConnectingRoadLanesGraphicsItem:
+    """Graphics representation of lanes in a connecting road."""
+
+    # Default scale in meters per pixel
+    DEFAULT_SCALE = 0.058  # 5.8 cm/px
+
+    def __init__(self, connecting_road, scene: QGraphicsScene,
+                 scale_factors: tuple = None, parent_view=None, verbose: bool = False):
+        """
+        Create lane graphics for a connecting road.
+
+        Args:
+            connecting_road: ConnectingRoad object
+            scene: Graphics scene
+            scale_factors: Tuple of (scale_x, scale_y) in m/px, or None for default
+            parent_view: Parent ImageView for signaling (optional)
+            verbose: Enable verbose debug output
+        """
+        from orbit.models.connecting_road import ConnectingRoad
+
+        self.connecting_road: ConnectingRoad = connecting_road
+        self.scene = scene
+        self.scale_factors = scale_factors
+        self.parent_view = parent_view
+        self.verbose = verbose
+        self.lane_items: List[InteractiveLanePolygon] = []
+
+        self.update_graphics()
+
+    def _calculate_scale(self) -> float:
+        """
+        Calculate the appropriate scale factor.
+
+        Returns:
+            Scale factor in meters per pixel
+        """
+        if not self.scale_factors:
+            return self.DEFAULT_SCALE
+
+        scale_x, scale_y = self.scale_factors
+
+        # For connecting roads, calculate based on path direction
+        points = self.connecting_road.path
+        if len(points) < 2:
+            return (scale_x + scale_y) / 2
+
+        # Calculate total displacement
+        total_dx = 0
+        total_dy = 0
+        for i in range(len(points) - 1):
+            p1 = points[i]
+            p2 = points[i + 1]
+            dx = abs(p2[0] - p1[0])
+            dy = abs(p2[1] - p1[1])
+            total_dx += dx
+            total_dy += dy
+
+        total_dist = total_dx + total_dy
+        if total_dist == 0:
+            return (scale_x + scale_y) / 2
+
+        # Interpolate based on direction
+        weight_x = total_dx / total_dist
+        weight_y = total_dy / total_dist
+        directional_scale = weight_x * scale_x + weight_y * scale_y
+
+        return directional_scale
+
+    def update_graphics(self):
+        """Update all lane graphics based on current connecting road configuration."""
+        # Remove existing lanes
+        for lane_item in self.lane_items:
+            if hasattr(lane_item, 'remove'):
+                lane_item.remove()
+            elif lane_item.scene() == self.scene:
+                self.scene.removeItem(lane_item)
+        self.lane_items.clear()
+
+        if len(self.connecting_road.path) < 2:
+            return
+
+        # Calculate scale
+        scale = self._calculate_scale()
+
+        if self.verbose:
+            print(f"\n{'='*60}")
+            print(f"CONNECTING ROAD LANES: {self.connecting_road.id[:8]}...")
+            print(f"  Scale: {scale:.6f} m/px")
+            print(f"  Lane width: {self.connecting_road.lane_width}m")
+            print(f"  Lanes: R{self.connecting_road.lane_count_right}, L{self.connecting_road.lane_count_left}")
+
+        # Get lane polygons
+        lane_polygons = self.connecting_road.get_lane_polygons(scale)
+
+        # Create interactive polygon for each lane
+        for lane_id, polygon_points in lane_polygons.items():
+            if len(polygon_points) >= 3:
+                if self.parent_view:
+                    # Create interactive polygon with click/hover
+                    lane_polygon = InteractiveLanePolygon(
+                        lane_id,
+                        section_number=1,  # Connecting roads have single section
+                        road_id=self.connecting_road.id,
+                        polygon_points=polygon_points,
+                        parent_view=self.parent_view,
+                        is_connecting_road=True  # Flag this as a connecting road lane
+                    )
+                    self.scene.addItem(lane_polygon)
+                    self.lane_items.append(lane_polygon)
+
+                    if self.verbose:
+                        print(f"    Lane {lane_id}: {len(polygon_points)} points")
+                else:
+                    # Fallback: create simple polygon without interactivity
+                    from PyQt6.QtGui import QPolygonF
+                    polygon = QPolygonF()
+                    for x, y in polygon_points:
+                        polygon.append(QPointF(x, y))
+
+                    # Choose color based on lane side
+                    if lane_id > 0:
+                        color = QColor(100, 255, 100, 77)  # Green for right lanes
+                    else:
+                        color = QColor(100, 180, 255, 77)  # Blue for left lanes
+
+                    pen = QPen(QColor(200, 200, 200, 150), 1)
+                    brush = QBrush(color)
+
+                    polygon_item = self.scene.addPolygon(polygon, pen, brush)
+                    polygon_item.setZValue(0.5)
+                    self.lane_items.append(polygon_item)
+
+    def remove(self):
+        """Remove all lane graphics from scene."""
+        for lane_item in self.lane_items:
+            if hasattr(lane_item, 'remove'):
+                lane_item.remove()
+            elif lane_item.scene() == self.scene:
+                self.scene.removeItem(lane_item)
+        self.lane_items.clear()
+
+    def set_visible(self, visible: bool):
+        """Set visibility of all lane graphics."""
+        for lane_item in self.lane_items:
+            if hasattr(lane_item, 'setVisible'):
+                lane_item.setVisible(visible)
+
+    def update_scale(self, scale_factors: tuple):
+        """
+        Update scale factors and regenerate graphics.
+
+        Args:
+            scale_factors: Tuple of (scale_x, scale_y) in m/px
+        """
+        self.scale_factors = scale_factors
+        self.update_graphics()
+
+
 class ImageView(QGraphicsView):
     """Interactive image view with polyline drawing and editing."""
 
     # Signals
     polyline_added = pyqtSignal(object)  # Emits Polyline
-    polyline_modified = pyqtSignal()
+    polyline_modified = pyqtSignal(str)  # Emits polyline ID
     polyline_deleted = pyqtSignal(str)  # Emits polyline ID
     polyline_edit_requested = pyqtSignal(str)  # Emits polyline ID for editing
     polyline_selected = pyqtSignal(str)  # Emits polyline ID when selected in view
@@ -905,6 +1345,9 @@ class ImageView(QGraphicsView):
     section_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index
     section_modified = pyqtSignal(str)  # Emits road ID
     lane_segment_clicked = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id
+    connecting_road_lane_clicked = pyqtSignal(str, int)  # Emits connecting_road_id, lane_id
+    lane_edit_requested = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id (for double-click)
+    connecting_road_lane_edit_requested = pyqtSignal(str, int)  # Emits connecting_road_id, lane_id (for double-click)
     point_picked = pyqtSignal(float, float)  # Emits x, y coordinates
     mouse_moved = pyqtSignal(float, float)  # Emits x, y mouse position in scene coordinates
 
@@ -951,6 +1394,10 @@ class ImageView(QGraphicsView):
         # Section boundaries (visual representation of lane section boundaries)
         self.section_boundary_items: Dict[str, List] = {}  # road_id -> list of graphics items
 
+        # Connecting roads (junction paths)
+        self.connecting_road_centerline_items: Dict[str, ConnectingRoadGraphicsItem] = {}
+        self.connecting_road_lanes_items: Dict[str, ConnectingRoadLanesGraphicsItem] = {}
+
         # Interaction state
         self.drawing_mode = False
         self.junction_mode = False
@@ -969,7 +1416,10 @@ class ImageView(QGraphicsView):
         self.drag_junction_id: Optional[str] = None
         self.dragging_guardrail_point = False
         self.drag_object_id: Optional[str] = None
-        # drag_point_index is shared with polyline dragging
+        # drag_point_index is shared with polyline and connecting road dragging
+        self.dragging_connecting_road_point = False
+        self.drag_connecting_road_id: Optional[str] = None
+        # drag_point_index is also used for connecting road point dragging
 
         # Measure mode state
         self.measure_points: List[QPointF] = []  # Current pair being measured
@@ -1058,6 +1508,8 @@ class ImageView(QGraphicsView):
         self.object_items.clear()
         self.control_point_items.clear()
         self.road_lanes_items.clear()
+        self.connecting_road_centerline_items.clear()
+        self.connecting_road_lanes_items.clear()
         self.soffset_labels.clear()
 
         # Store project reference for road lookups
@@ -1088,6 +1540,11 @@ class ImageView(QGraphicsView):
         for road in project.roads:
             if road.centerline_id:
                 self.add_road_lanes_graphics(road, scale_factors)
+
+        # Add connecting roads from all junctions
+        for junction in project.junctions:
+            for connecting_road in junction.connecting_roads:
+                self.add_connecting_road_graphics(connecting_road, scale_factors)
 
     def add_polyline_graphics(self, polyline: Polyline):
         """Add a polyline to the graphics scene."""
@@ -1260,6 +1717,60 @@ class ImageView(QGraphicsView):
                 self.road_lanes_items[road_id].update_graphics()
         else:
             self.add_road_lanes_graphics(road, scale_factors)
+
+    def add_connecting_road_graphics(self, connecting_road, scale_factors: tuple = None):
+        """
+        Add centerline and lane visualization for a connecting road.
+
+        Args:
+            connecting_road: ConnectingRoad object
+            scale_factors: Tuple of (scale_x, scale_y) in m/px, or None for default
+        """
+        # Remove existing graphics if any
+        if connecting_road.id in self.connecting_road_centerline_items:
+            self.connecting_road_centerline_items[connecting_road.id].remove()
+        if connecting_road.id in self.connecting_road_lanes_items:
+            self.connecting_road_lanes_items[connecting_road.id].remove()
+
+        # Create centerline graphics
+        centerline_item = ConnectingRoadGraphicsItem(connecting_road, self.scene)
+        self.connecting_road_centerline_items[connecting_road.id] = centerline_item
+
+        # Create lane graphics
+        lanes_item = ConnectingRoadLanesGraphicsItem(
+            connecting_road, self.scene, scale_factors,
+            parent_view=self, verbose=self.verbose
+        )
+        self.connecting_road_lanes_items[connecting_road.id] = lanes_item
+
+    def remove_connecting_road_graphics(self, connecting_road_id: str):
+        """Remove connecting road graphics from scene."""
+        if connecting_road_id in self.connecting_road_centerline_items:
+            self.connecting_road_centerline_items[connecting_road_id].remove()
+            del self.connecting_road_centerline_items[connecting_road_id]
+
+        if connecting_road_id in self.connecting_road_lanes_items:
+            self.connecting_road_lanes_items[connecting_road_id].remove()
+            del self.connecting_road_lanes_items[connecting_road_id]
+
+    def update_connecting_road_graphics(self, connecting_road_id: str, scale_factors: tuple = None):
+        """
+        Update connecting road graphics.
+
+        Args:
+            connecting_road_id: ID of connecting road to update
+            scale_factors: Tuple of (scale_x, scale_y) in m/px, or None for current/default
+        """
+        # Update centerline
+        if connecting_road_id in self.connecting_road_centerline_items:
+            self.connecting_road_centerline_items[connecting_road_id].update_graphics()
+
+        # Update lanes
+        if connecting_road_id in self.connecting_road_lanes_items:
+            if scale_factors is not None:
+                self.connecting_road_lanes_items[connecting_road_id].update_scale(scale_factors)
+            else:
+                self.connecting_road_lanes_items[connecting_road_id].update_graphics()
 
     def remove_road_lanes(self, road_id: str):
         """Remove lane graphics for a road."""
@@ -2588,7 +3099,7 @@ class ImageView(QGraphicsView):
                     self.road_lanes_items[affected_road.id].update_graphics()
 
             item.update_graphics()
-            self.polyline_modified.emit()
+            self.polyline_modified.emit(polyline_id)
             # Update s-offset labels after point deletion
             if self.soffsets_visible:
                 self._update_soffset_labels(polyline_id)
@@ -2725,11 +3236,42 @@ class ImageView(QGraphicsView):
                                     self.road_lanes_items[affected_road.id].update_graphics()
 
                             item.update_graphics()
-                            self.polyline_modified.emit()
+                            self.polyline_modified.emit(polyline_id)
                             # Update s-offset labels after point insertion
                             if self.soffsets_visible:
                                 self._update_soffset_labels(polyline_id)
                             return
+
+                    # Then check connecting roads for Ctrl+Click insertion
+                    # Only allow insertion for polyline geometry (not ParamPoly3D)
+                    for conn_road_id, item in self.connecting_road_centerline_items.items():
+                        if item.connecting_road.geometry_type != "polyline":
+                            continue  # Skip ParamPoly3D curves (read-only)
+                        segment_index = item.get_segment_at(scene_pos)
+                        if segment_index >= 0:
+                            # Find the connecting road in junctions
+                            connecting_road = None
+                            parent_junction = None
+                            for junction in self.project.junctions:
+                                for cr in junction.connecting_roads:
+                                    if cr.id == conn_road_id:
+                                        connecting_road = cr
+                                        parent_junction = junction
+                                        break
+                                if connecting_road:
+                                    break
+
+                            if connecting_road:
+                                insert_index = segment_index + 1
+                                # Insert point after the first point of the segment
+                                connecting_road.path.insert(insert_index, (scene_pos.x(), scene_pos.y()))
+                                item.update_graphics()
+                                # Update lane graphics
+                                if conn_road_id in self.connecting_road_lanes_items:
+                                    self.connecting_road_lanes_items[conn_road_id].update_graphics()
+                                # Emit modification signal
+                                # TODO: Add connecting_road_modified signal if needed
+                                return
 
                 # Check if clicking on a junction to drag
                 for junction_id, item in self.junction_items.items():
@@ -2756,6 +3298,20 @@ class ImageView(QGraphicsView):
                         self.drag_polyline_id = polyline_id
                         self.drag_point_index = point_index
                         item.set_selected_point(point_index)
+                        return
+
+                # Check if clicking on a connecting road point to drag
+                # Only allow dragging for polyline geometry (not ParamPoly3D)
+                for conn_road_id, item in self.connecting_road_centerline_items.items():
+                    if item.connecting_road.geometry_type != "polyline":
+                        continue  # Skip ParamPoly3D curves (read-only)
+                    point_index = item.get_point_at(scene_pos)
+                    if point_index >= 0:
+                        self.dragging_connecting_road_point = True
+                        self.drag_connecting_road_id = conn_road_id
+                        self.drag_point_index = point_index
+                        item.selected_point_index = point_index
+                        item.update_graphics()
                         return
 
                 # Check if clicking on a junction to select
@@ -2926,6 +3482,23 @@ class ImageView(QGraphicsView):
                             self._delete_point(polyline_id, point_index)
                         return
 
+                # Check if right-clicking on a connecting road point to delete
+                # Only allow deletion for polyline geometry (not ParamPoly3D)
+                for conn_road_id, item in self.connecting_road_centerline_items.items():
+                    if item.connecting_road.geometry_type != "polyline":
+                        continue  # Skip ParamPoly3D curves (read-only)
+                    point_index = item.get_point_at(scene_pos)
+                    if point_index >= 0:
+                        # Delete the point from connecting road
+                        connecting_road = item.connecting_road
+                        if len(connecting_road.path) > 2:  # Keep at least 2 points
+                            connecting_road.path.pop(point_index)
+                            item.update_graphics()
+                            # Update lane graphics
+                            if conn_road_id in self.connecting_road_lanes_items:
+                                self.connecting_road_lanes_items[conn_road_id].update_graphics()
+                        return
+
             elif self.signal_mode:
                 # In signal mode, also allow right-click context menu on existing signals
                 for signal_id, item in self.signal_items.items():
@@ -2972,6 +3545,19 @@ class ImageView(QGraphicsView):
             item = self.polyline_items[self.drag_polyline_id]
             item.polyline.update_point(self.drag_point_index, scene_pos.x(), scene_pos.y())
             item.update_graphics()
+        elif self.dragging_connecting_road_point and self.drag_connecting_road_id:
+            # Dragging a connecting road point
+            item = self.connecting_road_centerline_items[self.drag_connecting_road_id]
+            # Find the connecting road
+            connecting_road = item.connecting_road
+            if self.drag_point_index >= 0 and self.drag_point_index < len(connecting_road.path):
+                # Update the point position
+                connecting_road.path[self.drag_point_index] = (scene_pos.x(), scene_pos.y())
+                # Refresh centerline graphics
+                item.update_graphics()
+                # Refresh lane graphics
+                if self.drag_connecting_road_id in self.connecting_road_lanes_items:
+                    self.connecting_road_lanes_items[self.drag_connecting_road_id].update_graphics()
         else:
             super().mouseMoveEvent(event)
 
@@ -3037,11 +3623,20 @@ class ImageView(QGraphicsView):
                             break
 
                 item.set_selected_point(-1)
-                self.polyline_modified.emit()
+                self.polyline_modified.emit(self.drag_polyline_id)
                 # Update s-offset labels after point drag
                 if self.soffsets_visible:
                     self._update_soffset_labels(self.drag_polyline_id)
             self.drag_polyline_id = None
+            self.drag_point_index = -1
+        elif self.dragging_connecting_road_point:
+            self.dragging_connecting_road_point = False
+            if self.drag_connecting_road_id:
+                item = self.connecting_road_centerline_items[self.drag_connecting_road_id]
+                item.selected_point_index = -1
+                item.update_graphics()
+                # TODO: Emit connecting_road_modified signal if needed
+            self.drag_connecting_road_id = None
             self.drag_point_index = -1
         else:
             super().mouseReleaseEvent(event)

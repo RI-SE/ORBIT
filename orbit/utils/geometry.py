@@ -260,81 +260,67 @@ def generate_simple_connection_path(from_pos: Tuple[float, float],
                                    from_heading: float,
                                    to_pos: Tuple[float, float],
                                    to_heading: float,
-                                   num_points: int = 10) -> List[Tuple[float, float]]:
+                                   num_points: int = 20,
+                                   tangent_scale: float = 1.0,
+                                   is_uturn: bool = False) -> Tuple[List[Tuple[float, float]], Tuple[float, ...]]:
     """
-    Generate a simple connection path between two road endpoints.
+    Generate a ParamPoly3D connection path between two road endpoints.
 
-    This creates a smooth transition using a simple curved path.
-    For Phase 2 MVP, uses interpolated points. Can be upgraded to
-    proper arc or clothoid curves in future phases.
+    Uses Bezier control point calculation for smooth, tangent-continuous curves.
+    Falls back to Hermite interpolation with tangent_scale if Bezier fails
+    (e.g., for parallel lanes that don't intersect).
 
     Args:
         from_pos: Starting position (x, y)
-        from_heading: Starting heading in radians
+        from_heading: Starting heading in radians (0 = east, π/2 = north)
         to_pos: Ending position (x, y)
         to_heading: Ending heading in radians
-        num_points: Number of points in the path
+        num_points: Number of points to sample for visualization
+        tangent_scale: Scale factor for tangent lengths (used as fallback)
+        is_uturn: Whether this is a U-turn connection
 
     Returns:
-        List of (x, y) points
+        Tuple of (sampled_points, parampoly3_coefficients) where:
+        - sampled_points: List of (x, y) points sampled from the curve
+        - parampoly3_coefficients: Tuple of (aU, bU, cU, dU, aV, bV, cV, dV)
     """
-    # For MVP: simple linear interpolation
-    # Future enhancement: use Bezier curves or clothoids for smoother transitions
+    # Calculate tangent vectors from headings
+    start_tangent = (math.cos(from_heading), math.sin(from_heading))
+    end_tangent = (math.cos(to_heading), math.sin(to_heading))
 
-    points = []
-    dx = to_pos[0] - from_pos[0]
-    dy = to_pos[1] - from_pos[1]
+    # Try Bezier control point calculation first
+    control_points = calculate_bezier_control_points(
+        from_pos,
+        start_tangent,
+        to_pos,
+        end_tangent,
+        is_uturn
+    )
 
-    # Create control points for smoother curve
-    # Use a simple approach: points along headings from start and end
-
-    # Distance to extend along initial heading
-    endpoint_dist = math.sqrt(dx*dx + dy*dy)
-
-    # For junctions where from_pos == to_pos, use a fixed extend distance
-    # Otherwise use 30% of the distance between endpoints
-    MIN_EXTEND_DIST = 15.0  # Minimum 15 pixels/meters for junction connections
-    if endpoint_dist < 1e-6:
-        # Endpoints are at same location (junction) - extend outward along headings
-        extend_dist = MIN_EXTEND_DIST
+    if control_points is not None:
+        # Success: use Bezier curve
+        coeffs = bezier_to_parampoly3(control_points, from_heading)
+        sampled_points = sample_bezier(control_points, num_points)
     else:
-        # Normal case - extend based on endpoint separation
-        extend_dist = max(MIN_EXTEND_DIST, 0.3 * endpoint_dist)
+        # Fallback: use existing Hermite interpolation with tangent_scale
+        coeffs = calculate_hermite_parampoly3(
+            from_pos,
+            start_tangent,
+            to_pos,
+            end_tangent,
+            tangent_scale
+        )
 
-    # Control point 1: along from_heading
-    cp1_x = from_pos[0] + extend_dist * math.cos(from_heading)
-    cp1_y = from_pos[1] + extend_dist * math.sin(from_heading)
+        # Sample the curve for visualization
+        aU, bU, cU, dU, aV, bV, cV, dV = coeffs
+        sampled_points = sample_parampoly3(
+            aU, bU, cU, dU,
+            aV, bV, cV, dV,
+            num_points=num_points,
+            p_range=1.0
+        )
 
-    # Control point 2: along to_heading (backwards)
-    cp2_x = to_pos[0] - extend_dist * math.cos(to_heading)
-    cp2_y = to_pos[1] - extend_dist * math.sin(to_heading)
-
-    # Generate points along a cubic Bezier curve
-    # P(t) = (1-t)³P0 + 3(1-t)²t*P1 + 3(1-t)t²*P2 + t³*P3
-    for i in range(num_points):
-        t = i / (num_points - 1)
-        one_minus_t = 1 - t
-
-        # Bezier curve coefficients
-        b0 = one_minus_t ** 3
-        b1 = 3 * (one_minus_t ** 2) * t
-        b2 = 3 * one_minus_t * (t ** 2)
-        b3 = t ** 3
-
-        # Calculate point on curve
-        x = (b0 * from_pos[0] +
-             b1 * cp1_x +
-             b2 * cp2_x +
-             b3 * to_pos[0])
-
-        y = (b0 * from_pos[1] +
-             b1 * cp1_y +
-             b2 * cp2_y +
-             b3 * to_pos[1])
-
-        points.append((x, y))
-
-    return points
+    return (sampled_points, coeffs)
 
 
 def calculate_path_length(points: List[Tuple[float, float]]) -> float:
@@ -469,3 +455,414 @@ def find_point_at_distance_along_path(
     # Target distance exceeds path length
     # Return None to indicate we couldn't reach the target
     return None
+
+
+def calculate_hermite_parampoly3(
+    start_pos: Tuple[float, float],
+    start_tangent: Tuple[float, float],
+    end_pos: Tuple[float, float],
+    end_tangent: Tuple[float, float],
+    tangent_scale: float = 1.0
+) -> Tuple[float, float, float, float, float, float, float, float]:
+    """
+    Calculate ParamPoly3D coefficients using Hermite interpolation.
+
+    Creates a cubic polynomial curve that:
+    - Starts at start_pos with direction start_tangent
+    - Ends at end_pos with direction end_tangent
+    - Provides smooth, tangent-continuous transitions
+
+    The curve is defined by:
+        u(p) = aU + bU*p + cU*p² + dU*p³
+        v(p) = aV + bV*p + cV*p² + dV*p³
+    where p ∈ [0, 1]
+
+    Args:
+        start_pos: Starting position (x, y) in pixels
+        start_tangent: Tangent vector at start (dx, dy) - should be normalized
+        end_pos: Ending position (x, y) in pixels
+        end_tangent: Tangent vector at end (dx, dy) - should be normalized
+        tangent_scale: Scale factor for tangent lengths (controls curve tightness)
+
+    Returns:
+        Tuple of (aU, bU, cU, dU, aV, bV, cV, dV) - the 8 polynomial coefficients
+    """
+    x0, y0 = start_pos
+    x1, y1 = end_pos
+
+    # Scale tangents by the distance between endpoints for natural curve shape
+    dx = x1 - x0
+    dy = y1 - y0
+    dist = math.sqrt(dx * dx + dy * dy)
+
+    # Apply tangent scale
+    scale = dist * tangent_scale / 3.0  # Divide by 3 for good curve shape
+
+    tx0 = start_tangent[0] * scale
+    ty0 = start_tangent[1] * scale
+    tx1 = end_tangent[0] * scale
+    ty1 = end_tangent[1] * scale
+
+    # Hermite polynomial coefficients for cubic curve
+    # Based on Hermite basis functions:
+    # H0(p) = 2p³ - 3p² + 1 (start position)
+    # H1(p) = -2p³ + 3p² (end position)
+    # H2(p) = p³ - 2p² + p (start tangent)
+    # H3(p) = p³ - p² (end tangent)
+
+    # u(p) = x0*H0(p) + x1*H1(p) + tx0*H2(p) + tx1*H3(p)
+    # Expanding and collecting terms by powers of p:
+    aU = x0  # Constant term
+    bU = tx0  # Linear term
+    cU = -3*x0 + 3*x1 - 2*tx0 - tx1  # Quadratic term
+    dU = 2*x0 - 2*x1 + tx0 + tx1  # Cubic term
+
+    # Same for v(p)
+    aV = y0
+    bV = ty0
+    cV = -3*y0 + 3*y1 - 2*ty0 - ty1
+    dV = 2*y0 - 2*y1 + ty0 + ty1
+
+    return (aU, bU, cU, dU, aV, bV, cV, dV)
+
+
+def sample_parampoly3(
+    aU: float, bU: float, cU: float, dU: float,
+    aV: float, bV: float, cV: float, dV: float,
+    num_points: int = 20,
+    p_range: float = 1.0
+) -> List[Tuple[float, float]]:
+    """
+    Sample points along a ParamPoly3D curve for visualization.
+
+    Args:
+        aU, bU, cU, dU: Coefficients for u(p) polynomial
+        aV, bV, cV, dV: Coefficients for v(p) polynomial
+        num_points: Number of points to sample
+        p_range: Parameter range (typically 1.0 for normalized curves)
+
+    Returns:
+        List of (x, y) points along the curve
+    """
+    points = []
+
+    for i in range(num_points):
+        # Normalized parameter from 0 to p_range
+        p = (i / (num_points - 1)) * p_range
+
+        # Evaluate polynomials
+        u = aU + bU*p + cU*p*p + dU*p*p*p
+        v = aV + bV*p + cV*p*p + dV*p*p*p
+
+        points.append((u, v))
+
+    return points
+
+
+def line_intersection(
+    p1: Tuple[float, float],
+    d1: Tuple[float, float],
+    p2: Tuple[float, float],
+    d2: Tuple[float, float]
+) -> Optional[Tuple[float, float]]:
+    """
+    Find intersection point of two lines defined by point + direction.
+
+    Line 1: p1 + t * d1
+    Line 2: p2 + s * d2
+
+    Args:
+        p1: Point on line 1
+        d1: Direction vector of line 1
+        p2: Point on line 2
+        d2: Direction vector of line 2
+
+    Returns:
+        Intersection point (x, y) or None if lines are parallel
+    """
+    # Cross product of directions
+    cross = d1[0] * d2[1] - d1[1] * d2[0]
+
+    if abs(cross) < 1e-10:
+        # Lines are parallel
+        return None
+
+    # Vector from p1 to p2
+    dp = (p2[0] - p1[0], p2[1] - p1[1])
+
+    # Parameter t where intersection occurs on line 1
+    t = (dp[0] * d2[1] - dp[1] * d2[0]) / cross
+
+    # Intersection point
+    return (p1[0] + t * d1[0], p1[1] + t * d1[1])
+
+
+def angle_between_vectors(
+    v1: Tuple[float, float],
+    v2: Tuple[float, float]
+) -> float:
+    """
+    Calculate signed angle from v1 to v2 in radians.
+
+    Positive angle means counterclockwise rotation from v1 to v2.
+
+    Args:
+        v1: First vector (unit or non-unit)
+        v2: Second vector (unit or non-unit)
+
+    Returns:
+        Angle in radians, in range [-π, π]
+    """
+    # Use atan2 of cross and dot products
+    cross = v1[0] * v2[1] - v1[1] * v2[0]
+    dot = v1[0] * v2[0] + v1[1] * v2[1]
+    return math.atan2(cross, dot)
+
+
+def calculate_bezier_control_points(
+    start_pos: Tuple[float, float],
+    start_tangent: Tuple[float, float],
+    end_pos: Tuple[float, float],
+    end_tangent: Tuple[float, float],
+    is_uturn: bool = False
+) -> Optional[List[Tuple[float, float]]]:
+    """
+    Calculate Bezier control points for a smooth junction connection.
+
+    Uses lane extrapolation and intersection to find control points that
+    naturally ensure G1 (tangent) continuity. Algorithm based on SUMO's
+    NBNode::bezierControlPoints().
+
+    Args:
+        start_pos: Starting position (x, y)
+        start_tangent: Unit tangent vector at start (direction of travel)
+        end_pos: Ending position (x, y)
+        end_tangent: Unit tangent vector at end (direction of travel)
+        is_uturn: Whether this is a U-turn connection
+
+    Returns:
+        List of 3-4 control points for Bezier curve, or None if calculation fails
+        (e.g., parallel lanes that don't intersect)
+    """
+    dx = end_pos[0] - start_pos[0]
+    dy = end_pos[1] - start_pos[1]
+    dist = math.sqrt(dx * dx + dy * dy)
+
+    if dist < 1e-6:
+        # Points too close
+        return None
+
+    # Calculate angle between tangents
+    angle = angle_between_vectors(start_tangent, end_tangent)
+
+    control_points = [start_pos]
+
+    if is_uturn:
+        # U-turn: use perpendicular offset from midpoint
+        midpoint = ((start_pos[0] + end_pos[0]) / 2, (start_pos[1] + end_pos[1]) / 2)
+
+        # Perpendicular to the line connecting start and end
+        # Offset towards the "outside" of the turn
+        perp_x = -(end_pos[1] - start_pos[1])
+        perp_y = end_pos[0] - start_pos[0]
+        perp_len = math.sqrt(perp_x * perp_x + perp_y * perp_y)
+
+        if perp_len > 1e-6:
+            perp_x /= perp_len
+            perp_y /= perp_len
+
+            # Offset by half the distance to create a semicircular shape
+            offset = dist / 2
+            center = (midpoint[0] + perp_x * offset, midpoint[1] + perp_y * offset)
+            control_points.append(center)
+
+    elif abs(angle) < math.pi / 4:
+        # Small angle (<45°): S-curve with 4 control points
+        # Place control points along extrapolated tangent lines
+
+        half_dist = dist / 2
+        extrapolate_len = min(25.0, half_dist)  # Limit extrapolation
+
+        # Control point 1: along start tangent
+        ctrl1 = (
+            start_pos[0] + start_tangent[0] * extrapolate_len,
+            start_pos[1] + start_tangent[1] * extrapolate_len
+        )
+        control_points.append(ctrl1)
+
+        # Control point 2: backward from end along end tangent
+        ctrl2 = (
+            end_pos[0] - end_tangent[0] * extrapolate_len,
+            end_pos[1] - end_tangent[1] * extrapolate_len
+        )
+        control_points.append(ctrl2)
+
+    else:
+        # Large angle (>45°): find intersection of tangent lines
+        # This naturally creates G1 continuity
+
+        intersect = line_intersection(start_pos, start_tangent, end_pos, end_tangent)
+
+        if intersect is None:
+            # Lines are parallel - can't compute intersection
+            return None
+
+        # Check if intersection is reasonable (not too far away)
+        dist_to_intersect_start = distance_between_points(start_pos, intersect)
+        dist_to_intersect_end = distance_between_points(end_pos, intersect)
+
+        # Limit control point distance to avoid extreme curves
+        max_ctrl_dist = dist * 2.0  # Allow up to 2x the direct distance
+
+        if dist_to_intersect_start > max_ctrl_dist or dist_to_intersect_end > max_ctrl_dist:
+            # Intersection too far - fall back to S-curve approach
+            half_dist = dist / 2
+            extrapolate_len = min(25.0, half_dist)
+
+            ctrl1 = (
+                start_pos[0] + start_tangent[0] * extrapolate_len,
+                start_pos[1] + start_tangent[1] * extrapolate_len
+            )
+            control_points.append(ctrl1)
+
+            ctrl2 = (
+                end_pos[0] - end_tangent[0] * extrapolate_len,
+                end_pos[1] - end_tangent[1] * extrapolate_len
+            )
+            control_points.append(ctrl2)
+        else:
+            # Use intersection as the control point (quadratic Bezier)
+            control_points.append(intersect)
+
+    control_points.append(end_pos)
+    return control_points
+
+
+def bezier_to_parampoly3(
+    control_points: List[Tuple[float, float]],
+    start_heading: float
+) -> Tuple[float, float, float, float, float, float, float, float]:
+    """
+    Convert Bezier control points to paramPoly3 coefficients in local (u,v) frame.
+
+    The local coordinate system has:
+    - Origin at the first control point
+    - u-axis aligned with start_heading
+    - v-axis perpendicular (90° counterclockwise from u)
+
+    For quadratic Bezier (3 control points P0, P1, P2):
+        B(t) = (1-t)²P0 + 2(1-t)t·P1 + t²P2
+        Coefficients: a=P0, b=2(P1-P0), c=P0-2P1+P2, d=0
+
+    For cubic Bezier (4 control points P0, P1, P2, P3):
+        B(t) = (1-t)³P0 + 3(1-t)²t·P1 + 3(1-t)t²P2 + t³P3
+        Coefficients: a=P0, b=3(P1-P0), c=3(P0-2P1+P2), d=-P0+3P1-3P2+P3
+
+    Args:
+        control_points: List of 3 or 4 (x, y) control points
+        start_heading: Heading angle in radians for local coordinate system
+
+    Returns:
+        Tuple of (aU, bU, cU, dU, aV, bV, cV, dV) - paramPoly3 coefficients
+    """
+    if len(control_points) < 3:
+        raise ValueError("Need at least 3 control points")
+
+    # Transform to local (u, v) coordinate system
+    origin = control_points[0]
+    cos_h = math.cos(start_heading)
+    sin_h = math.sin(start_heading)
+
+    def to_local(p: Tuple[float, float]) -> Tuple[float, float]:
+        """Transform point to local (u, v) coordinates."""
+        dx = p[0] - origin[0]
+        dy = p[1] - origin[1]
+        # Rotate by -heading to align with u-axis
+        u = dx * cos_h + dy * sin_h
+        v = -dx * sin_h + dy * cos_h
+        return (u, v)
+
+    # Transform all control points
+    local_pts = [to_local(p) for p in control_points]
+
+    # First point should be at origin in local frame
+    # (but may have small numerical errors)
+
+    if len(control_points) == 3:
+        # Quadratic Bezier
+        P0, P1, P2 = local_pts
+
+        aU = P0[0]
+        bU = 2 * (P1[0] - P0[0])
+        cU = P0[0] - 2 * P1[0] + P2[0]
+        dU = 0.0
+
+        aV = P0[1]
+        bV = 2 * (P1[1] - P0[1])
+        cV = P0[1] - 2 * P1[1] + P2[1]
+        dV = 0.0
+
+    else:
+        # Cubic Bezier (4 or more points - use first 4)
+        P0, P1, P2, P3 = local_pts[:4]
+
+        aU = P0[0]
+        bU = 3 * (P1[0] - P0[0])
+        cU = 3 * (P0[0] - 2 * P1[0] + P2[0])
+        dU = -P0[0] + 3 * P1[0] - 3 * P2[0] + P3[0]
+
+        aV = P0[1]
+        bV = 3 * (P1[1] - P0[1])
+        cV = 3 * (P0[1] - 2 * P1[1] + P2[1])
+        dV = -P0[1] + 3 * P1[1] - 3 * P2[1] + P3[1]
+
+    return (aU, bU, cU, dU, aV, bV, cV, dV)
+
+
+def sample_bezier(
+    control_points: List[Tuple[float, float]],
+    num_points: int = 20
+) -> List[Tuple[float, float]]:
+    """
+    Sample points along a Bezier curve for visualization.
+
+    Supports both quadratic (3 points) and cubic (4 points) Bezier curves.
+
+    Args:
+        control_points: List of 3 or 4 (x, y) control points
+        num_points: Number of points to sample
+
+    Returns:
+        List of (x, y) points along the curve
+    """
+    if len(control_points) < 3:
+        return list(control_points)
+
+    points = []
+
+    for i in range(num_points):
+        t = i / (num_points - 1)
+
+        if len(control_points) == 3:
+            # Quadratic Bezier: B(t) = (1-t)²P0 + 2(1-t)t·P1 + t²P2
+            P0, P1, P2 = control_points
+            one_minus_t = 1 - t
+            x = one_minus_t * one_minus_t * P0[0] + 2 * one_minus_t * t * P1[0] + t * t * P2[0]
+            y = one_minus_t * one_minus_t * P0[1] + 2 * one_minus_t * t * P1[1] + t * t * P2[1]
+
+        else:
+            # Cubic Bezier: B(t) = (1-t)³P0 + 3(1-t)²t·P1 + 3(1-t)t²P2 + t³P3
+            P0, P1, P2, P3 = control_points[:4]
+            one_minus_t = 1 - t
+            x = (one_minus_t ** 3 * P0[0] +
+                 3 * one_minus_t ** 2 * t * P1[0] +
+                 3 * one_minus_t * t ** 2 * P2[0] +
+                 t ** 3 * P3[0])
+            y = (one_minus_t ** 3 * P0[1] +
+                 3 * one_minus_t ** 2 * t * P1[1] +
+                 3 * one_minus_t * t ** 2 * P2[1] +
+                 t ** 3 * P3[1])
+
+        points.append((x, y))
+
+    return points

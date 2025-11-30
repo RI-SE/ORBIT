@@ -90,6 +90,9 @@ class MainWindow(QMainWindow):
         self.image_view.section_split_requested.connect(self.on_section_split_requested)
         self.image_view.section_modified.connect(self.on_section_modified)
         self.image_view.lane_segment_clicked.connect(self.on_lane_segment_clicked)
+        self.image_view.connecting_road_lane_clicked.connect(self.on_connecting_road_lane_clicked_in_view)
+        self.image_view.lane_edit_requested.connect(self.on_lane_edit_requested)
+        self.image_view.connecting_road_lane_edit_requested.connect(self.on_connecting_road_lane_edit_requested)
         self.image_view.point_picked.connect(self.on_point_picked)
 
         # Status bar with permanent widgets
@@ -414,6 +417,9 @@ class MainWindow(QMainWindow):
         self.elements_tree.object_selected.connect(self.on_object_selected_in_tree)
         self.elements_tree.object_modified.connect(self.on_object_modified_in_tree)
         self.elements_tree.object_deleted.connect(self.on_object_deleted_in_tree)
+        self.elements_tree.connecting_road_selected.connect(self.on_connecting_road_selected)
+        self.elements_tree.connecting_road_modified.connect(self.on_connecting_road_modified)
+        self.elements_tree.connecting_road_lane_selected.connect(self.on_connecting_road_lane_selected)
 
         # Roads dock with tree widget
         self.roads_dock = QDockWidget("Roads", self)
@@ -1271,6 +1277,10 @@ class MainWindow(QMainWindow):
         # Update lane graphics for any roads whose centerline was modified
         self.update_affected_road_lanes()
 
+        # Regenerate connecting roads if a road centerline endpoint was modified
+        if polyline_id:
+            self.regenerate_affected_connecting_roads(polyline_id)
+
     def on_polyline_deleted(self, polyline_id):
         """Handle polyline deleted signal."""
         self.project.remove_polyline(polyline_id)
@@ -1455,6 +1465,123 @@ class MainWindow(QMainWindow):
             if road.centerline_id:
                 self.image_view.update_road_lanes(road.id, scale_factors)
 
+    def regenerate_affected_connecting_roads(self, polyline_id: str):
+        """
+        Regenerate ParamPoly3D connecting roads when a road centerline endpoint is modified.
+
+        Args:
+            polyline_id: ID of the modified polyline
+        """
+        from orbit.models import LineType
+        from orbit.utils.geometry import generate_simple_connection_path
+        import math
+
+        # Get the modified polyline
+        polyline = self.project.get_polyline(polyline_id)
+        if not polyline or polyline.line_type != LineType.CENTERLINE:
+            # Only regenerate for centerline modifications
+            return
+
+        # Find which road this polyline belongs to
+        affected_road = None
+        for road in self.project.roads:
+            if road.centerline_id == polyline_id:
+                affected_road = road
+                break
+
+        if not affected_road:
+            return
+
+        # Find junctions where this road appears as predecessor or successor
+        affected_junctions = []
+        for junction in self.project.junctions:
+            for conn_road in junction.connecting_roads:
+                if (conn_road.predecessor_road_id == affected_road.id or
+                    conn_road.successor_road_id == affected_road.id):
+                    if conn_road.geometry_type == "parampoly3":
+                        affected_junctions.append((junction, conn_road))
+
+        # Regenerate each affected ParamPoly3D connecting road
+        for junction, conn_road in affected_junctions:
+            # Get predecessor and successor roads
+            pred_road = self.project.get_road(conn_road.predecessor_road_id)
+            succ_road = self.project.get_road(conn_road.successor_road_id)
+
+            if not pred_road or not succ_road:
+                continue
+
+            # Get centerline polylines
+            pred_polyline = self.project.get_polyline(pred_road.centerline_id)
+            succ_polyline = self.project.get_polyline(succ_road.centerline_id)
+
+            if not pred_polyline or not succ_polyline:
+                continue
+
+            # Get endpoint positions and headings
+            # Predecessor endpoint (end point for "end" contact)
+            if conn_road.contact_point_start == "end":
+                pred_pos = pred_polyline.points[-1]
+                if len(pred_polyline.points) >= 2:
+                    dx = pred_polyline.points[-1][0] - pred_polyline.points[-2][0]
+                    dy = pred_polyline.points[-1][1] - pred_polyline.points[-2][1]
+                    pred_heading = math.atan2(dy, dx)
+                else:
+                    pred_heading = 0.0
+            else:  # "start"
+                pred_pos = pred_polyline.points[0]
+                if len(pred_polyline.points) >= 2:
+                    dx = pred_polyline.points[1][0] - pred_polyline.points[0][0]
+                    dy = pred_polyline.points[1][1] - pred_polyline.points[0][1]
+                    pred_heading = math.atan2(dy, dx)
+                    pred_heading += math.pi  # Reverse direction for "start" contact
+                else:
+                    pred_heading = math.pi
+
+            # Successor endpoint (start point for "start" contact)
+            if conn_road.contact_point_end == "start":
+                succ_pos = succ_polyline.points[0]
+                if len(succ_polyline.points) >= 2:
+                    dx = succ_polyline.points[1][0] - succ_polyline.points[0][0]
+                    dy = succ_polyline.points[1][1] - succ_polyline.points[0][1]
+                    succ_heading = math.atan2(dy, dx)
+                    succ_heading += math.pi  # Reverse direction to point into road
+                else:
+                    succ_heading = math.pi
+            else:  # "end"
+                succ_pos = succ_polyline.points[-1]
+                if len(succ_polyline.points) >= 2:
+                    dx = succ_polyline.points[-1][0] - succ_polyline.points[-2][0]
+                    dy = succ_polyline.points[-1][1] - succ_polyline.points[-2][1]
+                    succ_heading = math.atan2(dy, dx)
+                else:
+                    succ_heading = 0.0
+
+            # Regenerate the curve
+            path, coeffs = generate_simple_connection_path(
+                from_pos=pred_pos,
+                from_heading=pred_heading,
+                to_pos=succ_pos,
+                to_heading=succ_heading,
+                num_points=20,
+                tangent_scale=conn_road.tangent_scale
+            )
+
+            # Update the connecting road
+            conn_road.path = path
+            aU, bU, cU, dU, aV, bV, cV, dV = coeffs
+            conn_road.aU = aU
+            conn_road.bU = bU
+            conn_road.cU = cU
+            conn_road.dU = dU
+            conn_road.aV = aV
+            conn_road.bV = bV
+            conn_road.cV = cV
+            conn_road.dV = dV
+
+            # Update graphics
+            scale_factors = self.get_current_scale()
+            self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
+
     def on_polyline_selected_in_tree(self, polyline_id):
         """Handle polyline selection from tree."""
         # Highlight the polyline in the image view
@@ -1528,6 +1655,61 @@ class MainWindow(QMainWindow):
             self.modified = True
             self.update_window_title()
             self.statusBar().showMessage(f"Junction properties updated: {result.name}")
+
+    def on_connecting_road_selected(self, connecting_road_id: str):
+        """Handle connecting road selection in elements tree."""
+        # Highlight the connecting road in the view
+        if connecting_road_id in self.image_view.connecting_road_centerline_items:
+            self.image_view.connecting_road_centerline_items[connecting_road_id].set_selected(True)
+            # Deselect previously selected item (if any)
+            # TODO: Track previous selection and deselect it
+
+    def on_connecting_road_modified(self, connecting_road_id: str):
+        """Handle connecting road modification."""
+        # Refresh graphics
+        scale_factors = self.get_current_scale()
+        self.image_view.update_connecting_road_graphics(connecting_road_id, scale_factors)
+        self.modified = True
+        self.update_window_title()
+
+    def on_connecting_road_lane_selected(self, connecting_road_id: str, lane_id: int):
+        """Handle connecting road lane selection in elements tree."""
+        # Highlight the lane in the view
+        self.highlight_connecting_road_lane(connecting_road_id, lane_id)
+        self.statusBar().showMessage(f"Selected connecting road lane {lane_id}")
+
+    def on_connecting_road_lane_clicked_in_view(self, connecting_road_id: str, lane_id: int):
+        """Handle connecting road lane click in the view - select it in the elements tree."""
+        # Select the corresponding item in the elements tree
+        self.elements_tree.select_connecting_road_lane(connecting_road_id, lane_id)
+        self.statusBar().showMessage(f"Connecting road lane {lane_id} selected")
+
+    def highlight_connecting_road_lane(self, connecting_road_id: str, lane_id: int):
+        """Highlight a specific connecting road lane in the view."""
+        # Clear existing lane selections
+        self.clear_lane_selections()
+
+        # Find and highlight the specific lane polygon
+        if connecting_road_id in self.image_view.connecting_road_lanes_items:
+            lanes_item = self.image_view.connecting_road_lanes_items[connecting_road_id]
+            for lane_polygon in lanes_item.lane_items:
+                if hasattr(lane_polygon, 'lane_id') and lane_polygon.lane_id == lane_id:
+                    lane_polygon.set_selected(True)
+                    break
+
+    def clear_lane_selections(self):
+        """Clear all lane selections in the view."""
+        # Clear regular road lanes
+        for road_id, lanes_item in self.image_view.road_lanes_items.items():
+            for lane_polygon in lanes_item.lane_items:
+                if hasattr(lane_polygon, 'set_selected'):
+                    lane_polygon.set_selected(False)
+
+        # Clear connecting road lanes
+        for conn_road_id, lanes_item in self.image_view.connecting_road_lanes_items.items():
+            for lane_polygon in lanes_item.lane_items:
+                if hasattr(lane_polygon, 'set_selected'):
+                    lane_polygon.set_selected(False)
 
     def on_signal_placement_requested(self, x: float, y: float):
         """Handle signal placement request - show selection dialog."""
@@ -1806,6 +1988,86 @@ class MainWindow(QMainWindow):
         """
         # Select the lane visually in the image view
         self.image_view.select_lane(road_id, section_number, lane_id)
+
+    def on_lane_edit_requested(self, road_id: str, section_number: int, lane_id: int):
+        """
+        Handle lane edit request (double-click on lane in map).
+
+        Args:
+            road_id: ID of the road
+            section_number: Section number containing the lane
+            lane_id: Lane ID within the section
+        """
+        from orbit.gui.lane_properties_dialog import LanePropertiesDialog
+
+        # Find the road
+        road = self.project.get_road(road_id)
+        if not road:
+            return
+
+        # Find the section
+        section = None
+        for s in road.lane_sections:
+            if s.section_number == section_number:
+                section = s
+                break
+
+        if not section:
+            return
+
+        # Find the lane
+        lane = section.get_lane(lane_id)
+        if not lane:
+            return
+
+        # Open lane properties dialog
+        if LanePropertiesDialog.edit_lane(lane, self.project, road_id, self):
+            # Properties were modified, update the view
+            scale_factors = self.get_current_scale()
+            self.image_view.update_road_lanes(road_id, scale_factors)
+            self.modified = True
+            self.road_tree.refresh_tree()
+            self.update_window_title()
+            self.statusBar().showMessage(f"Lane properties updated: {lane.get_display_name()}")
+
+    def on_connecting_road_lane_edit_requested(self, connecting_road_id: str, lane_id: int):
+        """
+        Handle connecting road lane edit request (double-click on connecting road lane in map).
+
+        Args:
+            connecting_road_id: ID of the connecting road
+            lane_id: Lane ID within the connecting road
+        """
+        from orbit.gui.lane_properties_dialog import LanePropertiesDialog
+
+        # Find the connecting road in junctions
+        connecting_road = None
+        parent_junction = None
+        for junction in self.project.junctions:
+            for cr in junction.connecting_roads:
+                if cr.id == connecting_road_id:
+                    connecting_road = cr
+                    parent_junction = junction
+                    break
+            if connecting_road:
+                break
+
+        if not connecting_road:
+            return
+
+        # Find the lane
+        lane = connecting_road.get_lane(lane_id)
+        if not lane:
+            return
+        # Open lane properties dialog (without project/road_id since connecting roads are standalone)
+        if LanePropertiesDialog.edit_lane(lane, None, None, self):
+            # Properties were modified, update the view
+            scale_factors = self.get_current_scale()
+            self.image_view.update_connecting_road_graphics(connecting_road_id, scale_factors)
+            self.modified = True
+            self.elements_tree.refresh_tree()
+            self.update_window_title()
+            self.statusBar().showMessage(f"Connecting road lane properties updated: {lane.get_display_name()}")
 
     # Utility methods
     def check_unsaved_changes(self) -> bool:

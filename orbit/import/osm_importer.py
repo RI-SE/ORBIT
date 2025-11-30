@@ -376,11 +376,16 @@ class OSMImporter:
     def _import_junctions_from_osm(self, osm_data: OSMData, options: ImportOptions,
                                    result: ImportResult) -> List[Junction]:
         """Import junctions using OSM node ID matching."""
+        # Create polylines dict for junction filtering
+        polylines_dict = {p.id: p for p in self.project.polylines}
+
         # Detect regular road-road junctions
         junctions = detect_junctions_from_osm(
             osm_data,
             self.road_to_osm_way,
-            self.transformer
+            self.transformer,
+            roads=self.project.roads,
+            polylines_dict=polylines_dict
         )
 
         if options.verbose:
@@ -396,7 +401,6 @@ class OSMImporter:
         # This way we detect which roads connect while they're still at the junction center
 
         roads_dict = {road.id: road for road in self.project.roads}
-        polylines_dict = {p.id: p for p in self.project.polylines}
 
         # Step 1: Analyze junction geometry and detect connection patterns (before offsetting)
         if junctions and options.verbose:
@@ -410,8 +414,15 @@ class OSMImporter:
         filter_unlikely_connections = junction_analyzer_module.filter_unlikely_connections
 
         # Store geometry info and patterns for each junction (before offsetting)
+        # Skip virtual junctions (path crossings) as they don't need connecting roads
         junction_patterns = {}
         for junction in junctions:
+            # Skip virtual junctions (path crossings) - no connecting roads needed
+            if junction.junction_type == "virtual":
+                if options.verbose:
+                    print(f"DEBUG: Skipping virtual junction '{junction.name}' (path crossing)")
+                continue
+
             geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
             patterns = detect_connection_patterns(geometry_info)
             patterns = filter_unlikely_connections(patterns, roads_dict)
@@ -443,6 +454,10 @@ class OSMImporter:
         polylines_dict = {p.id: p for p in self.project.polylines}
 
         for junction in junctions:
+            # Skip virtual junctions (path crossings) - no connecting roads generated
+            if junction.junction_type == "virtual":
+                continue
+
             # Use the pre-detected patterns from before offsetting
             patterns = junction_patterns.get(junction.id, [])
 
@@ -472,26 +487,30 @@ class OSMImporter:
                 # Calculate average lane width
                 avg_lane_width = (from_endpoint_updated.lane_width + to_endpoint_updated.lane_width) / 2
 
-                # Determine lane count
+                # Determine lane count - only use right lanes for right-hand traffic
                 conn_lane_count_right = min(
                     from_endpoint_updated.right_lane_count if from_endpoint_updated.at_junction == "end" else from_endpoint_updated.left_lane_count,
                     to_endpoint_updated.right_lane_count if to_endpoint_updated.at_junction == "start" else to_endpoint_updated.left_lane_count
                 )
-                conn_lane_count_left = 0
+                conn_lane_count_left = 0  # Right-hand traffic: only right lanes in connecting roads
 
-                # Generate path with UPDATED (offset) positions
-                path = generate_simple_connection_path(
-                    from_pos=from_endpoint_updated.position,
+                # Generate path using CENTERLINE positions with ParamPoly3D (tangent-continuous)
+                path, coeffs = generate_simple_connection_path(
+                    from_pos=from_endpoint_updated.position,  # Use centerline position
                     from_heading=from_endpoint_updated.heading,
-                    to_pos=to_endpoint_updated.position,
+                    to_pos=to_endpoint_updated.position,  # Use centerline position
                     to_heading=to_endpoint_updated.heading,
-                    num_points=10
+                    num_points=20,
+                    tangent_scale=1.0
                 )
 
                 if not path:
                     continue
 
-                # Create connecting road
+                # Unpack ParamPoly3D coefficients
+                aU, bU, cU, dU, aV, bV, cV, dV = coeffs
+
+                # Create connecting road with ParamPoly3D geometry
                 connecting_road = ConnectingRoad(
                     path=path,
                     lane_count_left=conn_lane_count_left,
@@ -500,7 +519,12 @@ class OSMImporter:
                     predecessor_road_id=pattern.from_road_id,
                     successor_road_id=pattern.to_road_id,
                     contact_point_start="end",
-                    contact_point_end="start"
+                    contact_point_end="start",
+                    geometry_type="parampoly3",
+                    aU=aU, bU=bU, cU=cU, dU=dU,
+                    aV=aV, bV=bV, cV=cV, dV=dV,
+                    p_range=1.0,
+                    tangent_scale=1.0
                 )
 
                 junction.add_connecting_road(connecting_road)
@@ -607,26 +631,30 @@ class OSMImporter:
                 # Calculate average lane width
                 avg_lane_width = (from_endpoint_updated.lane_width + to_endpoint_updated.lane_width) / 2
 
-                # Determine lane count
+                # Determine lane count - only use right lanes for right-hand traffic
                 conn_lane_count_right = min(
                     from_endpoint_updated.right_lane_count if from_endpoint_updated.at_junction == "end" else from_endpoint_updated.left_lane_count,
                     to_endpoint_updated.right_lane_count if to_endpoint_updated.at_junction == "start" else to_endpoint_updated.left_lane_count
                 )
-                conn_lane_count_left = 0
+                conn_lane_count_left = 0  # Right-hand traffic: only right lanes in connecting roads
 
-                # Generate path with UPDATED (offset) positions
-                path = generate_simple_connection_path(
-                    from_pos=from_endpoint_updated.position,
+                # Generate path using CENTERLINE positions with ParamPoly3D (tangent-continuous)
+                path, coeffs = generate_simple_connection_path(
+                    from_pos=from_endpoint_updated.position,  # Use centerline position
                     from_heading=from_endpoint_updated.heading,
-                    to_pos=to_endpoint_updated.position,
+                    to_pos=to_endpoint_updated.position,  # Use centerline position
                     to_heading=to_endpoint_updated.heading,
-                    num_points=10
+                    num_points=20,
+                    tangent_scale=1.0
                 )
 
                 if not path:
                     continue
 
-                # Create connecting road
+                # Unpack ParamPoly3D coefficients
+                aU, bU, cU, dU, aV, bV, cV, dV = coeffs
+
+                # Create connecting road with ParamPoly3D geometry
                 connecting_road = ConnectingRoad(
                     path=path,
                     lane_count_left=conn_lane_count_left,
@@ -635,7 +663,12 @@ class OSMImporter:
                     predecessor_road_id=pattern.from_road_id,
                     successor_road_id=pattern.to_road_id,
                     contact_point_start="end",
-                    contact_point_end="start"
+                    contact_point_end="start",
+                    geometry_type="parampoly3",
+                    aU=aU, bU=bU, cU=cU, dU=dU,
+                    aV=aV, bV=bV, cV=cV, dV=dV,
+                    p_range=1.0,
+                    tangent_scale=1.0
                 )
 
                 crossing.add_connecting_road(connecting_road)

@@ -17,7 +17,7 @@ class RoadEndpointInfo:
     """Information about a road endpoint at a junction."""
     road_id: str
     road_name: str
-    position: Tuple[float, float]  # (x, y) in pixels
+    position: Tuple[float, float]  # (x, y) in pixels - centerline position
     heading: float  # Radians, 0 = east, π/2 = north
     at_junction: str  # "start" or "end"
     is_incoming: bool  # Road ends at junction
@@ -26,6 +26,44 @@ class RoadEndpointInfo:
     right_lane_count: int
     lane_width: float  # Meters
     relative_angle: float = 0.0  # Angle relative to reference direction (set later)
+
+    def get_right_lane_center_position(self, scale: float) -> Tuple[float, float]:
+        """
+        Calculate the position of the right lane center for right-hand traffic.
+
+        For right-hand traffic, the right lanes are on the right side when traveling
+        in the direction of the heading. This is 90° clockwise (perpendicular right).
+
+        Args:
+            scale: Meters per pixel conversion factor
+
+        Returns:
+            (x, y) position of the right lane center in pixels
+        """
+        import math
+
+        # Convert lane width from meters to pixels
+        lane_width_px = self.lane_width / scale
+
+        # For right-hand traffic, right side is -90° from heading (clockwise)
+        # In standard math coordinates: right_perpendicular = heading - π/2
+        right_perpendicular = self.heading - math.pi / 2
+
+        # Distance to right lane center depends on number of right lanes
+        # If 1 lane: offset by lane_width/2 (to center of lane)
+        # If 2 lanes: offset by lane_width * 1.5 (to boundary between lanes)
+        # General: offset by (right_lane_count / 2.0) * lane_width
+        if self.right_lane_count > 0:
+            offset_distance = (self.right_lane_count / 2.0) * lane_width_px
+        else:
+            # No right lanes, use centerline
+            offset_distance = 0.0
+
+        # Calculate offset position
+        offset_x = self.position[0] + offset_distance * math.cos(right_perpendicular)
+        offset_y = self.position[1] + offset_distance * math.sin(right_perpendicular)
+
+        return (offset_x, offset_y)
 
 
 @dataclass
@@ -434,7 +472,8 @@ def generate_lane_links_for_connection(from_endpoint: RoadEndpointInfo,
 
 def generate_junction_connections(junction: Junction,
                                  roads_dict: Dict[str, Road],
-                                 polylines_dict: Dict[str, Polyline]) -> None:
+                                 polylines_dict: Dict[str, Polyline],
+                                 scale: float = 1.0) -> None:
     """
     Generate connecting roads and lane connections for a junction.
 
@@ -444,6 +483,7 @@ def generate_junction_connections(junction: Junction,
         junction: Junction object to populate with connections
         roads_dict: Dictionary of road_id -> Road object
         polylines_dict: Dictionary of polyline_id -> Polyline object
+        scale: Meters per pixel scale factor (not currently used, for future enhancements)
     """
     # Step 1: Analyze junction geometry
     geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
@@ -473,21 +513,29 @@ def generate_junction_connections(junction: Junction,
             from_endpoint.right_lane_count if from_endpoint.at_junction == "end" else from_endpoint.left_lane_count,
             to_endpoint.right_lane_count if to_endpoint.at_junction == "start" else to_endpoint.left_lane_count
         )
-        conn_lane_count_left = 0  # For simplicity, use only right lanes in connecting roads
+        conn_lane_count_left = 0  # Right-hand traffic: only right lanes in connecting roads
 
-        # Generate geometric path
-        path = generate_simple_connection_path(
-            from_pos=from_endpoint.position,
+        # Check if this is a U-turn connection
+        is_uturn = pattern.turn_type == "uturn"
+
+        # Generate geometric path using ParamPoly3D with CENTERLINE positions (tangent-continuous)
+        path, coeffs = generate_simple_connection_path(
+            from_pos=from_endpoint.position,  # Use centerline position
             from_heading=from_endpoint.heading,
-            to_pos=to_endpoint.position,
+            to_pos=to_endpoint.position,  # Use centerline position
             to_heading=to_endpoint.heading,
-            num_points=10
+            num_points=20,
+            tangent_scale=1.0,
+            is_uturn=is_uturn
         )
 
         if not path:
             continue
 
-        # Create connecting road
+        # Unpack ParamPoly3D coefficients
+        aU, bU, cU, dU, aV, bV, cV, dV = coeffs
+
+        # Create connecting road with ParamPoly3D geometry
         connecting_road = ConnectingRoad(
             path=path,
             lane_count_left=conn_lane_count_left,
@@ -496,7 +544,13 @@ def generate_junction_connections(junction: Junction,
             predecessor_road_id=pattern.from_road_id,
             successor_road_id=pattern.to_road_id,
             contact_point_start="end",  # Connects to end of incoming road
-            contact_point_end="start"   # Connects to start of outgoing road
+            contact_point_end="start",   # Connects to start of outgoing road
+            geometry_type="parampoly3",
+            aU=aU, bU=bU, cU=cU, dU=dU,
+            aV=aV, bV=bV, cV=cV, dV=dV,
+            p_range=1.0,
+            p_range_normalized=True,  # Use OpenDRIVE standard normalized pRange
+            tangent_scale=1.0
         )
 
         # Add to junction

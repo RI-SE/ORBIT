@@ -415,14 +415,112 @@ class OpenDriveWriter:
         # Transform path points from pixels to meters
         path_meters = self.transformer.pixels_to_meters_batch(connecting_road.path)
 
-        # Fit geometry to the path
-        geometry_elements = self.curve_fitter.fit_polyline(path_meters)
+        # Check if connecting road has ParamPoly3D geometry
+        if connecting_road.geometry_type == "parampoly3":
+            # Calculate ParamPoly3D coefficients in LOCAL coordinate system
+            # Local u/v coordinates have origin at start point with u-axis along heading
 
-        if not geometry_elements:
-            return None
+            # Get start and end points in meters (global coordinates)
+            start_point_meters = path_meters[0]
+            end_point_meters = path_meters[-1]
 
-        # Calculate total road length
-        road_length = sum(elem.length for elem in geometry_elements)
+            # Calculate headings from the curve
+            if len(path_meters) >= 2:
+                # Start heading
+                dx_start = path_meters[1][0] - path_meters[0][0]
+                dy_start = path_meters[1][1] - path_meters[0][1]
+                start_heading = math.atan2(dy_start, dx_start)
+
+                # End heading
+                dx_end = path_meters[-1][0] - path_meters[-2][0]
+                dy_end = path_meters[-1][1] - path_meters[-2][1]
+                end_heading = math.atan2(dy_end, dx_end)
+            else:
+                start_heading = 0.0
+                end_heading = 0.0
+
+            # Transform end point from global to local u/v coordinates
+            # Local frame: origin at start_point, u-axis along start_heading, v-axis 90° CCW
+            dx_global = end_point_meters[0] - start_point_meters[0]
+            dy_global = end_point_meters[1] - start_point_meters[1]
+
+            cos_h = math.cos(start_heading)
+            sin_h = math.sin(start_heading)
+
+            # Rotate to local frame: [u] = [cos  sin] [dx]
+            #                         [v]   [-sin cos] [dy]
+            end_u = dx_global * cos_h + dy_global * sin_h
+            end_v = -dx_global * sin_h + dy_global * cos_h
+
+            # Transform end tangent to local frame
+            # End tangent direction in global frame
+            end_tangent_x_global = math.cos(end_heading)
+            end_tangent_y_global = math.sin(end_heading)
+
+            # Rotate to local frame
+            end_tangent_u = end_tangent_x_global * cos_h + end_tangent_y_global * sin_h
+            end_tangent_v = -end_tangent_x_global * sin_h + end_tangent_y_global * cos_h
+
+            # Compute Bezier curve in LOCAL space (with Hermite fallback)
+            # Start: (0, 0) with tangent (1, 0) - aligned with u-axis
+            # End: (end_u, end_v) with tangent (end_tangent_u, end_tangent_v)
+            from orbit.utils.geometry import (
+                calculate_bezier_control_points,
+                bezier_to_parampoly3,
+                calculate_hermite_parampoly3
+            )
+
+            # Try Bezier control point calculation first
+            control_points = calculate_bezier_control_points(
+                (0.0, 0.0),  # Start at local origin
+                (1.0, 0.0),  # Start tangent aligned with u-axis
+                (end_u, end_v),  # End point in local coordinates
+                (end_tangent_u, end_tangent_v)  # End tangent in local frame
+            )
+
+            if control_points is not None:
+                # Success: use Bezier curve
+                # Since we're already in local coordinates, heading is 0
+                aU, bU, cU, dU, aV, bV, cV, dV = bezier_to_parampoly3(control_points, 0.0)
+            else:
+                # Fallback: use Hermite interpolation with tangent_scale
+                aU, bU, cU, dU, aV, bV, cV, dV = calculate_hermite_parampoly3(
+                    (0.0, 0.0),  # Start at local origin
+                    (1.0, 0.0),  # Start tangent aligned with u-axis
+                    (end_u, end_v),  # End point in local coordinates
+                    (end_tangent_u, end_tangent_v),  # End tangent in local frame
+                    tangent_scale=connecting_road.tangent_scale
+                )
+
+            # Calculate road length from sampled path
+            road_length = 0.0
+            for i in range(len(path_meters) - 1):
+                dx = path_meters[i+1][0] - path_meters[i][0]
+                dy = path_meters[i+1][1] - path_meters[i][1]
+                road_length += math.sqrt(dx*dx + dy*dy)
+
+            # Create ParamPoly3 geometry element with LOCAL coefficients
+            geometry_elements = [
+                GeometryElement(
+                    geom_type=GeometryType.PARAMPOLY3,
+                    start_pos=start_point_meters,  # Global position
+                    heading=start_heading,  # Global heading
+                    length=road_length,
+                    aU=aU, bU=bU, cU=cU, dU=dU,  # Local u/v coefficients
+                    aV=aV, bV=bV, cV=cV, dV=dV,
+                    p_range=1.0,
+                    p_range_normalized=connecting_road.p_range_normalized
+                )
+            ]
+        else:
+            # Fit geometry to the path (legacy polyline mode)
+            geometry_elements = self.curve_fitter.fit_polyline(path_meters)
+
+            if not geometry_elements:
+                return None
+
+            # Calculate total road length
+            road_length = sum(elem.length for elem in geometry_elements)
 
         # Create road element
         road_elem = etree.Element('road')
@@ -576,6 +674,21 @@ class OpenDriveWriter:
                 spiral = etree.SubElement(geometry, 'spiral')
                 spiral.set('curvStart', f'{geom.curvature:.8f}')
                 spiral.set('curvEnd', f'{geom.curvature_end:.8f}')
+            elif geom.geom_type == GeometryType.PARAMPOLY3:
+                parampoly3 = etree.SubElement(geometry, 'paramPoly3')
+                parampoly3.set('aU', f'{geom.aU:.10f}')
+                parampoly3.set('bU', f'{geom.bU:.10f}')
+                parampoly3.set('cU', f'{geom.cU:.10f}')
+                parampoly3.set('dU', f'{geom.dU:.10f}')
+                parampoly3.set('aV', f'{geom.aV:.10f}')
+                parampoly3.set('bV', f'{geom.bV:.10f}')
+                parampoly3.set('cV', f'{geom.cV:.10f}')
+                parampoly3.set('dV', f'{geom.dV:.10f}')
+                # Use "normalized" string if p_range_normalized is True (OpenDRIVE standard)
+                if geom.p_range_normalized:
+                    parampoly3.set('pRange', 'normalized')
+                else:
+                    parampoly3.set('pRange', f'{geom.p_range:.4f}')
 
             s_offset += geom.length
 

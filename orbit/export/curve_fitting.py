@@ -16,6 +16,7 @@ class GeometryType(Enum):
     LINE = "line"
     ARC = "arc"
     SPIRAL = "spiral"  # Clothoid (not fully implemented)
+    PARAMPOLY3 = "paramPoly3"  # Parametric cubic polynomial
 
 
 @dataclass
@@ -24,12 +25,16 @@ class GeometryElement:
     Represents a geometry element for OpenDrive.
 
     Attributes:
-        geom_type: Type of geometry (line, arc, spiral)
+        geom_type: Type of geometry (line, arc, spiral, paramPoly3)
         start_pos: Starting position (x, y) in meters
         heading: Starting heading in radians
         length: Length of the segment in meters
         curvature: Curvature (1/radius) for arcs, or starting curvature for spirals
         curvature_end: Ending curvature for spirals (None for lines and arcs)
+        aU, bU, cU, dU: ParamPoly3 coefficients for u(p) polynomial
+        aV, bV, cV, dV: ParamPoly3 coefficients for v(p) polynomial
+        p_range: Parameter range for ParamPoly3 (typically 1.0)
+        p_range_normalized: If True, pRange="normalized" (OpenDRIVE standard)
     """
     geom_type: GeometryType
     start_pos: Tuple[float, float]
@@ -37,6 +42,17 @@ class GeometryElement:
     length: float  # meters
     curvature: float = 0.0  # 1/radius for arcs
     curvature_end: Optional[float] = None  # For spirals
+    # ParamPoly3D coefficients (only used when geom_type is PARAMPOLY3)
+    aU: float = 0.0
+    bU: float = 0.0
+    cU: float = 0.0
+    dU: float = 0.0
+    aV: float = 0.0
+    bV: float = 0.0
+    cV: float = 0.0
+    dV: float = 0.0
+    p_range: float = 1.0
+    p_range_normalized: bool = True  # If True, use pRange="normalized" (OpenDRIVE standard)
 
 
 class CurveFitter:

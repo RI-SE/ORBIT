@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 import uuid
 import math
 
+from .lane import Lane, LaneType
+from .polyline import RoadMarkType
+
 
 @dataclass
 class ConnectingRoad:
@@ -22,7 +25,7 @@ class ConnectingRoad:
 
     Attributes:
         id: Unique identifier for this connecting road (UUID string)
-        path: List of (x, y) points in pixel coordinates defining the path
+        path: List of (x, y) points in pixel coordinates defining the path (sampled from curve)
         lane_count_left: Number of lanes on left side (positive IDs: 1, 2, 3...)
         lane_count_right: Number of lanes on right side (negative IDs: -1, -2, -3...)
         lane_width: Lane width in meters
@@ -31,6 +34,12 @@ class ConnectingRoad:
         contact_point_start: Contact point at start ('start' or 'end' of predecessor)
         contact_point_end: Contact point at end ('start' or 'end' of successor)
         road_id: Optional numeric OpenDRIVE road ID (assigned during export)
+        geometry_type: Type of geometry ("parampoly3" or "polyline")
+        aU, bU, cU, dU: ParamPoly3D coefficients for u(p) polynomial
+        aV, bV, cV, dV: ParamPoly3D coefficients for v(p) polynomial
+        p_range: Parameter range for ParamPoly3D (typically 1.0)
+        p_range_normalized: If True, pRange="normalized" (standard), else pRange=p_range value
+        tangent_scale: Scale factor for tangent lengths (user-adjustable)
     """
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     path: List[Tuple[float, float]] = field(default_factory=list)
@@ -39,6 +48,7 @@ class ConnectingRoad:
     lane_count_left: int = 0
     lane_count_right: int = 1
     lane_width: float = 3.5
+    lanes: List[Lane] = field(default_factory=list)  # Actual Lane objects for property editing
 
     # Connection to adjacent roads
     predecessor_road_id: str = ""
@@ -48,6 +58,20 @@ class ConnectingRoad:
 
     # OpenDRIVE export
     road_id: Optional[int] = None  # Numeric road ID for OpenDRIVE (assigned during export)
+
+    # ParamPoly3D geometry (new in ParamPoly3D update)
+    geometry_type: str = "parampoly3"  # "parampoly3" or "polyline" (legacy)
+    aU: float = 0.0
+    bU: float = 0.0
+    cU: float = 0.0
+    dU: float = 0.0
+    aV: float = 0.0
+    bV: float = 0.0
+    cV: float = 0.0
+    dV: float = 0.0
+    p_range: float = 1.0
+    p_range_normalized: bool = True  # If True, use pRange="normalized" (OpenDRIVE standard)
+    tangent_scale: float = 1.0  # User-adjustable tangent length scale
 
     def get_length_pixels(self) -> float:
         """
@@ -106,6 +130,144 @@ class ConnectingRoad:
         """Get total number of lanes (left + right, excluding center lane 0)."""
         return self.lane_count_left + self.lane_count_right
 
+    def get_lane_polygons(self, scale: float) -> Dict[int, List[Tuple[float, float]]]:
+        """
+        Generate lane boundary polygons for visualization.
+
+        This method creates polygon representations for each lane in the connecting road,
+        similar to how regular Road objects generate lane polygons. The polygons are
+        calculated by offsetting the centerline path based on lane widths.
+
+        Args:
+            scale: Meters per pixel scale factor (from coordinate transformer)
+
+        Returns:
+            Dictionary mapping lane IDs to polygon point lists:
+            - Negative IDs (-1, -2, -3, ...) for right-hand lanes
+            - Positive IDs (1, 2, 3, ...) for left-hand lanes
+            - Empty dict if insufficient path points
+            (OpenDRIVE convention: negative=right, positive=left)
+
+        Example:
+            {
+                -1: [(x1, y1), (x2, y2), ...],   # Right lane 1
+                -2: [(x1, y1), (x2, y2), ...],   # Right lane 2
+                1: [(x1, y1), (x2, y2), ...],    # Left lane 1
+            }
+        """
+        from orbit.utils.geometry import create_lane_polygon
+
+        if len(self.path) < 2:
+            return {}
+
+        # Convert lane width from meters to pixels
+        lane_width_px = self.lane_width / scale
+
+        polygons = {}
+
+        # Create right-hand lanes (negative IDs in OpenDRIVE: -1, -2, -3, ...)
+        for lane_num in range(1, self.lane_count_right + 1):
+            inner_offset = (lane_num - 1) * lane_width_px
+            outer_offset = lane_num * lane_width_px
+
+            polygon_points = create_lane_polygon(
+                self.path,
+                inner_offset,
+                outer_offset,
+                closed=False  # Connecting roads are never closed
+            )
+
+            if polygon_points and len(polygon_points) >= 3:
+                polygons[-lane_num] = polygon_points  # Use negative ID for right lanes
+
+        # Create left-hand lanes (positive IDs in OpenDRIVE: 1, 2, 3, ...)
+        for lane_num in range(1, self.lane_count_left + 1):
+            inner_offset = -(lane_num - 1) * lane_width_px
+            outer_offset = -lane_num * lane_width_px
+
+            polygon_points = create_lane_polygon(
+                self.path,
+                inner_offset,
+                outer_offset,
+                closed=False
+            )
+
+            if polygon_points and len(polygon_points) >= 3:
+                polygons[lane_num] = polygon_points  # Use positive ID for left lanes
+
+        return polygons
+
+    def get_lane_ids(self) -> List[int]:
+        """
+        Get list of all lane IDs in order (right lanes, then left lanes).
+
+        Returns:
+            List of lane IDs: [-1, -2, ...] for right, [1, 2, ...] for left
+            (OpenDRIVE convention: negative=right, positive=left)
+        """
+        lane_ids = []
+
+        # Right lanes (negative IDs in OpenDRIVE: -1, -2, -3, ...)
+        for i in range(1, self.lane_count_right + 1):
+            lane_ids.append(-i)
+
+        # Left lanes (positive IDs in OpenDRIVE: 1, 2, 3, ...)
+        for i in range(1, self.lane_count_left + 1):
+            lane_ids.append(i)
+
+        return lane_ids
+
+    def ensure_lanes_initialized(self):
+        """
+        Ensure lanes list is initialized with Lane objects.
+
+        This creates Lane objects if they don't exist (for backward compatibility
+        with old projects that only stored lane counts).
+        """
+        if not self.lanes:
+            # Create Lane objects based on lane counts
+            self.lanes = []
+
+            # Right lanes (negative IDs in OpenDRIVE: -1, -2, -3, ...)
+            for i in range(1, self.lane_count_right + 1):
+                lane = Lane(
+                    id=-i,
+                    lane_type=LaneType.DRIVING,
+                    road_mark_type=RoadMarkType.SOLID,
+                    width=self.lane_width
+                )
+                self.lanes.append(lane)
+
+            # Left lanes (positive IDs in OpenDRIVE: 1, 2, 3, ...)
+            for i in range(1, self.lane_count_left + 1):
+                lane = Lane(
+                    id=i,
+                    lane_type=LaneType.DRIVING,
+                    road_mark_type=RoadMarkType.SOLID,
+                    width=self.lane_width
+                )
+                self.lanes.append(lane)
+
+    def get_lane(self, lane_id: int) -> Optional[Lane]:
+        """
+        Get a lane by its ID.
+
+        Args:
+            lane_id: Lane ID (negative for right, positive for left)
+
+        Returns:
+            Lane object if found, None otherwise
+        """
+        # Ensure lanes are initialized
+        self.ensure_lanes_initialized()
+
+        # Find lane by ID
+        for lane in self.lanes:
+            if lane.id == lane_id:
+                return lane
+
+        return None
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert to dictionary for JSON serialization.
@@ -113,16 +275,32 @@ class ConnectingRoad:
         Returns:
             Dictionary representation of the connecting road
         """
+        # Ensure lanes are initialized before serializing
+        self.ensure_lanes_initialized()
+
         data = {
             'id': self.id,
             'path': [[x, y] for x, y in self.path],
             'lane_count_left': self.lane_count_left,
             'lane_count_right': self.lane_count_right,
             'lane_width': self.lane_width,
+            'lanes': [lane.to_dict() for lane in self.lanes],
             'predecessor_road_id': self.predecessor_road_id,
             'successor_road_id': self.successor_road_id,
             'contact_point_start': self.contact_point_start,
-            'contact_point_end': self.contact_point_end
+            'contact_point_end': self.contact_point_end,
+            'geometry_type': self.geometry_type,
+            'aU': self.aU,
+            'bU': self.bU,
+            'cU': self.cU,
+            'dU': self.dU,
+            'aV': self.aV,
+            'bV': self.bV,
+            'cV': self.cV,
+            'dV': self.dV,
+            'p_range': self.p_range,
+            'p_range_normalized': self.p_range_normalized,
+            'tangent_scale': self.tangent_scale
         }
 
         # Only include road_id if it's set
@@ -157,6 +335,27 @@ class ConnectingRoad:
         cr.contact_point_start = data.get('contact_point_start', 'end')
         cr.contact_point_end = data.get('contact_point_end', 'start')
         cr.road_id = data.get('road_id')  # Optional, defaults to None
+
+        # ParamPoly3D fields (backward compatible with older projects)
+        cr.geometry_type = data.get('geometry_type', 'polyline')  # Old projects use polyline
+        cr.aU = data.get('aU', 0.0)
+        cr.bU = data.get('bU', 0.0)
+        cr.cU = data.get('cU', 0.0)
+        cr.dU = data.get('dU', 0.0)
+        cr.aV = data.get('aV', 0.0)
+        cr.bV = data.get('bV', 0.0)
+        cr.cV = data.get('cV', 0.0)
+        cr.dV = data.get('dV', 0.0)
+        cr.p_range = data.get('p_range', 1.0)
+        cr.p_range_normalized = data.get('p_range_normalized', True)  # Default to normalized for new
+        cr.tangent_scale = data.get('tangent_scale', 1.0)
+
+        # Load lanes if present (backward compatible - will auto-initialize if missing)
+        if 'lanes' in data:
+            cr.lanes = [Lane.from_dict(lane_data) for lane_data in data['lanes']]
+        else:
+            # Old projects without lanes - will be initialized on first access
+            cr.lanes = []
 
         return cr
 

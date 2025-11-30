@@ -339,7 +339,9 @@ def detect_junction_node_ids_from_osm(osm_data, road_osm_way_map: Dict[str, int]
 
 
 def detect_junctions_from_osm(osm_data, road_osm_way_map: Dict[str, int],
-                              transformer: CoordinateTransformer) -> List[Junction]:
+                              transformer: CoordinateTransformer,
+                              roads: List[Road] = None,
+                              polylines_dict: Dict[str, Polyline] = None) -> List[Junction]:
     """
     Detect junctions based on shared OSM node IDs.
 
@@ -351,6 +353,8 @@ def detect_junctions_from_osm(osm_data, road_osm_way_map: Dict[str, int],
         osm_data: Parsed OSM data
         road_osm_way_map: Dictionary mapping Road.id -> OSM way ID
         transformer: Coordinate transformer for converting to pixels
+        roads: List of Road objects (for filtering by endpoint proximity)
+        polylines_dict: Dictionary mapping polyline ID -> Polyline (for endpoint filtering)
 
     Returns:
         List of detected Junction objects
@@ -415,6 +419,38 @@ def detect_junctions_from_osm(osm_data, road_osm_way_map: Dict[str, int],
 
         # Extract unique road IDs (only from vehicular roads)
         connected_road_ids = list(set(road_id for road_id, _, _ in vehicular_roads))
+
+        # Filter to only include roads whose endpoints are actually AT this junction
+        # This prevents including all segments of a split road when only one segment touches the junction
+        if roads is not None and polylines_dict is not None:
+            # Build roads_dict for quick lookup
+            roads_dict = {road.id: road for road in roads}
+
+            filtered_road_ids = []
+            for road_id in connected_road_ids:
+                road = roads_dict.get(road_id)
+                if not road or not road.centerline_id:
+                    continue
+
+                centerline = polylines_dict.get(road.centerline_id)
+                if not centerline or len(centerline.points) < 2:
+                    continue
+
+                # Check if start or end point is within tolerance of junction center
+                start_dist = math.sqrt(
+                    (centerline.points[0][0] - px)**2 +
+                    (centerline.points[0][1] - py)**2
+                )
+                end_dist = math.sqrt(
+                    (centerline.points[-1][0] - px)**2 +
+                    (centerline.points[-1][1] - py)**2
+                )
+
+                # Include road if either endpoint is within 15 pixels of junction
+                if start_dist < 15.0 or end_dist < 15.0:
+                    filtered_road_ids.append(road_id)
+
+            connected_road_ids = filtered_road_ids
 
         # Create junction
         junction = Junction(
@@ -971,6 +1007,12 @@ def offset_road_endpoints_from_junctions(
 
     for junction in junctions:
         if not junction.center_point:
+            continue
+
+        # Skip virtual junctions (path crossings) - they don't need space for connecting roads
+        if junction.junction_type == "virtual":
+            if verbose:
+                print(f"  Skipping virtual junction '{junction.name}' (path crossing)")
             continue
 
         jx, jy = junction.center_point

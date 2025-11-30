@@ -275,13 +275,25 @@ class JunctionDialog(BaseDialog):
         roads_dict = {road.id: road for road in self.project.roads}
         polylines_dict = {p.id: p for p in self.project.polylines}
 
+        # Get scale factor if georeferenced
+        scale = 1.0  # Default for non-georeferenced projects
+        if len(self.project.control_points) >= 3:
+            try:
+                from orbit.export.coordinate_transformer import CoordinateTransformer
+                transformer = CoordinateTransformer(self.project.control_points)
+                scale_x, scale_y = transformer.get_scale_factor()
+                scale = (scale_x + scale_y) / 2.0
+            except Exception:
+                # Use default scale if transformer fails
+                scale = 1.0
+
         # Clear existing connections
         self.junction.connecting_roads.clear()
         self.junction.lane_connections.clear()
 
         # Generate connections
         try:
-            generate_junction_connections(self.junction, roads_dict, polylines_dict)
+            generate_junction_connections(self.junction, roads_dict, polylines_dict, scale)
 
             # Update summary
             self.update_connection_summary()

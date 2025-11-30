@@ -30,6 +30,9 @@ class ElementsTreeWidget(QWidget):
     object_selected = pyqtSignal(str)  # Emits object ID
     object_modified = pyqtSignal(str)  # Emits object ID
     object_deleted = pyqtSignal(str)  # Emits object ID
+    connecting_road_selected = pyqtSignal(str)  # Emits connecting road ID
+    connecting_road_modified = pyqtSignal(str)  # Emits connecting road ID
+    connecting_road_lane_selected = pyqtSignal(str, int)  # Emits (connecting road ID, lane ID)
 
     def __init__(self, project: Project, parent=None):
         super().__init__(parent)
@@ -95,12 +98,81 @@ class ElementsTreeWidget(QWidget):
         objects_item.setExpanded(True)
 
     def create_junction_item(self, junction: Junction) -> QTreeWidgetItem:
-        """Create a tree item for a junction."""
+        """Create a tree item for a junction with connecting roads as children."""
         road_count = len(junction.connected_road_ids)
-        text = f"{junction.name} ({road_count} roads)"
+        conn_count = len(junction.connecting_roads)
+        text = f"{junction.name} ({road_count} roads, {conn_count} connections)"
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "junction", "id": junction.id})
+
+        # Add connecting roads as children
+        for connecting_road in junction.connecting_roads:
+            conn_item = self.create_connecting_road_item(connecting_road)
+            item.addChild(conn_item)
+
+        return item
+
+    def create_connecting_road_item(self, connecting_road) -> QTreeWidgetItem:
+        """Create a tree item for a connecting road with lanes as children."""
+        from orbit.models.connecting_road import ConnectingRoad
+
+        conn_road: ConnectingRoad = connecting_road
+
+        # Get road names for display
+        predecessor_name = "?"
+        successor_name = "?"
+
+        if self.project:
+            pred_road = self.project.get_road(conn_road.predecessor_road_id)
+            if pred_road:
+                predecessor_name = pred_road.name if pred_road.name else f"Road {pred_road.id[:8]}"
+
+            succ_road = self.project.get_road(conn_road.successor_road_id)
+            if succ_road:
+                successor_name = succ_road.name if succ_road.name else f"Road {succ_road.id[:8]}"
+
+        # Display text showing which roads are connected
+        text = f"{predecessor_name} → {successor_name}"
+
+        item = QTreeWidgetItem([text])
+        item.setData(0, Qt.ItemDataRole.UserRole, {
+            "type": "connecting_road",
+            "id": conn_road.id
+        })
+
+        # Add lanes as children
+        lane_ids = conn_road.get_lane_ids()
+        for lane_id in lane_ids:
+            lane_item = self.create_connecting_road_lane_item(conn_road.id, lane_id)
+            item.addChild(lane_item)
+
+        return item
+
+    def create_connecting_road_lane_item(self, conn_road_id: str, lane_id: int) -> QTreeWidgetItem:
+        """Create a tree item for a lane in a connecting road."""
+        # Format position like regular lanes: "Left 1", "Right 1", etc.
+        # Note: In OpenDRIVE, positive IDs are LEFT lanes, negative are RIGHT
+        if lane_id == 0:
+            position = "Center"
+        elif lane_id > 0:
+            position = f"Left {lane_id}"
+        else:
+            position = f"Right {abs(lane_id)}"
+
+        # Connecting roads typically have driving lanes
+        lane_type_name = "Driving"
+
+        # Format: "Lane -1 (Right 1) - Driving"
+        text = f"Lane {lane_id} ({position}) - {lane_type_name}"
+
+        item = QTreeWidgetItem([text])
+        item.setData(0, Qt.ItemDataRole.UserRole, {
+            "type": "connecting_road_lane",
+            "connecting_road_id": conn_road_id,
+            "lane_id": lane_id
+        })
+
         return item
 
     def create_signal_item(self, signal: Signal) -> QTreeWidgetItem:
@@ -188,6 +260,19 @@ class ElementsTreeWidget(QWidget):
             delete_action.triggered.connect(lambda: self.delete_object(data["id"]))
             menu.addAction(delete_action)
 
+        elif data["type"] == "connecting_road":
+            # Connecting road context menu
+            edit_action = QAction("Edit Properties", self)
+            edit_action.triggered.connect(lambda: self.edit_connecting_road(data["id"]))
+            menu.addAction(edit_action)
+
+        elif data["type"] == "connecting_road_lane":
+            # Connecting road lane context menu
+            edit_action = QAction("Edit Lane Properties", self)
+            edit_action.triggered.connect(lambda: self.edit_connecting_road_lane(
+                data["connecting_road_id"], data["lane_id"]))
+            menu.addAction(edit_action)
+
         menu.exec(self.tree.viewport().mapToGlobal(position))
 
     def edit_junction(self, junction_id: str):
@@ -244,6 +329,58 @@ class ElementsTreeWidget(QWidget):
             self.object_deleted.emit(object_id)
             self.refresh_tree()
 
+    def edit_connecting_road(self, connecting_road_id: str):
+        """Edit a connecting road's properties."""
+        from orbit.gui.connecting_road_dialog import ConnectingRoadDialog
+
+        # Find the connecting road in junctions
+        connecting_road = None
+        for junction in self.project.junctions:
+            for cr in junction.connecting_roads:
+                if cr.id == connecting_road_id:
+                    connecting_road = cr
+                    break
+            if connecting_road:
+                break
+
+        if connecting_road:
+            dialog = ConnectingRoadDialog(connecting_road, self.project, self)
+            result = dialog.exec()
+            if result:
+                self.connecting_road_modified.emit(connecting_road_id)
+                self.refresh_tree()
+
+    def edit_connecting_road_lane(self, connecting_road_id: str, lane_id: int):
+        """Edit a connecting road lane's properties."""
+        from orbit.gui.lane_properties_dialog import LanePropertiesDialog
+
+        # Find the connecting road in junctions
+        connecting_road = None
+        parent_junction = None
+        for junction in self.project.junctions:
+            for cr in junction.connecting_roads:
+                if cr.id == connecting_road_id:
+                    connecting_road = cr
+                    parent_junction = junction
+                    break
+            if connecting_road:
+                break
+
+        if not connecting_road:
+            return
+
+        # Find the lane
+        lane = connecting_road.get_lane(lane_id)
+        if not lane:
+            return
+
+        # Open lane properties dialog (without project/road_id since connecting roads are standalone)
+        result = LanePropertiesDialog.edit_lane(lane, None, None, self)
+        if result:
+            # Emit modification signal
+            self.connecting_road_modified.emit(connecting_road_id)
+            self.refresh_tree()
+
     def on_item_double_clicked(self, item, column):
         """Handle double-click on item."""
         data = item.data(0, Qt.ItemDataRole.UserRole)
@@ -254,6 +391,10 @@ class ElementsTreeWidget(QWidget):
                 self.edit_signal(data["id"])
             elif data["type"] == "object":
                 self.edit_object(data["id"])
+            elif data["type"] == "connecting_road":
+                self.edit_connecting_road(data["id"])
+            elif data["type"] == "connecting_road_lane":
+                self.edit_connecting_road_lane(data["connecting_road_id"], data["lane_id"])
 
     def on_selection_changed(self):
         """Handle selection change."""
@@ -268,6 +409,13 @@ class ElementsTreeWidget(QWidget):
                     self.signal_selected.emit(data["id"])
                 elif data["type"] == "object":
                     self.object_selected.emit(data["id"])
+                elif data["type"] == "connecting_road":
+                    self.connecting_road_selected.emit(data["id"])
+                elif data["type"] == "connecting_road_lane":
+                    self.connecting_road_lane_selected.emit(
+                        data["connecting_road_id"],
+                        data["lane_id"]
+                    )
 
     def select_junction(self, junction_id: str):
         """Programmatically select a junction in the tree."""
@@ -310,3 +458,31 @@ class ElementsTreeWidget(QWidget):
                     if isinstance(item_data, dict) and item_data.get("id") == object_id:
                         self.tree.setCurrentItem(item)
                         return
+
+    def select_connecting_road_lane(self, connecting_road_id: str, lane_id: int):
+        """Programmatically select a connecting road lane in the tree."""
+        # Search through junctions category for the connecting road
+        for i in range(self.tree.topLevelItemCount()):
+            category = self.tree.topLevelItem(i)
+            data = category.data(0, Qt.ItemDataRole.UserRole)
+            if data == "category_junctions":
+                # Iterate through junctions
+                for j in range(category.childCount()):
+                    junction_item = category.child(j)
+                    # Iterate through connecting roads in this junction
+                    for k in range(junction_item.childCount()):
+                        conn_road_item = junction_item.child(k)
+                        conn_road_data = conn_road_item.data(0, Qt.ItemDataRole.UserRole)
+                        if isinstance(conn_road_data, dict) and conn_road_data.get("id") == connecting_road_id:
+                            # Found the connecting road, now find the lane
+                            for l in range(conn_road_item.childCount()):
+                                lane_item = conn_road_item.child(l)
+                                lane_data = lane_item.data(0, Qt.ItemDataRole.UserRole)
+                                if isinstance(lane_data, dict) and lane_data.get("lane_id") == lane_id:
+                                    # Expand parent items so selection is visible
+                                    category.setExpanded(True)
+                                    junction_item.setExpanded(True)
+                                    conn_road_item.setExpanded(True)
+                                    # Select the lane item
+                                    self.tree.setCurrentItem(lane_item)
+                                    return
