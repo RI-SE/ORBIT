@@ -27,7 +27,7 @@ class RoadEndpointInfo:
     lane_width: float  # Meters
     relative_angle: float = 0.0  # Angle relative to reference direction (set later)
 
-    def get_right_lane_center_position(self, scale: float) -> Tuple[float, float]:
+    def get_right_lane_center_position(self, scale: float, flip_heading: bool = False) -> Tuple[float, float]:
         """
         Calculate the position of the right lane center for right-hand traffic.
 
@@ -36,6 +36,9 @@ class RoadEndpointInfo:
 
         Args:
             scale: Meters per pixel conversion factor
+            flip_heading: If True, flip the heading by 180° before calculating offset.
+                         Use this when the road's stored direction is opposite to the
+                         connection direction (e.g., TO endpoint where road ends at junction).
 
         Returns:
             (x, y) position of the right lane center in pixels
@@ -45,9 +48,12 @@ class RoadEndpointInfo:
         # Convert lane width from meters to pixels
         lane_width_px = self.lane_width / scale
 
+        # Use flipped heading if requested (for roads stored in opposite direction)
+        effective_heading = self.heading + math.pi if flip_heading else self.heading
+
         # For right-hand traffic, right side is -90° from heading (clockwise)
         # In standard math coordinates: right_perpendicular = heading - π/2
-        right_perpendicular = self.heading - math.pi / 2
+        right_perpendicular = effective_heading - math.pi / 2
 
         # Distance to right lane center depends on number of right lanes
         # If 1 lane: offset by lane_width/2 (to center of lane)
@@ -371,44 +377,10 @@ def filter_unlikely_connections(patterns: List[ConnectionPattern],
     filtered = []
 
     for pattern in patterns:
-        # Filter 1: Skip connections between roads that are already linked via successor/predecessor
-        # These represent continuing along the same road (after splitting), not junction maneuvers
-        from_road = roads_dict.get(pattern.from_road_id)
-        to_road = roads_dict.get(pattern.to_road_id)
-
-        if from_road and to_road:
-            # Filter connections between roads that are already linked via successor/predecessor
-            # These represent continuing along the same road, not junction maneuvers
-            is_consecutive = False
-
-            # Check if from_road has to_road as successor (from_road ends, to_road starts)
-            if from_road.successor_id == pattern.to_road_id:
-                is_consecutive = True
-
-            # Check if to_road has from_road as predecessor (from_road ends, to_road starts)
-            if to_road.predecessor_id == pattern.from_road_id:
-                is_consecutive = True
-
-            # Additional check: For bidirectional roads, also filter by road name
-            # to catch reverse connections (e.g., seg3 → seg2 when seg2 → seg3 is the forward direction)
-            if not is_consecutive:
-                # Import the base name extraction function from osm_to_orbit
-                import importlib
-                osm_to_orbit = importlib.import_module('orbit.import.osm_to_orbit')
-                extract_base_name = osm_to_orbit._extract_base_road_name
-
-                from_base = extract_base_name(from_road.name)
-                to_base = extract_base_name(to_road.name)
-
-                if from_base == to_base:
-                    # Same base road name - these are segments from the same original road
-                    # Don't create junction connections between them (they use successor/predecessor links)
-                    is_consecutive = True
-
-            if is_consecutive:
-                continue  # Skip - this is a road continuation, not a junction connection
-
-        # Keep this pattern
+        # Note: We do NOT filter by successor/predecessor relationships here.
+        # When roads are split at a junction, they get linked via successor/predecessor,
+        # but they still need connecting roads within the junction for each direction.
+        # The junction is where vehicles physically transition between road segments.
         filtered.append(pattern)
 
     return filtered
@@ -483,7 +455,7 @@ def generate_junction_connections(junction: Junction,
         junction: Junction object to populate with connections
         roads_dict: Dictionary of road_id -> Road object
         polylines_dict: Dictionary of polyline_id -> Polyline object
-        scale: Meters per pixel scale factor (not currently used, for future enhancements)
+        scale: Meters per pixel scale factor (used for lane offset calculations)
     """
     # Step 1: Analyze junction geometry
     geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
@@ -518,16 +490,49 @@ def generate_junction_connections(junction: Junction,
         # Check if this is a U-turn connection
         is_uturn = pattern.turn_type == "uturn"
 
-        # Generate geometric path using ParamPoly3D with CENTERLINE positions (tangent-continuous)
-        path, coeffs = generate_simple_connection_path(
-            from_pos=from_endpoint.position,  # Use centerline position
-            from_heading=from_endpoint.heading,
-            to_pos=to_endpoint.position,  # Use centerline position
-            to_heading=to_endpoint.heading,
-            num_points=20,
-            tangent_scale=1.0,
-            is_uturn=is_uturn
-        )
+        # For straight connections, use lane-offset positions and simple line geometry
+        if pattern.turn_type == "straight":
+            # For straight-through, calculate lane offset based on connection direction
+            # The connection direction is from FROM endpoint toward TO endpoint
+            conn_dx = to_endpoint.position[0] - from_endpoint.position[0]
+            conn_dy = to_endpoint.position[1] - from_endpoint.position[1]
+            conn_heading = math.atan2(conn_dy, conn_dx)
+
+            # Calculate lane offset perpendicular to connection direction (right side)
+            lane_width_px = from_endpoint.lane_width / scale if scale > 0 else from_endpoint.lane_width
+            right_perp = conn_heading - math.pi / 2
+
+            # Offset both positions to the right of the connection direction
+            offset_x = (from_endpoint.right_lane_count / 2.0) * lane_width_px * math.cos(right_perp)
+            offset_y = (from_endpoint.right_lane_count / 2.0) * lane_width_px * math.sin(right_perp)
+
+            from_pos = (from_endpoint.position[0] + offset_x, from_endpoint.position[1] + offset_y)
+            to_pos = (to_endpoint.position[0] + offset_x, to_endpoint.position[1] + offset_y)
+
+            # For straight connections, just create a simple line path (no curves)
+            path = [from_pos, to_pos]
+            # Coefficients for a simple line in local frame: u(p) = p * length, v(p) = 0
+            dx = to_pos[0] - from_pos[0]
+            dy = to_pos[1] - from_pos[1]
+            length = math.sqrt(dx * dx + dy * dy)
+            coeffs = (0.0, length, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)  # aU, bU, cU, dU, aV, bV, cV, dV
+        else:
+            # For turns, use centerline positions (the curve geometry handles lane offset)
+            from_pos = from_endpoint.position
+            to_pos = to_endpoint.position
+            from_heading = from_endpoint.heading
+            to_heading = to_endpoint.heading
+
+            # Generate geometric path using ParamPoly3D
+            path, coeffs = generate_simple_connection_path(
+                from_pos=from_pos,
+                from_heading=from_heading,
+                to_pos=to_pos,
+                to_heading=to_heading,
+                num_points=20,
+                tangent_scale=1.0,
+                is_uturn=is_uturn
+            )
 
         if not path:
             continue
@@ -535,7 +540,13 @@ def generate_junction_connections(junction: Junction,
         # Unpack ParamPoly3D coefficients
         aU, bU, cU, dU, aV, bV, cV, dV = coeffs
 
-        # Create connecting road with ParamPoly3D geometry
+        # Use simple line geometry for straight connections, Bezier curves for turns
+        if pattern.turn_type == "straight":
+            geometry_type = "polyline"  # Clean line geometry for straight roads
+        else:
+            geometry_type = "parampoly3"  # Smooth Bezier curves for turns
+
+        # Create connecting road
         connecting_road = ConnectingRoad(
             path=path,
             lane_count_left=conn_lane_count_left,
@@ -545,7 +556,7 @@ def generate_junction_connections(junction: Junction,
             successor_road_id=pattern.to_road_id,
             contact_point_start="end",  # Connects to end of incoming road
             contact_point_end="start",   # Connects to start of outgoing road
-            geometry_type="parampoly3",
+            geometry_type=geometry_type,
             aU=aU, bU=bU, cU=cU, dU=dU,
             aV=aV, bV=bV, cV=cV, dV=dV,
             p_range=1.0,

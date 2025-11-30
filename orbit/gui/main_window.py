@@ -1584,6 +1584,8 @@ class MainWindow(QMainWindow):
 
     def on_polyline_selected_in_tree(self, polyline_id):
         """Handle polyline selection from tree."""
+        # Clear connecting road selection
+        self.clear_connecting_road_selection()
         # Highlight the polyline in the image view
         self.image_view.highlight_polyline(polyline_id)
 
@@ -1638,6 +1640,8 @@ class MainWindow(QMainWindow):
 
     def on_junction_selected_in_tree(self, junction_id: str):
         """Handle junction selection in elements tree."""
+        # Clear connecting road selection
+        self.clear_connecting_road_selection()
         self.image_view.highlight_junction(junction_id)
 
     def edit_junction_properties(self, junction_id: str):
@@ -1658,11 +1662,13 @@ class MainWindow(QMainWindow):
 
     def on_connecting_road_selected(self, connecting_road_id: str):
         """Handle connecting road selection in elements tree."""
+        # Clear previous connecting road selection
+        self.clear_connecting_road_selection()
+
         # Highlight the connecting road in the view
         if connecting_road_id in self.image_view.connecting_road_centerline_items:
             self.image_view.connecting_road_centerline_items[connecting_road_id].set_selected(True)
-            # Deselect previously selected item (if any)
-            # TODO: Track previous selection and deselect it
+            self.image_view.selected_connecting_road_id = connecting_road_id
 
     def on_connecting_road_modified(self, connecting_road_id: str):
         """Handle connecting road modification."""
@@ -1710,6 +1716,14 @@ class MainWindow(QMainWindow):
             for lane_polygon in lanes_item.lane_items:
                 if hasattr(lane_polygon, 'set_selected'):
                     lane_polygon.set_selected(False)
+
+    def clear_connecting_road_selection(self):
+        """Clear the selected connecting road highlight."""
+        if self.image_view.selected_connecting_road_id:
+            prev_id = self.image_view.selected_connecting_road_id
+            if prev_id in self.image_view.connecting_road_centerline_items:
+                self.image_view.connecting_road_centerline_items[prev_id].set_selected(False)
+            self.image_view.selected_connecting_road_id = None
 
     def on_signal_placement_requested(self, x: float, y: float):
         """Handle signal placement request - show selection dialog."""
@@ -1773,27 +1787,33 @@ class MainWindow(QMainWindow):
 
     def on_signal_selected_in_tree(self, signal_id: str):
         """Handle signal selected in elements tree."""
+        self.clear_connecting_road_selection()
         self.image_view.select_signal(signal_id)
 
     def on_signal_selected_in_view(self, signal_id: str):
         """Handle signal selected in view - update tree selection."""
+        self.clear_connecting_road_selection()
         self.elements_tree.select_signal(signal_id)
 
     def on_object_selected_in_tree(self, object_id: str):
         """Handle object selected in elements tree."""
+        self.clear_connecting_road_selection()
         self.image_view.select_object(object_id)
 
     def on_object_selected_in_view(self, object_id: str):
         """Handle object selected in view - update tree selection."""
+        self.clear_connecting_road_selection()
         self.elements_tree.select_object(object_id)
 
     def on_polyline_selected_in_view(self, polyline_id: str):
         """Handle polyline selected in view."""
+        self.clear_connecting_road_selection()
         # Polylines are not in the elements tree, just keep them highlighted in view
         pass
 
     def on_junction_selected_in_view(self, junction_id: str):
         """Handle junction selected in view - update tree selection."""
+        self.clear_connecting_road_selection()
         self.elements_tree.select_junction(junction_id)
 
     def on_object_modified_in_tree(self, object_id: str):
@@ -1986,6 +2006,8 @@ class MainWindow(QMainWindow):
             section_number: Section number containing the lane
             lane_id: Lane ID within the section
         """
+        # Clear connecting road selection
+        self.clear_connecting_road_selection()
         # Select the lane visually in the image view
         self.image_view.select_lane(road_id, section_number, lane_id)
 

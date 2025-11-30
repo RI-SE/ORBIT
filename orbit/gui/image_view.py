@@ -1397,6 +1397,7 @@ class ImageView(QGraphicsView):
         # Connecting roads (junction paths)
         self.connecting_road_centerline_items: Dict[str, ConnectingRoadGraphicsItem] = {}
         self.connecting_road_lanes_items: Dict[str, ConnectingRoadLanesGraphicsItem] = {}
+        self.selected_connecting_road_id: Optional[str] = None
 
         # Interaction state
         self.drawing_mode = False
@@ -2290,6 +2291,7 @@ class ImageView(QGraphicsView):
         self.current_polyline_item = None
         self.selected_polyline_id = None
         self.selected_junction_id = None
+        self.selected_connecting_road_id = None
 
     def set_drawing_mode(self, enabled: bool):
         """Enable or disable drawing mode."""
