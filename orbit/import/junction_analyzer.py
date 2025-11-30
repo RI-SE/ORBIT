@@ -451,36 +451,25 @@ def generate_lane_links_for_connection(from_endpoint: RoadEndpointInfo,
     return lane_links
 
 
-def generate_junction_connections(junction: Junction,
-                                 roads_dict: Dict[str, Road],
-                                 polylines_dict: Dict[str, Polyline],
-                                 scale: float = 1.0) -> None:
+def create_connecting_roads_from_patterns(
+    junction: Junction,
+    patterns: List[ConnectionPattern],
+    endpoint_lookup: Dict[str, 'RoadEndpointInfo']
+) -> None:
     """
-    Generate connecting roads and lane connections for a junction.
+    Create connecting roads and lane connections from pre-detected patterns.
 
-    Modifies the junction object in place by adding connecting_roads and lane_connections.
-
-    For straight-through connections between bidirectional roads, creates a single
-    bidirectional connecting road with both left and right lanes. For turns,
-    creates separate unidirectional connecting roads.
+    This function handles Steps 4-6 of junction connection generation:
+    - Step 4: Identify straight-through pairs for bidirectional roads
+    - Step 5: Create bidirectional connecting roads for straight pairs
+    - Step 6: Create unidirectional roads for turns and unpaired straights
 
     Args:
         junction: Junction object to populate with connections
-        roads_dict: Dictionary of road_id -> Road object
-        polylines_dict: Dictionary of polyline_id -> Polyline object
-        scale: Meters per pixel scale factor (used for lane offset calculations)
+        patterns: List of ConnectionPattern objects (pre-detected)
+        endpoint_lookup: Dict mapping road_id -> RoadEndpointInfo with current positions
     """
-    # Step 1: Analyze junction geometry
-    geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
-
-    # Step 2: Detect connection patterns
-    patterns = detect_connection_patterns(geometry_info)
-
-    # Step 3: Filter unlikely connections
-    patterns = filter_unlikely_connections(patterns, roads_dict)
-
     if not patterns:
-        # No connections found - junction might be too simple or malformed
         return
 
     # Step 4: Identify straight-through pairs (A->B and B->A both straight)
@@ -503,11 +492,21 @@ def generate_junction_connections(junction: Junction,
             # True bidirectional straight-through - create ONE connecting road
             # Pick the pattern where from_endpoint is at "end" of its road (standard direction)
             pattern = pair_patterns[0]
-            if pattern.from_endpoint.at_junction != "end":
-                pattern = pair_patterns[1]
 
-            from_endpoint = pattern.from_endpoint
-            to_endpoint = pattern.to_endpoint
+            # Get updated endpoints from lookup
+            from_endpoint = endpoint_lookup.get(pattern.from_road_id)
+            to_endpoint = endpoint_lookup.get(pattern.to_road_id)
+
+            if not from_endpoint or not to_endpoint:
+                continue
+
+            # Check if we need to swap to get the "end" direction
+            if from_endpoint.at_junction != "end":
+                pattern = pair_patterns[1]
+                from_endpoint = endpoint_lookup.get(pattern.from_road_id)
+                to_endpoint = endpoint_lookup.get(pattern.to_road_id)
+                if not from_endpoint or not to_endpoint:
+                    continue
 
             # Calculate average lane width
             avg_lane_width = (from_endpoint.lane_width + to_endpoint.lane_width) / 2
@@ -516,12 +515,21 @@ def generate_junction_connections(junction: Junction,
             from_pos = from_endpoint.position
             to_pos = to_endpoint.position
 
-            # Create simple line path
-            path = [from_pos, to_pos]
-            dx = to_pos[0] - from_pos[0]
-            dy = to_pos[1] - from_pos[1]
-            length = math.sqrt(dx * dx + dy * dy)
-            coeffs = (0.0, length, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+            # Generate path using ParamPoly3D for smooth curves
+            path, coeffs = generate_simple_connection_path(
+                from_pos=from_pos,
+                from_heading=from_endpoint.heading,
+                to_pos=to_pos,
+                to_heading=to_endpoint.heading,
+                num_points=20,
+                tangent_scale=1.0
+            )
+
+            if not path:
+                continue
+
+            # Unpack ParamPoly3D coefficients
+            aU, bU, cU, dU, aV, bV, cV, dV = coeffs
 
             # Bidirectional connecting road has both left and right lanes
             conn_lane_count_left = max(1, min(from_endpoint.left_lane_count, to_endpoint.left_lane_count))
@@ -535,11 +543,11 @@ def generate_junction_connections(junction: Junction,
                 lane_width=avg_lane_width,
                 predecessor_road_id=pattern.from_road_id,
                 successor_road_id=pattern.to_road_id,
-                contact_point_start="end",
-                contact_point_end="start",
-                geometry_type="polyline",
-                aU=coeffs[0], bU=coeffs[1], cU=coeffs[2], dU=coeffs[3],
-                aV=coeffs[4], bV=coeffs[5], cV=coeffs[6], dV=coeffs[7],
+                contact_point_start=from_endpoint.at_junction,
+                contact_point_end=to_endpoint.at_junction,
+                geometry_type="parampoly3",
+                aU=aU, bU=bU, cU=cU, dU=dU,
+                aV=aV, bV=bV, cV=cV, dV=dV,
                 p_range=1.0,
                 p_range_normalized=True,
                 tangent_scale=1.0
@@ -549,9 +557,14 @@ def generate_junction_connections(junction: Junction,
 
             # Create lane connections for BOTH directions using the same connecting road
             for p in pair_patterns:
+                p_from_endpoint = endpoint_lookup.get(p.from_road_id)
+                p_to_endpoint = endpoint_lookup.get(p.to_road_id)
+                if not p_from_endpoint or not p_to_endpoint:
+                    continue
+
                 lane_links = generate_lane_links_for_connection(
-                    p.from_endpoint,
-                    p.to_endpoint,
+                    p_from_endpoint,
+                    p_to_endpoint,
                     p.turn_type
                 )
 
@@ -575,8 +588,12 @@ def generate_junction_connections(junction: Junction,
         if id(pattern) in handled_patterns:
             continue  # Already handled as part of a straight pair
 
-        from_endpoint = pattern.from_endpoint
-        to_endpoint = pattern.to_endpoint
+        # Get updated endpoints from lookup
+        from_endpoint = endpoint_lookup.get(pattern.from_road_id)
+        to_endpoint = endpoint_lookup.get(pattern.to_road_id)
+
+        if not from_endpoint or not to_endpoint:
+            continue
 
         # Calculate average lane width for connecting road
         avg_lane_width = (from_endpoint.lane_width + to_endpoint.lane_width) / 2
@@ -692,3 +709,42 @@ def generate_junction_connections(junction: Junction,
             )
 
             junction.add_lane_connection(lane_connection)
+
+
+def generate_junction_connections(junction: Junction,
+                                 roads_dict: Dict[str, Road],
+                                 polylines_dict: Dict[str, Polyline],
+                                 scale: float = 1.0) -> None:
+    """
+    Generate connecting roads and lane connections for a junction.
+
+    Modifies the junction object in place by adding connecting_roads and lane_connections.
+
+    For straight-through connections between bidirectional roads, creates a single
+    bidirectional connecting road with both left and right lanes. For turns,
+    creates separate unidirectional connecting roads.
+
+    Args:
+        junction: Junction object to populate with connections
+        roads_dict: Dictionary of road_id -> Road object
+        polylines_dict: Dictionary of polyline_id -> Polyline object
+        scale: Meters per pixel scale factor (used for lane offset calculations)
+    """
+    # Step 1: Analyze junction geometry
+    geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
+
+    # Step 2: Detect connection patterns
+    patterns = detect_connection_patterns(geometry_info)
+
+    # Step 3: Filter unlikely connections
+    patterns = filter_unlikely_connections(patterns, roads_dict)
+
+    if not patterns:
+        # No connections found - junction might be too simple or malformed
+        return
+
+    # Build endpoint lookup from geometry_info
+    endpoint_lookup = {ep.road_id: ep for ep in geometry_info['endpoints']}
+
+    # Steps 4-6: Create connecting roads using the shared function
+    create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup)

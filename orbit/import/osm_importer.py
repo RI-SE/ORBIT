@@ -26,7 +26,7 @@ from .osm_to_orbit import (
     create_signal_from_osm,
     create_object_from_osm,
 )
-from .junction_analyzer import generate_junction_connections
+from .junction_analyzer import generate_junction_connections, create_connecting_roads_from_patterns
 
 
 class ImportMode(Enum):
@@ -466,130 +466,11 @@ class OSMImporter:
             geometry_info_updated = analyze_junction_geometry(junction, roads_dict, polylines_dict, skip_distance_check=True)
 
             # Create endpoint lookup by road_id for quick access
-            endpoint_lookup = {}
-            for endpoint in geometry_info_updated['endpoints']:
-                endpoint_lookup[endpoint.road_id] = endpoint
+            endpoint_lookup = {ep.road_id: ep for ep in geometry_info_updated['endpoints']}
 
             # Generate connecting roads using patterns from BEFORE offset but positions from AFTER offset
-            generate_simple_connection_path = junction_analyzer_module.generate_simple_connection_path
-            ConnectingRoad = importlib.import_module('orbit.models.connecting_road').ConnectingRoad
-            LaneConnection = importlib.import_module('orbit.models.lane_connection').LaneConnection
-            generate_lane_links_for_connection = junction_analyzer_module.generate_lane_links_for_connection
-
-            for pattern in patterns:
-                # Get UPDATED endpoints (with offset positions)
-                from_endpoint_updated = endpoint_lookup.get(pattern.from_road_id)
-                to_endpoint_updated = endpoint_lookup.get(pattern.to_road_id)
-
-                if not from_endpoint_updated or not to_endpoint_updated:
-                    continue
-
-                # Calculate average lane width
-                avg_lane_width = (from_endpoint_updated.lane_width + to_endpoint_updated.lane_width) / 2
-
-                # Determine which lanes to use based on traffic direction at junction
-                # at_junction="end" means traffic uses right lanes (road ends at junction)
-                # at_junction="start" means traffic uses left lanes (road starts at junction)
-                if from_endpoint_updated.at_junction == "end":
-                    use_left_lanes = False
-                    from_lane_count = from_endpoint_updated.right_lane_count
-                else:
-                    use_left_lanes = True
-                    from_lane_count = from_endpoint_updated.left_lane_count
-
-                if to_endpoint_updated.at_junction == "start":
-                    to_lane_count = to_endpoint_updated.right_lane_count
-                else:
-                    to_lane_count = to_endpoint_updated.left_lane_count
-
-                conn_lane_count = max(1, min(from_lane_count, to_lane_count))
-
-                # Set lane configuration based on traffic direction
-                if use_left_lanes:
-                    conn_lane_count_left = conn_lane_count
-                    conn_lane_count_right = 0
-                else:
-                    conn_lane_count_left = 0
-                    conn_lane_count_right = conn_lane_count
-
-                # Determine path direction and road connections
-                # For left-lane traffic, SWAP the path direction so both connecting roads
-                # go in the same direction as the main roads (one uses right lane, one uses left)
-                if use_left_lanes:
-                    # Swap path direction: use to_endpoint as start, from_endpoint as end
-                    from_pos = to_endpoint_updated.position
-                    to_pos = from_endpoint_updated.position
-                    from_heading = to_endpoint_updated.heading
-                    to_heading = from_endpoint_updated.heading
-                    # Swap road connections (predecessor/successor indicate geometric connection)
-                    pred_road_id = pattern.to_road_id
-                    succ_road_id = pattern.from_road_id
-                    contact_start = to_endpoint_updated.at_junction
-                    contact_end = from_endpoint_updated.at_junction
-                else:
-                    # Normal case: path goes from_endpoint to to_endpoint
-                    from_pos = from_endpoint_updated.position
-                    to_pos = to_endpoint_updated.position
-                    from_heading = from_endpoint_updated.heading
-                    to_heading = to_endpoint_updated.heading
-                    pred_road_id = pattern.from_road_id
-                    succ_road_id = pattern.to_road_id
-                    contact_start = from_endpoint_updated.at_junction
-                    contact_end = to_endpoint_updated.at_junction
-
-                # Generate path using CENTERLINE positions with ParamPoly3D (tangent-continuous)
-                path, coeffs = generate_simple_connection_path(
-                    from_pos=from_pos,
-                    from_heading=from_heading,
-                    to_pos=to_pos,
-                    to_heading=to_heading,
-                    num_points=20,
-                    tangent_scale=1.0
-                )
-
-                if not path:
-                    continue
-
-                # Unpack ParamPoly3D coefficients
-                aU, bU, cU, dU, aV, bV, cV, dV = coeffs
-
-                # Create connecting road with ParamPoly3D geometry
-                connecting_road = ConnectingRoad(
-                    path=path,
-                    lane_count_left=conn_lane_count_left,
-                    lane_count_right=max(1, conn_lane_count_right) if conn_lane_count_right > 0 else 0,
-                    lane_width=avg_lane_width,
-                    predecessor_road_id=pred_road_id,
-                    successor_road_id=succ_road_id,
-                    contact_point_start=contact_start,
-                    contact_point_end=contact_end,
-                    geometry_type="parampoly3",
-                    aU=aU, bU=bU, cU=cU, dU=dU,
-                    aV=aV, bV=bV, cV=cV, dV=dV,
-                    p_range=1.0,
-                    tangent_scale=1.0
-                )
-
-                junction.add_connecting_road(connecting_road)
-
-                # Generate lane links
-                lane_links = generate_lane_links_for_connection(
-                    from_endpoint_updated,
-                    to_endpoint_updated,
-                    pattern.turn_type
-                )
-
-                for from_lane_id, to_lane_id in lane_links:
-                    lane_connection = LaneConnection(
-                        from_road_id=pattern.from_road_id,
-                        from_lane_id=from_lane_id,
-                        to_road_id=pattern.to_road_id,
-                        to_lane_id=to_lane_id,
-                        connecting_road_id=connecting_road.id,
-                        turn_type=pattern.turn_type,
-                        priority=pattern.priority
-                    )
-                    junction.add_lane_connection(lane_connection)
+            # This uses the shared function which includes pair detection for bidirectional roads
+            create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup)
 
             if options.verbose:
                 summary = junction.get_connection_summary()
@@ -653,130 +534,11 @@ class OSMImporter:
             geometry_info_updated = analyze_junction_geometry(crossing, roads_dict, polylines_dict, skip_distance_check=True)
 
             # Create endpoint lookup by road_id
-            endpoint_lookup = {}
-            for endpoint in geometry_info_updated['endpoints']:
-                endpoint_lookup[endpoint.road_id] = endpoint
+            endpoint_lookup = {ep.road_id: ep for ep in geometry_info_updated['endpoints']}
 
             # Generate connecting roads using patterns from BEFORE offset but positions from AFTER offset
-            generate_simple_connection_path = junction_analyzer_module.generate_simple_connection_path
-            ConnectingRoad = importlib.import_module('orbit.models.connecting_road').ConnectingRoad
-            LaneConnection = importlib.import_module('orbit.models.lane_connection').LaneConnection
-            generate_lane_links_for_connection = junction_analyzer_module.generate_lane_links_for_connection
-
-            for pattern in patterns:
-                # Get UPDATED endpoints (with offset positions)
-                from_endpoint_updated = endpoint_lookup.get(pattern.from_road_id)
-                to_endpoint_updated = endpoint_lookup.get(pattern.to_road_id)
-
-                if not from_endpoint_updated or not to_endpoint_updated:
-                    continue
-
-                # Calculate average lane width
-                avg_lane_width = (from_endpoint_updated.lane_width + to_endpoint_updated.lane_width) / 2
-
-                # Determine which lanes to use based on traffic direction at junction
-                # at_junction="end" means traffic uses right lanes (road ends at junction)
-                # at_junction="start" means traffic uses left lanes (road starts at junction)
-                if from_endpoint_updated.at_junction == "end":
-                    use_left_lanes = False
-                    from_lane_count = from_endpoint_updated.right_lane_count
-                else:
-                    use_left_lanes = True
-                    from_lane_count = from_endpoint_updated.left_lane_count
-
-                if to_endpoint_updated.at_junction == "start":
-                    to_lane_count = to_endpoint_updated.right_lane_count
-                else:
-                    to_lane_count = to_endpoint_updated.left_lane_count
-
-                conn_lane_count = max(1, min(from_lane_count, to_lane_count))
-
-                # Set lane configuration based on traffic direction
-                if use_left_lanes:
-                    conn_lane_count_left = conn_lane_count
-                    conn_lane_count_right = 0
-                else:
-                    conn_lane_count_left = 0
-                    conn_lane_count_right = conn_lane_count
-
-                # Determine path direction and road connections
-                # For left-lane traffic, SWAP the path direction so both connecting roads
-                # go in the same direction as the main roads (one uses right lane, one uses left)
-                if use_left_lanes:
-                    # Swap path direction: use to_endpoint as start, from_endpoint as end
-                    from_pos = to_endpoint_updated.position
-                    to_pos = from_endpoint_updated.position
-                    from_heading = to_endpoint_updated.heading
-                    to_heading = from_endpoint_updated.heading
-                    # Swap road connections (predecessor/successor indicate geometric connection)
-                    pred_road_id = pattern.to_road_id
-                    succ_road_id = pattern.from_road_id
-                    contact_start = to_endpoint_updated.at_junction
-                    contact_end = from_endpoint_updated.at_junction
-                else:
-                    # Normal case: path goes from_endpoint to to_endpoint
-                    from_pos = from_endpoint_updated.position
-                    to_pos = to_endpoint_updated.position
-                    from_heading = from_endpoint_updated.heading
-                    to_heading = to_endpoint_updated.heading
-                    pred_road_id = pattern.from_road_id
-                    succ_road_id = pattern.to_road_id
-                    contact_start = from_endpoint_updated.at_junction
-                    contact_end = to_endpoint_updated.at_junction
-
-                # Generate path using CENTERLINE positions with ParamPoly3D (tangent-continuous)
-                path, coeffs = generate_simple_connection_path(
-                    from_pos=from_pos,
-                    from_heading=from_heading,
-                    to_pos=to_pos,
-                    to_heading=to_heading,
-                    num_points=20,
-                    tangent_scale=1.0
-                )
-
-                if not path:
-                    continue
-
-                # Unpack ParamPoly3D coefficients
-                aU, bU, cU, dU, aV, bV, cV, dV = coeffs
-
-                # Create connecting road with ParamPoly3D geometry
-                connecting_road = ConnectingRoad(
-                    path=path,
-                    lane_count_left=conn_lane_count_left,
-                    lane_count_right=max(1, conn_lane_count_right) if conn_lane_count_right > 0 else 0,
-                    lane_width=avg_lane_width,
-                    predecessor_road_id=pred_road_id,
-                    successor_road_id=succ_road_id,
-                    contact_point_start=contact_start,
-                    contact_point_end=contact_end,
-                    geometry_type="parampoly3",
-                    aU=aU, bU=bU, cU=cU, dU=dU,
-                    aV=aV, bV=bV, cV=cV, dV=dV,
-                    p_range=1.0,
-                    tangent_scale=1.0
-                )
-
-                crossing.add_connecting_road(connecting_road)
-
-                # Generate lane links
-                lane_links = generate_lane_links_for_connection(
-                    from_endpoint_updated,
-                    to_endpoint_updated,
-                    pattern.turn_type
-                )
-
-                for from_lane_id, to_lane_id in lane_links:
-                    lane_connection = LaneConnection(
-                        from_road_id=pattern.from_road_id,
-                        from_lane_id=from_lane_id,
-                        to_road_id=pattern.to_road_id,
-                        to_lane_id=to_lane_id,
-                        connecting_road_id=connecting_road.id,
-                        turn_type=pattern.turn_type,
-                        priority=pattern.priority
-                    )
-                    crossing.add_lane_connection(lane_connection)
+            # This uses the shared function which includes pair detection for bidirectional roads
+            create_connecting_roads_from_patterns(crossing, patterns, endpoint_lookup)
 
             if options.verbose:
                 summary = crossing.get_connection_summary()
