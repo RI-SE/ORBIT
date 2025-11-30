@@ -487,19 +487,62 @@ class OSMImporter:
                 # Calculate average lane width
                 avg_lane_width = (from_endpoint_updated.lane_width + to_endpoint_updated.lane_width) / 2
 
-                # Determine lane count - only use right lanes for right-hand traffic
-                conn_lane_count_right = min(
-                    from_endpoint_updated.right_lane_count if from_endpoint_updated.at_junction == "end" else from_endpoint_updated.left_lane_count,
-                    to_endpoint_updated.right_lane_count if to_endpoint_updated.at_junction == "start" else to_endpoint_updated.left_lane_count
-                )
-                conn_lane_count_left = 0  # Right-hand traffic: only right lanes in connecting roads
+                # Determine which lanes to use based on traffic direction at junction
+                # at_junction="end" means traffic uses right lanes (road ends at junction)
+                # at_junction="start" means traffic uses left lanes (road starts at junction)
+                if from_endpoint_updated.at_junction == "end":
+                    use_left_lanes = False
+                    from_lane_count = from_endpoint_updated.right_lane_count
+                else:
+                    use_left_lanes = True
+                    from_lane_count = from_endpoint_updated.left_lane_count
+
+                if to_endpoint_updated.at_junction == "start":
+                    to_lane_count = to_endpoint_updated.right_lane_count
+                else:
+                    to_lane_count = to_endpoint_updated.left_lane_count
+
+                conn_lane_count = max(1, min(from_lane_count, to_lane_count))
+
+                # Set lane configuration based on traffic direction
+                if use_left_lanes:
+                    conn_lane_count_left = conn_lane_count
+                    conn_lane_count_right = 0
+                else:
+                    conn_lane_count_left = 0
+                    conn_lane_count_right = conn_lane_count
+
+                # Determine path direction and road connections
+                # For left-lane traffic, SWAP the path direction so both connecting roads
+                # go in the same direction as the main roads (one uses right lane, one uses left)
+                if use_left_lanes:
+                    # Swap path direction: use to_endpoint as start, from_endpoint as end
+                    from_pos = to_endpoint_updated.position
+                    to_pos = from_endpoint_updated.position
+                    from_heading = to_endpoint_updated.heading
+                    to_heading = from_endpoint_updated.heading
+                    # Swap road connections (predecessor/successor indicate geometric connection)
+                    pred_road_id = pattern.to_road_id
+                    succ_road_id = pattern.from_road_id
+                    contact_start = to_endpoint_updated.at_junction
+                    contact_end = from_endpoint_updated.at_junction
+                else:
+                    # Normal case: path goes from_endpoint to to_endpoint
+                    from_pos = from_endpoint_updated.position
+                    to_pos = to_endpoint_updated.position
+                    from_heading = from_endpoint_updated.heading
+                    to_heading = to_endpoint_updated.heading
+                    pred_road_id = pattern.from_road_id
+                    succ_road_id = pattern.to_road_id
+                    contact_start = from_endpoint_updated.at_junction
+                    contact_end = to_endpoint_updated.at_junction
 
                 # Generate path using CENTERLINE positions with ParamPoly3D (tangent-continuous)
                 path, coeffs = generate_simple_connection_path(
-                    from_pos=from_endpoint_updated.position,  # Use centerline position
-                    from_heading=from_endpoint_updated.heading,
-                    to_pos=to_endpoint_updated.position,  # Use centerline position
-                    to_heading=to_endpoint_updated.heading,
+                    from_pos=from_pos,
+                    from_heading=from_heading,
+                    to_pos=to_pos,
+                    to_heading=to_heading,
                     num_points=20,
                     tangent_scale=1.0
                 )
@@ -514,12 +557,12 @@ class OSMImporter:
                 connecting_road = ConnectingRoad(
                     path=path,
                     lane_count_left=conn_lane_count_left,
-                    lane_count_right=max(1, conn_lane_count_right),
+                    lane_count_right=max(1, conn_lane_count_right) if conn_lane_count_right > 0 else 0,
                     lane_width=avg_lane_width,
-                    predecessor_road_id=pattern.from_road_id,
-                    successor_road_id=pattern.to_road_id,
-                    contact_point_start="end",
-                    contact_point_end="start",
+                    predecessor_road_id=pred_road_id,
+                    successor_road_id=succ_road_id,
+                    contact_point_start=contact_start,
+                    contact_point_end=contact_end,
                     geometry_type="parampoly3",
                     aU=aU, bU=bU, cU=cU, dU=dU,
                     aV=aV, bV=bV, cV=cV, dV=dV,
@@ -631,19 +674,62 @@ class OSMImporter:
                 # Calculate average lane width
                 avg_lane_width = (from_endpoint_updated.lane_width + to_endpoint_updated.lane_width) / 2
 
-                # Determine lane count - only use right lanes for right-hand traffic
-                conn_lane_count_right = min(
-                    from_endpoint_updated.right_lane_count if from_endpoint_updated.at_junction == "end" else from_endpoint_updated.left_lane_count,
-                    to_endpoint_updated.right_lane_count if to_endpoint_updated.at_junction == "start" else to_endpoint_updated.left_lane_count
-                )
-                conn_lane_count_left = 0  # Right-hand traffic: only right lanes in connecting roads
+                # Determine which lanes to use based on traffic direction at junction
+                # at_junction="end" means traffic uses right lanes (road ends at junction)
+                # at_junction="start" means traffic uses left lanes (road starts at junction)
+                if from_endpoint_updated.at_junction == "end":
+                    use_left_lanes = False
+                    from_lane_count = from_endpoint_updated.right_lane_count
+                else:
+                    use_left_lanes = True
+                    from_lane_count = from_endpoint_updated.left_lane_count
+
+                if to_endpoint_updated.at_junction == "start":
+                    to_lane_count = to_endpoint_updated.right_lane_count
+                else:
+                    to_lane_count = to_endpoint_updated.left_lane_count
+
+                conn_lane_count = max(1, min(from_lane_count, to_lane_count))
+
+                # Set lane configuration based on traffic direction
+                if use_left_lanes:
+                    conn_lane_count_left = conn_lane_count
+                    conn_lane_count_right = 0
+                else:
+                    conn_lane_count_left = 0
+                    conn_lane_count_right = conn_lane_count
+
+                # Determine path direction and road connections
+                # For left-lane traffic, SWAP the path direction so both connecting roads
+                # go in the same direction as the main roads (one uses right lane, one uses left)
+                if use_left_lanes:
+                    # Swap path direction: use to_endpoint as start, from_endpoint as end
+                    from_pos = to_endpoint_updated.position
+                    to_pos = from_endpoint_updated.position
+                    from_heading = to_endpoint_updated.heading
+                    to_heading = from_endpoint_updated.heading
+                    # Swap road connections (predecessor/successor indicate geometric connection)
+                    pred_road_id = pattern.to_road_id
+                    succ_road_id = pattern.from_road_id
+                    contact_start = to_endpoint_updated.at_junction
+                    contact_end = from_endpoint_updated.at_junction
+                else:
+                    # Normal case: path goes from_endpoint to to_endpoint
+                    from_pos = from_endpoint_updated.position
+                    to_pos = to_endpoint_updated.position
+                    from_heading = from_endpoint_updated.heading
+                    to_heading = to_endpoint_updated.heading
+                    pred_road_id = pattern.from_road_id
+                    succ_road_id = pattern.to_road_id
+                    contact_start = from_endpoint_updated.at_junction
+                    contact_end = to_endpoint_updated.at_junction
 
                 # Generate path using CENTERLINE positions with ParamPoly3D (tangent-continuous)
                 path, coeffs = generate_simple_connection_path(
-                    from_pos=from_endpoint_updated.position,  # Use centerline position
-                    from_heading=from_endpoint_updated.heading,
-                    to_pos=to_endpoint_updated.position,  # Use centerline position
-                    to_heading=to_endpoint_updated.heading,
+                    from_pos=from_pos,
+                    from_heading=from_heading,
+                    to_pos=to_pos,
+                    to_heading=to_heading,
                     num_points=20,
                     tangent_scale=1.0
                 )
@@ -658,12 +744,12 @@ class OSMImporter:
                 connecting_road = ConnectingRoad(
                     path=path,
                     lane_count_left=conn_lane_count_left,
-                    lane_count_right=max(1, conn_lane_count_right),
+                    lane_count_right=max(1, conn_lane_count_right) if conn_lane_count_right > 0 else 0,
                     lane_width=avg_lane_width,
-                    predecessor_road_id=pattern.from_road_id,
-                    successor_road_id=pattern.to_road_id,
-                    contact_point_start="end",
-                    contact_point_end="start",
+                    predecessor_road_id=pred_road_id,
+                    successor_road_id=succ_road_id,
+                    contact_point_start=contact_start,
+                    contact_point_end=contact_end,
                     geometry_type="parampoly3",
                     aU=aU, bU=bU, cU=cU, dU=dU,
                     aV=aV, bV=bV, cV=cV, dV=dV,

@@ -320,17 +320,26 @@ def detect_connection_patterns(geometry_info: Dict[str, Any]) -> List[Connection
             if from_endpoint.road_id == to_endpoint.road_id:
                 continue
 
-            # Calculate turn angle
-            # Outgoing heading should be roughly opposite of incoming heading for straight-through
-            # We need to consider the direction change
+            # Calculate turn angle accounting for road direction at junction
+            # The heading direction depends on at_junction:
+            # - "end": road heading points INTO junction
+            # - "start": road heading points AWAY from junction
 
-            # Incoming road heading points INTO junction
-            incoming_heading = from_endpoint.heading
+            # Calculate effective incoming heading (direction traffic enters junction)
+            if from_endpoint.at_junction == "end":
+                # Road ends at junction: heading already points into junction
+                incoming_heading = from_endpoint.heading
+            else:
+                # Road starts at junction: heading points away, flip for incoming direction
+                incoming_heading = from_endpoint.heading + math.pi
 
-            # Outgoing road heading points OUT OF junction
-            # For connection, we want the heading that enters the outgoing road
-            # which is opposite to the road's heading away from junction
-            outgoing_heading = to_endpoint.heading + math.pi
+            # Calculate effective outgoing heading (direction traffic exits junction)
+            if to_endpoint.at_junction == "end":
+                # Road ends at junction: heading points in, flip for outgoing direction
+                outgoing_heading = to_endpoint.heading + math.pi
+            else:
+                # Road starts at junction: heading already points away = outgoing direction
+                outgoing_heading = to_endpoint.heading
 
             # Turn angle is the difference
             turn_angle = normalize_angle(outgoing_heading - incoming_heading)
@@ -451,6 +460,10 @@ def generate_junction_connections(junction: Junction,
 
     Modifies the junction object in place by adding connecting_roads and lane_connections.
 
+    For straight-through connections between bidirectional roads, creates a single
+    bidirectional connecting road with both left and right lanes. For turns,
+    creates separate unidirectional connecting roads.
+
     Args:
         junction: Junction object to populate with connections
         roads_dict: Dictionary of road_id -> Road object
@@ -470,69 +483,168 @@ def generate_junction_connections(junction: Junction,
         # No connections found - junction might be too simple or malformed
         return
 
-    # Step 4: Generate connecting roads and lane connections
+    # Step 4: Identify straight-through pairs (A->B and B->A both straight)
+    # These should become single bidirectional connecting roads
+    straight_pairs = {}  # (road_a, road_b) -> [pattern_a_to_b, pattern_b_to_a]
     for pattern in patterns:
-        # Generate path for this connection
+        if pattern.turn_type == "straight":
+            # Use sorted tuple as key so A->B and B->A map to same key
+            key = tuple(sorted([pattern.from_road_id, pattern.to_road_id]))
+            if key not in straight_pairs:
+                straight_pairs[key] = []
+            straight_pairs[key].append(pattern)
+
+    # Track which patterns have been handled as straight pairs
+    handled_patterns = set()
+
+    # Step 5: Create bidirectional connecting roads for straight-through pairs
+    for (road_a_id, road_b_id), pair_patterns in straight_pairs.items():
+        if len(pair_patterns) == 2:
+            # True bidirectional straight-through - create ONE connecting road
+            # Pick the pattern where from_endpoint is at "end" of its road (standard direction)
+            pattern = pair_patterns[0]
+            if pattern.from_endpoint.at_junction != "end":
+                pattern = pair_patterns[1]
+
+            from_endpoint = pattern.from_endpoint
+            to_endpoint = pattern.to_endpoint
+
+            # Calculate average lane width
+            avg_lane_width = (from_endpoint.lane_width + to_endpoint.lane_width) / 2
+
+            # Use centerline positions for the path (no lane offset)
+            from_pos = from_endpoint.position
+            to_pos = to_endpoint.position
+
+            # Create simple line path
+            path = [from_pos, to_pos]
+            dx = to_pos[0] - from_pos[0]
+            dy = to_pos[1] - from_pos[1]
+            length = math.sqrt(dx * dx + dy * dy)
+            coeffs = (0.0, length, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+            # Bidirectional connecting road has both left and right lanes
+            conn_lane_count_left = max(1, min(from_endpoint.left_lane_count, to_endpoint.left_lane_count))
+            conn_lane_count_right = max(1, min(from_endpoint.right_lane_count, to_endpoint.right_lane_count))
+
+            # Create the bidirectional connecting road
+            connecting_road = ConnectingRoad(
+                path=path,
+                lane_count_left=conn_lane_count_left,
+                lane_count_right=conn_lane_count_right,
+                lane_width=avg_lane_width,
+                predecessor_road_id=pattern.from_road_id,
+                successor_road_id=pattern.to_road_id,
+                contact_point_start="end",
+                contact_point_end="start",
+                geometry_type="polyline",
+                aU=coeffs[0], bU=coeffs[1], cU=coeffs[2], dU=coeffs[3],
+                aV=coeffs[4], bV=coeffs[5], cV=coeffs[6], dV=coeffs[7],
+                p_range=1.0,
+                p_range_normalized=True,
+                tangent_scale=1.0
+            )
+
+            junction.add_connecting_road(connecting_road)
+
+            # Create lane connections for BOTH directions using the same connecting road
+            for p in pair_patterns:
+                lane_links = generate_lane_links_for_connection(
+                    p.from_endpoint,
+                    p.to_endpoint,
+                    p.turn_type
+                )
+
+                for from_lane_id, to_lane_id in lane_links:
+                    lane_connection = LaneConnection(
+                        from_road_id=p.from_road_id,
+                        from_lane_id=from_lane_id,
+                        to_road_id=p.to_road_id,
+                        to_lane_id=to_lane_id,
+                        connecting_road_id=connecting_road.id,
+                        turn_type=p.turn_type,
+                        priority=p.priority
+                    )
+                    junction.add_lane_connection(lane_connection)
+
+                # Mark this pattern as handled
+                handled_patterns.add(id(p))
+
+    # Step 6: Handle remaining patterns (turns and unpaired straights)
+    for pattern in patterns:
+        if id(pattern) in handled_patterns:
+            continue  # Already handled as part of a straight pair
+
         from_endpoint = pattern.from_endpoint
         to_endpoint = pattern.to_endpoint
 
         # Calculate average lane width for connecting road
         avg_lane_width = (from_endpoint.lane_width + to_endpoint.lane_width) / 2
 
-        # Determine lane count for connecting road (use minimum of from/to)
-        # For now, connecting roads are typically single lane per direction
-        conn_lane_count_right = min(
-            from_endpoint.right_lane_count if from_endpoint.at_junction == "end" else from_endpoint.left_lane_count,
-            to_endpoint.right_lane_count if to_endpoint.at_junction == "start" else to_endpoint.left_lane_count
-        )
-        conn_lane_count_left = 0  # Right-hand traffic: only right lanes in connecting roads
+        # Determine which lanes are used for this connection based on traffic direction
+        # at_junction="end" means traffic uses right lanes (road ends at junction)
+        # at_junction="start" means traffic uses left lanes (road starts at junction)
+        if from_endpoint.at_junction == "end":
+            use_left_lanes = False
+            from_lane_count = from_endpoint.right_lane_count
+        else:
+            use_left_lanes = True
+            from_lane_count = from_endpoint.left_lane_count
+
+        if to_endpoint.at_junction == "start":
+            to_lane_count = to_endpoint.right_lane_count
+        else:
+            to_lane_count = to_endpoint.left_lane_count
+
+        conn_lane_count = max(1, min(from_lane_count, to_lane_count))
+
+        # Set lane configuration based on traffic direction
+        if use_left_lanes:
+            conn_lane_count_left = conn_lane_count
+            conn_lane_count_right = 0
+        else:
+            conn_lane_count_left = 0
+            conn_lane_count_right = conn_lane_count
 
         # Check if this is a U-turn connection
         is_uturn = pattern.turn_type == "uturn"
 
-        # For straight connections, use lane-offset positions and simple line geometry
-        if pattern.turn_type == "straight":
-            # For straight-through, calculate lane offset based on connection direction
-            # The connection direction is from FROM endpoint toward TO endpoint
-            conn_dx = to_endpoint.position[0] - from_endpoint.position[0]
-            conn_dy = to_endpoint.position[1] - from_endpoint.position[1]
-            conn_heading = math.atan2(conn_dy, conn_dx)
-
-            # Calculate lane offset perpendicular to connection direction (right side)
-            lane_width_px = from_endpoint.lane_width / scale if scale > 0 else from_endpoint.lane_width
-            right_perp = conn_heading - math.pi / 2
-
-            # Offset both positions to the right of the connection direction
-            offset_x = (from_endpoint.right_lane_count / 2.0) * lane_width_px * math.cos(right_perp)
-            offset_y = (from_endpoint.right_lane_count / 2.0) * lane_width_px * math.sin(right_perp)
-
-            from_pos = (from_endpoint.position[0] + offset_x, from_endpoint.position[1] + offset_y)
-            to_pos = (to_endpoint.position[0] + offset_x, to_endpoint.position[1] + offset_y)
-
-            # For straight connections, just create a simple line path (no curves)
-            path = [from_pos, to_pos]
-            # Coefficients for a simple line in local frame: u(p) = p * length, v(p) = 0
-            dx = to_pos[0] - from_pos[0]
-            dy = to_pos[1] - from_pos[1]
-            length = math.sqrt(dx * dx + dy * dy)
-            coeffs = (0.0, length, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)  # aU, bU, cU, dU, aV, bV, cV, dV
+        # Determine path direction and road connections
+        # For left-lane traffic, SWAP the path direction so both connecting roads
+        # go in the same direction as the main roads (one uses right lane, one uses left)
+        if use_left_lanes:
+            # Swap path direction: use to_endpoint as start, from_endpoint as end
+            # This makes the path go in the same direction as the "normal" traffic flow
+            from_pos = to_endpoint.position
+            to_pos = from_endpoint.position
+            from_heading = to_endpoint.heading
+            to_heading = from_endpoint.heading
+            # Swap road connections (predecessor/successor indicate geometric connection)
+            pred_road_id = pattern.to_road_id
+            succ_road_id = pattern.from_road_id
+            contact_start = to_endpoint.at_junction
+            contact_end = from_endpoint.at_junction
         else:
-            # For turns, use centerline positions (the curve geometry handles lane offset)
+            # Normal case: path goes from_endpoint to to_endpoint
             from_pos = from_endpoint.position
             to_pos = to_endpoint.position
             from_heading = from_endpoint.heading
             to_heading = to_endpoint.heading
+            pred_road_id = pattern.from_road_id
+            succ_road_id = pattern.to_road_id
+            contact_start = from_endpoint.at_junction
+            contact_end = to_endpoint.at_junction
 
-            # Generate geometric path using ParamPoly3D
-            path, coeffs = generate_simple_connection_path(
-                from_pos=from_pos,
-                from_heading=from_heading,
-                to_pos=to_pos,
-                to_heading=to_heading,
-                num_points=20,
-                tangent_scale=1.0,
-                is_uturn=is_uturn
-            )
+        # Generate geometric path using ParamPoly3D
+        path, coeffs = generate_simple_connection_path(
+            from_pos=from_pos,
+            from_heading=from_heading,
+            to_pos=to_pos,
+            to_heading=to_heading,
+            num_points=20,
+            tangent_scale=1.0,
+            is_uturn=is_uturn
+        )
 
         if not path:
             continue
@@ -540,31 +652,24 @@ def generate_junction_connections(junction: Junction,
         # Unpack ParamPoly3D coefficients
         aU, bU, cU, dU, aV, bV, cV, dV = coeffs
 
-        # Use simple line geometry for straight connections, Bezier curves for turns
-        if pattern.turn_type == "straight":
-            geometry_type = "polyline"  # Clean line geometry for straight roads
-        else:
-            geometry_type = "parampoly3"  # Smooth Bezier curves for turns
-
         # Create connecting road
         connecting_road = ConnectingRoad(
             path=path,
             lane_count_left=conn_lane_count_left,
-            lane_count_right=max(1, conn_lane_count_right),  # At least 1 lane
+            lane_count_right=conn_lane_count_right,
             lane_width=avg_lane_width,
-            predecessor_road_id=pattern.from_road_id,
-            successor_road_id=pattern.to_road_id,
-            contact_point_start="end",  # Connects to end of incoming road
-            contact_point_end="start",   # Connects to start of outgoing road
-            geometry_type=geometry_type,
+            predecessor_road_id=pred_road_id,
+            successor_road_id=succ_road_id,
+            contact_point_start=contact_start,
+            contact_point_end=contact_end,
+            geometry_type="parampoly3",
             aU=aU, bU=bU, cU=cU, dU=dU,
             aV=aV, bV=bV, cV=cV, dV=dV,
             p_range=1.0,
-            p_range_normalized=True,  # Use OpenDRIVE standard normalized pRange
+            p_range_normalized=True,
             tangent_scale=1.0
         )
 
-        # Add to junction
         junction.add_connecting_road(connecting_road)
 
         # Generate lane links
