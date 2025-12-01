@@ -61,9 +61,8 @@ class Road:
         polyline_ids: List of polyline IDs that make up this road
         centerline_id: ID of the polyline that serves as the road centerline
         road_type: Type of road (highway, urban, etc.)
-        lane_info: Information about lanes (for backward compatibility)
+        lane_info: Information about default lane configuration
         lane_sections: List of LaneSection objects (OpenDRIVE lane sections)
-        lanes: DEPRECATED - kept for backward compatibility during migration
         speed_limit: Speed limit in km/h (optional)
         junction_id: ID of junction this road connects to (optional)
         predecessor_id: ID of road that precedes this one (optional)
@@ -79,7 +78,7 @@ class Road:
     road_type: RoadType = RoadType.UNKNOWN
     lane_info: LaneInfo = field(default_factory=LaneInfo)
     lane_sections: List[LaneSection] = field(default_factory=list)
-    lanes: List[Lane] = field(default_factory=list)  # Deprecated, for backward compatibility
+    lanes: List[Lane] = field(default_factory=list)  # DEPRECATED: Not used. Kept for dataclass signature only.
     speed_limit: Optional[float] = None  # km/h
     junction_id: Optional[str] = None
     predecessor_id: Optional[str] = None
@@ -175,21 +174,9 @@ class Road:
         )
         self.lane_sections.append(section)
 
-    def add_lane(self, lane: Lane) -> None:
-        """Add a lane to the road."""
-        # Remove existing lane with same ID if present
-        self.lanes = [l for l in self.lanes if l.id != lane.id]
-        self.lanes.append(lane)
-        # Sort lanes by ID for consistent ordering
-        self.lanes.sort(key=lambda l: l.id)
-
-    def remove_lane(self, lane_id: int) -> None:
-        """Remove a lane by ID."""
-        self.lanes = [l for l in self.lanes if l.id != lane_id]
-
     def get_lane(self, lane_id: int, section_number: Optional[int] = None) -> Optional[Lane]:
         """
-        Get a lane by ID.
+        Get a lane by ID from lane sections.
 
         Args:
             lane_id: The lane ID to search for
@@ -198,37 +185,20 @@ class Road:
         Returns:
             Lane object or None if not found
         """
-        # If using new lane section system
-        if self.lane_sections:
-            if section_number is not None:
-                # Search in specific section
-                section = self.get_section(section_number)
-                if section:
-                    for lane in section.lanes:
-                        if lane.id == lane_id:
-                            return lane
-            else:
-                # Search all sections, return first match
-                for section in self.lane_sections:
-                    for lane in section.lanes:
-                        if lane.id == lane_id:
-                            return lane
-            return None
-
-        # Fallback to deprecated lanes list
-        for lane in self.lanes:
-            if lane.id == lane_id:
-                return lane
+        if section_number is not None:
+            # Search in specific section
+            section = self.get_section(section_number)
+            if section:
+                for lane in section.lanes:
+                    if lane.id == lane_id:
+                        return lane
+        else:
+            # Search all sections, return first match
+            for section in self.lane_sections:
+                for lane in section.lanes:
+                    if lane.id == lane_id:
+                        return lane
         return None
-
-    def get_lanes_sorted(self) -> List[Lane]:
-        """
-        Get lanes sorted left to right for display.
-
-        DEPRECATED: Use get_section(n).get_lanes_sorted() instead.
-        Returns lanes in order: [2, 1, 0, -1, -2] (left to right)
-        """
-        return sorted(self.lanes, key=lambda l: -l.id)
 
     # Lane Section management
     def calculate_centerline_s_coordinates(self, centerline_points: List[Tuple[float, float]]) -> List[float]:
@@ -477,7 +447,6 @@ class Road:
                 'lane_widths': self.lane_info.lane_widths
             },
             'lane_sections': [section.to_dict() for section in self.lane_sections],
-            'lanes': [lane.to_dict() for lane in self.lanes],  # Keep for backward compatibility
             'speed_limit': self.speed_limit,
             'junction_id': self.junction_id,
             'predecessor_id': self.predecessor_id,
@@ -510,9 +479,9 @@ class Road:
         lane_sections_data = data.get('lane_sections', [])
         lane_sections = [LaneSection.from_dict(section_data) for section_data in lane_sections_data]
 
-        # Load old lanes for backward compatibility
-        lanes_data = data.get('lanes', [])
-        lanes = [Lane.from_dict(lane_data) for lane_data in lanes_data]
+        # Load old lanes for backward compatibility migration
+        legacy_lanes_data = data.get('lanes', [])
+        legacy_lanes = [Lane.from_dict(lane_data) for lane_data in legacy_lanes_data]
 
         road = cls(
             id=data.get('id', str(uuid.uuid4())),
@@ -522,7 +491,6 @@ class Road:
             road_type=RoadType(data.get('road_type', 'unknown')),
             lane_info=lane_info,
             lane_sections=lane_sections,
-            lanes=lanes,  # Keep for backward compatibility
             speed_limit=data.get('speed_limit'),
             junction_id=data.get('junction_id'),
             predecessor_id=data.get('predecessor_id'),
@@ -534,13 +502,13 @@ class Road:
 
         # Backward compatibility: migrate old format to lane_sections
         if not road.lane_sections:
-            if road.lanes:
+            if legacy_lanes:
                 # Migrate existing lanes to a single section
                 section = LaneSection(
                     section_number=1,
                     s_start=0.0,
                     s_end=1000.0,  # Default length, will be updated when centerline is available
-                    lanes=road.lanes.copy()
+                    lanes=legacy_lanes
                 )
                 road.lane_sections.append(section)
             else:

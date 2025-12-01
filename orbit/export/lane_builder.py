@@ -57,7 +57,7 @@ class LaneBuilder:
 
         Args:
             road: Road object
-            road_length: Total road length in meters
+            road_length: Total road length in meters (unused, kept for API compatibility)
             boundary_infos: List of boundary info for road mark types
 
         Returns:
@@ -68,11 +68,7 @@ class LaneBuilder:
         # Build map of lane_id to boundary info for quick lookup
         boundary_map = {b.lane_id: b for b in boundary_infos if b.lane_id is not None}
 
-        # Use lane sections if available, otherwise fall back to old format
-        if road.lane_sections:
-            self._create_section_based_lanes(lanes, road, boundary_map)
-        else:
-            self._create_legacy_lanes(lanes, road, road_length, boundary_map)
+        self._create_section_based_lanes(lanes, road, boundary_map)
 
         return lanes
 
@@ -124,48 +120,6 @@ class LaneBuilder:
                 boundary_info = boundary_map.get(lane_obj.id)
                 lane = self._create_lane(lane_obj, boundary_info)
                 right.append(lane)
-
-    def _create_legacy_lanes(
-        self,
-        lanes: etree.Element,
-        road: Road,
-        road_length: float,
-        boundary_map: dict
-    ) -> None:
-        """Create lane elements using legacy road.lanes format (backward compatibility)."""
-        lane_section = etree.SubElement(lanes, 'laneSection')
-        lane_section.set('s', '0.0')
-
-        # Build map of lane_id to Lane object
-        lane_map = {lane.id: lane for lane in road.lanes}
-
-        # Left lanes (positive IDs)
-        left = etree.SubElement(lane_section, 'left')
-        left_lanes = [lane for lane in road.lanes if lane.id > 0]
-        left_lanes.sort(key=lambda l: l.id)
-        for lane_obj in left_lanes:
-            boundary_info = boundary_map.get(lane_obj.id)
-            lane = self._create_lane(lane_obj, boundary_info)
-            left.append(lane)
-
-        # Center lane (reference lane, id=0)
-        center = etree.SubElement(lane_section, 'center')
-        center_lane_obj = lane_map.get(0)
-        if center_lane_obj:
-            center_lane = self._create_center_lane(center_lane_obj)
-            center.append(center_lane)
-        else:
-            center_lane = self._create_default_center_lane()
-            center.append(center_lane)
-
-        # Right lanes (negative IDs)
-        right = etree.SubElement(lane_section, 'right')
-        right_lanes = [lane for lane in road.lanes if lane.id < 0]
-        right_lanes.sort(key=lambda l: l.id, reverse=True)
-        for lane_obj in right_lanes:
-            boundary_info = boundary_map.get(lane_obj.id)
-            lane = self._create_lane(lane_obj, boundary_info)
-            right.append(lane)
 
     def _create_center_lane(self, center_lane_obj) -> etree.Element:
         """Create center lane element from Lane object."""

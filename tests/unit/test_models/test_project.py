@@ -35,7 +35,7 @@ class TestProjectCreation:
         assert 'version' in empty_project.metadata
         assert 'created' in empty_project.metadata
         assert 'modified' in empty_project.metadata
-        assert empty_project.metadata['version'] == '0.2.0'
+        assert empty_project.metadata['version'] == '0.3.1'
 
     def test_project_with_initial_data(self, sample_project: Project):
         """Test creating project with initial data."""
@@ -347,7 +347,7 @@ class TestProjectClear:
         sample_project.clear()
 
         # Version should stay the same
-        assert sample_project.metadata['version'] == '0.2.0'
+        assert sample_project.metadata['version'] == '0.3.1'
         # Created timestamp should be updated
         assert sample_project.metadata['created'] != old_created
 

@@ -441,3 +441,180 @@ class TestBackwardCompatibility:
         # New format (lane_sections) should take precedence
         assert len(road.lane_sections) == 1
         assert len(road.lane_sections[0].lanes) == 1  # Only center lane from new format
+
+
+class TestSectionBoundaryManagement:
+    """Test section boundary and s-coordinate management."""
+
+    def test_calculate_centerline_s_coordinates(self):
+        """Test s-coordinate calculation along centerline."""
+        road = Road()
+        points = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)]
+
+        s_coords = road.calculate_centerline_s_coordinates(points)
+
+        assert len(s_coords) == 3
+        assert s_coords[0] == 0.0
+        assert s_coords[1] == pytest.approx(100.0)
+        assert s_coords[2] == pytest.approx(200.0)
+
+    def test_calculate_s_coordinates_empty_points(self):
+        """Test s-coordinate calculation with empty points."""
+        road = Road()
+        s_coords = road.calculate_centerline_s_coordinates([])
+
+        assert s_coords == []
+
+    def test_split_section_at_point(self):
+        """Test splitting a section at a point index."""
+        from orbit.models import Lane, LaneType, LaneSection
+        road = Road()
+        # Create a section with 3 lanes
+        section = LaneSection(
+            section_number=1,
+            s_start=0.0,
+            s_end=300.0,
+            lanes=[
+                Lane(id=0, lane_type=LaneType.NONE, width=0.0),
+                Lane(id=1, lane_type=LaneType.DRIVING, width=3.5),
+                Lane(id=-1, lane_type=LaneType.DRIVING, width=3.5)
+            ]
+        )
+        road.lane_sections = [section]
+
+        # Centerline points: 300 pixels total
+        centerline_points = [(0.0, 0.0), (100.0, 0.0), (200.0, 0.0), (300.0, 0.0)]
+
+        # Split at point 2 (s=200)
+        success = road.split_section_at_point(2, centerline_points)
+
+        assert success
+        assert len(road.lane_sections) == 2
+        # Both sections should have lanes
+        assert len(road.lane_sections[0].lanes) == 3
+        assert len(road.lane_sections[1].lanes) == 3
+        # Section 1 ends where section 2 starts
+        assert road.lane_sections[0].s_end == road.lane_sections[1].s_start
+
+    def test_split_section_invalid_point_index(self):
+        """Test splitting at invalid point index fails."""
+        from orbit.models import LaneSection
+        road = Road()
+        road.lane_sections = [LaneSection(section_number=1, s_start=0.0, s_end=100.0)]
+        centerline_points = [(0.0, 0.0), (100.0, 0.0)]
+
+        # Invalid point index
+        success = road.split_section_at_point(10, centerline_points)
+        assert not success
+        assert len(road.lane_sections) == 1
+
+    def test_update_section_boundaries(self):
+        """Test updating section boundaries after centerline changes."""
+        from orbit.models import LaneSection
+        road = Road()
+        # Two sections, second has end_point_index=None (last section)
+        road.lane_sections = [
+            LaneSection(section_number=1, s_start=0.0, s_end=100.0, end_point_index=1),
+            LaneSection(section_number=2, s_start=100.0, s_end=200.0, end_point_index=None)
+        ]
+
+        # New centerline with different distances
+        centerline_points = [(0.0, 0.0), (150.0, 0.0), (300.0, 0.0)]
+
+        road.update_section_boundaries(centerline_points)
+
+        # Section 1 ends at point 1 (s=150)
+        assert road.lane_sections[0].s_end == pytest.approx(150.0)
+        # Section 2 starts where section 1 ends, ends at last point
+        assert road.lane_sections[1].s_start == pytest.approx(150.0)
+        assert road.lane_sections[1].s_end == pytest.approx(300.0)
+
+    def test_adjust_section_indices_after_insertion(self):
+        """Test adjusting section indices when point is inserted."""
+        from orbit.models import LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(section_number=1, s_start=0.0, s_end=100.0, end_point_index=2),
+            LaneSection(section_number=2, s_start=100.0, s_end=200.0, end_point_index=4)
+        ]
+
+        # Insert point at index 1
+        road.adjust_section_indices_after_insertion(1)
+
+        # Indices >= 1 should be incremented
+        assert road.lane_sections[0].end_point_index == 3
+        assert road.lane_sections[1].end_point_index == 5
+
+    def test_adjust_section_indices_after_deletion(self):
+        """Test adjusting section indices when point is deleted."""
+        from orbit.models import LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(section_number=1, s_start=0.0, s_end=100.0, end_point_index=3),
+            LaneSection(section_number=2, s_start=100.0, s_end=200.0, end_point_index=5)
+        ]
+
+        # Delete point at index 2
+        road.adjust_section_indices_after_deletion(2)
+
+        # Indices > 2 should be decremented
+        assert road.lane_sections[0].end_point_index == 2
+        assert road.lane_sections[1].end_point_index == 4
+
+    def test_adjust_indices_deletion_at_boundary(self):
+        """Test that deleting boundary point sets index to None."""
+        from orbit.models import LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(section_number=1, s_start=0.0, s_end=100.0, end_point_index=2)
+        ]
+
+        # Delete the boundary point
+        road.adjust_section_indices_after_deletion(2)
+
+        # Boundary point was deleted, index should be None
+        assert road.lane_sections[0].end_point_index is None
+
+    def test_delete_section(self):
+        """Test deleting a section."""
+        from orbit.models import LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(section_number=1, s_start=0.0, s_end=100.0),
+            LaneSection(section_number=2, s_start=100.0, s_end=200.0)
+        ]
+
+        success = road.delete_section(1)
+
+        assert success
+        assert len(road.lane_sections) == 1
+        assert road.lane_sections[0].section_number == 1  # Renumbered
+
+    def test_delete_last_section_fails(self):
+        """Test that deleting the only section fails."""
+        from orbit.models import LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(section_number=1, s_start=0.0, s_end=100.0)
+        ]
+
+        success = road.delete_section(1)
+
+        assert not success
+        assert len(road.lane_sections) == 1
+
+    def test_renumber_sections(self):
+        """Test section renumbering."""
+        from orbit.models import LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(section_number=5, s_start=0.0, s_end=100.0),
+            LaneSection(section_number=10, s_start=100.0, s_end=200.0),
+            LaneSection(section_number=15, s_start=200.0, s_end=300.0)
+        ]
+
+        road.renumber_sections()
+
+        assert road.lane_sections[0].section_number == 1
+        assert road.lane_sections[1].section_number == 2
+        assert road.lane_sections[2].section_number == 3
