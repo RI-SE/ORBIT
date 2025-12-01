@@ -212,14 +212,10 @@ def analyze_roundabout(
             )
             connection_points.append(cp)
 
-    # Sort connection points by angle (counter-clockwise from east)
-    # For right-hand traffic, we want CCW order
-    if clockwise:
-        # Left-hand traffic: sort clockwise (descending angle)
-        connection_points.sort(key=lambda cp: -cp.angle_from_center)
-    else:
-        # Right-hand traffic: sort counter-clockwise (ascending angle)
-        connection_points.sort(key=lambda cp: cp.angle_from_center)
+    # Sort connection points by ring_index (position in OSM way)
+    # This ensures segments are created in the order they appear along the ring
+    # The OSM way direction determines the segment order, which should match traffic flow
+    connection_points.sort(key=lambda cp: cp.ring_index)
 
     if verbose:
         print(f"Roundabout {osm_way.id}: center=({center_x:.1f}, {center_y:.1f}), "
