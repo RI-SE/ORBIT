@@ -28,7 +28,9 @@ class ConnectingRoad:
         path: List of (x, y) points in pixel coordinates defining the path (sampled from curve)
         lane_count_left: Number of lanes on left side (positive IDs: 1, 2, 3...)
         lane_count_right: Number of lanes on right side (negative IDs: -1, -2, -3...)
-        lane_width: Lane width in meters
+        lane_width: Average lane width in meters (for backward compatibility)
+        lane_width_start: Lane width at start (s=0), None to use lane_width
+        lane_width_end: Lane width at end (s=length), None to use lane_width
         predecessor_road_id: ID of the incoming road (road entering junction)
         successor_road_id: ID of the outgoing road (road exiting junction)
         contact_point_start: Contact point at start ('start' or 'end' of predecessor)
@@ -47,7 +49,9 @@ class ConnectingRoad:
     # Lane configuration
     lane_count_left: int = 0
     lane_count_right: int = 1
-    lane_width: float = 3.5
+    lane_width: float = 3.5  # Average width for backward compatibility
+    lane_width_start: Optional[float] = None  # Width at start (s=0), None = use lane_width
+    lane_width_end: Optional[float] = None  # Width at end (s=length), None = use lane_width
     lanes: List[Lane] = field(default_factory=list)  # Actual Lane objects for property editing
 
     # Connection to adjacent roads
@@ -222,11 +226,21 @@ class ConnectingRoad:
         Ensure lanes list is initialized with Lane objects.
 
         This creates Lane objects if they don't exist (for backward compatibility
-        with old projects that only stored lane counts).
+        with old projects that only stored lane counts). Always includes center
+        lane (lane 0) as required by OpenDRIVE.
         """
         if not self.lanes:
             # Create Lane objects based on lane counts
             self.lanes = []
+
+            # Center lane (lane 0) - always required by OpenDRIVE
+            center_lane = Lane(
+                id=0,
+                lane_type=LaneType.NONE,
+                road_mark_type=RoadMarkType.NONE,
+                width=0.0  # Center lane has no width
+            )
+            self.lanes.append(center_lane)
 
             # Right lanes (negative IDs in OpenDRIVE: -1, -2, -3, ...)
             for i in range(1, self.lane_count_right + 1):
@@ -284,6 +298,8 @@ class ConnectingRoad:
             'lane_count_left': self.lane_count_left,
             'lane_count_right': self.lane_count_right,
             'lane_width': self.lane_width,
+            'lane_width_start': self.lane_width_start,
+            'lane_width_end': self.lane_width_end,
             'lanes': [lane.to_dict() for lane in self.lanes],
             'predecessor_road_id': self.predecessor_road_id,
             'successor_road_id': self.successor_road_id,
@@ -330,6 +346,8 @@ class ConnectingRoad:
         cr.lane_count_left = data.get('lane_count_left', 0)
         cr.lane_count_right = data.get('lane_count_right', 1)
         cr.lane_width = data.get('lane_width', 3.5)
+        cr.lane_width_start = data.get('lane_width_start')  # None if not present
+        cr.lane_width_end = data.get('lane_width_end')  # None if not present
         cr.predecessor_road_id = data.get('predecessor_road_id', '')
         cr.successor_road_id = data.get('successor_road_id', '')
         cr.contact_point_start = data.get('contact_point_start', 'end')

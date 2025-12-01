@@ -580,6 +580,9 @@ class OpenDriveWriter:
         """
         Create simplified lanes element for a connecting road.
 
+        Supports linear lane width transitions when lane_width_start and lane_width_end
+        are set (OpenDRIVE polynomial: width(s) = a + b*s).
+
         Args:
             connecting_road: ConnectingRoad with lane configuration
             road_length: Total length of the road in meters
@@ -600,6 +603,21 @@ class OpenDriveWriter:
         center_lane.set('type', 'none')
         center_lane.set('level', 'false')
 
+        # Calculate lane width polynomial coefficients for linear transition
+        # width(s) = a + b*s + c*s² + d*s³
+        # For linear transition: a = start_width, b = (end_width - start_width) / length
+        width_start = connecting_road.lane_width_start
+        width_end = connecting_road.lane_width_end
+
+        if width_start is not None and width_end is not None and road_length > 0:
+            # Linear transition from start to end width
+            width_a = width_start
+            width_b = (width_end - width_start) / road_length
+        else:
+            # Constant width (backward compatibility)
+            width_a = connecting_road.lane_width
+            width_b = 0.0
+
         # Left lanes (positive IDs: 1, 2, 3...)
         if connecting_road.lane_count_left > 0:
             left = etree.SubElement(lane_section, 'left')
@@ -609,11 +627,11 @@ class OpenDriveWriter:
                 lane.set('type', 'driving')
                 lane.set('level', 'false')
 
-                # Lane width (constant)
+                # Lane width (linear transition)
                 width = etree.SubElement(lane, 'width')
                 width.set('sOffset', '0.0')
-                width.set('a', f'{connecting_road.lane_width:.2f}')
-                width.set('b', '0.0')
+                width.set('a', f'{width_a:.4f}')
+                width.set('b', f'{width_b:.6f}')
                 width.set('c', '0.0')
                 width.set('d', '0.0')
 
@@ -634,11 +652,11 @@ class OpenDriveWriter:
                 lane.set('type', 'driving')
                 lane.set('level', 'false')
 
-                # Lane width (constant)
+                # Lane width (linear transition)
                 width = etree.SubElement(lane, 'width')
                 width.set('sOffset', '0.0')
-                width.set('a', f'{connecting_road.lane_width:.2f}')
-                width.set('b', '0.0')
+                width.set('a', f'{width_a:.4f}')
+                width.set('b', f'{width_b:.6f}')
                 width.set('c', '0.0')
                 width.set('d', '0.0')
 

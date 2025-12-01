@@ -4,7 +4,7 @@ Lane properties dialog for ORBIT.
 Allows editing of individual lane properties.
 """
 
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from PyQt6.QtWidgets import (
     QDialog,
@@ -15,16 +15,21 @@ from orbit.models import Lane, LaneType, RoadMarkType, Project, LineType
 from orbit.utils import format_enum_name
 from orbit.gui.base_dialog import BaseDialog
 
+if TYPE_CHECKING:
+    from orbit.models.connecting_road import ConnectingRoad
+
 
 class LanePropertiesDialog(BaseDialog):
     """Dialog for editing lane properties."""
 
-    def __init__(self, lane: Lane, project: Optional[Project] = None, road_id: Optional[str] = None, parent=None):
+    def __init__(self, lane: Lane, project: Optional[Project] = None, road_id: Optional[str] = None,
+                 connecting_road: Optional['ConnectingRoad'] = None, parent=None):
         super().__init__("Lane Properties", parent, min_width=450)
 
         self.lane = lane
         self.project = project
         self.road_id = road_id
+        self.connecting_road = connecting_road  # For connecting road lanes
         self.setup_ui()
         self.load_properties()
 
@@ -56,14 +61,56 @@ class LanePropertiesDialog(BaseDialog):
             self.road_mark_type_combo.addItem(format_enum_name(mark_type), mark_type)
         props_layout.addRow("Road Mark Type:", self.road_mark_type_combo)
 
-        # Lane width
-        self.width_spin = QDoubleSpinBox()
-        self.width_spin.setRange(0.0, 20.0)
-        self.width_spin.setSingleStep(0.1)
-        self.width_spin.setValue(3.5)
-        self.width_spin.setSuffix(" m")
-        self.width_spin.setToolTip("Lane width in meters (or pixels if not georeferenced)")
-        props_layout.addRow("Width:", self.width_spin)
+        # Lane width - different UI for connecting road lanes
+        self.width_spin = None
+        self.width_start_spin = None
+        self.width_end_spin = None
+        self.width_info_label = None
+
+        is_center_lane = self.lane.id == 0
+        is_connecting_road_lane = self.connecting_road is not None
+
+        if is_connecting_road_lane and is_center_lane:
+            # Center lane in connecting road - no width (show as read-only info)
+            center_info = QLabel("0.0 m (center lane has no width)")
+            center_info.setStyleSheet("QLabel { color: gray; }")
+            props_layout.addRow("Width:", center_info)
+        elif is_connecting_road_lane:
+            # Driving lane in connecting road - show start/end width
+            self.width_start_spin = QDoubleSpinBox()
+            self.width_start_spin.setRange(0.5, 20.0)
+            self.width_start_spin.setSingleStep(0.1)
+            self.width_start_spin.setDecimals(2)
+            self.width_start_spin.setSuffix(" m")
+            self.width_start_spin.setToolTip("Lane width at the start of the connecting road (s=0)")
+            props_layout.addRow("Width at Start:", self.width_start_spin)
+
+            self.width_end_spin = QDoubleSpinBox()
+            self.width_end_spin.setRange(0.5, 20.0)
+            self.width_end_spin.setSingleStep(0.1)
+            self.width_end_spin.setDecimals(2)
+            self.width_end_spin.setSuffix(" m")
+            self.width_end_spin.setToolTip("Lane width at the end of the connecting road")
+            props_layout.addRow("Width at End:", self.width_end_spin)
+
+            # Width transition info
+            self.width_info_label = QLabel()
+            self.width_info_label.setWordWrap(True)
+            self.width_info_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
+            props_layout.addRow("", self.width_info_label)
+
+            # Connect signals to update info
+            self.width_start_spin.valueChanged.connect(self.update_width_info)
+            self.width_end_spin.valueChanged.connect(self.update_width_info)
+        else:
+            # Regular road lane - single width value
+            self.width_spin = QDoubleSpinBox()
+            self.width_spin.setRange(0.0, 20.0)
+            self.width_spin.setSingleStep(0.1)
+            self.width_spin.setValue(3.5)
+            self.width_spin.setSuffix(" m")
+            self.width_spin.setToolTip("Lane width in meters (or pixels if not georeferenced)")
+            props_layout.addRow("Width:", self.width_spin)
 
         # Description label
         self.description_label = QLabel()
@@ -135,8 +182,23 @@ class LanePropertiesDialog(BaseDialog):
                 self.road_mark_type_combo.setCurrentIndex(i)
                 break
 
-        # Set width
-        self.width_spin.setValue(self.lane.width)
+        # Set width based on lane type
+        if self.width_spin is not None:
+            # Regular road lane
+            self.width_spin.setValue(self.lane.width)
+        elif self.width_start_spin is not None and self.width_end_spin is not None:
+            # Connecting road driving lane - load from connecting road
+            if self.connecting_road.lane_width_start is not None:
+                self.width_start_spin.setValue(self.connecting_road.lane_width_start)
+            else:
+                self.width_start_spin.setValue(self.connecting_road.lane_width)
+
+            if self.connecting_road.lane_width_end is not None:
+                self.width_end_spin.setValue(self.connecting_road.lane_width_end)
+            else:
+                self.width_end_spin.setValue(self.connecting_road.lane_width)
+
+            self.update_width_info()
 
         # Set boundary selections (if available)
         if self.project and self.road_id:
@@ -157,6 +219,26 @@ class LanePropertiesDialog(BaseDialog):
     def on_lane_type_changed(self):
         """Handle lane type change."""
         self.update_description()
+
+    def update_width_info(self):
+        """Update the width transition info label for connecting road lanes."""
+        if self.width_info_label is None or self.width_start_spin is None or self.width_end_spin is None:
+            return
+
+        start_width = self.width_start_spin.value()
+        end_width = self.width_end_spin.value()
+        diff = end_width - start_width
+
+        if abs(diff) < 0.01:
+            self.width_info_label.setText("<i>Constant width along the connecting road.</i>")
+        elif diff > 0:
+            self.width_info_label.setText(
+                f"<i>Lane width increases by {diff:.2f}m (linear transition).</i>"
+            )
+        else:
+            self.width_info_label.setText(
+                f"<i>Lane width decreases by {abs(diff):.2f}m (linear transition).</i>"
+            )
 
     def update_description(self):
         """Update the description based on lane type."""
@@ -193,7 +275,21 @@ class LanePropertiesDialog(BaseDialog):
         # Update lane properties
         self.lane.lane_type = self.lane_type_combo.currentData()
         self.lane.road_mark_type = self.road_mark_type_combo.currentData()
-        self.lane.width = self.width_spin.value()
+
+        # Update width based on lane type
+        if self.width_spin is not None:
+            # Regular road lane
+            self.lane.width = self.width_spin.value()
+        elif self.width_start_spin is not None and self.width_end_spin is not None and self.connecting_road is not None:
+            # Connecting road driving lane - save to connecting road
+            self.connecting_road.lane_width_start = self.width_start_spin.value()
+            self.connecting_road.lane_width_end = self.width_end_spin.value()
+            # Update average width for backward compatibility
+            self.connecting_road.lane_width = (
+                self.connecting_road.lane_width_start + self.connecting_road.lane_width_end
+            ) / 2
+            # Also update the individual lane's width to the average
+            self.lane.width = self.connecting_road.lane_width
 
         # Update boundary selections (if available)
         if self.project and self.road_id:
@@ -203,7 +299,8 @@ class LanePropertiesDialog(BaseDialog):
         super().accept()
 
     @classmethod
-    def edit_lane(cls, lane: Lane, project: Optional[Project] = None, road_id: Optional[str] = None, parent=None) -> bool:
+    def edit_lane(cls, lane: Lane, project: Optional[Project] = None, road_id: Optional[str] = None,
+                  connecting_road: Optional['ConnectingRoad'] = None, parent=None) -> bool:
         """
         Show dialog to edit a lane's properties.
 
@@ -211,9 +308,10 @@ class LanePropertiesDialog(BaseDialog):
             lane: Lane to edit
             project: Project containing the lane (optional)
             road_id: ID of road containing the lane (optional)
+            connecting_road: ConnectingRoad containing the lane (for connecting road lanes)
             parent: Parent widget
 
         Returns:
             True if properties were modified, False if cancelled
         """
-        return cls.show_and_accept(lane, project, road_id, parent=parent)
+        return cls.show_and_accept(lane, project, road_id, connecting_road, parent=parent)

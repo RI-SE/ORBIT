@@ -114,7 +114,7 @@ class ElementsTreeWidget(QWidget):
         return item
 
     def create_connecting_road_item(self, connecting_road) -> QTreeWidgetItem:
-        """Create a tree item for a connecting road with lanes as children."""
+        """Create a tree item for a connecting road with centerline and lanes as children."""
         from orbit.models.connecting_road import ConnectingRoad
 
         conn_road: ConnectingRoad = connecting_road
@@ -141,11 +141,41 @@ class ElementsTreeWidget(QWidget):
             "id": conn_road.id
         })
 
+        # Add centerline as first child (similar to regular roads)
+        centerline_item = self.create_connecting_road_centerline_item(conn_road)
+        item.addChild(centerline_item)
+
         # Add lanes as children
         lane_ids = conn_road.get_lane_ids()
         for lane_id in lane_ids:
             lane_item = self.create_connecting_road_lane_item(conn_road.id, lane_id)
             item.addChild(lane_item)
+
+        return item
+
+    def create_connecting_road_centerline_item(self, connecting_road) -> QTreeWidgetItem:
+        """Create a tree item for a connecting road's centerline path."""
+        from orbit.models.connecting_road import ConnectingRoad
+
+        conn_road: ConnectingRoad = connecting_road
+
+        # Calculate path length
+        path_length = conn_road.get_length_pixels()
+        point_count = len(conn_road.path)
+
+        # Format geometry type
+        if conn_road.geometry_type == "parampoly3":
+            geom_type = "ParamPoly3D"
+        else:
+            geom_type = "Polyline"
+
+        text = f"Centerline ({geom_type}, {point_count} pts, {path_length:.0f} px)"
+
+        item = QTreeWidgetItem([text])
+        item.setData(0, Qt.ItemDataRole.UserRole, {
+            "type": "connecting_road_centerline",
+            "connecting_road_id": conn_road.id
+        })
 
         return item
 
@@ -273,6 +303,13 @@ class ElementsTreeWidget(QWidget):
                 data["connecting_road_id"], data["lane_id"]))
             menu.addAction(edit_action)
 
+        elif data["type"] == "connecting_road_centerline":
+            # Connecting road centerline context menu - open parent road properties
+            edit_action = QAction("Edit Connecting Road Properties", self)
+            edit_action.triggered.connect(lambda: self.edit_connecting_road(
+                data["connecting_road_id"]))
+            menu.addAction(edit_action)
+
         menu.exec(self.tree.viewport().mapToGlobal(position))
 
     def edit_junction(self, junction_id: str):
@@ -374,8 +411,12 @@ class ElementsTreeWidget(QWidget):
         if not lane:
             return
 
-        # Open lane properties dialog (without project/road_id since connecting roads are standalone)
-        result = LanePropertiesDialog.edit_lane(lane, None, None, self)
+        # Open lane properties dialog with connecting road for start/end width editing
+        result = LanePropertiesDialog.edit_lane(
+            lane, None, None,
+            connecting_road=connecting_road,
+            parent=self
+        )
         if result:
             # Emit modification signal
             self.connecting_road_modified.emit(connecting_road_id)
@@ -395,6 +436,8 @@ class ElementsTreeWidget(QWidget):
                 self.edit_connecting_road(data["id"])
             elif data["type"] == "connecting_road_lane":
                 self.edit_connecting_road_lane(data["connecting_road_id"], data["lane_id"])
+            elif data["type"] == "connecting_road_centerline":
+                self.edit_connecting_road(data["connecting_road_id"])
 
     def on_selection_changed(self):
         """Handle selection change."""

@@ -508,8 +508,11 @@ def create_connecting_roads_from_patterns(
                 if not from_endpoint or not to_endpoint:
                     continue
 
-            # Calculate average lane width
-            avg_lane_width = (from_endpoint.lane_width + to_endpoint.lane_width) / 2
+            # Store start and end lane widths for linear transition
+            lane_width_start = from_endpoint.lane_width
+            lane_width_end = to_endpoint.lane_width
+            # Keep average for backward compatibility
+            avg_lane_width = (lane_width_start + lane_width_end) / 2
 
             # Use centerline positions for the path (no lane offset)
             from_pos = from_endpoint.position
@@ -541,6 +544,8 @@ def create_connecting_roads_from_patterns(
                 lane_count_left=conn_lane_count_left,
                 lane_count_right=conn_lane_count_right,
                 lane_width=avg_lane_width,
+                lane_width_start=lane_width_start,
+                lane_width_end=lane_width_end,
                 predecessor_road_id=pattern.from_road_id,
                 successor_road_id=pattern.to_road_id,
                 contact_point_start=from_endpoint.at_junction,
@@ -595,8 +600,12 @@ def create_connecting_roads_from_patterns(
         if not from_endpoint or not to_endpoint:
             continue
 
-        # Calculate average lane width for connecting road
-        avg_lane_width = (from_endpoint.lane_width + to_endpoint.lane_width) / 2
+        # Store start and end lane widths for linear transition
+        # Note: These will be swapped if use_left_lanes to match path direction
+        width_from = from_endpoint.lane_width
+        width_to = to_endpoint.lane_width
+        # Keep average for backward compatibility
+        avg_lane_width = (width_from + width_to) / 2
 
         # Determine which lanes are used for this connection based on traffic direction
         # at_junction="end" means traffic uses right lanes (road ends at junction)
@@ -641,6 +650,9 @@ def create_connecting_roads_from_patterns(
             succ_road_id = pattern.from_road_id
             contact_start = to_endpoint.at_junction
             contact_end = from_endpoint.at_junction
+            # Swap widths to match path direction
+            lane_width_start = width_to
+            lane_width_end = width_from
         else:
             # Normal case: path goes from_endpoint to to_endpoint
             from_pos = from_endpoint.position
@@ -651,6 +663,9 @@ def create_connecting_roads_from_patterns(
             succ_road_id = pattern.to_road_id
             contact_start = from_endpoint.at_junction
             contact_end = to_endpoint.at_junction
+            # Normal widths match path direction
+            lane_width_start = width_from
+            lane_width_end = width_to
 
         # Generate geometric path using ParamPoly3D
         path, coeffs = generate_simple_connection_path(
@@ -675,6 +690,8 @@ def create_connecting_roads_from_patterns(
             lane_count_left=conn_lane_count_left,
             lane_count_right=conn_lane_count_right,
             lane_width=avg_lane_width,
+            lane_width_start=lane_width_start,
+            lane_width_end=lane_width_end,
             predecessor_road_id=pred_road_id,
             successor_road_id=succ_road_id,
             contact_point_start=contact_start,
