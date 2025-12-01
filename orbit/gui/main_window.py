@@ -278,6 +278,11 @@ class MainWindow(QMainWindow):
         self.add_junction_action.setCheckable(True)
         self.add_junction_action.triggered.connect(self.add_junction)
 
+        self.create_roundabout_action = QAction("Create &Roundabout...", self)
+        self.create_roundabout_action.setShortcut(QKeySequence("Ctrl+R"))
+        self.create_roundabout_action.setStatusTip("Create a roundabout with wizard")
+        self.create_roundabout_action.triggered.connect(self.create_roundabout)
+
         self.add_signal_action = QAction("Add &Signal", self)
         self.add_signal_action.setShortcut(QKeySequence("Ctrl+T"))
         self.add_signal_action.setStatusTip("Add a traffic signal/sign")
@@ -362,6 +367,7 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.new_polyline_action)
         tools_menu.addAction(self.group_to_road_action)
         tools_menu.addAction(self.add_junction_action)
+        tools_menu.addAction(self.create_roundabout_action)
         tools_menu.addAction(self.add_signal_action)
         tools_menu.addAction(self.add_object_action)
         tools_menu.addAction(self.measure_action)
@@ -686,6 +692,7 @@ class MainWindow(QMainWindow):
             detail_level=detail_level,
             default_lane_width=options_dict['default_lane_width'],
             import_junctions=options_dict['import_junctions'],
+            filter_outside_image=options_dict.get('filter_outside_image', False),
             timeout=60,
             verbose=self.verbose
         )
@@ -972,6 +979,53 @@ class MainWindow(QMainWindow):
         else:
             self.add_junction_action.setChecked(False)
             self.statusBar().showMessage("Ready")
+
+    def create_roundabout(self):
+        """Open the roundabout creation wizard."""
+        from .dialogs import RoundaboutWizardDialog
+        from orbit.roundabout_creator import create_roundabout_from_params
+
+        # Get available roads for approach selection
+        available_roads = [
+            (road.id, road.name)
+            for road in self.project.roads
+        ]
+
+        # Get scale factor if georeferenced
+        scale_factor = None
+        if self.project.has_georeferencing():
+            transformer = self.project.get_coordinate_transformer()
+            if transformer:
+                scale_factor = transformer.get_scale_x()
+
+        # Show wizard dialog
+        params = RoundaboutWizardDialog.create_roundabout(
+            available_roads, scale_factor, self
+        )
+
+        if params:
+            # Get approach roads and polylines
+            approach_roads = {road.id: road for road in self.project.roads}
+            polylines = {p.id: p for p in self.project.polylines}
+
+            try:
+                # Create roundabout
+                roads, junctions, new_polylines = create_roundabout_from_params(
+                    self.project, params, approach_roads, polylines
+                )
+
+                # Update UI
+                self.elements_tree.load_project(self.project)
+                self.road_tree.load_project(self.project)
+                self.image_view.load_project(self.project)
+                self.modified = True
+
+                self.statusBar().showMessage(
+                    f"Created roundabout with {len(roads)} road(s) and {len(junctions)} junction(s)"
+                )
+
+            except Exception as e:
+                show_error(self, f"Failed to create roundabout:\n\n{e}", "Roundabout Creation Failed")
 
     def add_signal(self):
         """Add a traffic signal by clicking on the map."""

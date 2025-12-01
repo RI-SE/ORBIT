@@ -49,7 +49,7 @@ class ControlPoint:
             'longitude': self.longitude,
             'latitude': self.latitude,
             'name': self.name,
-            'is_validation': self.is_validation
+            'is_validation': bool(self.is_validation)
         }
 
     @classmethod
@@ -313,11 +313,11 @@ class Project:
             'signals': [s.to_dict() for s in self.signals],
             'objects': [o.to_dict() for o in self.objects],
             'control_points': [cp.to_dict() for cp in self.control_points],
-            'right_hand_traffic': self.right_hand_traffic,
+            'right_hand_traffic': bool(self.right_hand_traffic),
             'transform_method': self.transform_method,
             'country_code': self.country_code,
             'map_name': self.map_name,
-            'openstreetmap_used': self.openstreetmap_used,
+            'openstreetmap_used': bool(self.openstreetmap_used),
             'junction_offset_distance_meters': self.junction_offset_distance_meters,
             'georef_validation': self.georef_validation,
             'uncertainty_grid_cache': self.uncertainty_grid_cache,

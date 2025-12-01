@@ -954,6 +954,214 @@ def calculate_directional_scale(
     return weight_x * scale_x + weight_y * scale_y
 
 
+# ============================================================================
+# Arc geometry utilities (for roundabouts)
+# ============================================================================
+
+
+def calculate_arc_parameters(
+    points: List[Tuple[float, float]],
+    center: Tuple[float, float]
+) -> Tuple[float, float, float]:
+    """
+    Calculate arc parameters for a sequence of points around a center.
+
+    Args:
+        points: Points along the arc in order
+        center: Center of the circle
+
+    Returns:
+        Tuple of (curvature, start_angle, sweep_angle):
+        - curvature: 1/radius, positive for CCW arc
+        - start_angle: angle of first point from center (radians)
+        - sweep_angle: total angle swept (radians, positive=CCW)
+    """
+    if len(points) < 2:
+        return (0.0, 0.0, 0.0)
+
+    cx, cy = center
+
+    # Calculate radius from first point
+    first = points[0]
+    radius = math.sqrt((first[0] - cx)**2 + (first[1] - cy)**2)
+
+    if radius < 1e-6:
+        return (0.0, 0.0, 0.0)
+
+    # Start angle
+    start_angle = math.atan2(first[1] - cy, first[0] - cx)
+
+    # End angle
+    last = points[-1]
+    end_angle = math.atan2(last[1] - cy, last[0] - cx)
+
+    # Sweep angle (difference, normalized to -π to π initially)
+    sweep_angle = normalize_angle(end_angle - start_angle)
+
+    # Determine sweep direction from point order
+    # Check if points go CCW (positive sweep) or CW (negative sweep)
+    if len(points) >= 3:
+        mid = points[len(points) // 2]
+        mid_angle = math.atan2(mid[1] - cy, mid[0] - cx)
+
+        # Check if mid angle is between start and end in the expected direction
+        if sweep_angle > 0:
+            # Expected CCW: mid should be between start and end
+            expected_mid = normalize_angle(start_angle + sweep_angle / 2)
+            if abs(normalize_angle(mid_angle - expected_mid)) > math.pi / 2:
+                # Wrong direction, sweep should be negative
+                sweep_angle = sweep_angle - 2 * math.pi
+        else:
+            # Expected CW: mid should be between start and end
+            expected_mid = normalize_angle(start_angle + sweep_angle / 2)
+            if abs(normalize_angle(mid_angle - expected_mid)) > math.pi / 2:
+                # Wrong direction, sweep should be positive
+                sweep_angle = sweep_angle + 2 * math.pi
+
+    # Curvature is 1/radius, with sign based on sweep direction
+    curvature = (1.0 / radius) if sweep_angle >= 0 else (-1.0 / radius)
+
+    return (curvature, start_angle, sweep_angle)
+
+
+def generate_arc_points(
+    center: Tuple[float, float],
+    radius: float,
+    start_angle: float,
+    sweep_angle: float,
+    num_points: int = 20
+) -> List[Tuple[float, float]]:
+    """
+    Generate evenly-spaced points along a circular arc.
+
+    Args:
+        center: Circle center (cx, cy)
+        radius: Circle radius
+        start_angle: Starting angle (radians, 0=east)
+        sweep_angle: Angle to sweep (positive=CCW)
+        num_points: Number of points to generate
+
+    Returns:
+        List of (x, y) points along the arc
+    """
+    if num_points < 2:
+        num_points = 2
+
+    cx, cy = center
+    points = []
+
+    for i in range(num_points):
+        t = i / (num_points - 1)
+        angle = start_angle + t * sweep_angle
+
+        x = cx + radius * math.cos(angle)
+        y = cy + radius * math.sin(angle)
+        points.append((x, y))
+
+    return points
+
+
+def calculate_tangent_heading(
+    point: Tuple[float, float],
+    center: Tuple[float, float],
+    clockwise: bool = False
+) -> float:
+    """
+    Calculate tangent heading at a point on a circle.
+
+    The tangent is perpendicular to the radius, in the direction of travel.
+
+    Args:
+        point: Point on the circle (x, y)
+        center: Circle center (cx, cy)
+        clockwise: If True, tangent points clockwise direction
+
+    Returns:
+        Heading in radians (0=east, π/2=north in mathematical coords)
+    """
+    cx, cy = center
+    px, py = point
+
+    # Radius direction
+    dx = px - cx
+    dy = py - cy
+
+    # Tangent is perpendicular to radius
+    # For CCW travel: rotate radius 90° CCW -> (-dy, dx)
+    # For CW travel: rotate radius 90° CW -> (dy, -dx)
+    if clockwise:
+        tangent_x = dy
+        tangent_y = -dx
+    else:
+        tangent_x = -dy
+        tangent_y = dx
+
+    return math.atan2(tangent_y, tangent_x)
+
+
+def arc_length(radius: float, sweep_angle: float) -> float:
+    """
+    Calculate arc length: L = r * |theta|.
+
+    Args:
+        radius: Circle radius
+        sweep_angle: Sweep angle in radians
+
+    Returns:
+        Arc length
+    """
+    return abs(radius * sweep_angle)
+
+
+def fit_circle_to_points(
+    points: List[Tuple[float, float]]
+) -> Optional[Tuple[Tuple[float, float], float]]:
+    """
+    Fit a circle to a set of points using least squares.
+
+    Uses algebraic circle fit (minimizes algebraic distance).
+
+    Args:
+        points: List of (x, y) points
+
+    Returns:
+        Tuple of (center, radius) or None if fitting fails
+    """
+    if len(points) < 3:
+        return None
+
+    n = len(points)
+    sum_x = sum(p[0] for p in points)
+    sum_y = sum(p[1] for p in points)
+    sum_x2 = sum(p[0]**2 for p in points)
+    sum_y2 = sum(p[1]**2 for p in points)
+    sum_xy = sum(p[0] * p[1] for p in points)
+    sum_x3 = sum(p[0]**3 for p in points)
+    sum_y3 = sum(p[1]**3 for p in points)
+    sum_x2y = sum(p[0]**2 * p[1] for p in points)
+    sum_xy2 = sum(p[0] * p[1]**2 for p in points)
+
+    # Solve system of equations for circle center
+    A = n * sum_x2 - sum_x**2
+    B = n * sum_xy - sum_x * sum_y
+    C = n * sum_y2 - sum_y**2
+    D = 0.5 * (n * sum_x3 + n * sum_xy2 - sum_x * sum_x2 - sum_x * sum_y2)
+    E = 0.5 * (n * sum_x2y + n * sum_y3 - sum_y * sum_x2 - sum_y * sum_y2)
+
+    denom = A * C - B * B
+    if abs(denom) < 1e-10:
+        return None
+
+    cx = (D * C - B * E) / denom
+    cy = (A * E - B * D) / denom
+
+    # Calculate radius
+    radii = [math.sqrt((p[0] - cx)**2 + (p[1] - cy)**2) for p in points]
+    radius = sum(radii) / len(radii)
+
+    return ((cx, cy), radius)
+
+
 def sample_bezier(
     control_points: List[Tuple[float, float]],
     num_points: int = 20

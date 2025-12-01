@@ -134,6 +134,13 @@ Longitude: {min_lon:.6f}° to {max_lon:.6f}°<br>
         self.import_junctions_check.setToolTip("Detect intersections and create Junction objects")
         options_layout.addWidget(self.import_junctions_check)
 
+        # Filter roads outside image
+        self.filter_outside_image_check = QCheckBox("Filter roads outside image bounds")
+        self.filter_outside_image_check.setToolTip(
+            "Only import roads that have at least one endpoint inside the image frame"
+        )
+        options_layout.addWidget(self.filter_outside_image_check)
+
         options_group.setLayout(options_layout)
         self.get_main_layout().addWidget(options_group)
 
@@ -204,6 +211,10 @@ Longitude: {min_lon:.6f}° to {max_lon:.6f}°<br>
         """Get whether to import junctions."""
         return self.import_junctions_check.isChecked()
 
+    def get_filter_outside_image(self) -> bool:
+        """Get whether to filter roads outside image bounds."""
+        return self.filter_outside_image_check.isChecked()
+
     def get_import_source(self) -> tuple:
         """
         Get import source and related data.
@@ -216,7 +227,8 @@ Longitude: {min_lon:.6f}° to {max_lon:.6f}°<br>
             'import_mode': self.get_import_mode(),
             'detail_level': self.get_detail_level(),
             'default_lane_width': self.get_default_lane_width(),
-            'import_junctions': self.get_import_junctions()
+            'import_junctions': self.get_import_junctions(),
+            'filter_outside_image': self.get_filter_outside_image()
         }
 
         if self.api_radio.isChecked():

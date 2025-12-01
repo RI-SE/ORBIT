@@ -105,7 +105,7 @@ class Polyline:
             'id': self.id,
             'points': self.points,
             'color': self.color,
-            'closed': self.closed,
+            'closed': bool(self.closed),
             'line_type': self.line_type.value,
             'road_mark_type': self.road_mark_type.value
         }

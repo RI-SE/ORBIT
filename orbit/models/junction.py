@@ -272,6 +272,88 @@ class Junction:
         }
         return summary
 
+    # =========================================================================
+    # Roundabout helper methods
+    # =========================================================================
+
+    def set_as_roundabout_junction(
+        self,
+        center: Tuple[float, float],
+        radius: float,
+        lane_count: int = 1,
+        clockwise: bool = False
+    ) -> None:
+        """
+        Configure this junction as a roundabout entry/exit point.
+
+        Args:
+            center: Roundabout center point (x, y) in pixels
+            radius: Roundabout radius in pixels
+            lane_count: Number of lanes in the circular road (default: 1)
+            clockwise: True for left-hand traffic (default: False for right-hand)
+        """
+        self.is_roundabout = True
+        self.roundabout_center = center
+        self.roundabout_radius = radius
+        self.roundabout_lane_count = lane_count
+        self.roundabout_clockwise = clockwise
+
+    def add_roundabout_entry(self, road_id: str) -> None:
+        """
+        Add a road as an entry point to this roundabout junction.
+
+        Args:
+            road_id: ID of the road that can enter the roundabout
+        """
+        if road_id not in self.entry_roads:
+            self.entry_roads.append(road_id)
+
+    def add_roundabout_exit(self, road_id: str) -> None:
+        """
+        Add a road as an exit point from this roundabout junction.
+
+        Args:
+            road_id: ID of the road that vehicles can exit to
+        """
+        if road_id not in self.exit_roads:
+            self.exit_roads.append(road_id)
+
+    def get_ring_road_ids(self) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Get ring road IDs for roundabout junctions.
+
+        Ring roads are connected roads that are NOT in the entry/exit lists.
+        Typically there are two: incoming ring segment and outgoing ring segment.
+
+        Returns:
+            Tuple of (incoming_ring_id, outgoing_ring_id).
+            Either or both may be None if not found.
+        """
+        if not self.is_roundabout:
+            return (None, None)
+
+        # Ring roads are connected_road_ids that are NOT in entry/exit lists
+        ring_ids = [
+            rid for rid in self.connected_road_ids
+            if rid not in self.entry_roads and rid not in self.exit_roads
+        ]
+
+        if len(ring_ids) >= 2:
+            return (ring_ids[0], ring_ids[1])
+        elif len(ring_ids) == 1:
+            return (ring_ids[0], None)
+        return (None, None)
+
+    def get_approach_road_ids(self) -> List[str]:
+        """
+        Get all approach road IDs (roads that enter or exit the roundabout).
+
+        Returns:
+            List of road IDs that are in either entry_roads or exit_roads
+        """
+        approach_ids = set(self.entry_roads) | set(self.exit_roads)
+        return list(approach_ids)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert junction to dictionary for JSON serialization."""
         data = {
@@ -284,9 +366,9 @@ class Junction:
             # New fields (v0.3.0+)
             'connecting_roads': [cr.to_dict() for cr in self.connecting_roads],
             'lane_connections': [lc.to_dict() for lc in self.lane_connections],
-            'is_roundabout': self.is_roundabout,
+            'is_roundabout': bool(self.is_roundabout),
             'roundabout_lane_count': self.roundabout_lane_count,
-            'roundabout_clockwise': self.roundabout_clockwise,
+            'roundabout_clockwise': bool(self.roundabout_clockwise),
             'entry_roads': self.entry_roads,
             'exit_roads': self.exit_roads
         }

@@ -20,6 +20,7 @@ from .csv_import_dialog import CSVImportDialog
 from .osm_import_dialog import OSMImportDialog
 from .opendrive_import_dialog import OpenDriveImportDialog
 from .import_report_dialog import ImportReportDialog, show_opendrive_import_report
+from .roundabout_wizard_dialog import RoundaboutWizardDialog
 
 __all__ = [
     'BaseDialog',
@@ -41,4 +42,5 @@ __all__ = [
     'OpenDriveImportDialog',
     'ImportReportDialog',
     'show_opendrive_import_report',
+    'RoundaboutWizardDialog',
 ]

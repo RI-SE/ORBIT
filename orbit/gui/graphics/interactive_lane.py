@@ -157,3 +157,9 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
     def set_visible(self, visible: bool) -> None:
         """Set visibility of the lane polygon."""
         self.setVisible(visible)
+
+    def remove(self) -> None:
+        """Remove this polygon from its scene."""
+        scene = self.scene()
+        if scene:
+            scene.removeItem(self)

@@ -334,6 +334,35 @@ class OSMParser:
             if way.tags.get('barrier') == 'guard_rail'
         ]
 
+    @staticmethod
+    def get_roundabout_ways(data: OSMData) -> List[OSMWay]:
+        """
+        Extract ways tagged as roundabouts.
+
+        Args:
+            data: Parsed OSM data
+
+        Returns:
+            List of OSMWay objects with junction=roundabout tag
+        """
+        return [
+            way for way in data.ways.values()
+            if way.tags.get('junction') == 'roundabout'
+        ]
+
+    @staticmethod
+    def is_closed_way(way: OSMWay) -> bool:
+        """
+        Check if way forms a closed loop (first node == last node).
+
+        Args:
+            way: OSMWay object
+
+        Returns:
+            True if the way is closed (first and last node are the same)
+        """
+        return len(way.nodes) > 2 and way.nodes[0] == way.nodes[-1]
+
 
 def parse_osm_data(osm_json: dict) -> OSMData:
     """

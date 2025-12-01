@@ -338,7 +338,7 @@ class ConnectingRoad:
             'cV': self.cV,
             'dV': self.dV,
             'p_range': self.p_range,
-            'p_range_normalized': self.p_range_normalized,
+            'p_range_normalized': bool(self.p_range_normalized),
             'tangent_scale': self.tangent_scale
         }
 

@@ -27,6 +27,13 @@ from .osm_to_orbit import (
     create_object_from_osm,
 )
 from .junction_analyzer import generate_junction_connections, create_connecting_roads_from_patterns
+from .roundabout_handler import (
+    analyze_roundabout,
+    create_ring_segments,
+    create_roundabout_junctions,
+    link_ring_segments,
+    generate_all_roundabout_connectors,
+)
 
 
 class ImportMode(Enum):
@@ -52,6 +59,7 @@ class ImportOptions:
     simplify_tolerance: float = 1.0  # meters (not implemented yet)
     timeout: int = 60  # seconds
     verbose: bool = False  # Print debug information
+    filter_outside_image: bool = False  # Filter out roads with no endpoint inside image
 
 
 @dataclass
@@ -91,6 +99,9 @@ class OSMImporter:
         # Track imported OSM IDs for duplicate detection
         self.imported_way_ids: Set[int] = set()
         self.imported_node_ids: Set[int] = set()
+
+        # Track roundabout way IDs (processed separately from regular roads)
+        self.roundabout_way_ids: Set[int] = set()
 
         # Track mapping from Road ID to OSM way ID for junction detection
         self.road_to_osm_way: Dict[str, int] = {}
@@ -210,6 +221,9 @@ class OSMImporter:
                 if updated_road_to_osm_way is not None:
                     self.road_to_osm_way = updated_road_to_osm_way
 
+        # Step 7b: Import roundabouts (after road splitting, before junction import)
+        self._import_roundabouts(osm_data, options, result, roads, polylines_dict)
+
         # Step 8: Detect and set predecessor/successor links (after splitting!)
         detect_road_links(roads, polylines_dict, tolerance=5.0)
 
@@ -299,6 +313,9 @@ class OSMImporter:
                 if updated_road_to_osm_way is not None:
                     self.road_to_osm_way = updated_road_to_osm_way
 
+        # Step 4b: Import roundabouts (after road splitting, before junction import)
+        self._import_roundabouts(osm_data, options, result, roads, polylines_dict)
+
         # Step 5: Detect and set predecessor/successor links (after splitting!)
         detect_road_links(roads, polylines_dict, tolerance=5.0)
 
@@ -308,7 +325,7 @@ class OSMImporter:
         else:
             junctions = []
 
-        # Step 5: Import signals (moderate and full)
+        # Step 7: Import signals (moderate and full)
         self._import_signals(osm_data, options, result)
 
         # Step 5a: Auto-attach signals to roads based on OSM node membership
@@ -336,6 +353,9 @@ class OSMImporter:
         """
         Import roads from OSM data.
 
+        Roundabout ways (junction=roundabout) are skipped here and processed
+        separately by _import_roundabouts().
+
         Returns:
             Tuple of (roads list, polylines_dict)
         """
@@ -344,7 +364,20 @@ class OSMImporter:
 
         highway_ways = OSMParser.get_highway_ways(osm_data)
 
+        # Identify roundabout ways first (they'll be processed separately)
+        roundabout_ways = OSMParser.get_roundabout_ways(osm_data)
+        self.roundabout_way_ids = {way.id for way in roundabout_ways}
+
+        if options.verbose and self.roundabout_way_ids:
+            print(f"DEBUG: Found {len(self.roundabout_way_ids)} roundabout way(s) - will process separately")
+
         for osm_way in highway_ways:
+            # Skip roundabout ways - they're processed by _import_roundabouts
+            if osm_way.id in self.roundabout_way_ids:
+                if options.verbose:
+                    print(f"DEBUG: Skipping roundabout way {osm_way.id} (will process separately)")
+                continue
+
             road_result = create_road_from_osm(
                 osm_way,
                 self.transformer,
@@ -360,6 +393,22 @@ class OSMImporter:
 
             road, centerline = road_result
 
+            # Filter roads outside image bounds if option is enabled
+            if options.filter_outside_image and len(centerline.points) >= 2:
+                start_pt = centerline.points[0]
+                end_pt = centerline.points[-1]
+
+                start_inside = (0 <= start_pt[0] <= self.image_width and
+                               0 <= start_pt[1] <= self.image_height)
+                end_inside = (0 <= end_pt[0] <= self.image_width and
+                             0 <= end_pt[1] <= self.image_height)
+
+                if not start_inside and not end_inside:
+                    # Neither endpoint is inside image bounds, skip this road
+                    if options.verbose:
+                        print(f"DEBUG: Skipping road '{road.name}' - no endpoint inside image bounds")
+                    continue
+
             # Add to project
             self.project.add_road(road)
             self.project.add_polyline(centerline)
@@ -372,6 +421,136 @@ class OSMImporter:
             result.roads_imported += 1
 
         return roads, polylines_dict
+
+    def _import_roundabouts(
+        self,
+        osm_data: OSMData,
+        options: ImportOptions,
+        result: ImportResult,
+        roads: List[Road],
+        polylines_dict: Dict[str, Polyline]
+    ) -> None:
+        """
+        Import roundabouts from OSM data.
+
+        Roundabouts are split into ring segments at each entry/exit point,
+        with junctions created at each connection.
+
+        Args:
+            osm_data: Parsed OSM data
+            options: Import options
+            result: Import result to update
+            roads: List of already imported roads (to find approach roads)
+            polylines_dict: Dict of polyline_id -> Polyline
+        """
+        if not self.roundabout_way_ids:
+            return
+
+        if options.verbose:
+            print(f"DEBUG: Processing {len(self.roundabout_way_ids)} roundabout(s)...")
+
+        # Build approach roads dict for finding connecting roads
+        approach_roads = {road.id: road for road in roads}
+
+        for roundabout_way_id in self.roundabout_way_ids:
+            osm_way = osm_data.ways.get(roundabout_way_id)
+            if not osm_way:
+                continue
+
+            if options.verbose:
+                name = osm_way.tags.get('name', f'Way {roundabout_way_id}')
+                print(f"DEBUG: Analyzing roundabout '{name}' (way {roundabout_way_id})")
+
+            try:
+                # Step 1: Analyze roundabout geometry
+                roundabout_info = analyze_roundabout(
+                    osm_way, osm_data, self.transformer,
+                    verbose=options.verbose
+                )
+
+                if options.verbose:
+                    print(f"DEBUG:   Center: ({roundabout_info.center[0]:.1f}, {roundabout_info.center[1]:.1f})")
+                    print(f"DEBUG:   Radius: {roundabout_info.radius:.1f} px")
+                    print(f"DEBUG:   Connection points: {len(roundabout_info.connection_points)}")
+
+                # Filter roundabouts outside image bounds if option is enabled
+                if options.filter_outside_image:
+                    cx, cy = roundabout_info.center
+                    if not (0 <= cx <= self.image_width and 0 <= cy <= self.image_height):
+                        if options.verbose:
+                            print(f"DEBUG:   Skipping roundabout - center outside image bounds")
+                        continue
+
+                # Step 2: Create ring segments
+                ring_segments = create_ring_segments(
+                    roundabout_info,
+                    default_lane_width=options.default_lane_width,
+                    verbose=options.verbose
+                )
+
+                if options.verbose:
+                    print(f"DEBUG:   Created {len(ring_segments)} ring segment(s)")
+
+                # Add ring segments to project
+                ring_roads = []
+                for road, polyline in ring_segments:
+                    self.project.add_road(road)
+                    self.project.add_polyline(polyline)
+                    # Note: Don't add to roads list - add_road already added to project.roads
+                    # which is the same list object after road splitting (line 216)
+                    polylines_dict[polyline.id] = polyline
+                    ring_roads.append(road)
+                    result.roads_imported += 1
+
+                    # Track OSM mapping
+                    self.road_to_osm_way[road.id] = roundabout_way_id
+
+                # Step 3: Create junctions at entry/exit points
+                roundabout_junctions = create_roundabout_junctions(
+                    roundabout_info,
+                    ring_segments,
+                    approach_roads,
+                    polylines_dict,
+                    verbose=options.verbose
+                )
+
+                if options.verbose:
+                    print(f"DEBUG:   Created {len(roundabout_junctions)} junction(s)")
+
+                for junction in roundabout_junctions:
+                    self.project.add_junction(junction)
+                    result.junctions_imported += 1
+
+                # Step 4: Link ring segments with predecessor/successor
+                link_ring_segments(ring_segments, roundabout_junctions)
+
+                # Step 5: Generate connectors for entry/exit/through movements
+                generate_all_roundabout_connectors(
+                    roundabout=roundabout_info,
+                    junctions=roundabout_junctions,
+                    ring_segments=ring_segments,
+                    approach_roads=approach_roads,
+                    polylines_dict=polylines_dict,
+                    default_lane_width=options.default_lane_width,
+                    verbose=options.verbose
+                )
+
+                if options.verbose:
+                    total_connectors = sum(len(j.connecting_roads) for j in roundabout_junctions)
+                    print(f"DEBUG:   Generated {total_connectors} connecting road(s)")
+
+                # Mark as imported
+                self.imported_way_ids.add(roundabout_way_id)
+
+            except Exception as e:
+                if options.verbose:
+                    print(f"WARNING: Failed to import roundabout {roundabout_way_id}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
+
+        if options.verbose:
+            print(f"DEBUG: Finished processing roundabouts")
 
     def _import_junctions_from_osm(self, osm_data: OSMData, options: ImportOptions,
                                    result: ImportResult) -> List[Junction]:
