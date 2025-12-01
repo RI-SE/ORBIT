@@ -25,6 +25,7 @@ from .osm_to_orbit import (
     create_road_from_osm,
     create_signal_from_osm,
     create_object_from_osm,
+    offset_road_endpoints_from_junctions,
 )
 from .junction_analyzer import generate_junction_connections, create_connecting_roads_from_patterns
 from .roundabout_handler import (
@@ -523,6 +524,28 @@ class OSMImporter:
 
                 # Step 4: Link ring segments with predecessor/successor
                 link_ring_segments(ring_segments, roundabout_junctions)
+
+                # Step 4.5: Offset road endpoints from roundabout junctions
+                # This creates gaps for connecting roads to fill
+                # Collect all roads to offset: ring segments + approach roads connected to this roundabout
+                roundabout_approach_roads = []
+                for junction in roundabout_junctions:
+                    for road_id in junction.connected_road_ids:
+                        road = approach_roads.get(road_id)
+                        if road and road not in roundabout_approach_roads:
+                            roundabout_approach_roads.append(road)
+
+                offset_road_endpoints_from_junctions(
+                    roads=ring_roads + roundabout_approach_roads,
+                    polylines_dict=polylines_dict,
+                    junctions=roundabout_junctions,
+                    offset_distance_meters=self.project.roundabout_offset_distance_meters,
+                    transformer=self.transformer,
+                    verbose=options.verbose
+                )
+
+                if options.verbose:
+                    print(f"DEBUG:   Applied {self.project.roundabout_offset_distance_meters}m offset to ring segments and approach roads")
 
                 # Step 5: Generate connectors for entry/exit/through movements
                 generate_all_roundabout_connectors(
