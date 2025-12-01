@@ -493,57 +493,9 @@ class OSMImporter:
             if options.verbose:
                 print(f"DEBUG: Added virtual junction '{crossing.name}' at {crossing.center_point}")
 
-        # IMPORTANT ORDER: Analyze connections BEFORE offsetting endpoints for path crossings
-
-        # Step 1: Analyze geometry and detect connection patterns (before offsetting)
-        crossing_patterns = {}
-        for crossing in path_crossings:
-            geometry_info = analyze_junction_geometry(crossing, roads_dict, polylines_dict)
-            patterns = detect_connection_patterns(geometry_info)
-            patterns = filter_unlikely_connections(patterns, roads_dict)
-            crossing_patterns[crossing.id] = patterns
-
-        # Step 2: Offset road endpoints from path crossings to create space for connecting roads
-        if path_crossings:
-            offset_road_endpoints_from_junctions(
-                roads=self.project.roads,
-                polylines_dict=polylines_dict,
-                junctions=path_crossings,
-                offset_distance_meters=self.project.junction_offset_distance_meters,
-                transformer=self.transformer,
-                verbose=options.verbose
-            )
-
-            # Update project polylines with modified endpoints
-            self.project.polylines = list(polylines_dict.values())
-
-        # Step 3: Generate connecting roads using pre-detected patterns with updated positions
-        if path_crossings and options.verbose:
-            print(f"DEBUG: Generating connections for {len(path_crossings)} path crossings...")
-
-        # Refresh dictionaries after offset
-        roads_dict = {road.id: road for road in self.project.roads}
-        polylines_dict = {p.id: p for p in self.project.polylines}
-
-        for crossing in path_crossings:
-            # Use the pre-detected patterns from before offsetting
-            patterns = crossing_patterns.get(crossing.id, [])
-
-            # Re-analyze geometry to get UPDATED endpoint positions (after offset)
-            # Skip distance check since roads have been offset from junction center
-            geometry_info_updated = analyze_junction_geometry(crossing, roads_dict, polylines_dict, skip_distance_check=True)
-
-            # Create endpoint lookup by road_id
-            endpoint_lookup = {ep.road_id: ep for ep in geometry_info_updated['endpoints']}
-
-            # Generate connecting roads using patterns from BEFORE offset but positions from AFTER offset
-            # This uses the shared function which includes pair detection for bidirectional roads
-            create_connecting_roads_from_patterns(crossing, patterns, endpoint_lookup)
-
-            if options.verbose:
-                summary = crossing.get_connection_summary()
-                print(f"DEBUG: Generated {summary['total_connections']} connections for '{crossing.name}': "
-                      f"{summary['straight']} straight, {summary['left']} left, {summary['right']} right")
+        # NOTE: Virtual junctions (path crossings) do NOT get connecting roads.
+        # They are visual markers only, representing where paths cross roads without
+        # actual traffic connections (e.g., pedestrian path over a road).
 
         # Return both regular junctions and path crossings
         all_junctions = junctions + path_crossings

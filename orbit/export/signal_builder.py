@@ -1,0 +1,202 @@
+"""
+Signal XML builder for OpenDRIVE export.
+
+Handles creation of signal-related XML elements.
+"""
+
+from typing import List, Optional
+from lxml import etree
+
+from orbit.models import Road, Signal
+from orbit.models.signal import SignalType, SpeedUnit
+
+
+class SignalBuilder:
+    """Builds signal XML elements for OpenDRIVE export."""
+
+    def __init__(self, scale_x: float = 1.0, country_code: str = "se"):
+        """
+        Initialize signal builder.
+
+        Args:
+            scale_x: Scale factor in meters per pixel
+            country_code: Two-letter ISO 3166-1 country code
+        """
+        self.scale_x = scale_x
+        self.country_code = country_code.lower()
+
+    def create_signals(
+        self,
+        road: Road,
+        signals: List[Signal],
+        centerline_points_pixel: List[tuple]
+    ) -> Optional[etree.Element]:
+        """
+        Create signals element for a road.
+
+        Args:
+            road: Road object
+            signals: All signals in the project
+            centerline_points_pixel: List of centerline points in pixel coordinates
+
+        Returns:
+            signals XML element or None if no signals for this road
+        """
+        # Find all signals assigned to this road
+        road_signals = [s for s in signals if s.road_id == road.id]
+
+        if not road_signals:
+            return None
+
+        signals_elem = etree.Element('signals')
+
+        for signal in road_signals:
+            signal_elem = self._create_signal(signal, centerline_points_pixel)
+            if signal_elem is not None:
+                signals_elem.append(signal_elem)
+
+        return signals_elem if len(signals_elem) > 0 else None
+
+    def _create_signal(
+        self,
+        signal: Signal,
+        centerline_points_pixel: List[tuple]
+    ) -> Optional[etree.Element]:
+        """Create a single signal element."""
+        # Calculate s-coordinate along road centerline
+        s_position = signal.calculate_s_position(centerline_points_pixel)
+        if s_position is None:
+            return None
+
+        # Convert s-position from pixels to meters
+        s_meters = s_position * self.scale_x
+
+        # Calculate t-coordinate (lateral offset from centerline)
+        t_meters = self._calculate_t_offset(signal.position, centerline_points_pixel, s_position)
+
+        # Create signal element
+        signal_elem = etree.Element('signal')
+        signal_elem.set('id', signal.id)
+        signal_elem.set('s', f'{s_meters:.6f}')
+        signal_elem.set('t', f'{t_meters:.6f}')
+        signal_elem.set('name', signal.name if signal.name else signal.get_display_name())
+        signal_elem.set('dynamic', 'no')
+
+        # OpenDRIVE orientation: '+' (forward), '-' (backward), or 'none' (both)
+        signal_elem.set('orientation', signal.orientation)
+
+        # hOffset: heading offset in radians relative to perpendicular direction
+        signal_elem.set('hOffset', f'{signal.h_offset:.6f}')
+
+        # Z offset (height above ground)
+        signal_elem.set('zOffset', f'{signal.z_offset:.2f}')
+
+        # Physical dimensions of the sign
+        signal_elem.set('height', f'{signal.sign_height:.2f}')
+        signal_elem.set('width', f'{signal.sign_width:.2f}')
+
+        # Country and type
+        signal_elem.set('country', self.country_code)
+
+        # Map signal type to OpenDRIVE type/subtype
+        self._set_signal_type_attributes(signal_elem, signal)
+
+        # Validity range (optional)
+        if signal.validity_range:
+            validity = etree.SubElement(signal_elem, 'validity')
+            # Convert pixel coordinates to meters
+            from_s = signal.validity_range[0] * self.scale_x
+            to_s = signal.validity_range[1] * self.scale_x
+            validity.set('fromLane', '0')
+            validity.set('toLane', '0')
+
+        return signal_elem
+
+    def _set_signal_type_attributes(self, signal_elem: etree.Element, signal: Signal) -> None:
+        """Set type and subtype attributes based on signal type."""
+        # Using German sign codes (DE:) as OpenDRIVE standard
+        if signal.type == SignalType.STOP:
+            signal_elem.set('type', '205')
+            signal_elem.set('subtype', '-1')
+        elif signal.type == SignalType.GIVE_WAY:
+            signal_elem.set('type', '206')
+            signal_elem.set('subtype', '-1')
+        elif signal.type == SignalType.NO_ENTRY:
+            signal_elem.set('type', '267')
+            signal_elem.set('subtype', '-1')
+        elif signal.type == SignalType.PRIORITY_ROAD:
+            signal_elem.set('type', '301')
+            signal_elem.set('subtype', '-1')
+        elif signal.type == SignalType.SPEED_LIMIT:
+            signal_elem.set('type', '274')
+            speed_value = signal.value
+            if signal.speed_unit == SpeedUnit.MPH:
+                # Convert mph to km/h for OpenDRIVE
+                speed_value = int(signal.value * 1.60934)
+            signal_elem.set('subtype', str(speed_value) if speed_value else '-1')
+        elif signal.type == SignalType.END_OF_SPEED_LIMIT:
+            signal_elem.set('type', '278')
+            signal_elem.set('subtype', '-1')
+        elif signal.type == SignalType.TRAFFIC_SIGNALS:
+            signal_elem.set('type', '1000001')
+            signal_elem.set('subtype', '-1')
+        else:
+            # Generic/unknown sign
+            signal_elem.set('type', '-1')
+            signal_elem.set('subtype', '-1')
+
+    def _calculate_t_offset(
+        self,
+        signal_position: tuple,
+        centerline_points: List[tuple],
+        s_position: float
+    ) -> float:
+        """
+        Calculate lateral offset (t-coordinate) of signal from road centerline.
+
+        Args:
+            signal_position: (x, y) position of signal in pixels
+            centerline_points: List of centerline points in pixels
+            s_position: s-coordinate along centerline in pixels
+
+        Returns:
+            t-offset in meters (positive = left, negative = right)
+        """
+        cumulative_s = 0.0
+        px, py = signal_position
+
+        for i in range(len(centerline_points) - 1):
+            x1, y1 = centerline_points[i]
+            x2, y2 = centerline_points[i + 1]
+
+            segment_length = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+            next_s = cumulative_s + segment_length
+
+            if next_s >= s_position:
+                # This is the segment containing s_position
+                if segment_length == 0:
+                    ref_x, ref_y = x1, y1
+                else:
+                    t = (s_position - cumulative_s) / segment_length
+                    ref_x = x1 + t * (x2 - x1)
+                    ref_y = y1 + t * (y2 - y1)
+
+                # Calculate distance from signal to reference point
+                distance_px = ((px - ref_x) ** 2 + (py - ref_y) ** 2) ** 0.5
+
+                # Determine sign using cross product
+                dx, dy = x2 - x1, y2 - y1
+                cross = (px - x1) * dy - (py - y1) * dx
+                sign = 1.0 if cross >= 0 else -1.0
+
+                # Convert to meters
+                distance_m = distance_px * self.scale_x
+                return sign * distance_m
+
+            cumulative_s = next_s
+
+        # Fallback: use distance to last point
+        x, y = centerline_points[-1]
+        distance_px = ((px - x) ** 2 + (py - y) ** 2) ** 0.5
+        distance_m = distance_px * self.scale_x
+        return distance_m

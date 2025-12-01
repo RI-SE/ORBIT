@@ -23,6 +23,9 @@ Import Guidelines:
 from orbit.utils import CoordinateTransformer, create_transformer, TransformMethod
 from .curve_fitting import CurveFitter, GeometryElement, GeometryType, simplify_polyline
 from .opendrive_writer import OpenDriveWriter, export_to_opendrive
+from .lane_builder import LaneBuilder, convert_road_mark_type
+from .signal_builder import SignalBuilder
+from .object_builder import ObjectBuilder
 
 __all__ = [
     'CoordinateTransformer',
@@ -33,5 +36,9 @@ __all__ = [
     'GeometryType',
     'simplify_polyline',
     'OpenDriveWriter',
-    'export_to_opendrive'
+    'export_to_opendrive',
+    'LaneBuilder',
+    'convert_road_mark_type',
+    'SignalBuilder',
+    'ObjectBuilder',
 ]
