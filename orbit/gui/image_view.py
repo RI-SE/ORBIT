@@ -960,8 +960,11 @@ class ConnectingRoadGraphicsItem:
         pen = QPen(color, width)
         pen.setStyle(Qt.PenStyle.SolidLine)
 
-        # Draw lines between points
+        # Use the stored path directly - it already contains sampled curve points
+        # (20 points from Bezier/Hermite interpolation during junction analysis)
         points = self.connecting_road.path
+
+        # Draw lines between points
         for i in range(len(points) - 1):
             x1, y1 = points[i]
             x2, y2 = points[i + 1]

@@ -424,19 +424,34 @@ class OpenDriveWriter:
             start_point_meters = path_meters[0]
             end_point_meters = path_meters[-1]
 
-            # Calculate headings from the curve
-            if len(path_meters) >= 2:
-                # Start heading
+            # Get headings - use stored pixel headings transformed to meter coordinates
+            # for accurate tangent matching, with fallback to path approximation
+            if connecting_road.stored_start_heading is not None:
+                # Transform stored pixel heading to meter coordinates
+                start_heading = self.transformer.transform_heading(
+                    connecting_road.path[0][0],  # pixel x
+                    connecting_road.path[0][1],  # pixel y
+                    connecting_road.stored_start_heading
+                )
+            elif len(path_meters) >= 2:
+                # Fallback: approximate from path (for legacy data)
                 dx_start = path_meters[1][0] - path_meters[0][0]
                 dy_start = path_meters[1][1] - path_meters[0][1]
                 start_heading = math.atan2(dy_start, dx_start)
+            else:
+                start_heading = 0.0
 
-                # End heading
+            if connecting_road.stored_end_heading is not None:
+                end_heading = self.transformer.transform_heading(
+                    connecting_road.path[-1][0],
+                    connecting_road.path[-1][1],
+                    connecting_road.stored_end_heading
+                )
+            elif len(path_meters) >= 2:
                 dx_end = path_meters[-1][0] - path_meters[-2][0]
                 dy_end = path_meters[-1][1] - path_meters[-2][1]
                 end_heading = math.atan2(dy_end, dx_end)
             else:
-                start_heading = 0.0
                 end_heading = 0.0
 
             # Transform end point from global to local u/v coordinates

@@ -77,6 +77,11 @@ class ConnectingRoad:
     p_range_normalized: bool = True  # If True, use pRange="normalized" (OpenDRIVE standard)
     tangent_scale: float = 1.0  # User-adjustable tangent length scale
 
+    # Stored headings from junction analysis (for accurate export)
+    # These are the exact headings at adjacent road endpoints, avoiding approximation error
+    stored_start_heading: Optional[float] = None  # Heading at start in radians
+    stored_end_heading: Optional[float] = None    # Heading at end in radians
+
     def get_length_pixels(self) -> float:
         """
         Calculate path length in pixels.
@@ -104,11 +109,19 @@ class ConnectingRoad:
 
     def get_start_heading(self) -> Optional[float]:
         """
-        Calculate heading at the start of the path in radians.
+        Get heading at the start of the path in radians.
+
+        Uses stored heading from junction analysis if available (preferred),
+        otherwise falls back to approximation from sampled path points.
 
         Returns:
             Heading angle in radians (0 = east, π/2 = north), or None if insufficient points
         """
+        # Use stored heading if available (from junction analysis)
+        if self.stored_start_heading is not None:
+            return self.stored_start_heading
+
+        # Fallback: approximate from path points (less accurate)
         if len(self.path) < 2:
             return None
 
@@ -118,11 +131,19 @@ class ConnectingRoad:
 
     def get_end_heading(self) -> Optional[float]:
         """
-        Calculate heading at the end of the path in radians.
+        Get heading at the end of the path in radians.
+
+        Uses stored heading from junction analysis if available (preferred),
+        otherwise falls back to approximation from sampled path points.
 
         Returns:
             Heading angle in radians (0 = east, π/2 = north), or None if insufficient points
         """
+        # Use stored heading if available (from junction analysis)
+        if self.stored_end_heading is not None:
+            return self.stored_end_heading
+
+        # Fallback: approximate from path points (less accurate)
         if len(self.path) < 2:
             return None
 
@@ -325,6 +346,12 @@ class ConnectingRoad:
         if self.road_id is not None:
             data['road_id'] = self.road_id
 
+        # Only include stored headings if set (for accurate export)
+        if self.stored_start_heading is not None:
+            data['stored_start_heading'] = self.stored_start_heading
+        if self.stored_end_heading is not None:
+            data['stored_end_heading'] = self.stored_end_heading
+
         return data
 
     @classmethod
@@ -369,6 +396,10 @@ class ConnectingRoad:
         cr.p_range = data.get('p_range', 1.0)
         cr.p_range_normalized = data.get('p_range_normalized', True)  # Default to normalized for new
         cr.tangent_scale = data.get('tangent_scale', 1.0)
+
+        # Stored headings from junction analysis (None for legacy projects)
+        cr.stored_start_heading = data.get('stored_start_heading')  # None if not present
+        cr.stored_end_heading = data.get('stored_end_heading')  # None if not present
 
         # Load lanes if present (backward compatible - will auto-initialize if missing)
         if 'lanes' in data:

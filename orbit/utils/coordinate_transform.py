@@ -188,6 +188,33 @@ class CoordinateTransformer:
         """Convert multiple pixel coordinates to local metric coordinates."""
         return [self.pixel_to_meters(x, y) for x, y in pixels]
 
+    def transform_heading(self, pixel_x: float, pixel_y: float, heading_pixels: float) -> float:
+        """
+        Transform a heading from pixel coordinates to meter coordinates.
+
+        The heading is transformed by taking a small step in the heading direction
+        in pixel space, transforming both points to meters, and calculating the
+        new heading from the transformed direction.
+
+        Args:
+            pixel_x, pixel_y: Position in pixels where heading is measured
+            heading_pixels: Heading in pixel coordinates (radians)
+
+        Returns:
+            Heading in meter coordinates (radians)
+        """
+        # Take a small step in the heading direction (in pixels)
+        delta = 1.0  # 1 pixel step
+        dx = delta * math.cos(heading_pixels)
+        dy = delta * math.sin(heading_pixels)
+
+        # Transform both the start point and the offset point to meters
+        x1, y1 = self.pixel_to_meters(pixel_x, pixel_y)
+        x2, y2 = self.pixel_to_meters(pixel_x + dx, pixel_y + dy)
+
+        # Calculate heading from the transformed direction
+        return math.atan2(y2 - y1, x2 - x1)
+
     def get_scale_factor(self) -> Tuple[float, float]:
         """
         Get the scale factors (meters per pixel) in x and y directions.

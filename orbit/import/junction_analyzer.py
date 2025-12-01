@@ -555,7 +555,9 @@ def create_connecting_roads_from_patterns(
                 aV=aV, bV=bV, cV=cV, dV=dV,
                 p_range=1.0,
                 p_range_normalized=True,
-                tangent_scale=1.0
+                tangent_scale=1.0,
+                stored_start_heading=from_endpoint.heading,
+                stored_end_heading=to_endpoint.heading
             )
 
             junction.add_connecting_road(connecting_road)
@@ -701,7 +703,9 @@ def create_connecting_roads_from_patterns(
             aV=aV, bV=bV, cV=cV, dV=dV,
             p_range=1.0,
             p_range_normalized=True,
-            tangent_scale=1.0
+            tangent_scale=1.0,
+            stored_start_heading=from_heading,
+            stored_end_heading=to_heading
         )
 
         junction.add_connecting_road(connecting_road)
@@ -741,12 +745,19 @@ def generate_junction_connections(junction: Junction,
     bidirectional connecting road with both left and right lanes. For turns,
     creates separate unidirectional connecting roads.
 
+    Virtual junctions (path crossings) are skipped - they represent visual crossings
+    where roads don't actually connect (e.g., pedestrian path crossing over a road).
+
     Args:
         junction: Junction object to populate with connections
         roads_dict: Dictionary of road_id -> Road object
         polylines_dict: Dictionary of polyline_id -> Polyline object
         scale: Meters per pixel scale factor (used for lane offset calculations)
     """
+    # Skip virtual junctions - these are path crossings, not real connections
+    if junction.junction_type == "virtual":
+        return
+
     # Step 1: Analyze junction geometry
     geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
 

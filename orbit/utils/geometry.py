@@ -315,13 +315,15 @@ def generate_simple_connection_path(from_pos: Tuple[float, float],
             tangent_scale
         )
 
-        # Sample the curve for visualization
+        # Sample the curve for visualization using global transformation
+        # (Hermite coefficients are now in local u/v coordinates)
         aU, bU, cU, dU, aV, bV, cV, dV = coeffs
-        sampled_points = sample_parampoly3(
+        sampled_points = evaluate_parampoly3_global(
             aU, bU, cU, dU,
             aV, bV, cV, dV,
-            num_points=num_points,
-            p_range=1.0
+            from_pos,
+            from_heading,
+            num_points=num_points
         )
 
     return (sampled_points, coeffs)
@@ -476,7 +478,12 @@ def calculate_hermite_parampoly3(
     - Ends at end_pos with direction end_tangent
     - Provides smooth, tangent-continuous transitions
 
-    The curve is defined by:
+    The curve is defined in LOCAL (u, v) coordinates where:
+    - Origin is at start_pos
+    - u-axis points along start_tangent direction (start heading)
+    - v-axis is perpendicular (90° counterclockwise from u)
+
+    The polynomial form is:
         u(p) = aU + bU*p + cU*p² + dU*p³
         v(p) = aV + bV*p + cV*p² + dV*p³
     where p ∈ [0, 1]
@@ -489,43 +496,59 @@ def calculate_hermite_parampoly3(
         tangent_scale: Scale factor for tangent lengths (controls curve tightness)
 
     Returns:
-        Tuple of (aU, bU, cU, dU, aV, bV, cV, dV) - the 8 polynomial coefficients
+        Tuple of (aU, bU, cU, dU, aV, bV, cV, dV) - coefficients in LOCAL coordinates
     """
     x0, y0 = start_pos
     x1, y1 = end_pos
 
-    # Scale tangents by the distance between endpoints for natural curve shape
-    dx = x1 - x0
-    dy = y1 - y0
-    dist = math.sqrt(dx * dx + dy * dy)
+    # Calculate start heading from start_tangent
+    start_heading = math.atan2(start_tangent[1], start_tangent[0])
+    cos_h = math.cos(start_heading)
+    sin_h = math.sin(start_heading)
+
+    # Transform end position to local (u, v) coordinates
+    dx_global = x1 - x0
+    dy_global = y1 - y0
+    end_u = dx_global * cos_h + dy_global * sin_h
+    end_v = -dx_global * sin_h + dy_global * cos_h
+
+    # Transform end tangent to local frame
+    end_tangent_u = end_tangent[0] * cos_h + end_tangent[1] * sin_h
+    end_tangent_v = -end_tangent[0] * sin_h + end_tangent[1] * cos_h
+
+    # Distance for tangent scaling
+    dist = math.sqrt(dx_global * dx_global + dy_global * dy_global)
 
     # Apply tangent scale
     scale = dist * tangent_scale / 3.0  # Divide by 3 for good curve shape
 
-    tx0 = start_tangent[0] * scale
-    ty0 = start_tangent[1] * scale
-    tx1 = end_tangent[0] * scale
-    ty1 = end_tangent[1] * scale
+    # Start tangent in local frame is (1, 0) since u-axis is along start heading
+    tu0 = 1.0 * scale
+    tv0 = 0.0
 
-    # Hermite polynomial coefficients for cubic curve
+    # End tangent in local frame (scaled)
+    tu1 = end_tangent_u * scale
+    tv1 = end_tangent_v * scale
+
+    # Hermite polynomial coefficients for cubic curve in LOCAL coordinates
+    # Start at origin (0, 0) in local frame
     # Based on Hermite basis functions:
-    # H0(p) = 2p³ - 3p² + 1 (start position)
-    # H1(p) = -2p³ + 3p² (end position)
-    # H2(p) = p³ - 2p² + p (start tangent)
-    # H3(p) = p³ - p² (end tangent)
+    # H0(p) = 2p³ - 3p² + 1 (start position weight)
+    # H1(p) = -2p³ + 3p² (end position weight)
+    # H2(p) = p³ - 2p² + p (start tangent weight)
+    # H3(p) = p³ - p² (end tangent weight)
 
-    # u(p) = x0*H0(p) + x1*H1(p) + tx0*H2(p) + tx1*H3(p)
-    # Expanding and collecting terms by powers of p:
-    aU = x0  # Constant term
-    bU = tx0  # Linear term
-    cU = -3*x0 + 3*x1 - 2*tx0 - tx1  # Quadratic term
-    dU = 2*x0 - 2*x1 + tx0 + tx1  # Cubic term
+    # u(p) = 0*H0(p) + end_u*H1(p) + tu0*H2(p) + tu1*H3(p)
+    aU = 0.0  # Start at local origin
+    bU = tu0  # Linear term (start tangent)
+    cU = 3*end_u - 2*tu0 - tu1  # Quadratic term
+    dU = -2*end_u + tu0 + tu1  # Cubic term
 
     # Same for v(p)
-    aV = y0
-    bV = ty0
-    cV = -3*y0 + 3*y1 - 2*ty0 - ty1
-    dV = 2*y0 - 2*y1 + ty0 + ty1
+    aV = 0.0
+    bV = tv0
+    cV = 3*end_v - 2*tv0 - tv1
+    dV = -2*end_v + tv0 + tv1
 
     return (aU, bU, cU, dU, aV, bV, cV, dV)
 
@@ -559,6 +582,53 @@ def sample_parampoly3(
         v = aV + bV*p + cV*p*p + dV*p*p*p
 
         points.append((u, v))
+
+    return points
+
+
+def evaluate_parampoly3_global(
+    aU: float, bU: float, cU: float, dU: float,
+    aV: float, bV: float, cV: float, dV: float,
+    start_pos: Tuple[float, float],
+    start_heading: float,
+    num_points: int = 50
+) -> List[Tuple[float, float]]:
+    """
+    Evaluate ParamPoly3D curve and transform to global coordinates.
+
+    The ParamPoly3D curve is defined in local (u, v) coordinates where:
+    - Origin is at start_pos
+    - u-axis points along start_heading
+    - v-axis is perpendicular (90° counter-clockwise from u)
+
+    Args:
+        aU, bU, cU, dU: Coefficients for u(p) polynomial
+        aV, bV, cV, dV: Coefficients for v(p) polynomial
+        start_pos: Starting position (x, y) in global coordinates
+        start_heading: Heading angle in radians (0 = east, π/2 = north)
+        num_points: Number of points to sample (default 50 for smooth curves)
+
+    Returns:
+        List of (x, y) points in global coordinates
+    """
+    points = []
+    cos_h = math.cos(start_heading)
+    sin_h = math.sin(start_heading)
+
+    for i in range(num_points + 1):
+        # Parameter from 0 to 1
+        p = i / num_points
+
+        # Evaluate polynomial in local (u, v) coordinates
+        u = aU + bU*p + cU*p*p + dU*p*p*p
+        v = aV + bV*p + cV*p*p + dV*p*p*p
+
+        # Transform to global coordinates:
+        # x = start_x + u*cos(heading) - v*sin(heading)
+        # y = start_y + u*sin(heading) + v*cos(heading)
+        x = start_pos[0] + u*cos_h - v*sin_h
+        y = start_pos[1] + u*sin_h + v*cos_h
+        points.append((x, y))
 
     return points
 
