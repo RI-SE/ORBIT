@@ -8,8 +8,8 @@ from PyQt6.QtWidgets import (QHBoxLayout, QFormLayout,
 from PyQt6.QtCore import Qt
 from orbit.models.object import RoadObject, ObjectType
 from orbit.utils.enum_formatting import format_enum_name, format_snake_case
-from orbit.gui.base_dialog import BaseDialog
-from orbit.gui.utils import get_scale_factors, format_with_metric
+from .base_dialog import BaseDialog
+from ..utils import get_scale_factors, format_with_metric
 
 
 class ObjectPropertiesDialog(BaseDialog):

@@ -18,9 +18,9 @@ from PyQt6.QtGui import (
 
 from orbit.models import Polyline, Project, Junction, LineType, RoadMarkType, Road, Signal, RoadObject, ObjectType
 from orbit.utils.geometry import create_lane_polygon, calculate_directional_scale
-from orbit.gui.signal_graphics_item import SignalGraphicsItem
-from orbit.gui.object_graphics_item import ObjectGraphicsItem
-from orbit.gui.message_helpers import show_warning, ask_yes_no
+from .graphics.signal_graphics_item import SignalGraphicsItem
+from .graphics.object_graphics_item import ObjectGraphicsItem
+from .utils.message_helpers import show_warning, ask_yes_no
 from orbit.gui.graphics import (
     PolylineGraphicsItem,
     JunctionMarkerItem,
@@ -890,7 +890,7 @@ class ImageView(QGraphicsView):
         polylines_dict = {p.id: p for p in self.project.polylines}
 
         # Create debug graphics for each junction
-        from orbit.gui.junction_debug_graphics import JunctionDebugOverlay
+        from .graphics.junction_debug_graphics import JunctionDebugOverlay
 
         for junction in self.project.junctions:
             overlay = JunctionDebugOverlay(junction, roads_dict, polylines_dict)
@@ -940,7 +940,7 @@ class ImageView(QGraphicsView):
         roads_dict = {road.id: road for road in self.project.roads}
         polylines_dict = {p.id: p for p in self.project.polylines}
 
-        from orbit.gui.junction_debug_graphics import JunctionDebugOverlay
+        from .graphics.junction_debug_graphics import JunctionDebugOverlay
 
         overlay = JunctionDebugOverlay(junction, roads_dict, polylines_dict)
         items = overlay.create_graphics_items()

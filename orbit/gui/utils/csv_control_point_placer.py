@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from orbit.models import Project, ControlPoint
-from .csv_import_dialog import CSVControlPoint
+from ..dialogs.csv_import_dialog import CSVControlPoint
 from .message_helpers import show_warning, ask_yes_no
 
 

@@ -21,8 +21,8 @@ from PyQt6.QtGui import QFont
 
 from orbit.utils.logging_config import get_logger
 from orbit.models import Project, ControlPoint
-from orbit.gui.base_dialog import BaseDialog
-from orbit.gui.message_helpers import show_error, show_warning, show_info, ask_yes_no
+from .base_dialog import BaseDialog
+from ..utils.message_helpers import show_error, show_warning, show_info, ask_yes_no
 
 logger = get_logger(__name__)
 

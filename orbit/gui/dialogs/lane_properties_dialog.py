@@ -13,8 +13,8 @@ from PyQt6.QtWidgets import (
 
 from orbit.models import Lane, LaneType, RoadMarkType, Project, LineType
 from orbit.utils import format_enum_name
-from orbit.gui.base_dialog import BaseDialog
-from orbit.gui.utils import set_combo_by_data
+from .base_dialog import BaseDialog
+from ..utils import set_combo_by_data
 
 if TYPE_CHECKING:
     from orbit.models.connecting_road import ConnectingRoad

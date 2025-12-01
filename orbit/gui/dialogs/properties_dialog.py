@@ -15,7 +15,7 @@ from PyQt6.QtCore import Qt
 
 from orbit.models import Road, RoadType, LaneInfo, Project, LineType
 from orbit.utils import format_enum_name
-from orbit.gui.utils import set_combo_by_data
+from ..utils import set_combo_by_data
 
 
 class RoadPropertiesDialog(QDialog):

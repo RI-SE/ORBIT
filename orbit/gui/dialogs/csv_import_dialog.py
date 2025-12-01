@@ -17,8 +17,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from orbit.models import Project, ControlPoint
-from orbit.gui.base_dialog import BaseDialog
-from orbit.gui.message_helpers import show_error, show_warning, show_info
+from .base_dialog import BaseDialog
+from ..utils.message_helpers import show_error, show_warning, show_info
 
 
 @dataclass
@@ -413,7 +413,7 @@ class CSVImportDialog(BaseDialog):
             return
 
         # Import and show placement dialog
-        from .csv_control_point_placer import CSVControlPointPlacer
+        from ..utils.csv_control_point_placer import CSVControlPointPlacer
 
         placer = CSVControlPointPlacer(
             selected_points,

@@ -14,7 +14,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 
 from orbit.models import Project, Road, Polyline, LaneType
-from orbit.gui.message_helpers import show_info, ask_yes_no
+from ..utils.message_helpers import show_info, ask_yes_no
 
 
 class RoadTreeWidget(QWidget):
@@ -202,7 +202,7 @@ class RoadTreeWidget(QWidget):
 
     def create_road(self):
         """Create a new road."""
-        from ..properties_dialog import RoadPropertiesDialog
+        from ..dialogs.properties_dialog import RoadPropertiesDialog
 
         road = RoadPropertiesDialog.create_road(self.project, self, verbose=self.verbose)
         if road:
@@ -320,7 +320,7 @@ class RoadTreeWidget(QWidget):
 
     def edit_road(self, road_id: str):
         """Edit a road's properties."""
-        from ..properties_dialog import RoadPropertiesDialog
+        from ..dialogs.properties_dialog import RoadPropertiesDialog
 
         road = self.project.get_road(road_id)
         if road:
@@ -360,7 +360,7 @@ class RoadTreeWidget(QWidget):
 
     def edit_polyline(self, polyline_id: str):
         """Edit a polyline's properties."""
-        from ..polyline_properties_dialog import PolylinePropertiesDialog
+        from ..dialogs.polyline_properties_dialog import PolylinePropertiesDialog
 
         polyline = self.project.get_polyline(polyline_id)
         if polyline:
@@ -370,7 +370,7 @@ class RoadTreeWidget(QWidget):
 
     def edit_lane(self, lane_id: int, road_id: str):
         """Edit a lane's properties."""
-        from ..lane_properties_dialog import LanePropertiesDialog
+        from ..dialogs.lane_properties_dialog import LanePropertiesDialog
 
         road = self.project.get_road(road_id)
         if road:
@@ -383,7 +383,7 @@ class RoadTreeWidget(QWidget):
 
     def edit_section(self, section_number: int, road_id: str):
         """Edit a lane section's properties."""
-        from ..section_properties_dialog import SectionPropertiesDialog
+        from ..dialogs.section_properties_dialog import SectionPropertiesDialog
         from orbit.export import create_transformer
 
         road = self.project.get_road(road_id)

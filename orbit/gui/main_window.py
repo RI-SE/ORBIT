@@ -21,7 +21,7 @@ from .image_view import ImageView
 
 from .widgets.road_tree import RoadTreeWidget
 from .widgets.elements_tree import ElementsTreeWidget
-from .message_helpers import show_error, show_warning, show_info, ask_yes_no
+from .utils.message_helpers import show_error, show_warning, show_info, ask_yes_no
 
 logger = get_logger(__name__)
 
@@ -558,7 +558,7 @@ class MainWindow(QMainWindow):
 
     def show_preferences(self):
         """Show project preferences dialog."""
-        from .preferences_dialog import PreferencesDialog
+        from .dialogs.preferences_dialog import PreferencesDialog
 
         dialog = PreferencesDialog(self.project, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -593,7 +593,7 @@ class MainWindow(QMainWindow):
 
     def export_to_opendrive(self):
         """Export project to OpenDrive format."""
-        from .export_dialog import ExportDialog
+        from .dialogs.export_dialog import ExportDialog
 
         # Check if we have any roads
         if not self.project.roads:
@@ -610,7 +610,7 @@ class MainWindow(QMainWindow):
 
     def import_osm_data(self):
         """Import road network data from OpenStreetMap (API or file)."""
-        from .osm_import_dialog import OSMImportDialog
+        from .dialogs.osm_import_dialog import OSMImportDialog
         # Import from the 'import' module using importlib (since 'import' is a Python keyword)
         import importlib
         osm_import_module = importlib.import_module('orbit.import')
@@ -787,8 +787,8 @@ class MainWindow(QMainWindow):
 
     def import_opendrive_file(self):
         """Import road network from OpenDrive file."""
-        from .opendrive_import_dialog import OpenDriveImportDialog
-        from .import_report_dialog import show_opendrive_import_report
+        from .dialogs.opendrive_import_dialog import OpenDriveImportDialog
+        from .dialogs.import_report_dialog import show_opendrive_import_report
         import importlib
         opendrive_import_module = importlib.import_module('orbit.import.opendrive_importer')
         OpenDriveImporter = opendrive_import_module.OpenDriveImporter
@@ -912,7 +912,7 @@ class MainWindow(QMainWindow):
 
     def group_to_road(self):
         """Group selected polylines into a road."""
-        from .properties_dialog import RoadPropertiesDialog
+        from .dialogs.properties_dialog import RoadPropertiesDialog
         from orbit.models import LineType
 
         # Get selected polylines from image view
@@ -991,7 +991,7 @@ class MainWindow(QMainWindow):
 
     def add_object(self):
         """Add a roadside object by selecting type and clicking on the map."""
-        from orbit.gui.object_selection_dialog import ObjectSelectionDialog
+        from .dialogs.object_selection_dialog import ObjectSelectionDialog
 
         # Check if object mode is already active - if so, toggle it off
         if hasattr(self, 'object_mode_active') and self.object_mode_active:
@@ -1065,7 +1065,7 @@ class MainWindow(QMainWindow):
 
     def open_georeferencing(self):
         """Open georeferencing dialog."""
-        from .georeference_dialog import GeoreferenceDialog
+        from .dialogs.georeference_dialog import GeoreferenceDialog
 
         dialog = GeoreferenceDialog(self.project, self, verbose=self.verbose)
 
@@ -1293,7 +1293,7 @@ class MainWindow(QMainWindow):
 
     def edit_polyline_properties(self, polyline_id: str):
         """Edit properties of a polyline."""
-        from .polyline_properties_dialog import PolylinePropertiesDialog
+        from .dialogs.polyline_properties_dialog import PolylinePropertiesDialog
 
         polyline = self.project.get_polyline(polyline_id)
         if not polyline:
@@ -1379,7 +1379,7 @@ class MainWindow(QMainWindow):
         try:
             from orbit.utils import create_transformer, TransformMethod
             from orbit.utils.uncertainty_estimator import UncertaintyEstimator
-            from orbit.gui.uncertainty_overlay import UncertaintyOverlay
+            from .graphics.uncertainty_overlay import UncertaintyOverlay
 
             # Create transformer
             method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
@@ -1613,7 +1613,7 @@ class MainWindow(QMainWindow):
 
     def on_junction_added(self, junction):
         """Handle junction added signal."""
-        from .junction_dialog import JunctionDialog
+        from .dialogs.junction_dialog import JunctionDialog
 
         # Open dialog to configure the junction
         result = JunctionDialog.create_junction(self.project, junction.center_point, self)
@@ -1648,7 +1648,7 @@ class MainWindow(QMainWindow):
 
     def edit_junction_properties(self, junction_id: str):
         """Edit properties of a junction."""
-        from .junction_dialog import JunctionDialog
+        from .dialogs.junction_dialog import JunctionDialog
 
         junction = self.project.get_junction(junction_id)
         if not junction:
@@ -1729,7 +1729,7 @@ class MainWindow(QMainWindow):
 
     def on_signal_placement_requested(self, x: float, y: float):
         """Handle signal placement request - show selection dialog."""
-        from orbit.gui.signal_selection_dialog import SignalSelectionDialog
+        from .dialogs.signal_selection_dialog import SignalSelectionDialog
         from orbit.models.signal import Signal
 
         # Show dialog to select signal type
@@ -1834,7 +1834,7 @@ class MainWindow(QMainWindow):
 
     def edit_signal_properties(self, signal_id: str):
         """Edit properties of a signal."""
-        from orbit.gui.signal_properties_dialog import SignalPropertiesDialog
+        from .dialogs.signal_properties_dialog import SignalPropertiesDialog
 
         signal = self.project.get_signal(signal_id)
         if not signal:
@@ -1933,7 +1933,7 @@ class MainWindow(QMainWindow):
 
     def edit_object_properties(self, object_id: str):
         """Edit properties of an object."""
-        from orbit.gui.object_properties_dialog import ObjectPropertiesDialog
+        from .dialogs.object_properties_dialog import ObjectPropertiesDialog
 
         obj = self.project.get_object(object_id)
         if not obj:
@@ -2022,7 +2022,7 @@ class MainWindow(QMainWindow):
             section_number: Section number containing the lane
             lane_id: Lane ID within the section
         """
-        from orbit.gui.lane_properties_dialog import LanePropertiesDialog
+        from .dialogs.lane_properties_dialog import LanePropertiesDialog
 
         # Find the road
         road = self.project.get_road(road_id)
@@ -2062,7 +2062,7 @@ class MainWindow(QMainWindow):
             connecting_road_id: ID of the connecting road
             lane_id: Lane ID within the connecting road
         """
-        from orbit.gui.lane_properties_dialog import LanePropertiesDialog
+        from .dialogs.lane_properties_dialog import LanePropertiesDialog
 
         # Find the connecting road in junctions
         connecting_road = None
@@ -2132,10 +2132,11 @@ class MainWindow(QMainWindow):
             pixmap = pixmap.scaledToWidth(200, Qt.TransformationMode.SmoothTransformation)
             msg_box.setIconPixmap(pixmap)
 
+        from orbit import __version__
         msg_box.setText(
             "<h2>ORBIT</h2>"
             "<p><b>OpenDrive Road Builder from Imagery Tool</b></p>"
-            "<p>Version 0.2.0</p>"
+            f"<p>Version {__version__}</p>"
         )
         msg_box.setInformativeText(
             "A tool for annotating roads in drone/aerial/satellite imagery "

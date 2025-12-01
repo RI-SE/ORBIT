@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
 )
 
 from orbit.models import Project
-from orbit.gui.base_dialog import BaseDialog
+from .base_dialog import BaseDialog
 
 
 class PreferencesDialog(BaseDialog):

@@ -14,7 +14,7 @@ from PyQt6.QtCore import Qt
 
 from orbit.models import LaneSection
 from orbit.export import CoordinateTransformer
-from orbit.gui.base_dialog import BaseDialog
+from .base_dialog import BaseDialog
 
 
 class SectionPropertiesDialog(BaseDialog):

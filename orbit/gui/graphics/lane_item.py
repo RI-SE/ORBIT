@@ -15,7 +15,7 @@ from orbit.utils.geometry import create_lane_polygon, calculate_directional_scal
 from .interactive_lane import InteractiveLanePolygon
 
 if TYPE_CHECKING:
-    from orbit.gui.image_view import ImageView
+    from ..image_view import ImageView
 
 
 class LaneGraphicsItem:
@@ -233,7 +233,7 @@ class RoadLanesGraphicsItem:
                 if polygon_points and len(polygon_points) >= 3:
                     # Create interactive polygon
                     # Import here to avoid circular import
-                    from orbit.gui.image_view import ImageView
+                    from ..image_view import ImageView
                     parent_view: Optional['ImageView'] = None
                     # Find parent ImageView from scene
                     if self.scene.views():

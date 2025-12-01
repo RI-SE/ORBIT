@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QFileDialog
 )
 from PyQt6.QtCore import Qt
-from orbit.gui.base_dialog import BaseDialog
+from .base_dialog import BaseDialog
 
 
 class OSMImportDialog(BaseDialog):

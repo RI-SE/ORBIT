@@ -16,7 +16,7 @@ from .interactive_lane import InteractiveLanePolygon
 
 if TYPE_CHECKING:
     from orbit.models.connecting_road import ConnectingRoad
-    from orbit.gui.image_view import ImageView
+    from ..image_view import ImageView
 
 
 class ConnectingRoadGraphicsItem:

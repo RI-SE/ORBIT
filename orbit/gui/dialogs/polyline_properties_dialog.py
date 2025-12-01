@@ -14,9 +14,9 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
 from orbit.models import Polyline, LineType, RoadMarkType
-from orbit.gui.base_dialog import BaseDialog
-from orbit.gui.message_helpers import show_info
-from orbit.gui.utils import set_combo_by_data
+from .base_dialog import BaseDialog
+from ..utils.message_helpers import show_info
+from ..utils import set_combo_by_data
 
 
 class PolylinePropertiesDialog(BaseDialog):

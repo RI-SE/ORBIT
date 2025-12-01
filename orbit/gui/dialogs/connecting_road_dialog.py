@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 
 from orbit.models.connecting_road import ConnectingRoad
 from orbit.models import Project
-from orbit.gui.base_dialog import BaseDialog
+from .base_dialog import BaseDialog
 from orbit.utils.geometry import generate_simple_connection_path
 import math
 

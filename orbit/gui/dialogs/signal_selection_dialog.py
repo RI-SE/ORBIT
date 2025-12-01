@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (QHBoxLayout, QGroupBox,
                             QPushButton, QGridLayout, QVBoxLayout)
 from PyQt6.QtGui import QIcon
 from orbit.models.signal import SignalType, SpeedUnit
-from orbit.gui.signal_graphics import create_signal_pixmap
-from orbit.gui.base_dialog import BaseDialog
+from ..graphics.signal_graphics import create_signal_pixmap
+from .base_dialog import BaseDialog
 
 
 class SignalSelectionDialog(BaseDialog):

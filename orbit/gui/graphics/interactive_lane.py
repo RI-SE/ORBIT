@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt, QPointF
 from PyQt6.QtGui import QPen, QColor, QBrush, QPolygonF
 
 if TYPE_CHECKING:
-    from orbit.gui.image_view import ImageView
+    from ..image_view import ImageView
 
 
 class InteractiveLanePolygon(QGraphicsPolygonItem):

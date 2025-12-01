@@ -17,8 +17,8 @@ from PyQt6.QtGui import QFont
 
 from orbit.models import Project
 from orbit.export import CoordinateTransformer, create_transformer, export_to_opendrive, TransformMethod
-from orbit.gui.base_dialog import BaseDialog
-from orbit.gui.message_helpers import show_error, show_warning, show_info
+from .base_dialog import BaseDialog
+from ..utils.message_helpers import show_error, show_warning, show_info
 
 
 class ExportDialog(BaseDialog):

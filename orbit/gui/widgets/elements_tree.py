@@ -15,7 +15,7 @@ from PyQt6.QtGui import QAction
 
 from orbit.models import Project, Junction, Signal
 from orbit.utils.enum_formatting import format_snake_case
-from orbit.gui.message_helpers import ask_yes_no
+from ..utils.message_helpers import ask_yes_no
 
 
 class ElementsTreeWidget(QWidget):
@@ -315,7 +315,7 @@ class ElementsTreeWidget(QWidget):
 
     def edit_junction(self, junction_id: str):
         """Edit a junction's properties."""
-        from ..junction_dialog import JunctionDialog
+        from ..dialogs.junction_dialog import JunctionDialog
 
         junction = self.project.get_junction(junction_id)
         if junction:
@@ -333,7 +333,7 @@ class ElementsTreeWidget(QWidget):
 
     def edit_signal(self, signal_id: str):
         """Edit a signal's properties."""
-        from orbit.gui.signal_properties_dialog import SignalPropertiesDialog
+        from ..dialogs.signal_properties_dialog import SignalPropertiesDialog
 
         signal = self.project.get_signal(signal_id)
         if signal:
@@ -351,7 +351,7 @@ class ElementsTreeWidget(QWidget):
 
     def edit_object(self, object_id: str):
         """Edit an object's properties."""
-        from orbit.gui.object_properties_dialog import ObjectPropertiesDialog
+        from ..dialogs.object_properties_dialog import ObjectPropertiesDialog
 
         obj = self.project.get_object(object_id)
         if obj:
@@ -369,7 +369,7 @@ class ElementsTreeWidget(QWidget):
 
     def edit_connecting_road(self, connecting_road_id: str):
         """Edit a connecting road's properties."""
-        from orbit.gui.connecting_road_dialog import ConnectingRoadDialog
+        from ..dialogs.connecting_road_dialog import ConnectingRoadDialog
 
         # Find the connecting road in junctions
         connecting_road = None
@@ -390,7 +390,7 @@ class ElementsTreeWidget(QWidget):
 
     def edit_connecting_road_lane(self, connecting_road_id: str, lane_id: int):
         """Edit a connecting road lane's properties."""
-        from orbit.gui.lane_properties_dialog import LanePropertiesDialog
+        from ..dialogs.lane_properties_dialog import LanePropertiesDialog
 
         # Find the connecting road in junctions
         connecting_road = None
