@@ -130,6 +130,10 @@ class OpenDriveWriter:
                 if junction_numeric_id is None:
                     continue
 
+                # Skip connecting roads for virtual junctions (path crossings)
+                if junction.junction_type == "virtual":
+                    continue
+
                 # Export each connecting road as a Road element
                 for idx, connecting_road in enumerate(junction.connecting_roads):
                     conn_road_elem = self._create_connecting_road(
@@ -1296,6 +1300,10 @@ class OpenDriveWriter:
         junction_elem.set('id', str(junction_numeric_id))
         junction_elem.set('name', junction.name)
         junction_elem.set('type', junction.junction_type)
+
+        # Virtual junctions (path crossings) have no connections
+        if junction.junction_type == "virtual":
+            return junction_elem
 
         # Group lane connections by (from_road_id, connecting_road_id) to create connection elements
         # Each unique pair becomes one <connection> with multiple <laneLink> elements
