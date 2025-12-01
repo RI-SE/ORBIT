@@ -10,13 +10,17 @@ from lxml import etree
 import numpy as np
 import math
 
+from orbit.utils.logging_config import get_logger
 from orbit.models import Project, Road, Junction, Polyline, LineType, RoadMarkType, Signal
 from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.signal import SignalType, SpeedUnit
 from orbit.models.object import RoadObject, ObjectType
 from orbit.utils import CoordinateTransformer
+
 from .curve_fitting import CurveFitter, GeometryElement, GeometryType
 from .lane_analyzer import LaneAnalyzer, BoundaryInfo
+
+logger = get_logger(__name__)
 
 
 class OpenDriveWriter:
@@ -90,7 +94,7 @@ class OpenDriveWriter:
             )
             return True
         except Exception as e:
-            print(f"Error writing OpenDrive: {e}")
+            logger.error(f"Error writing OpenDrive: {e}")
             return False
 
     def _create_opendrive_root(self) -> etree.Element:
@@ -143,7 +147,7 @@ class OpenDriveWriter:
                     if conn_road_elem is not None:
                         root.append(conn_road_elem)
                     else:
-                        print(f"WARNING: Connecting road {idx} for junction {junction_numeric_id} returned None!")
+                        logger.warning(f"Connecting road {idx} for junction {junction_numeric_id} returned None!")
 
         # 3. Add junction definitions
         for junction in self.project.junctions:

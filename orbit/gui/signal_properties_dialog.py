@@ -7,7 +7,9 @@ from PyQt6.QtWidgets import (QFormLayout,
                             QLabel, QGroupBox, QCheckBox, QVBoxLayout)
 from PyQt6.QtCore import Qt
 from orbit.models.signal import Signal, SignalType, SpeedUnit
+from orbit.utils.enum_formatting import format_enum_name
 from orbit.gui.base_dialog import BaseDialog
+from orbit.gui.utils import get_scale_factors, format_with_metric
 
 
 class SignalPropertiesDialog(BaseDialog):
@@ -42,7 +44,7 @@ class SignalPropertiesDialog(BaseDialog):
         basic_layout.addRow("Name:", self.name_edit)
 
         # Type (read-only)
-        type_label = QLabel(self.signal.type.value.replace('_', ' ').title())
+        type_label = QLabel(format_enum_name(self.signal.type))
         basic_layout.addRow("Type:", type_label)
 
         # Value (read-only for now, could be editable)
@@ -210,22 +212,9 @@ class SignalPropertiesDialog(BaseDialog):
                     s = self.signal.calculate_s_position(centerline_polyline.points)
                     if s is not None:
                         # Show in pixels, and also in meters if georeferenced
-                        display_text = f"{s:.1f} px"
-
-                        if self.project.has_georeferencing():
-                            # Compute scale directly from control points
-                            try:
-                                from orbit.export import create_transformer
-                                transformer = create_transformer(self.project.control_points)
-                                if transformer:
-                                    scale_x, scale_y = transformer.get_scale_factor()
-                                    if scale_x and scale_x > 0:
-                                        s_meters = s * scale_x  # scale_x is already in m/px
-                                        display_text = f"{s:.1f} px ({s_meters:.2f} m)"
-                            except Exception as e:
-                                # If scale computation fails, just show pixels
-                                pass
-
+                        scale = get_scale_factors(self.project)
+                        scale_x = scale[0] if scale else None
+                        display_text = format_with_metric(s, scale_x)
                         self.s_position_label.setText(display_text)
                         return
         self.s_position_label.setText("—")

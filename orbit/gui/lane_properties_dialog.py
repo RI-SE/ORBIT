@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 from orbit.models import Lane, LaneType, RoadMarkType, Project, LineType
 from orbit.utils import format_enum_name
 from orbit.gui.base_dialog import BaseDialog
+from orbit.gui.utils import set_combo_by_data
 
 if TYPE_CHECKING:
     from orbit.models.connecting_road import ConnectingRoad
@@ -171,16 +172,10 @@ class LanePropertiesDialog(BaseDialog):
         self.position_label.setText(self.lane.get_display_position())
 
         # Set lane type
-        for i in range(self.lane_type_combo.count()):
-            if self.lane_type_combo.itemData(i) == self.lane.lane_type:
-                self.lane_type_combo.setCurrentIndex(i)
-                break
+        set_combo_by_data(self.lane_type_combo, self.lane.lane_type)
 
         # Set road mark type
-        for i in range(self.road_mark_type_combo.count()):
-            if self.road_mark_type_combo.itemData(i) == self.lane.road_mark_type:
-                self.road_mark_type_combo.setCurrentIndex(i)
-                break
+        set_combo_by_data(self.road_mark_type_combo, self.lane.road_mark_type)
 
         # Set width based on lane type
         if self.width_spin is not None:
@@ -204,17 +199,11 @@ class LanePropertiesDialog(BaseDialog):
         if self.project and self.road_id:
             # Left boundary
             if self.lane.left_boundary_id:
-                for i in range(self.left_boundary_combo.count()):
-                    if self.left_boundary_combo.itemData(i) == self.lane.left_boundary_id:
-                        self.left_boundary_combo.setCurrentIndex(i)
-                        break
+                set_combo_by_data(self.left_boundary_combo, self.lane.left_boundary_id)
 
             # Right boundary
             if self.lane.right_boundary_id:
-                for i in range(self.right_boundary_combo.count()):
-                    if self.right_boundary_combo.itemData(i) == self.lane.right_boundary_id:
-                        self.right_boundary_combo.setCurrentIndex(i)
-                        break
+                set_combo_by_data(self.right_boundary_combo, self.lane.right_boundary_id)
 
     def on_lane_type_changed(self):
         """Handle lane type change."""

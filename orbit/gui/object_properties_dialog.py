@@ -7,7 +7,9 @@ from PyQt6.QtWidgets import (QHBoxLayout, QFormLayout,
                             QLabel, QGroupBox, QCheckBox, QVBoxLayout)
 from PyQt6.QtCore import Qt
 from orbit.models.object import RoadObject, ObjectType
+from orbit.utils.enum_formatting import format_enum_name, format_snake_case
 from orbit.gui.base_dialog import BaseDialog
+from orbit.gui.utils import get_scale_factors, format_with_metric
 
 
 class ObjectPropertiesDialog(BaseDialog):
@@ -41,11 +43,11 @@ class ObjectPropertiesDialog(BaseDialog):
         basic_layout.addRow("Name:", self.name_edit)
 
         # Type (read-only)
-        type_label = QLabel(self.obj.type.value.replace('_', ' ').title())
+        type_label = QLabel(format_enum_name(self.obj.type))
         basic_layout.addRow("Type:", type_label)
 
         # Category (read-only)
-        category_label = QLabel(self.obj.type.get_category().replace('_', ' ').title())
+        category_label = QLabel(format_snake_case(self.obj.type.get_category()))
         basic_layout.addRow("Category:", category_label)
 
         # Position and orientation
@@ -249,25 +251,10 @@ class ObjectPropertiesDialog(BaseDialog):
                     s, t = self.obj.calculate_s_t_position(centerline_polyline.points)
                     if s is not None:
                         # Show in pixels, and also in meters if georeferenced
-                        s_display = f"{s:.1f} px"
-                        t_display = f"{t:.1f} px"
-
-                        if self.project.has_georeferencing():
-                            try:
-                                from orbit.export import create_transformer
-                                transformer = create_transformer(self.project.control_points)
-                                if transformer:
-                                    scale_x, scale_y = transformer.get_scale_factor()
-                                    if scale_x and scale_x > 0:
-                                        s_meters = s * scale_x
-                                        t_meters = t * scale_x
-                                        s_display = f"{s:.1f} px ({s_meters:.2f} m)"
-                                        t_display = f"{t:.1f} px ({t_meters:.2f} m)"
-                            except Exception:
-                                pass
-
-                        self.s_position_label.setText(s_display)
-                        self.t_offset_label.setText(t_display)
+                        scale = get_scale_factors(self.project)
+                        scale_x = scale[0] if scale else None
+                        self.s_position_label.setText(format_with_metric(s, scale_x))
+                        self.t_offset_label.setText(format_with_metric(t, scale_x))
                         return
 
         self.s_position_label.setText("—")
@@ -286,21 +273,9 @@ class ObjectPropertiesDialog(BaseDialog):
                 x2, y2 = self.obj.points[i + 1]
                 total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
 
-            length_display = f"{total_length:.1f} px"
-
-            if self.project.has_georeferencing():
-                try:
-                    from orbit.export import create_transformer
-                    transformer = create_transformer(self.project.control_points)
-                    if transformer:
-                        scale_x, scale_y = transformer.get_scale_factor()
-                        if scale_x and scale_x > 0:
-                            length_meters = total_length * scale_x
-                            length_display = f"{total_length:.1f} px ({length_meters:.2f} m)"
-                except Exception:
-                    pass
-
-            self.validity_length_label.setText(length_display)
+            scale = get_scale_factors(self.project)
+            scale_x = scale[0] if scale else None
+            self.validity_length_label.setText(format_with_metric(total_length, scale_x))
         else:
             self.validity_length_label.setText("—")
 

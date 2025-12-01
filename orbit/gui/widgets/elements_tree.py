@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 
 from orbit.models import Project, Junction, Signal
+from orbit.utils.enum_formatting import format_snake_case
 from orbit.gui.message_helpers import ask_yes_no
 
 
@@ -234,7 +235,7 @@ class ElementsTreeWidget(QWidget):
         display_name = obj.get_display_name()
 
         # Add category and road info
-        category = obj.type.get_category().replace('_', ' ').title()
+        category = format_snake_case(obj.type.get_category())
         road_info = ""
         if obj.road_id and self.project:
             road = self.project.get_road(obj.road_id)

@@ -16,6 +16,7 @@ from PyQt6.QtGui import QFont
 from orbit.models import Polyline, LineType, RoadMarkType
 from orbit.gui.base_dialog import BaseDialog
 from orbit.gui.message_helpers import show_info
+from orbit.gui.utils import set_combo_by_data
 
 
 class PolylinePropertiesDialog(BaseDialog):
@@ -91,16 +92,10 @@ class PolylinePropertiesDialog(BaseDialog):
     def load_properties(self):
         """Load polyline properties into the form."""
         # Set line type
-        for i in range(self.line_type_combo.count()):
-            if self.line_type_combo.itemData(i) == self.polyline.line_type:
-                self.line_type_combo.setCurrentIndex(i)
-                break
+        set_combo_by_data(self.line_type_combo, self.polyline.line_type)
 
         # Set road mark type
-        for i in range(self.road_mark_type_combo.count()):
-            if self.road_mark_type_combo.itemData(i) == self.polyline.road_mark_type:
-                self.road_mark_type_combo.setCurrentIndex(i)
-                break
+        set_combo_by_data(self.road_mark_type_combo, self.polyline.road_mark_type)
 
         # Load points coordinates
         self.load_points_text()

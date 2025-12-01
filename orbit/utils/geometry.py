@@ -893,6 +893,67 @@ def bezier_to_parampoly3(
     return (aU, bU, cU, dU, aV, bV, cV, dV)
 
 
+def calculate_directional_scale(
+    points: List[Tuple[float, float]],
+    scale_x: float,
+    scale_y: float,
+    default_scale: Optional[float] = None
+) -> float:
+    """
+    Calculate appropriate scale factor based on polyline direction.
+
+    For roads/polylines running primarily horizontal (east-west), weight scale_x more.
+    For roads/polylines running primarily vertical (north-south), weight scale_y more.
+    For diagonal roads, interpolate between scale_x and scale_y.
+
+    This accounts for non-uniform pixel scales in images where scale_x != scale_y.
+
+    Args:
+        points: List of (x, y) points defining the polyline.
+        scale_x: Scale factor for horizontal direction (m/px).
+        scale_y: Scale factor for vertical direction (m/px).
+        default_scale: Value to return if scale cannot be calculated.
+                      Defaults to average of scale_x and scale_y.
+
+    Returns:
+        Scale factor in meters per pixel appropriate for this polyline's direction.
+
+    Example:
+        scale = calculate_directional_scale(centerline.points, scale_x, scale_y)
+        width_m = width_px * scale
+    """
+    if len(points) < 2:
+        # Can't determine direction, use average or default
+        if default_scale is not None:
+            return default_scale
+        return (scale_x + scale_y) / 2
+
+    # Calculate total displacement in x and y
+    total_dx = 0.0
+    total_dy = 0.0
+    for i in range(len(points) - 1):
+        p1 = points[i]
+        p2 = points[i + 1]
+        dx = abs(p2[0] - p1[0])
+        dy = abs(p2[1] - p1[1])
+        total_dx += dx
+        total_dy += dy
+
+    # Calculate total distance
+    total_dist = total_dx + total_dy
+    if total_dist == 0:
+        if default_scale is not None:
+            return default_scale
+        return (scale_x + scale_y) / 2
+
+    # Calculate weights based on direction
+    weight_x = total_dx / total_dist
+    weight_y = total_dy / total_dist
+
+    # Interpolate between scale_x and scale_y based on direction
+    return weight_x * scale_x + weight_y * scale_y
+
+
 def sample_bezier(
     control_points: List[Tuple[float, float]],
     num_points: int = 20

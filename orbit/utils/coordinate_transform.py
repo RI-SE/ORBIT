@@ -22,6 +22,10 @@ import math
 from typing import List, Tuple, Optional, Dict
 from enum import Enum, auto
 
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class TransformMethod(Enum):
     """Transformation method for georeferencing."""
@@ -704,7 +708,7 @@ def create_transformer(
         else:
             return AffineTransformer(control_points, use_validation)
     except (ValueError, np.linalg.LinAlgError) as e:
-        print(f"Error creating transformer: {e}")
+        logger.error(f"Error creating transformer: {e}")
         return None
 
 

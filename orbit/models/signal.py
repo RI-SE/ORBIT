@@ -8,6 +8,8 @@ from enum import Enum, auto
 from typing import Optional, Tuple
 import uuid
 
+from orbit.utils.enum_formatting import format_enum_name
+
 
 class SignalType(Enum):
     """
@@ -220,7 +222,7 @@ class Signal:
             return self.name
         if self.type == SignalType.SPEED_LIMIT and self.value:
             return f"Speed {self.value} {self.speed_unit.value}"
-        return self.type.value.replace('_', ' ').title()
+        return format_enum_name(self.type)
 
     def get_orientation_ui_string(self) -> str:
         """

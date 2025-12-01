@@ -19,9 +19,12 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent
 from PyQt6.QtGui import QFont
 
+from orbit.utils.logging_config import get_logger
 from orbit.models import Project, ControlPoint
 from orbit.gui.base_dialog import BaseDialog
 from orbit.gui.message_helpers import show_error, show_warning, show_info, ask_yes_no
+
+logger = get_logger(__name__)
 
 
 class GeoreferenceDialog(BaseDialog):
@@ -698,8 +701,8 @@ class GeoreferenceDialog(BaseDialog):
                 try:
                     computed = datetime.fromisoformat(self.project.uncertainty_last_computed)
                     report.append(f"Computed: {computed.strftime('%Y-%m-%d %H:%M')}")
-                except:
-                    pass
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"Failed to parse uncertainty timestamp: {e}")
             report.append("")
 
             report.append("Position Uncertainty:")

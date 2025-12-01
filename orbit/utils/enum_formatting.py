@@ -4,8 +4,26 @@ Enum formatting utilities for ORBIT.
 Provides generic formatting functions for displaying enum values in the GUI.
 """
 
+import re
 from enum import Enum
 from typing import Dict, Optional
+
+
+def format_snake_case(value: str) -> str:
+    """
+    Format a snake_case string for human-readable display.
+
+    Args:
+        value: Snake_case string to format
+
+    Returns:
+        Title Case string with spaces
+
+    Example:
+        >>> format_snake_case('lane_boundary')
+        'Lane Boundary'
+    """
+    return value.replace('_', ' ').title()
 
 
 def format_enum_name(enum_value: Enum, custom_map: Optional[Dict[Enum, str]] = None) -> str:
@@ -41,11 +59,9 @@ def format_enum_name(enum_value: Enum, custom_map: Optional[Dict[Enum, str]] = N
     # Handle different naming conventions:
     # 1. snake_case: "lane_boundary" -> "Lane Boundary"
     if '_' in value:
-        return value.replace('_', ' ').title()
+        return format_snake_case(value)
 
     # 2. camelCase: "lowSpeed" -> "Low Speed"
-    # Insert space before capital letters and capitalize
-    import re
     # Insert space before each capital letter (except first)
     spaced = re.sub(r'(?<!^)(?=[A-Z])', ' ', value)
     return spaced.title()

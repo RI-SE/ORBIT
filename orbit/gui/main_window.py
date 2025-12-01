@@ -15,11 +15,15 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtGui import QAction, QKeySequence
 
+from orbit.utils.logging_config import get_logger
 from orbit.models import Project, LineType
 from .image_view import ImageView
+
 from .widgets.road_tree import RoadTreeWidget
 from .widgets.elements_tree import ElementsTreeWidget
 from .message_helpers import show_error, show_warning, show_info, ask_yes_no
+
+logger = get_logger(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -1182,14 +1186,14 @@ class MainWindow(QMainWindow):
             from orbit.export import create_transformer, TransformMethod
 
             if self.verbose:
-                print("\n" + "="*60)
-                print("SCALE CALCULATION DEBUG")
-                print("="*60)
-                print(f"Number of control points: {len(self.project.control_points)}")
-                print(f"Transform method: {self.project.transform_method}")
-                print("\nControl Points:")
+                logger.debug("="*60)
+                logger.debug("SCALE CALCULATION DEBUG")
+                logger.debug("="*60)
+                logger.debug(f"Number of control points: {len(self.project.control_points)}")
+                logger.debug(f"Transform method: {self.project.transform_method}")
+                logger.debug("Control Points:")
                 for i, cp in enumerate(self.project.control_points):
-                    print(f"  CP{i+1}: Pixel=({cp.pixel_x:.2f}, {cp.pixel_y:.2f}) -> "
+                    logger.debug(f"  CP{i+1}: Pixel=({cp.pixel_x:.2f}, {cp.pixel_y:.2f}) -> "
                           f"Geo=(Lon={cp.longitude:.6f}, Lat={cp.latitude:.6f}) "
                           f"Type={'GVP' if cp.is_validation else 'GCP'}")
 
@@ -1199,28 +1203,28 @@ class MainWindow(QMainWindow):
             if transformer is None:
                 self.scale_label.setText("Scale: N/A (transform failed)")
                 if self.verbose:
-                    print("ERROR: Transformer creation failed!")
+                    logger.error("Transformer creation failed!")
                 return
 
             # Get scale factors directly from the transformer
             avg_scale_x, avg_scale_y = transformer.get_scale_factor()
 
             if self.verbose:
-                print(f"\nScale factors from transformation:")
-                print(f"  X (horizontal): {avg_scale_x:.6f} m/px = {avg_scale_x*100:.4f} cm/px")
-                print(f"  Y (vertical):   {avg_scale_y:.6f} m/px = {avg_scale_y*100:.4f} cm/px")
+                logger.debug(f"Scale factors from transformation:")
+                logger.debug(f"  X (horizontal): {avg_scale_x:.6f} m/px = {avg_scale_x*100:.4f} cm/px")
+                logger.debug(f"  Y (vertical):   {avg_scale_y:.6f} m/px = {avg_scale_y*100:.4f} cm/px")
 
                 # Compute and display reprojection error
                 reproj_error = transformer.compute_reprojection_error()
                 if reproj_error:
-                    print(f"  Reprojection RMSE: {reproj_error['rmse_meters']:.3f} meters ({reproj_error['rmse_pixels']:.2f} pixels)")
+                    logger.debug(f"  Reprojection RMSE: {reproj_error['rmse_meters']:.3f} meters ({reproj_error['rmse_pixels']:.2f} pixels)")
 
                 # Compute and display validation error if validation points exist
                 val_error = transformer.compute_validation_error()
                 if val_error:
-                    print(f"  Validation RMSE: {val_error['rmse_meters']:.3f} meters ({val_error['rmse_pixels']:.2f} pixels)")
+                    logger.debug(f"  Validation RMSE: {val_error['rmse_meters']:.3f} meters ({val_error['rmse_pixels']:.2f} pixels)")
 
-                print("="*60 + "\n")
+                logger.debug("="*60)
 
             # Format scale nicely - show both X and Y
             def format_scale(scale):
@@ -1237,9 +1241,7 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             # Show actual error for debugging
-            import traceback
-            print(f"Scale calculation error: {e}")
-            traceback.print_exc()
+            logger.exception(f"Scale calculation error: {e}")
             self.scale_label.setText(f"Scale: Error ({str(e)[:20]})")
 
     # UI updates
@@ -2043,7 +2045,7 @@ class MainWindow(QMainWindow):
             return
 
         # Open lane properties dialog
-        if LanePropertiesDialog.edit_lane(lane, self.project, road_id, self):
+        if LanePropertiesDialog.edit_lane(lane, self.project, road_id, None, parent=self):
             # Properties were modified, update the view
             scale_factors = self.get_current_scale()
             self.image_view.update_road_lanes(road_id, scale_factors)
@@ -2082,7 +2084,7 @@ class MainWindow(QMainWindow):
         if not lane:
             return
         # Open lane properties dialog (without project/road_id since connecting roads are standalone)
-        if LanePropertiesDialog.edit_lane(lane, None, None, self):
+        if LanePropertiesDialog.edit_lane(lane, None, None, connecting_road, parent=self):
             # Properties were modified, update the view
             scale_factors = self.get_current_scale()
             self.image_view.update_connecting_road_graphics(connecting_road_id, scale_factors)

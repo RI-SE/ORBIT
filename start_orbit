@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
 from orbit.gui.main_window import MainWindow
+from orbit.utils import setup_logging
 
 
 def parse_arguments():
@@ -60,6 +61,9 @@ def main():
     """Main entry point for ORBIT application."""
     # Parse command line arguments
     args = parse_arguments()
+
+    # Initialize logging early
+    setup_logging(verbose=args.verbose)
 
     # Validate image path if provided
     image_path = None

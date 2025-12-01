@@ -9,7 +9,11 @@ import numpy as np
 from dataclasses import dataclass
 import math
 
+from orbit.utils.logging_config import get_logger
+from orbit.utils.geometry import calculate_directional_scale
 from orbit.models import Road, Polyline, Project, LineType
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -75,8 +79,8 @@ class LaneAnalyzer:
             return [], "No lane boundaries found"
 
         if verbose:
-            print(f"  Analyzing {len(boundaries)} lane boundaries for road {road.name}")
-            print(f"  Centerline: {len(centerline.points)} points")
+            logger.debug(f"  Analyzing {len(boundaries)} lane boundaries for road {road.name}")
+            logger.debug(f"  Centerline: {len(centerline.points)} points")
 
         # Calculate offsets for each boundary
         boundary_infos = []
@@ -87,7 +91,7 @@ class LaneAnalyzer:
                 std_offset = np.std(offsets)
 
                 if verbose:
-                    print(f"    Boundary {boundary.id[:8]}: avg_offset={avg_offset:.2f} px, std={std_offset:.2f} px")
+                    logger.debug(f"    Boundary {boundary.id[:8]}: avg_offset={avg_offset:.2f} px, std={std_offset:.2f} px")
 
                 boundary_info = BoundaryInfo(
                     polyline_id=boundary.id,
@@ -129,9 +133,9 @@ class LaneAnalyzer:
         centerline_points = np.array(centerline.points)
 
         if verbose:
-            print(f"\n    Calculating offsets for boundary {boundary.id[:8]}...")
-            print(f"    Centerline has {len(centerline_points)} points")
-            print(f"    Boundary has {len(boundary.points)} points")
+            logger.debug(f"Calculating offsets for boundary {boundary.id[:8]}...")
+            logger.debug(f"    Centerline has {len(centerline_points)} points")
+            logger.debug(f"    Boundary has {len(boundary.points)} points")
 
         for idx, boundary_point in enumerate(boundary.points):
             # Find nearest segment on centerline (using actual segment distance, not infinite line)
@@ -154,11 +158,11 @@ class LaneAnalyzer:
             offsets.append(signed_offset)
 
             if verbose and idx < 3:  # Show first 3 points for debugging
-                print(f"      Point {idx}: boundary=({boundary_point[0]:.1f}, {boundary_point[1]:.1f})")
+                logger.debug(f"      Point {idx}: boundary=({boundary_point[0]:.1f}, {boundary_point[1]:.1f})")
                 if best_segment:
                     seg_idx, seg_p1, seg_p2 = best_segment
-                    print(f"        Nearest centerline segment {seg_idx}: ({seg_p1[0]:.1f},{seg_p1[1]:.1f}) to ({seg_p2[0]:.1f},{seg_p2[1]:.1f})")
-                    print(f"        Calculated offset: {signed_offset:.2f} px (actual dist={min_dist:.2f} px)")
+                    logger.debug(f"        Nearest centerline segment {seg_idx}: ({seg_p1[0]:.1f},{seg_p1[1]:.1f}) to ({seg_p2[0]:.1f},{seg_p2[1]:.1f})")
+                    logger.debug(f"        Calculated offset: {signed_offset:.2f} px (actual dist={min_dist:.2f} px)")
 
         return offsets
 
@@ -369,9 +373,9 @@ class LaneAnalyzer:
 
         return " | ".join(warnings) if warnings else None
 
-    def _calculate_directional_scale(self, centerline: Polyline) -> float:
+    def _get_directional_scale(self, centerline: Polyline) -> float:
         """
-        Calculate appropriate scale factor based on road direction.
+        Get appropriate scale factor based on road direction.
 
         Args:
             centerline: The road's centerline polyline
@@ -385,36 +389,10 @@ class LaneAnalyzer:
             return 1.0
 
         scale_x, scale_y = self.scale_factors
-        centerline_points = centerline.points
-
-        if len(centerline_points) < 2:
-            # Can't determine direction, use average
-            return (scale_x + scale_y) / 2
-
-        # Calculate total displacement in x and y
-        total_dx = 0
-        total_dy = 0
-        for i in range(len(centerline_points) - 1):
-            p1 = centerline_points[i]
-            p2 = centerline_points[i + 1]
-            dx = abs(p2[0] - p1[0])
-            dy = abs(p2[1] - p1[1])
-            total_dx += dx
-            total_dy += dy
-
-        # Calculate total distance
-        total_dist = total_dx + total_dy
-        if total_dist == 0:
-            return (scale_x + scale_y) / 2
-
-        # Calculate weights based on direction
-        weight_x = total_dx / total_dist
-        weight_y = total_dy / total_dist
-
-        # Interpolate between scale_x and scale_y based on direction
-        directional_scale = weight_x * scale_x + weight_y * scale_y
-
-        return directional_scale
+        return calculate_directional_scale(
+            centerline.points, scale_x, scale_y,
+            default_scale=(scale_x + scale_y) / 2
+        )
 
     def suggest_lane_widths(self, road: Road, verbose: bool = False) -> Optional[Dict[str, float]]:
         """
@@ -431,8 +409,8 @@ class LaneAnalyzer:
 
         if not boundary_infos:
             if verbose:
-                print(f"\nLANE WIDTH MEASUREMENT: {road.name}")
-                print("  No boundary infos found")
+                logger.debug(f"LANE WIDTH MEASUREMENT: {road.name}")
+                logger.debug("  No boundary infos found")
             return None
 
         # Collect all measured widths (currently in pixels)
@@ -440,49 +418,49 @@ class LaneAnalyzer:
 
         if not widths_px:
             if verbose:
-                print(f"\nLANE WIDTH MEASUREMENT: {road.name}")
-                print("  No widths calculated from boundaries")
+                logger.debug(f"LANE WIDTH MEASUREMENT: {road.name}")
+                logger.debug("  No widths calculated from boundaries")
             return None
 
         # Convert pixel widths to meters using directional scale
         centerline = self.polyline_map.get(road.centerline_id)
         if not centerline:
             if verbose:
-                print(f"\nLANE WIDTH MEASUREMENT: {road.name}")
-                print("  No centerline found")
+                logger.debug(f"LANE WIDTH MEASUREMENT: {road.name}")
+                logger.debug("  No centerline found")
             return None
 
-        scale = self._calculate_directional_scale(centerline)
+        scale = self._get_directional_scale(centerline)
 
         if verbose:
-            print(f"\n{'='*60}")
-            print(f"LANE WIDTH MEASUREMENT: {road.name} (ID: {road.id[:8]}...)")
-            print(f"{'='*60}")
-            print(f"  Boundary analysis:")
-            print(f"    Found {len(boundary_infos)} boundaries")
-            print(f"    {len(widths_px)} have measured widths")
+            logger.debug(f"{'='*60}")
+            logger.debug(f"LANE WIDTH MEASUREMENT: {road.name} (ID: {road.id[:8]}...)")
+            logger.debug(f"{'='*60}")
+            logger.debug(f"  Boundary analysis:")
+            logger.debug(f"    Found {len(boundary_infos)} boundaries")
+            logger.debug(f"    {len(widths_px)} have measured widths")
 
             # Show individual boundary info
             for i, info in enumerate(boundary_infos):
                 side = "left" if info.avg_offset > 0 else "right"
-                print(f"    Boundary {i+1} ({side}):")
-                print(f"      Average offset: {info.avg_offset:.2f} px")
+                logger.debug(f"    Boundary {i+1} ({side}):")
+                logger.debug(f"      Average offset: {info.avg_offset:.2f} px")
                 if info.measured_width is not None:
-                    print(f"      Measured width: {info.measured_width:.2f} px")
+                    logger.debug(f"      Measured width: {info.measured_width:.2f} px")
 
-            print(f"\n  Scale calculation:")
+            logger.debug(f"  Scale calculation:")
             if self.scale_factors:
                 scale_x, scale_y = self.scale_factors
-                print(f"    Scale X (horizontal): {scale_x:.6f} m/px = {scale_x*100:.4f} cm/px")
-                print(f"    Scale Y (vertical):   {scale_y:.6f} m/px = {scale_y*100:.4f} cm/px")
-                print(f"    Directional scale:    {scale:.6f} m/px = {scale*100:.4f} cm/px")
+                logger.debug(f"    Scale X (horizontal): {scale_x:.6f} m/px = {scale_x*100:.4f} cm/px")
+                logger.debug(f"    Scale Y (vertical):   {scale_y:.6f} m/px = {scale_y*100:.4f} cm/px")
+                logger.debug(f"    Directional scale:    {scale:.6f} m/px = {scale*100:.4f} cm/px")
             else:
-                print(f"    No georeferencing - scale: {scale:.6f} (placeholder)")
+                logger.debug(f"    No georeferencing - scale: {scale:.6f} (placeholder)")
 
-            print(f"\n  Width measurements:")
-            print(f"    In pixels:")
+            logger.debug(f"  Width measurements:")
+            logger.debug(f"    In pixels:")
             for i, w_px in enumerate(widths_px):
-                print(f"      Width {i+1}: {w_px:.2f} px")
+                logger.debug(f"      Width {i+1}: {w_px:.2f} px")
 
         # Convert from pixels to meters
         # Use transformer if available for more accurate conversion (especially for homography)
@@ -510,23 +488,23 @@ class LaneAnalyzer:
                     widths_m.append(width_m)
 
             if verbose and widths_m:
-                print(f"    In meters (using transformer for accurate conversion):")
+                logger.debug(f"    In meters (using transformer for accurate conversion):")
                 for i, w_m in enumerate(widths_m):
-                    print(f"      Width {i+1}: {w_m:.3f} m (perspective-corrected)")
+                    logger.debug(f"      Width {i+1}: {w_m:.3f} m (perspective-corrected)")
         else:
             # Fallback to scale factor method
             widths_m = [w * scale for w in widths_px]
 
             if verbose:
-                print(f"    In meters (using scale factor approximation):")
+                logger.debug(f"    In meters (using scale factor approximation):")
                 for i, w_m in enumerate(widths_m):
-                    print(f"      Width {i+1}: {w_m:.3f} m = {widths_px[i]:.2f} px × {scale:.6f} m/px")
-            print(f"\n  Summary:")
-            print(f"    Average: {np.mean(widths_m):.3f} m")
-            print(f"    Min:     {np.min(widths_m):.3f} m")
-            print(f"    Max:     {np.max(widths_m):.3f} m")
-            print(f"    Std Dev: {np.std(widths_m):.3f} m")
-            print(f"{'='*60}\n")
+                    logger.debug(f"      Width {i+1}: {w_m:.3f} m = {widths_px[i]:.2f} px × {scale:.6f} m/px")
+                logger.debug(f"  Summary:")
+                logger.debug(f"    Average: {np.mean(widths_m):.3f} m")
+                logger.debug(f"    Min:     {np.min(widths_m):.3f} m")
+                logger.debug(f"    Max:     {np.max(widths_m):.3f} m")
+                logger.debug(f"    Std Dev: {np.std(widths_m):.3f} m")
+                logger.debug(f"{'='*60}")
 
         return {
             'average': float(np.mean(widths_m)),

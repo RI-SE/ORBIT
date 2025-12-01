@@ -17,7 +17,7 @@ from PyQt6.QtGui import (
 )
 
 from orbit.models import Polyline, Project, Junction, LineType, RoadMarkType, Road, Signal, RoadObject, ObjectType
-from orbit.utils.geometry import create_lane_polygon
+from orbit.utils.geometry import create_lane_polygon, calculate_directional_scale
 from orbit.gui.signal_graphics_item import SignalGraphicsItem
 from orbit.gui.object_graphics_item import ObjectGraphicsItem
 from orbit.gui.message_helpers import show_warning, ask_yes_no
@@ -652,9 +652,9 @@ class RoadLanesGraphicsItem:
 
         self.update_graphics()
 
-    def _calculate_directional_scale(self) -> float:
+    def _get_directional_scale(self) -> float:
         """
-        Calculate the appropriate scale factor based on road direction.
+        Get the appropriate scale factor based on road direction.
 
         For roads running primarily horizontal (east-west), use scale_x.
         For roads running primarily vertical (north-south), use scale_y.
@@ -668,39 +668,10 @@ class RoadLanesGraphicsItem:
             return self.DEFAULT_SCALE
 
         scale_x, scale_y = self.scale_factors
-
-        # Calculate dominant direction of the road from centerline
-        centerline_points = self.centerline.points
-        if len(centerline_points) < 2:
-            # Can't determine direction, use average
-            return (scale_x + scale_y) / 2
-
-        # Calculate total displacement in x and y
-        total_dx = 0
-        total_dy = 0
-        for i in range(len(centerline_points) - 1):
-            p1 = centerline_points[i]
-            p2 = centerline_points[i + 1]
-            dx = abs(p2[0] - p1[0])
-            dy = abs(p2[1] - p1[1])
-            total_dx += dx
-            total_dy += dy
-
-        # Calculate total distance
-        total_dist = total_dx + total_dy
-        if total_dist == 0:
-            return (scale_x + scale_y) / 2
-
-        # Calculate weights based on direction
-        # weight_x: proportion of horizontal movement
-        # weight_y: proportion of vertical movement
-        weight_x = total_dx / total_dist
-        weight_y = total_dy / total_dist
-
-        # Interpolate between scale_x and scale_y based on direction
-        directional_scale = weight_x * scale_x + weight_y * scale_y
-
-        return directional_scale
+        return calculate_directional_scale(
+            self.centerline.points, scale_x, scale_y,
+            default_scale=self.DEFAULT_SCALE
+        )
 
     def update_graphics(self):
         """Update all lane graphics based on current road configuration."""
@@ -719,7 +690,7 @@ class RoadLanesGraphicsItem:
         centerline_points = self.centerline.points
 
         # Calculate directional scale
-        scale = self._calculate_directional_scale()
+        scale = self._get_directional_scale()
 
         # Verbose output for debugging
         if self.verbose:

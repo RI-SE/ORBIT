@@ -376,7 +376,7 @@ class RoadTreeWidget(QWidget):
         if road:
             lane = road.get_lane(lane_id)
             if lane:
-                if LanePropertiesDialog.edit_lane(lane, self.project, road_id, self):
+                if LanePropertiesDialog.edit_lane(lane, self.project, road_id, None, parent=self):
                     # Lane was modified, refresh displays
                     self.road_modified.emit(road_id)
                     self.refresh_tree()

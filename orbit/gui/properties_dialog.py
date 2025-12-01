@@ -15,6 +15,7 @@ from PyQt6.QtCore import Qt
 
 from orbit.models import Road, RoadType, LaneInfo, Project, LineType
 from orbit.utils import format_enum_name
+from orbit.gui.utils import set_combo_by_data
 
 
 class RoadPropertiesDialog(QDialog):
@@ -230,10 +231,7 @@ class RoadPropertiesDialog(QDialog):
         self.name_edit.setText(self.road.name)
 
         # Set road type
-        for i in range(self.road_type_combo.count()):
-            if self.road_type_combo.itemData(i) == self.road.road_type:
-                self.road_type_combo.setCurrentIndex(i)
-                break
+        set_combo_by_data(self.road_type_combo, self.road.road_type)
 
         # Set speed limit
         if self.road.speed_limit is not None:
@@ -245,10 +243,7 @@ class RoadPropertiesDialog(QDialog):
         if self.project and hasattr(self, 'centerline_combo'):
             # If road already has a centerline_id set, select it
             if self.road.centerline_id:
-                for i in range(self.centerline_combo.count()):
-                    if self.centerline_combo.itemData(i) == self.road.centerline_id:
-                        self.centerline_combo.setCurrentIndex(i)
-                        break
+                set_combo_by_data(self.centerline_combo, self.road.centerline_id)
             else:
                 # Auto-select if there's exactly one centerline polyline
                 centerline_polylines = []
@@ -260,38 +255,23 @@ class RoadPropertiesDialog(QDialog):
                 if len(centerline_polylines) == 1:
                     # Auto-select the single centerline
                     single_centerline_id = centerline_polylines[0]
-                    for i in range(self.centerline_combo.count()):
-                        if self.centerline_combo.itemData(i) == single_centerline_id:
-                            self.centerline_combo.setCurrentIndex(i)
-                            break
+                    set_combo_by_data(self.centerline_combo, single_centerline_id)
 
         # Set road links (if project available)
         if self.project and hasattr(self, 'predecessor_combo'):
             # Set predecessor
             if self.road.predecessor_id:
-                for i in range(self.predecessor_combo.count()):
-                    if self.predecessor_combo.itemData(i) == self.road.predecessor_id:
-                        self.predecessor_combo.setCurrentIndex(i)
-                        break
+                set_combo_by_data(self.predecessor_combo, self.road.predecessor_id)
 
             # Set predecessor contact point
-            for i in range(self.predecessor_contact_combo.count()):
-                if self.predecessor_contact_combo.itemData(i) == self.road.predecessor_contact:
-                    self.predecessor_contact_combo.setCurrentIndex(i)
-                    break
+            set_combo_by_data(self.predecessor_contact_combo, self.road.predecessor_contact)
 
             # Set successor
             if self.road.successor_id:
-                for i in range(self.successor_combo.count()):
-                    if self.successor_combo.itemData(i) == self.road.successor_id:
-                        self.successor_combo.setCurrentIndex(i)
-                        break
+                set_combo_by_data(self.successor_combo, self.road.successor_id)
 
             # Set successor contact point
-            for i in range(self.successor_contact_combo.count()):
-                if self.successor_contact_combo.itemData(i) == self.road.successor_contact:
-                    self.successor_contact_combo.setCurrentIndex(i)
-                    break
+            set_combo_by_data(self.successor_contact_combo, self.road.successor_contact)
 
         # Set lane info
         self.left_lanes_spin.setValue(self.road.lane_info.left_count)

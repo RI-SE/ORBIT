@@ -11,11 +11,14 @@ from pathlib import Path
 import json
 from datetime import datetime
 
+from orbit.utils.logging_config import get_logger
 from .polyline import Polyline
 from .road import Road
 from .junction import Junction
 from .signal import Signal
 from .object import RoadObject
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -341,7 +344,7 @@ class Project:
         # Migration from v0.2.x/v0.3.0 to v0.3.1
         if version.startswith('0.2') or version.startswith('0.1') or version == '0.3.0':
             if version != '0.3.0':
-                print(f"Migrating project from version {version} to 0.3.1...")
+                logger.info(f"Migrating project from version {version} to 0.3.1...")
             # Junction.from_dict() handles backward compatibility automatically
             # by providing empty lists for new fields (connecting_roads, lane_connections)
             # Polyline.from_dict() handles osm_node_ids (optional field, defaults to None)
@@ -349,8 +352,8 @@ class Project:
             metadata['version'] = '0.3.1'
             data['metadata'] = metadata
             if version != '0.3.0':
-                print("Migration complete. Junctions will have empty connection lists.")
-                print("Use 'Auto-Generate Connections' in junction dialogs to populate connections.")
+                logger.info("Migration complete. Junctions will have empty connection lists.")
+                logger.info("Use 'Auto-Generate Connections' in junction dialogs to populate connections.")
 
         image_path = data.get('image_path')
         if image_path:

@@ -8,7 +8,7 @@ from typing import Optional, List, Tuple
 import math
 
 from PyQt6.QtWidgets import (
-    QFormLayout, QPushButton, QLabel, QComboBox, QGroupBox
+    QDialog, QFormLayout, QPushButton, QLabel, QComboBox, QGroupBox
 )
 from PyQt6.QtCore import Qt
 

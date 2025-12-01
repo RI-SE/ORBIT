@@ -8,6 +8,8 @@ from enum import Enum
 from typing import Optional, Tuple, List, Dict, Any
 import uuid
 
+from orbit.utils.enum_formatting import format_enum_name
+
 
 class ObjectType(Enum):
     """
@@ -208,7 +210,7 @@ class RoadObject:
         """Get display name for UI."""
         if self.name:
             return self.name
-        return self.type.value.replace('_', ' ').title()
+        return format_enum_name(self.type)
 
     def calculate_s_t_position(self, centerline_points: List[Tuple[float, float]]) -> Tuple[Optional[float], Optional[float]]:
         """

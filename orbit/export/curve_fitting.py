@@ -10,6 +10,10 @@ from enum import Enum
 from dataclasses import dataclass
 from scipy.optimize import least_squares
 
+from orbit.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class GeometryType(Enum):
     """Types of geometry elements in OpenDrive."""
@@ -290,8 +294,8 @@ class CurveFitter:
             if result.success:
                 cx, cy, r = result.x
                 return np.array([cx, cy]), abs(r)
-        except:
-            pass
+        except (ValueError, RuntimeError, np.linalg.LinAlgError) as e:
+            logger.debug(f"Circle fitting failed: {e}")
 
         return None
 
