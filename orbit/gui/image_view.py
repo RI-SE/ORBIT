@@ -450,15 +450,15 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
         self.is_selected = False
         self.is_connecting_road = is_connecting_road
 
-        # Choose base color based on lane side
-        if lane_id > 0:
-            # Right-hand lanes: light green
+        # Choose base color based on lane side (OpenDRIVE convention)
+        if lane_id < 0:
+            # Right lanes (negative IDs in OpenDRIVE): light green
             self.base_color = QColor(100, 255, 100)
-        elif lane_id < 0:
-            # Left-hand lanes: light blue
+        elif lane_id > 0:
+            # Left lanes (positive IDs in OpenDRIVE): light blue
             self.base_color = QColor(100, 180, 255)
         else:
-            # Center lane
+            # Center lane (ID = 0)
             self.base_color = QColor(200, 200, 200)
 
         # Set appearance
@@ -594,15 +594,15 @@ class LaneGraphicsItem:
         for x, y in self.polygon_points:
             polygon.append(QPointF(x, y))
 
-        # Choose color based on lane side
-        if self.lane_number > 0:
-            # Right-hand lanes: light green
-            color = QColor(100, 255, 100, 77)  # Updated to ~30% alpha
-        elif self.lane_number < 0:
-            # Left-hand lanes: light blue
-            color = QColor(100, 180, 255, 77)  # Updated to ~30% alpha
+        # Choose color based on lane side (OpenDRIVE convention)
+        if self.lane_number < 0:
+            # Right lanes (negative IDs in OpenDRIVE): light green
+            color = QColor(100, 255, 100, 77)  # ~30% alpha
+        elif self.lane_number > 0:
+            # Left lanes (positive IDs in OpenDRIVE): light blue
+            color = QColor(100, 180, 255, 77)  # ~30% alpha
         else:
-            # Center lane (shouldn't happen, but handle it)
+            # Center lane (ID = 0)
             color = QColor(200, 200, 200, 77)
 
         # Create pen for lane divider
@@ -780,15 +780,17 @@ class RoadLanesGraphicsItem:
                 lane_width_m = lane.width
                 lane_width_px = lane_width_m / scale
 
-                # Determine inner and outer offsets
+                # Determine inner and outer offsets based on lane ID
+                # OpenDRIVE: positive IDs = left lanes, negative IDs = right lanes
+                # Screen coords: positive offset = right side, negative offset = left side
                 if lane.id > 0:
-                    # Right-hand lane
-                    inner_offset = (lane.id - 1) * lane_width_px
-                    outer_offset = lane.id * lane_width_px
+                    # Left-hand lane (positive ID): negative offset to place on left side
+                    inner_offset = -(lane.id - 1) * lane_width_px
+                    outer_offset = -lane.id * lane_width_px
                 else:
-                    # Left-hand lane
-                    inner_offset = -(abs(lane.id) - 1) * lane_width_px
-                    outer_offset = -abs(lane.id) * lane_width_px
+                    # Right-hand lane (negative ID): positive offset to place on right side
+                    inner_offset = (abs(lane.id) - 1) * lane_width_px
+                    outer_offset = abs(lane.id) * lane_width_px
 
                 # Create polygon for this lane section
                 polygon_points = create_lane_polygon(
@@ -858,7 +860,8 @@ class RoadLanesGraphicsItem:
             print(f"    {total_width_px:.2f} pixels = {total_width_px * scale:.3f} m")
             print(f"{'='*60}\n")
 
-        # Create right-hand lanes (positive IDs: 1, 2, 3, ...)
+        # Create right-hand lanes (negative IDs in OpenDRIVE: -1, -2, -3, ...)
+        # Use POSITIVE offsets to place on right side (in screen coords: positive = right)
         for lane_num in range(1, right_count + 1):
             inner_offset = (lane_num - 1) * lane_width_px
             outer_offset = lane_num * lane_width_px
@@ -871,10 +874,11 @@ class RoadLanesGraphicsItem:
             )
 
             if polygon_points:
-                lane_item = LaneGraphicsItem(lane_num, polygon_points, self.scene)
+                lane_item = LaneGraphicsItem(-lane_num, polygon_points, self.scene)
                 self.lane_items.append(lane_item)
 
-        # Create left-hand lanes (negative IDs: -1, -2, -3, ...)
+        # Create left-hand lanes (positive IDs in OpenDRIVE: 1, 2, 3, ...)
+        # Use NEGATIVE offsets to place on left side (in screen coords: negative = left)
         for lane_num in range(1, left_count + 1):
             inner_offset = -(lane_num - 1) * lane_width_px
             outer_offset = -lane_num * lane_width_px
@@ -887,7 +891,7 @@ class RoadLanesGraphicsItem:
             )
 
             if polygon_points:
-                lane_item = LaneGraphicsItem(-lane_num, polygon_points, self.scene)
+                lane_item = LaneGraphicsItem(lane_num, polygon_points, self.scene)
                 self.lane_items.append(lane_item)
 
     def remove(self):

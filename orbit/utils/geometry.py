@@ -13,8 +13,10 @@ def calculate_perpendicular(p1: Tuple[float, float], p2: Tuple[float, float]) ->
     """
     Calculate normalized perpendicular vector for a line segment.
 
-    The perpendicular is rotated 90° counterclockwise from the segment direction.
-    This means for a segment going right, the perpendicular points up.
+    The perpendicular is rotated 90° counterclockwise from the segment direction
+    in mathematical coordinates. In screen coordinates (Y-down), this means:
+    - For a segment going right (positive X), perpendicular points down (positive Y)
+    - Positive offset along this perpendicular = right side of direction of travel
 
     Args:
         p1: First point (x, y)
@@ -67,7 +69,9 @@ def calculate_offset_polyline(points: List[Tuple[float, float]],
 
     Args:
         points: List of (x, y) points defining the polyline
-        offset_distance: Distance to offset (positive = left/counterclockwise, negative = right/clockwise)
+        offset_distance: Distance to offset. In screen coordinates (Y-down):
+                        positive = right side of direction of travel,
+                        negative = left side of direction of travel
         closed: Whether the polyline is closed (connects last to first)
 
     Returns:

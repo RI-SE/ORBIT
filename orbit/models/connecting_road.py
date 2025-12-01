@@ -170,6 +170,7 @@ class ConnectingRoad:
         polygons = {}
 
         # Create right-hand lanes (negative IDs in OpenDRIVE: -1, -2, -3, ...)
+        # Use POSITIVE offsets to place on right side (in screen coords: positive = right)
         for lane_num in range(1, self.lane_count_right + 1):
             inner_offset = (lane_num - 1) * lane_width_px
             outer_offset = lane_num * lane_width_px
@@ -182,9 +183,10 @@ class ConnectingRoad:
             )
 
             if polygon_points and len(polygon_points) >= 3:
-                polygons[-lane_num] = polygon_points  # Use negative ID for right lanes
+                polygons[-lane_num] = polygon_points  # Negative ID for right lanes
 
         # Create left-hand lanes (positive IDs in OpenDRIVE: 1, 2, 3, ...)
+        # Use NEGATIVE offsets to place on left side (in screen coords: negative = left)
         for lane_num in range(1, self.lane_count_left + 1):
             inner_offset = -(lane_num - 1) * lane_width_px
             outer_offset = -lane_num * lane_width_px
@@ -197,7 +199,7 @@ class ConnectingRoad:
             )
 
             if polygon_points and len(polygon_points) >= 3:
-                polygons[lane_num] = polygon_points  # Use positive ID for left lanes
+                polygons[lane_num] = polygon_points  # Positive ID for left lanes
 
         return polygons
 
