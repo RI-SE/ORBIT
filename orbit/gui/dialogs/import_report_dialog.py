@@ -89,6 +89,7 @@ def format_opendrive_import_result(result) -> str:
 
     stats = [
         ("Roads imported", result.roads_imported),
+        ("Connecting roads imported", result.connecting_roads_imported),
         ("Polylines imported", result.polylines_imported),
         ("Junctions imported", result.junctions_imported),
         ("Signals imported", result.signals_imported),

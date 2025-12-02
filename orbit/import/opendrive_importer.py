@@ -16,6 +16,7 @@ from orbit.models.road import RoadType, LaneInfo
 from orbit.models.lane import Lane, LaneType as ORBITLaneType
 from orbit.models.lane_section import LaneSection
 from orbit.models.junction import JunctionConnection
+from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.signal import SignalType, SpeedUnit
 from orbit.models.object import ObjectType
 
@@ -47,6 +48,7 @@ class ImportResult:
 
     # Imported counts
     roads_imported: int = 0
+    connecting_roads_imported: int = 0
     junctions_imported: int = 0
     signals_imported: int = 0
     objects_imported: int = 0
@@ -109,6 +111,9 @@ class OpenDriveImporter:
         # Track imported OpenDrive IDs for duplicate detection
         self.imported_odr_road_ids: Set[str] = set()
 
+        # Pending connecting roads (deferred until after junction import)
+        self.pending_connecting_roads: List[Dict] = []
+
     def import_from_file(
         self,
         file_path: str,
@@ -128,6 +133,12 @@ class OpenDriveImporter:
             options = ImportOptions()
 
         result = ImportResult()
+
+        # Clear state from previous imports
+        self.pending_connecting_roads.clear()
+        self.odr_road_to_orbit.clear()
+        self.odr_junction_to_orbit.clear()
+        self.imported_odr_road_ids.clear()
 
         # Step 1: Parse OpenDrive file
         if options.verbose:
@@ -200,7 +211,7 @@ class OpenDriveImporter:
             self.project.signals.clear()
             self.project.objects.clear()
 
-        # Step 4: Import roads
+        # Step 4: Import roads (connecting roads are deferred)
         for odr_road in self.odr_data.roads:
             if self._should_skip_road(odr_road, options):
                 result.roads_skipped_duplicate += 1
@@ -209,11 +220,13 @@ class OpenDriveImporter:
             try:
                 road_result = self._import_road(odr_road, options)
                 if road_result:
-                    result.roads_imported += 1
-                    result.polylines_imported += road_result['polylines_count']
-                    result.geometry_conversions.extend(road_result['conversions'])
-                    if road_result['has_elevation']:
-                        result.elevation_profiles_imported += 1
+                    # Connecting roads are counted separately after junction import
+                    if not road_result.get('is_connecting_road', False):
+                        result.roads_imported += 1
+                        result.polylines_imported += road_result['polylines_count']
+                        result.geometry_conversions.extend(road_result['conversions'])
+                        if road_result['has_elevation']:
+                            result.elevation_profiles_imported += 1
 
             except Exception as e:
                 result.warnings.append(f"Failed to import road {odr_road.id}: {e}")
@@ -233,6 +246,17 @@ class OpenDriveImporter:
             self._assign_junction_center_points(result)
         except Exception as e:
             result.warnings.append(f"Failed to assign junction center points: {e}")
+
+        # Step 5c: Process deferred connecting roads (now that junctions exist)
+        for pending in self.pending_connecting_roads:
+            try:
+                if self._import_connecting_road(pending, options, result):
+                    result.connecting_roads_imported += 1
+            except Exception as e:
+                odr_road = pending['odr_road']
+                result.warnings.append(f"Failed to import connecting road {odr_road.id}: {e}")
+                if options.verbose:
+                    print(f"Error importing connecting road {odr_road.id}: {e}")
 
         # Step 6: Import signals and objects
         for odr_road in self.odr_data.roads:
@@ -287,11 +311,27 @@ class OpenDriveImporter:
         """
         Import a single road from OpenDrive.
 
+        Connecting roads (roads with junction attribute != -1) are deferred for
+        processing after junctions are imported.
+
         Returns:
             Dict with import statistics, or None if failed
         """
         if not odr_road.geometry:
             return None
+
+        # Check if this is a connecting road (belongs to a junction)
+        is_connecting_road = odr_road.junction_id and odr_road.junction_id != "-1"
+
+        if is_connecting_road:
+            # Defer connecting road for processing after junctions are imported
+            self._defer_connecting_road(odr_road, options)
+            return {
+                'polylines_count': 0,
+                'conversions': [],
+                'has_elevation': False,
+                'is_connecting_road': True
+            }
 
         # Convert geometry to polyline points (metric)
         points_metric, conversions = self.geom_converter.convert_geometry_to_polyline(odr_road.geometry)
@@ -350,9 +390,6 @@ class OpenDriveImporter:
             road.successor_id = odr_road.successor_id  # Will be resolved later
             road.successor_contact = odr_road.successor_contact or "start"
 
-        if odr_road.junction_id and odr_road.junction_id != "-1":
-            road.junction_id = odr_road.junction_id  # Will be resolved later
-
         # Store elevation profile for round-trip preservation
         if odr_road.elevation_profile and odr_road.elevation_profile.elevations:
             road.elevation_profile = odr_road.elevation_profile.elevations
@@ -379,6 +416,269 @@ class OpenDriveImporter:
             'conversions': conversions,
             'has_elevation': has_elevation
         }
+
+    def _defer_connecting_road(self, odr_road: ODRRoad, options: ImportOptions) -> None:
+        """
+        Defer a connecting road for processing after junctions are imported.
+
+        Stores the raw OpenDrive data including geometry parameters (paramPoly3).
+        """
+        from .opendrive_parser import GeometryType
+
+        # Extract paramPoly3 coefficients if available
+        param_poly3_data = None
+        if odr_road.geometry and len(odr_road.geometry) == 1:
+            geom = odr_road.geometry[0]
+            if geom.geometry_type == GeometryType.PARAM_POLY3:
+                param_poly3_data = {
+                    'aU': geom.params.get('aU', 0.0),
+                    'bU': geom.params.get('bU', 0.0),
+                    'cU': geom.params.get('cU', 0.0),
+                    'dU': geom.params.get('dU', 0.0),
+                    'aV': geom.params.get('aV', 0.0),
+                    'bV': geom.params.get('bV', 0.0),
+                    'cV': geom.params.get('cV', 0.0),
+                    'dV': geom.params.get('dV', 0.0),
+                    'pRange': geom.params.get('pRange', 'arcLength'),
+                    'x': geom.x,
+                    'y': geom.y,
+                    'hdg': geom.hdg,
+                    'length': geom.length
+                }
+
+        # Convert geometry to polyline points for visualization
+        points_metric, _ = self.geom_converter.convert_geometry_to_polyline(odr_road.geometry)
+        points_pixel = batch_metric_to_pixel(points_metric, self.coord_transform) if points_metric else []
+
+        # Store for later processing
+        self.pending_connecting_roads.append({
+            'odr_road': odr_road,
+            'junction_id': odr_road.junction_id,
+            'param_poly3': param_poly3_data,
+            'points_pixel': points_pixel,
+            'options': options
+        })
+
+    def _import_connecting_road(
+        self,
+        pending: Dict,
+        options: ImportOptions,
+        result: ImportResult
+    ) -> bool:
+        """
+        Import a deferred connecting road and add it to its parent junction.
+
+        Args:
+            pending: Pending connecting road data from _defer_connecting_road
+            options: Import options
+            result: Import result for warnings
+
+        Returns:
+            True if successfully imported, False otherwise
+        """
+        odr_road: ODRRoad = pending['odr_road']
+        junction_odr_id = pending['junction_id']
+        param_poly3 = pending['param_poly3']
+        points_pixel = pending['points_pixel']
+
+        if not points_pixel or len(points_pixel) < 2:
+            result.warnings.append(
+                f"Connecting road {odr_road.id}: insufficient geometry points"
+            )
+            return False
+
+        # Find the parent junction by OpenDrive ID
+        junction_orbit_id = self.odr_junction_to_orbit.get(junction_odr_id)
+        if not junction_orbit_id:
+            result.warnings.append(
+                f"Connecting road {odr_road.id}: junction {junction_odr_id} not found"
+            )
+            return False
+
+        junction = self.project.get_junction(junction_orbit_id)
+        if not junction:
+            result.warnings.append(
+                f"Connecting road {odr_road.id}: junction {junction_orbit_id} not in project"
+            )
+            return False
+
+        # Get predecessor/successor road IDs (map ODR IDs to ORBIT IDs)
+        predecessor_orbit_id = ""
+        successor_orbit_id = ""
+        contact_point_start = "end"
+        contact_point_end = "start"
+
+        if odr_road.predecessor_type == "road" and odr_road.predecessor_id:
+            predecessor_orbit_id = self.odr_road_to_orbit.get(odr_road.predecessor_id, "")
+            contact_point_start = odr_road.predecessor_contact or "end"
+
+        if odr_road.successor_type == "road" and odr_road.successor_id:
+            successor_orbit_id = self.odr_road_to_orbit.get(odr_road.successor_id, "")
+            contact_point_end = odr_road.successor_contact or "start"
+
+        # Determine lane counts from lane sections
+        lane_count_left = 0
+        lane_count_right = 0
+        lane_width = 3.5  # Default
+
+        if odr_road.lane_sections:
+            first_section = odr_road.lane_sections[0]
+            for odr_lane in first_section.left_lanes:
+                if odr_lane.type in ("driving", "biking", "sidewalk", "parking"):
+                    lane_count_left += 1
+            for odr_lane in first_section.right_lanes:
+                if odr_lane.type in ("driving", "biking", "sidewalk", "parking"):
+                    lane_count_right += 1
+
+            # Get lane width from first non-center lane
+            all_lanes = first_section.left_lanes + first_section.right_lanes
+            for odr_lane in all_lanes:
+                if odr_lane.widths:
+                    lane_width = odr_lane.widths[0].a
+                    break
+
+        # Ensure at least one lane
+        if lane_count_left == 0 and lane_count_right == 0:
+            lane_count_right = 1
+
+        # Create connecting road
+        connecting_road = ConnectingRoad(
+            id=str(uuid.uuid4()),
+            path=points_pixel,
+            lane_count_left=lane_count_left,
+            lane_count_right=lane_count_right,
+            lane_width=lane_width,
+            predecessor_road_id=predecessor_orbit_id,
+            successor_road_id=successor_orbit_id,
+            contact_point_start=contact_point_start,
+            contact_point_end=contact_point_end
+        )
+
+        # Set paramPoly3 geometry if available
+        if param_poly3:
+            connecting_road.geometry_type = "parampoly3"
+            connecting_road.aU = param_poly3['aU']
+            connecting_road.bU = param_poly3['bU']
+            connecting_road.cU = param_poly3['cU']
+            connecting_road.dU = param_poly3['dU']
+            connecting_road.aV = param_poly3['aV']
+            connecting_road.bV = param_poly3['bV']
+            connecting_road.cV = param_poly3['cV']
+            connecting_road.dV = param_poly3['dV']
+            connecting_road.p_range = param_poly3['length']
+            connecting_road.p_range_normalized = (param_poly3['pRange'] == 'normalized')
+            # Store the starting heading for export
+            connecting_road.stored_start_heading = param_poly3['hdg']
+        else:
+            connecting_road.geometry_type = "polyline"
+
+        # Initialize lanes from the lane count
+        connecting_road.ensure_lanes_initialized()
+
+        # Import lane properties if available
+        if odr_road.lane_sections:
+            self._import_connecting_road_lanes(connecting_road, odr_road.lane_sections[0])
+
+            # Calculate lane_width_start and lane_width_end from polynomial
+            # Use the first non-center lane's width polynomial
+            road_length = odr_road.length  # Length in meters
+            for lane in connecting_road.lanes:
+                if lane.id != 0:  # Skip center lane
+                    # Calculate width at start (ds=0) and end (ds=road_length)
+                    width_start = lane.width  # a coefficient
+                    width_end = (lane.width +
+                                 lane.width_b * road_length +
+                                 lane.width_c * road_length**2 +
+                                 lane.width_d * road_length**3)
+                    connecting_road.lane_width_start = width_start
+                    connecting_road.lane_width_end = width_end
+                    break
+
+        # Add to junction
+        junction.add_connecting_road(connecting_road)
+
+        # Add predecessor/successor roads to junction's connected_road_ids
+        if predecessor_orbit_id and predecessor_orbit_id not in junction.connected_road_ids:
+            junction.connected_road_ids.append(predecessor_orbit_id)
+        if successor_orbit_id and successor_orbit_id not in junction.connected_road_ids:
+            junction.connected_road_ids.append(successor_orbit_id)
+
+        if options.verbose:
+            geom_type = "paramPoly3" if param_poly3 else "polyline"
+            print(f"  Connecting road {odr_road.id} → Junction {junction.name} ({geom_type})")
+
+        return True
+
+    def _import_connecting_road_lanes(self, connecting_road: ConnectingRoad, odr_section) -> None:
+        """
+        Import lane properties from OpenDrive lane section into connecting road.
+
+        Args:
+            connecting_road: ConnectingRoad to update
+            odr_section: OpenDrive lane section with lane data
+        """
+        # Ensure lanes are initialized
+        connecting_road.ensure_lanes_initialized()
+
+        # Process right lanes (negative IDs)
+        for odr_lane in odr_section.right_lanes:
+            lane = connecting_road.get_lane(odr_lane.id)
+            if lane:
+                # Lane type
+                lane_type = self._convert_lane_type(odr_lane.type)
+                lane.lane_type = lane_type
+
+                # Lane width (use first width polynomial)
+                if odr_lane.widths:
+                    first_width = odr_lane.widths[0]
+                    lane.width = first_width.a
+                    lane.width_b = first_width.b
+                    lane.width_c = first_width.c
+                    lane.width_d = first_width.d
+
+                # Road mark attributes
+                if odr_lane.road_marks:
+                    first_mark = odr_lane.road_marks[0]
+                    lane.road_mark_type = self._convert_road_mark_type(first_mark.type)
+                    lane.road_mark_color = first_mark.color
+                    lane.road_mark_weight = first_mark.weight
+                    lane.road_mark_width = first_mark.width
+
+                # Speed limit
+                if odr_lane.speed_limits:
+                    first_speed = odr_lane.speed_limits[0]
+                    lane.speed_limit = first_speed.max_speed
+                    lane.speed_limit_unit = first_speed.unit
+
+        # Process left lanes (positive IDs)
+        for odr_lane in odr_section.left_lanes:
+            lane = connecting_road.get_lane(odr_lane.id)
+            if lane:
+                # Lane type
+                lane_type = self._convert_lane_type(odr_lane.type)
+                lane.lane_type = lane_type
+
+                # Lane width (use first width polynomial)
+                if odr_lane.widths:
+                    first_width = odr_lane.widths[0]
+                    lane.width = first_width.a
+                    lane.width_b = first_width.b
+                    lane.width_c = first_width.c
+                    lane.width_d = first_width.d
+
+                # Road mark attributes
+                if odr_lane.road_marks:
+                    first_mark = odr_lane.road_marks[0]
+                    lane.road_mark_type = self._convert_road_mark_type(first_mark.type)
+                    lane.road_mark_color = first_mark.color
+                    lane.road_mark_weight = first_mark.weight
+                    lane.road_mark_width = first_mark.width
+
+                # Speed limit
+                if odr_lane.speed_limits:
+                    first_speed = odr_lane.speed_limits[0]
+                    lane.speed_limit = first_speed.max_speed
+                    lane.speed_limit_unit = first_speed.unit
 
     def _import_lane_sections(
         self,

@@ -178,6 +178,75 @@ def create_lane_polygon(centerline_points: List[Tuple[float, float]],
     return polygon
 
 
+def create_variable_width_lane_polygon(
+    centerline_points: List[Tuple[float, float]],
+    inner_offset_start: float,
+    outer_offset_start: float,
+    inner_offset_end: float,
+    outer_offset_end: float
+) -> List[Tuple[float, float]]:
+    """
+    Create a polygon representing a lane with variable width (tapering).
+
+    The polygon is constructed by interpolating offsets along the centerline,
+    creating inner and outer boundaries that vary linearly from start to end.
+
+    Args:
+        centerline_points: Points defining the road centerline
+        inner_offset_start: Distance to inner edge at start (pixels)
+        outer_offset_start: Distance to outer edge at start (pixels)
+        inner_offset_end: Distance to inner edge at end (pixels)
+        outer_offset_end: Distance to outer edge at end (pixels)
+
+    Returns:
+        List of points forming a closed polygon
+    """
+    if len(centerline_points) < 2:
+        return []
+
+    n_points = len(centerline_points)
+    inner_boundary = []
+    outer_boundary = []
+
+    for i, point in enumerate(centerline_points):
+        # Calculate interpolation factor (0 at start, 1 at end)
+        t = i / (n_points - 1) if n_points > 1 else 0
+
+        # Interpolate offsets
+        inner_offset = inner_offset_start + t * (inner_offset_end - inner_offset_start)
+        outer_offset = outer_offset_start + t * (outer_offset_end - outer_offset_start)
+
+        # Calculate perpendicular at this point
+        if i == 0:
+            perp = calculate_perpendicular(centerline_points[0], centerline_points[1])
+        elif i == n_points - 1:
+            perp = calculate_perpendicular(centerline_points[-2], centerline_points[-1])
+        else:
+            # Average perpendiculars of adjacent segments for smoother result
+            perp1 = calculate_perpendicular(centerline_points[i - 1], centerline_points[i])
+            perp2 = calculate_perpendicular(centerline_points[i], centerline_points[i + 1])
+            avg_perp_x = (perp1[0] + perp2[0]) / 2
+            avg_perp_y = (perp1[1] + perp2[1]) / 2
+            # Normalize
+            length = math.sqrt(avg_perp_x**2 + avg_perp_y**2)
+            if length > 0:
+                perp = (avg_perp_x / length, avg_perp_y / length)
+            else:
+                perp = perp1
+
+        # Create offset points
+        inner_point = offset_point(point, perp, inner_offset)
+        outer_point = offset_point(point, perp, outer_offset)
+
+        inner_boundary.append(inner_point)
+        outer_boundary.append(outer_point)
+
+    # Build polygon: inner boundary + reversed outer boundary
+    polygon = inner_boundary + list(reversed(outer_boundary))
+
+    return polygon
+
+
 def normalize_angle(angle: float) -> float:
     """
     Normalize angle to [-π, π] range.

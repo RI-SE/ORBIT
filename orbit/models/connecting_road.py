@@ -163,6 +163,9 @@ class ConnectingRoad:
         similar to how regular Road objects generate lane polygons. The polygons are
         calculated by offsetting the centerline path based on lane widths.
 
+        Supports variable width lanes (tapering) when lane_width_start and lane_width_end
+        are set to different values.
+
         Args:
             scale: Meters per pixel scale factor (from coordinate transformer)
 
@@ -180,28 +183,50 @@ class ConnectingRoad:
                 1: [(x1, y1), (x2, y2), ...],    # Left lane 1
             }
         """
-        from orbit.utils.geometry import create_lane_polygon
+        from orbit.utils.geometry import create_lane_polygon, create_variable_width_lane_polygon
 
         if len(self.path) < 2:
             return {}
 
-        # Convert lane width from meters to pixels
-        lane_width_px = self.lane_width / scale
+        # Determine if we have variable width
+        width_start = self.lane_width_start if self.lane_width_start is not None else self.lane_width
+        width_end = self.lane_width_end if self.lane_width_end is not None else self.lane_width
+
+        # Convert from meters to pixels
+        width_start_px = width_start / scale
+        width_end_px = width_end / scale
+
+        # Check if width varies
+        use_variable_width = abs(width_start_px - width_end_px) > 0.1  # Threshold in pixels
 
         polygons = {}
 
         # Create right-hand lanes (negative IDs in OpenDRIVE: -1, -2, -3, ...)
         # Use POSITIVE offsets to place on right side (in screen coords: positive = right)
         for lane_num in range(1, self.lane_count_right + 1):
-            inner_offset = (lane_num - 1) * lane_width_px
-            outer_offset = lane_num * lane_width_px
+            if use_variable_width:
+                inner_offset_start = (lane_num - 1) * width_start_px
+                outer_offset_start = lane_num * width_start_px
+                inner_offset_end = (lane_num - 1) * width_end_px
+                outer_offset_end = lane_num * width_end_px
 
-            polygon_points = create_lane_polygon(
-                self.path,
-                inner_offset,
-                outer_offset,
-                closed=False  # Connecting roads are never closed
-            )
+                polygon_points = create_variable_width_lane_polygon(
+                    self.path,
+                    inner_offset_start,
+                    outer_offset_start,
+                    inner_offset_end,
+                    outer_offset_end
+                )
+            else:
+                inner_offset = (lane_num - 1) * width_start_px
+                outer_offset = lane_num * width_start_px
+
+                polygon_points = create_lane_polygon(
+                    self.path,
+                    inner_offset,
+                    outer_offset,
+                    closed=False  # Connecting roads are never closed
+                )
 
             if polygon_points and len(polygon_points) >= 3:
                 polygons[-lane_num] = polygon_points  # Negative ID for right lanes
@@ -209,15 +234,29 @@ class ConnectingRoad:
         # Create left-hand lanes (positive IDs in OpenDRIVE: 1, 2, 3, ...)
         # Use NEGATIVE offsets to place on left side (in screen coords: negative = left)
         for lane_num in range(1, self.lane_count_left + 1):
-            inner_offset = -(lane_num - 1) * lane_width_px
-            outer_offset = -lane_num * lane_width_px
+            if use_variable_width:
+                inner_offset_start = -(lane_num - 1) * width_start_px
+                outer_offset_start = -lane_num * width_start_px
+                inner_offset_end = -(lane_num - 1) * width_end_px
+                outer_offset_end = -lane_num * width_end_px
 
-            polygon_points = create_lane_polygon(
-                self.path,
-                inner_offset,
-                outer_offset,
-                closed=False
-            )
+                polygon_points = create_variable_width_lane_polygon(
+                    self.path,
+                    inner_offset_start,
+                    outer_offset_start,
+                    inner_offset_end,
+                    outer_offset_end
+                )
+            else:
+                inner_offset = -(lane_num - 1) * width_start_px
+                outer_offset = -lane_num * width_start_px
+
+                polygon_points = create_lane_polygon(
+                    self.path,
+                    inner_offset,
+                    outer_offset,
+                    closed=False
+                )
 
             if polygon_points and len(polygon_points) >= 3:
                 polygons[lane_num] = polygon_points  # Positive ID for left lanes
