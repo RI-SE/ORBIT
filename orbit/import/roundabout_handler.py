@@ -1141,7 +1141,8 @@ def create_roundabout_connectors(
             if exit_path:
                 aU, bU, cU, dU, aV, bV, cV, dV = coeffs
 
-                approach_lanes = approach_road.lane_info.left_count if approach_road.lane_info else 1
+                # Exit traffic uses RIGHT lanes of the approach road (negative lane IDs)
+                approach_lanes = approach_road.lane_info.right_count if approach_road.lane_info else 1
 
                 exit_connector = ConnectingRoad(
                     path=exit_path,

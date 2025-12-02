@@ -118,23 +118,39 @@ class PreferencesDialog(BaseDialog):
         junction_layout.addRow("Junction Offset Distance:", self.junction_offset_spin)
         junction_layout.addRow("", junction_offset_help)
 
-        # Roundabout junction offset distance
-        self.roundabout_offset_spin = QDoubleSpinBox()
-        self.roundabout_offset_spin.setRange(0.0, 20.0)  # 0-20 meters
-        self.roundabout_offset_spin.setSingleStep(0.5)
-        self.roundabout_offset_spin.setDecimals(1)
-        self.roundabout_offset_spin.setSuffix(" m")
-        self.roundabout_offset_spin.setToolTip("Distance to offset ring segment endpoints from roundabout junctions")
+        # Roundabout ring offset distance
+        self.roundabout_ring_offset_spin = QDoubleSpinBox()
+        self.roundabout_ring_offset_spin.setRange(0.0, 20.0)  # 0-20 meters
+        self.roundabout_ring_offset_spin.setSingleStep(0.5)
+        self.roundabout_ring_offset_spin.setDecimals(1)
+        self.roundabout_ring_offset_spin.setSuffix(" m")
+        self.roundabout_ring_offset_spin.setToolTip("Distance to offset ring segment endpoints from roundabout junctions")
 
-        roundabout_offset_help = QLabel(
-            "<small>For roundabouts, ring segments and approach roads are moved back "
-            "by this distance to create space for connecting roads. Typical values: 2-6m.</small>"
+        roundabout_ring_help = QLabel(
+            "<small>Ring segments are moved back by this distance to create space for connecting roads. Typical values: 2-6m.</small>"
         )
-        roundabout_offset_help.setWordWrap(True)
-        roundabout_offset_help.setStyleSheet("QLabel { color: gray; }")
+        roundabout_ring_help.setWordWrap(True)
+        roundabout_ring_help.setStyleSheet("QLabel { color: gray; }")
 
-        junction_layout.addRow("Roundabout Offset Distance:", self.roundabout_offset_spin)
-        junction_layout.addRow("", roundabout_offset_help)
+        junction_layout.addRow("Roundabout Ring Offset:", self.roundabout_ring_offset_spin)
+        junction_layout.addRow("", roundabout_ring_help)
+
+        # Roundabout approach road offset distance
+        self.roundabout_approach_offset_spin = QDoubleSpinBox()
+        self.roundabout_approach_offset_spin.setRange(0.0, 30.0)  # 0-30 meters
+        self.roundabout_approach_offset_spin.setSingleStep(0.5)
+        self.roundabout_approach_offset_spin.setDecimals(1)
+        self.roundabout_approach_offset_spin.setSuffix(" m")
+        self.roundabout_approach_offset_spin.setToolTip("Distance to offset approach road endpoints from roundabout junctions")
+
+        roundabout_approach_help = QLabel(
+            "<small>Approach roads are moved back by this distance. Larger values create longer entry/exit connectors. Typical values: 6-12m.</small>"
+        )
+        roundabout_approach_help.setWordWrap(True)
+        roundabout_approach_help.setStyleSheet("QLabel { color: gray; }")
+
+        junction_layout.addRow("Roundabout Approach Offset:", self.roundabout_approach_offset_spin)
+        junction_layout.addRow("", roundabout_approach_help)
 
         # Create standard OK/Cancel buttons
         self.create_button_box()
@@ -162,8 +178,9 @@ class PreferencesDialog(BaseDialog):
         # Junction offset distance
         self.junction_offset_spin.setValue(self.project.junction_offset_distance_meters)
 
-        # Roundabout offset distance
-        self.roundabout_offset_spin.setValue(self.project.roundabout_offset_distance_meters)
+        # Roundabout offset distances
+        self.roundabout_ring_offset_spin.setValue(self.project.roundabout_ring_offset_distance_meters)
+        self.roundabout_approach_offset_spin.setValue(self.project.roundabout_approach_offset_distance_meters)
 
     def accept(self):
         """Save preferences and close dialog."""
@@ -182,7 +199,8 @@ class PreferencesDialog(BaseDialog):
         # Save junction offset distance
         self.project.junction_offset_distance_meters = self.junction_offset_spin.value()
 
-        # Save roundabout offset distance
-        self.project.roundabout_offset_distance_meters = self.roundabout_offset_spin.value()
+        # Save roundabout offset distances
+        self.project.roundabout_ring_offset_distance_meters = self.roundabout_ring_offset_spin.value()
+        self.project.roundabout_approach_offset_distance_meters = self.roundabout_approach_offset_spin.value()
 
         super().accept()

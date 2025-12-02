@@ -527,7 +527,7 @@ class OSMImporter:
 
                 # Step 4.5: Offset road endpoints from roundabout junctions
                 # This creates gaps for connecting roads to fill
-                # Collect all roads to offset: ring segments + approach roads connected to this roundabout
+                # Collect approach roads connected to this roundabout
                 roundabout_approach_roads = []
                 for junction in roundabout_junctions:
                     for road_id in junction.connected_road_ids:
@@ -535,17 +535,29 @@ class OSMImporter:
                         if road and road not in roundabout_approach_roads:
                             roundabout_approach_roads.append(road)
 
+                # Offset ring segments with ring offset distance
                 offset_road_endpoints_from_junctions(
-                    roads=ring_roads + roundabout_approach_roads,
+                    roads=ring_roads,
                     polylines_dict=polylines_dict,
                     junctions=roundabout_junctions,
-                    offset_distance_meters=self.project.roundabout_offset_distance_meters,
+                    offset_distance_meters=self.project.roundabout_ring_offset_distance_meters,
+                    transformer=self.transformer,
+                    verbose=options.verbose
+                )
+
+                # Offset approach roads with approach offset distance (typically larger)
+                offset_road_endpoints_from_junctions(
+                    roads=roundabout_approach_roads,
+                    polylines_dict=polylines_dict,
+                    junctions=roundabout_junctions,
+                    offset_distance_meters=self.project.roundabout_approach_offset_distance_meters,
                     transformer=self.transformer,
                     verbose=options.verbose
                 )
 
                 if options.verbose:
-                    print(f"DEBUG:   Applied {self.project.roundabout_offset_distance_meters}m offset to ring segments and approach roads")
+                    print(f"DEBUG:   Applied {self.project.roundabout_ring_offset_distance_meters}m offset to ring segments, "
+                          f"{self.project.roundabout_approach_offset_distance_meters}m to approach roads")
 
                 # Step 5: Generate connectors for entry/exit/through movements
                 generate_all_roundabout_connectors(

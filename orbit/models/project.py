@@ -99,7 +99,8 @@ class Project:
     map_name: str = ''  # Name for OpenDrive export (defaults to image filename when loaded)
     openstreetmap_used: bool = False  # Flag for OpenStreetMap attribution
     junction_offset_distance_meters: float = 8.0  # Distance to offset road endpoints from junction centers (meters)
-    roundabout_offset_distance_meters: float = 4.0  # Distance to offset ring segment endpoints from roundabout junctions (meters)
+    roundabout_ring_offset_distance_meters: float = 4.0  # Distance to offset ring segment endpoints from roundabout junctions (meters)
+    roundabout_approach_offset_distance_meters: float = 8.0  # Distance to offset approach road endpoints from roundabout junctions (meters)
     georef_validation: Dict[str, Any] = field(default_factory=dict)
     uncertainty_grid_cache: Optional[List[List[float]]] = None  # Cached uncertainty grid
     uncertainty_grid_resolution: Tuple[int, int] = (50, 50)  # Grid resolution
@@ -320,7 +321,8 @@ class Project:
             'map_name': self.map_name,
             'openstreetmap_used': bool(self.openstreetmap_used),
             'junction_offset_distance_meters': self.junction_offset_distance_meters,
-            'roundabout_offset_distance_meters': self.roundabout_offset_distance_meters,
+            'roundabout_ring_offset_distance_meters': self.roundabout_ring_offset_distance_meters,
+            'roundabout_approach_offset_distance_meters': self.roundabout_approach_offset_distance_meters,
             'georef_validation': self.georef_validation,
             'uncertainty_grid_cache': self.uncertainty_grid_cache,
             'uncertainty_grid_resolution': self.uncertainty_grid_resolution,
@@ -382,7 +384,9 @@ class Project:
             map_name=data.get('map_name', ''),  # Default to empty string for backward compatibility
             openstreetmap_used=data.get('openstreetmap_used', False),  # Default to False
             junction_offset_distance_meters=data.get('junction_offset_distance_meters', 8.0),  # Default to 8.0m
-            roundabout_offset_distance_meters=data.get('roundabout_offset_distance_meters', 4.0),  # Default to 4.0m
+            roundabout_ring_offset_distance_meters=data.get('roundabout_ring_offset_distance_meters',
+                data.get('roundabout_offset_distance_meters', 4.0)),  # Backward compat with old field name
+            roundabout_approach_offset_distance_meters=data.get('roundabout_approach_offset_distance_meters', 8.0),
             georef_validation=data.get('georef_validation', {}),
             uncertainty_grid_cache=data.get('uncertainty_grid_cache'),
             uncertainty_grid_resolution=tuple(data.get('uncertainty_grid_resolution', [50, 50])),
