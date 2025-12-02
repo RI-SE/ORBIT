@@ -447,13 +447,22 @@ def create_roundabout_junctions(
         outgoing_ring = ring_segments[outgoing_ring_idx][0] if outgoing_ring_idx < len(ring_segments) else None
 
         # Find approach roads that connect at this point
+        # Separate into incoming (road ends here) and outgoing (road starts here)
         connected_approach_ids = []
+        incoming_approach_ids = []  # Roads that END at this junction (entry)
+        outgoing_approach_ids = []  # Roads that START at this junction (exit)
+
         for road_id, road in approach_roads.items():
             centerline = polylines_dict.get(road.centerline_id)
             if centerline and centerline.osm_node_ids:
-                # Check if road starts or ends at this connection node
-                if cp.osm_node_id in [centerline.osm_node_ids[0], centerline.osm_node_ids[-1]]:
+                if cp.osm_node_id == centerline.osm_node_ids[-1]:
+                    # Road ENDS at this node → INCOMING (can create entry connector)
                     connected_approach_ids.append(road_id)
+                    incoming_approach_ids.append(road_id)
+                elif cp.osm_node_id == centerline.osm_node_ids[0]:
+                    # Road STARTS at this node → OUTGOING (can create exit connector)
+                    connected_approach_ids.append(road_id)
+                    outgoing_approach_ids.append(road_id)
 
         # Build connected road IDs list
         connected_road_ids = []
@@ -483,9 +492,9 @@ def create_roundabout_junctions(
         junction.roundabout_lane_count = roundabout.lane_count
         junction.roundabout_clockwise = roundabout.clockwise
 
-        # Set entry/exit roads
-        junction.entry_roads = list(connected_approach_ids)
-        junction.exit_roads = list(connected_approach_ids)  # Same for now
+        # Set entry/exit roads (pre-determined from OSM node positions)
+        junction.entry_roads = incoming_approach_ids  # Roads that END here
+        junction.exit_roads = outgoing_approach_ids   # Roads that START here
 
         junctions.append(junction)
 
@@ -1013,7 +1022,8 @@ def create_roundabout_connectors(
                 )
                 print(f"    Through: {len(through_path)} points, ~{path_len:.1f}px")
 
-    # 2. Create ENTRY and EXIT connectors for each approach road
+    # 2. Create ENTRY connectors for incoming approach roads
+    # Entry roads are pre-determined - they END at this junction (no distance check needed)
     for approach_road_id in junction.entry_roads:
         approach_road = approach_roads.get(approach_road_id)
         if not approach_road:
@@ -1025,32 +1035,13 @@ def create_roundabout_connectors(
 
         approach_points = approach_polyline.points
 
-        # Check if approach road is incoming (ends near ring) - can create ENTRY connector
-        # Check proximity to both ring endpoints at this junction since approach roads
-        # may be offset from the original connection point position
-        entry_ref_point = outgoing_start if outgoing_start else cp.position
-        # Also check proximity to incoming_end as fallback
-        is_incoming = _is_approach_incoming(approach_points, entry_ref_point)
-        use_incoming_for_entry = False  # Track which endpoint is closer
-        if not is_incoming and incoming_end:
-            is_incoming = _is_approach_incoming(approach_points, incoming_end)
-            use_incoming_for_entry = is_incoming  # Approach is near incoming_end, not outgoing_start
-
-        if is_incoming and outgoing_ring_road and outgoing_start:
+        if outgoing_ring_road and outgoing_start:
             approach_end = approach_points[-1]
 
-            # Determine which ring endpoint to use for the entry connector
-            # Use the closer endpoint to create a shorter, more realistic path
-            if use_incoming_for_entry and incoming_end and incoming_ring_road:
-                # Approach is near incoming ring end - use that for entry
-                entry_ring_pos = incoming_end
-                entry_ring_road = incoming_ring_road
-                contact_end = "end"
-            else:
-                # Approach is near outgoing ring start - use that for entry
-                entry_ring_pos = outgoing_start
-                entry_ring_road = outgoing_ring_road
-                contact_end = "start"
+            # Entry connector: approach road end → outgoing ring start
+            entry_ring_pos = outgoing_start
+            entry_ring_road = outgoing_ring_road
+            contact_end = "start"
 
             # Calculate headings
             approach_heading = _calculate_endpoint_heading(approach_points, at_start=False)
@@ -1112,32 +1103,26 @@ def create_roundabout_connectors(
                 if verbose:
                     print(f"    Entry from {approach_road.name[:20]}: {len(entry_path)} points")
 
-        # Check if approach road is outgoing (starts near ring) - can create EXIT connector
-        # Check proximity to both ring endpoints at this junction since approach roads
-        # may be offset from the original connection point position
-        exit_ref_point = incoming_end if incoming_end else cp.position
-        # Also check proximity to outgoing_start as fallback
-        is_outgoing = _is_approach_outgoing(approach_points, exit_ref_point)
-        use_outgoing_for_exit = False  # Track which endpoint is closer
-        if not is_outgoing and outgoing_start:
-            is_outgoing = _is_approach_outgoing(approach_points, outgoing_start)
-            use_outgoing_for_exit = is_outgoing  # Approach is near outgoing_start, not incoming_end
+    # 3. Create EXIT connectors for outgoing approach roads
+    # Exit roads are pre-determined - they START at this junction (no distance check needed)
+    for approach_road_id in junction.exit_roads:
+        approach_road = approach_roads.get(approach_road_id)
+        if not approach_road:
+            continue
 
-        if is_outgoing and incoming_ring_road and incoming_end:
+        approach_polyline = polylines_dict.get(approach_road.centerline_id)
+        if not approach_polyline or len(approach_polyline.points) < 2:
+            continue
+
+        approach_points = approach_polyline.points
+
+        if incoming_ring_road and incoming_end:
             approach_start = approach_points[0]
 
-            # Determine which ring endpoint to use for the exit connector
-            # Use the closer endpoint to create a shorter, more realistic path
-            if use_outgoing_for_exit and outgoing_start and outgoing_ring_road:
-                # Approach is near outgoing ring start - use that for exit
-                exit_ring_pos = outgoing_start
-                exit_ring_road = outgoing_ring_road
-                contact_start = "start"
-            else:
-                # Approach is near incoming ring end - use that for exit
-                exit_ring_pos = incoming_end
-                exit_ring_road = incoming_ring_road
-                contact_start = "end"
+            # Exit connector: incoming ring end → approach road start
+            exit_ring_pos = incoming_end
+            exit_ring_road = incoming_ring_road
+            contact_start = "end"
 
             # Calculate headings
             ring_heading = _calculate_ring_tangent(exit_ring_pos, roundabout.center, roundabout.clockwise)
