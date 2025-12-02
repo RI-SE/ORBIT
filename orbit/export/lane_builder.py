@@ -133,9 +133,9 @@ class LaneBuilder:
         road_mark = etree.SubElement(center_lane, 'roadMark')
         road_mark.set('sOffset', '0.0')
         road_mark.set('type', mark_type)
-        road_mark.set('weight', 'standard')
-        road_mark.set('color', 'standard')
-        road_mark.set('width', '0.13')
+        road_mark.set('weight', center_lane_obj.road_mark_weight)
+        road_mark.set('color', center_lane_obj.road_mark_color)
+        road_mark.set('width', f'{center_lane_obj.road_mark_width:.6g}')
 
         return center_lane
 
@@ -169,13 +169,13 @@ class LaneBuilder:
         # Lane link (simplified)
         etree.SubElement(lane, 'link')
 
-        # Lane width - use the width from lane object (already in meters)
+        # Lane width polynomial - use stored coefficients (already in meters)
         width_elem = etree.SubElement(lane, 'width')
         width_elem.set('sOffset', '0.0')
-        width_elem.set('a', f'{lane_obj.width:.2f}')
-        width_elem.set('b', '0.0')
-        width_elem.set('c', '0.0')
-        width_elem.set('d', '0.0')
+        width_elem.set('a', f'{lane_obj.width:.6g}')
+        width_elem.set('b', f'{lane_obj.width_b:.6g}')
+        width_elem.set('c', f'{lane_obj.width_c:.6g}')
+        width_elem.set('d', f'{lane_obj.width_d:.6g}')
 
         # Road mark (priority: boundary polyline > lane object road_mark_type)
         if boundary_info and boundary_info.polyline:
@@ -186,8 +186,15 @@ class LaneBuilder:
         road_mark = etree.SubElement(lane, 'roadMark')
         road_mark.set('sOffset', '0.0')
         road_mark.set('type', mark_type)
-        road_mark.set('weight', 'standard')
-        road_mark.set('color', 'standard')
-        road_mark.set('width', '0.13')
+        road_mark.set('weight', lane_obj.road_mark_weight)
+        road_mark.set('color', lane_obj.road_mark_color)
+        road_mark.set('width', f'{lane_obj.road_mark_width:.6g}')
+
+        # Lane-level speed limit (if set)
+        if lane_obj.speed_limit is not None:
+            speed = etree.SubElement(lane, 'speed')
+            speed.set('sOffset', '0.0')
+            speed.set('max', f'{lane_obj.speed_limit:.6g}')
+            speed.set('unit', lane_obj.speed_limit_unit)
 
         return lane

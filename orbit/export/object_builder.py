@@ -126,6 +126,12 @@ class ObjectBuilder:
         object_elem.set('zOffset', f'{obj.z_offset:.2f}')
         object_elem.set('name', obj.get_display_name())
 
+        # OpenDRIVE orientation angles (pitch and roll)
+        if obj.pitch != 0.0:
+            object_elem.set('pitch', f'{obj.pitch:.6f}')
+        if obj.roll != 0.0:
+            object_elem.set('roll', f'{obj.roll:.6f}')
+
         # Set type-specific attributes
         self._set_type_attributes(object_elem, obj)
 

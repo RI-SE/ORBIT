@@ -114,6 +114,14 @@ class LaneRoadMark:
 
 
 @dataclass
+class LaneSpeed:
+    """Speed limit for a lane."""
+    s_offset: float
+    max_speed: float  # Maximum speed in m/s
+    unit: str = "m/s"  # Unit: "m/s", "mph", or "km/h"
+
+
+@dataclass
 class ODRLane:
     """
     OpenDrive lane from XML.
@@ -124,12 +132,14 @@ class ODRLane:
         level: Level flag for lane height
         widths: List of width polynomials
         road_marks: List of road marking definitions
+        speed_limits: List of speed limit records
     """
     id: int
     type: str
     level: bool = False
     widths: List[LaneWidth] = field(default_factory=list)
     road_marks: List[LaneRoadMark] = field(default_factory=list)
+    speed_limits: List[LaneSpeed] = field(default_factory=list)
 
     def get_width_at_s(self, s: float) -> float:
         """
@@ -617,6 +627,13 @@ class OpenDriveParser:
             color = mark_elem.get('color', 'white')
             width = float(mark_elem.get('width', '0.12'))
             lane.road_marks.append(LaneRoadMark(s_offset, mark_type, weight, color, width))
+
+        # Parse speed elements (lane-level speed limits)
+        for speed_elem in lane_elem.findall('speed'):
+            s_offset = float(speed_elem.get('sOffset', '0'))
+            max_speed = float(speed_elem.get('max', '0'))
+            unit = speed_elem.get('unit', 'm/s')
+            lane.speed_limits.append(LaneSpeed(s_offset, max_speed, unit))
 
         return lane
 

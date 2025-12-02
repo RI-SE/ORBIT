@@ -70,6 +70,7 @@ class Road:
         successor_id: ID of road that follows this one (optional)
         successor_contact: Contact point on successor ("start" or "end")
         opendrive_id: Optional OpenDrive road ID (for round-trip consistency)
+        elevation_profile: List of (s, a, b, c, d) tuples for elevation polynomial
     """
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = "Unnamed Road"
@@ -86,6 +87,8 @@ class Road:
     successor_id: Optional[str] = None
     successor_contact: str = "start"  # "start" or "end"
     opendrive_id: Optional[str] = None  # OpenDrive ID for round-trip import/export
+    # Elevation profile: list of (s, a, b, c, d) tuples for polynomial elevation(ds) = a + b*ds + c*ds² + d*ds³
+    elevation_profile: List[Tuple[float, float, float, float, float]] = field(default_factory=list)
 
     def add_polyline(self, polyline_id: str) -> None:
         """Add a polyline to this road."""
@@ -454,9 +457,11 @@ class Road:
             'successor_id': self.successor_id,
             'successor_contact': self.successor_contact
         }
-        # Only include optional field if set
+        # Only include optional fields if set (backward compatibility)
         if self.opendrive_id is not None:
             data['opendrive_id'] = self.opendrive_id
+        if self.elevation_profile:
+            data['elevation_profile'] = [list(elev) for elev in self.elevation_profile]
         return data
 
     @classmethod
@@ -497,7 +502,8 @@ class Road:
             predecessor_contact=data.get('predecessor_contact', 'end'),
             successor_id=data.get('successor_id'),
             successor_contact=data.get('successor_contact', 'start'),
-            opendrive_id=data.get('opendrive_id')
+            opendrive_id=data.get('opendrive_id'),
+            elevation_profile=[tuple(e) for e in data.get('elevation_profile', [])]
         )
 
         # Backward compatibility: migrate old format to lane_sections

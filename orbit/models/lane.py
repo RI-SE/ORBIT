@@ -56,20 +56,39 @@ class Lane:
         id: OpenDRIVE lane ID (0=center, negative=right, positive=left)
         lane_type: Type of lane (driving, biking, sidewalk, etc.)
         road_mark_type: Road marking type (solid, broken, etc.)
-        width: Lane width in meters (or pixels if not georeferenced)
+        width: Lane width constant term 'a' in meters
+        width_b: Lane width linear coefficient (ds term)
+        width_c: Lane width quadratic coefficient (ds² term)
+        width_d: Lane width cubic coefficient (ds³ term)
+        road_mark_color: Road mark color (white, yellow, etc.)
+        road_mark_weight: Road mark weight (standard, bold)
+        road_mark_width: Road mark width in meters
+        speed_limit: Lane-level speed limit in m/s (optional)
+        speed_limit_unit: Unit for speed limit (m/s, km/h, mph)
         left_boundary_id: Optional polyline ID defining left boundary
         right_boundary_id: Optional polyline ID defining right boundary
+
+    Width polynomial: width(ds) = a + b*ds + c*ds² + d*ds³
+    where ds is distance from start of lane section.
     """
     id: int
     lane_type: LaneType = LaneType.DRIVING
     road_mark_type: RoadMarkType = RoadMarkType.SOLID
     width: float = 3.5
+    width_b: float = 0.0
+    width_c: float = 0.0
+    width_d: float = 0.0
+    road_mark_color: str = "white"
+    road_mark_weight: str = "standard"
+    road_mark_width: float = 0.12
+    speed_limit: Optional[float] = None  # Speed limit in m/s
+    speed_limit_unit: str = "m/s"  # Unit: "m/s", "km/h", or "mph"
     left_boundary_id: Optional[str] = None
     right_boundary_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        data = {
             'id': self.id,
             'lane_type': self.lane_type.value,
             'road_mark_type': self.road_mark_type.value,
@@ -77,6 +96,25 @@ class Lane:
             'left_boundary_id': self.left_boundary_id,
             'right_boundary_id': self.right_boundary_id
         }
+        # Only include polynomial coefficients if non-zero (backward compatibility)
+        if self.width_b != 0.0:
+            data['width_b'] = self.width_b
+        if self.width_c != 0.0:
+            data['width_c'] = self.width_c
+        if self.width_d != 0.0:
+            data['width_d'] = self.width_d
+        # Only include road mark attributes if non-default (backward compatibility)
+        if self.road_mark_color != "white":
+            data['road_mark_color'] = self.road_mark_color
+        if self.road_mark_weight != "standard":
+            data['road_mark_weight'] = self.road_mark_weight
+        if self.road_mark_width != 0.12:
+            data['road_mark_width'] = self.road_mark_width
+        # Only include speed limit if set
+        if self.speed_limit is not None:
+            data['speed_limit'] = self.speed_limit
+            data['speed_limit_unit'] = self.speed_limit_unit
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Lane':
@@ -86,6 +124,14 @@ class Lane:
             lane_type=LaneType(data['lane_type']),
             road_mark_type=RoadMarkType(data['road_mark_type']),
             width=data['width'],
+            width_b=data.get('width_b', 0.0),
+            width_c=data.get('width_c', 0.0),
+            width_d=data.get('width_d', 0.0),
+            road_mark_color=data.get('road_mark_color', 'white'),
+            road_mark_weight=data.get('road_mark_weight', 'standard'),
+            road_mark_width=data.get('road_mark_width', 0.12),
+            speed_limit=data.get('speed_limit'),
+            speed_limit_unit=data.get('speed_limit_unit', 'm/s'),
             left_boundary_id=data.get('left_boundary_id'),
             right_boundary_id=data.get('right_boundary_id')
         )

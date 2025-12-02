@@ -378,14 +378,26 @@ class OpenDriveWriter:
         plan_view = self._create_plan_view(geometry_elements)
         road_elem.append(plan_view)
 
-        # Add elevation profile (flat for now)
+        # Add elevation profile (use stored profile or flat)
         elevation = etree.SubElement(road_elem, 'elevationProfile')
-        elev = etree.SubElement(elevation, 'elevation')
-        elev.set('s', '0.0')
-        elev.set('a', '0.0')
-        elev.set('b', '0.0')
-        elev.set('c', '0.0')
-        elev.set('d', '0.0')
+        if road.elevation_profile:
+            # Use stored elevation polynomials for round-trip preservation
+            for elev_data in road.elevation_profile:
+                s, a, b, c, d = elev_data
+                elev = etree.SubElement(elevation, 'elevation')
+                elev.set('s', f'{s:.6g}')
+                elev.set('a', f'{a:.6g}')
+                elev.set('b', f'{b:.6g}')
+                elev.set('c', f'{c:.6g}')
+                elev.set('d', f'{d:.6g}')
+        else:
+            # Default flat profile
+            elev = etree.SubElement(elevation, 'elevation')
+            elev.set('s', '0.0')
+            elev.set('a', '0.0')
+            elev.set('b', '0.0')
+            elev.set('c', '0.0')
+            elev.set('d', '0.0')
 
         # Add lateral profile (no superelevation)
         lateral = etree.SubElement(road_elem, 'lateralProfile')

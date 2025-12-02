@@ -80,7 +80,7 @@ class SignalBuilder:
         signal_elem.set('s', f'{s_meters:.6f}')
         signal_elem.set('t', f'{t_meters:.6f}')
         signal_elem.set('name', signal.name if signal.name else signal.get_display_name())
-        signal_elem.set('dynamic', 'no')
+        signal_elem.set('dynamic', signal.dynamic if signal.dynamic else 'no')
 
         # OpenDRIVE orientation: '+' (forward), '-' (backward), or 'none' (both)
         signal_elem.set('orientation', signal.orientation)
@@ -95,8 +95,9 @@ class SignalBuilder:
         signal_elem.set('height', f'{signal.sign_height:.2f}')
         signal_elem.set('width', f'{signal.sign_width:.2f}')
 
-        # Country and type
-        signal_elem.set('country', self.country_code)
+        # Country code: prefer signal's stored country, fallback to builder's default
+        country = signal.country if signal.country else self.country_code
+        signal_elem.set('country', country)
 
         # Map signal type to OpenDRIVE type/subtype
         self._set_signal_type_attributes(signal_elem, signal)
@@ -113,37 +114,47 @@ class SignalBuilder:
         return signal_elem
 
     def _set_signal_type_attributes(self, signal_elem: etree.Element, signal: Signal) -> None:
-        """Set type and subtype attributes based on signal type."""
+        """Set type and subtype attributes based on signal type.
+
+        If signal has stored subtype from import, use that for round-trip.
+        Otherwise, derive type/subtype from ORBIT signal type.
+        """
+        # If signal has stored subtype from OpenDRIVE import, prefer that for round-trip
+        stored_subtype = signal.subtype if signal.subtype else None
+
         # Using German sign codes (DE:) as OpenDRIVE standard
         if signal.type == SignalType.STOP:
             signal_elem.set('type', '205')
-            signal_elem.set('subtype', '-1')
+            signal_elem.set('subtype', stored_subtype or '-1')
         elif signal.type == SignalType.GIVE_WAY:
             signal_elem.set('type', '206')
-            signal_elem.set('subtype', '-1')
+            signal_elem.set('subtype', stored_subtype or '-1')
         elif signal.type == SignalType.NO_ENTRY:
             signal_elem.set('type', '267')
-            signal_elem.set('subtype', '-1')
+            signal_elem.set('subtype', stored_subtype or '-1')
         elif signal.type == SignalType.PRIORITY_ROAD:
             signal_elem.set('type', '301')
-            signal_elem.set('subtype', '-1')
+            signal_elem.set('subtype', stored_subtype or '-1')
         elif signal.type == SignalType.SPEED_LIMIT:
             signal_elem.set('type', '274')
-            speed_value = signal.value
-            if signal.speed_unit == SpeedUnit.MPH:
-                # Convert mph to km/h for OpenDRIVE
-                speed_value = int(signal.value * 1.60934)
-            signal_elem.set('subtype', str(speed_value) if speed_value else '-1')
+            if stored_subtype:
+                signal_elem.set('subtype', stored_subtype)
+            else:
+                speed_value = signal.value
+                if signal.speed_unit == SpeedUnit.MPH:
+                    # Convert mph to km/h for OpenDRIVE
+                    speed_value = int(signal.value * 1.60934)
+                signal_elem.set('subtype', str(speed_value) if speed_value else '-1')
         elif signal.type == SignalType.END_OF_SPEED_LIMIT:
             signal_elem.set('type', '278')
-            signal_elem.set('subtype', '-1')
+            signal_elem.set('subtype', stored_subtype or '-1')
         elif signal.type == SignalType.TRAFFIC_SIGNALS:
             signal_elem.set('type', '1000001')
-            signal_elem.set('subtype', '-1')
+            signal_elem.set('subtype', stored_subtype or '-1')
         else:
             # Generic/unknown sign
             signal_elem.set('type', '-1')
-            signal_elem.set('subtype', '-1')
+            signal_elem.set('subtype', stored_subtype or '-1')
 
     def _calculate_t_offset(
         self,

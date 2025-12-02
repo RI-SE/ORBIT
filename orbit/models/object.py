@@ -130,6 +130,8 @@ class RoadObject:
         t_offset: Lateral offset from road in pixels
         validity_length: Length along road (for guardrails) in pixels, or None
         opendrive_id: Optional OpenDrive object ID (for round-trip consistency)
+        pitch: Pitch angle in radians (OpenDRIVE attribute)
+        roll: Roll angle in radians (OpenDRIVE attribute)
     """
 
     def __init__(
@@ -155,6 +157,9 @@ class RoadObject:
         self.t_offset: Optional[float] = None
         self.validity_length: Optional[float] = None  # For guardrails
         self.opendrive_id: Optional[str] = None  # OpenDrive ID for round-trip import/export
+        # OpenDRIVE orientation angles for round-trip preservation
+        self.pitch: float = 0.0  # Pitch angle in radians
+        self.roll: float = 0.0  # Roll angle in radians
 
     def to_dict(self) -> dict:
         """Serialize object to dictionary for JSON storage."""
@@ -172,9 +177,13 @@ class RoadObject:
             't_offset': self.t_offset,
             'validity_length': self.validity_length
         }
-        # Only include optional field if set
+        # Only include optional fields if set (backward compatibility)
         if self.opendrive_id is not None:
             data['opendrive_id'] = self.opendrive_id
+        if self.pitch != 0.0:
+            data['pitch'] = self.pitch
+        if self.roll != 0.0:
+            data['roll'] = self.roll
         return data
 
     @classmethod
@@ -203,6 +212,9 @@ class RoadObject:
         obj.t_offset = data.get('t_offset')
         obj.validity_length = data.get('validity_length')
         obj.opendrive_id = data.get('opendrive_id')
+        # OpenDRIVE orientation angles
+        obj.pitch = data.get('pitch', 0.0)
+        obj.roll = data.get('roll', 0.0)
 
         return obj
 

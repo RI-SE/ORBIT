@@ -353,6 +353,10 @@ class OpenDriveImporter:
         if odr_road.junction_id and odr_road.junction_id != "-1":
             road.junction_id = odr_road.junction_id  # Will be resolved later
 
+        # Store elevation profile for round-trip preservation
+        if odr_road.elevation_profile and odr_road.elevation_profile.elevations:
+            road.elevation_profile = odr_road.elevation_profile.elevations
+
         # Import lane sections
         if odr_road.lane_sections:
             road.lane_sections = self._import_lane_sections(
@@ -473,23 +477,55 @@ class OpenDriveImporter:
 
     def _convert_lane(self, odr_lane: ODRLane, side: str) -> Lane:
         """Convert OpenDrive lane to ORBIT lane."""
-        # Get constant width (TODO: support polynomial widths)
-        width = odr_lane.get_width_at_s(0.0)
+        # Get width polynomial coefficients (use first width entry)
+        width_a = 3.5  # Default
+        width_b = 0.0
+        width_c = 0.0
+        width_d = 0.0
+        if odr_lane.widths:
+            first_width = odr_lane.widths[0]
+            width_a = first_width.a
+            width_b = first_width.b
+            width_c = first_width.c
+            width_d = first_width.d
 
         # Convert lane type
         lane_type = self._convert_lane_type(odr_lane.type)
 
-        # Convert road mark type
+        # Convert road mark attributes
         road_mark_type = RoadMarkType.SOLID  # Default
+        road_mark_color = "white"
+        road_mark_weight = "standard"
+        road_mark_width = 0.12
         if odr_lane.road_marks:
-            road_mark_type = self._convert_road_mark_type(odr_lane.road_marks[0].type)
+            first_mark = odr_lane.road_marks[0]
+            road_mark_type = self._convert_road_mark_type(first_mark.type)
+            road_mark_color = first_mark.color
+            road_mark_weight = first_mark.weight
+            road_mark_width = first_mark.width
 
-        # Create lane (id matches OpenDrive ID)
+        # Get lane-level speed limit (use first speed record if available)
+        speed_limit = None
+        speed_limit_unit = "m/s"
+        if odr_lane.speed_limits:
+            first_speed = odr_lane.speed_limits[0]
+            speed_limit = first_speed.max_speed
+            speed_limit_unit = first_speed.unit
+
+        # Create lane with full width polynomial and road mark attributes
         lane = Lane(
             id=odr_lane.id,
             lane_type=lane_type,
-            width=width,
-            road_mark_type=road_mark_type
+            width=width_a,
+            width_b=width_b,
+            width_c=width_c,
+            width_d=width_d,
+            road_mark_type=road_mark_type,
+            road_mark_color=road_mark_color,
+            road_mark_weight=road_mark_weight,
+            road_mark_width=road_mark_width,
+            speed_limit=speed_limit,
+            speed_limit_unit=speed_limit_unit
         )
 
         return lane
@@ -663,6 +699,10 @@ class OpenDriveImporter:
         signal.sign_width = odr_signal.width if odr_signal.width > 0 else signal.sign_width
         signal.sign_height = odr_signal.height if odr_signal.height > 0 else signal.sign_height
         signal.opendrive_id = odr_signal.id
+        # Preserve OpenDRIVE attributes for round-trip
+        signal.dynamic = odr_signal.dynamic
+        signal.subtype = odr_signal.subtype
+        signal.country = odr_signal.country
 
         self.project.signals.append(signal)
         return True
@@ -707,6 +747,9 @@ class OpenDriveImporter:
             obj.dimensions['height'] = odr_object.height
 
         obj.opendrive_id = odr_object.id
+        # Preserve OpenDRIVE orientation angles for round-trip
+        obj.pitch = odr_object.pitch
+        obj.roll = odr_object.roll
 
         self.project.objects.append(obj)
         return True

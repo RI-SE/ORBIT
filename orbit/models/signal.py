@@ -106,6 +106,9 @@ class Signal:
         s_position: Position along road centerline (s-coordinate) in pixels
         validity_range: (s_start, s_end) range in pixels, or None for point signal
         opendrive_id: Optional OpenDrive signal ID (for round-trip consistency)
+        dynamic: OpenDRIVE dynamic flag ("yes" for traffic lights, "no" for static signs)
+        subtype: OpenDRIVE subtype code (preserved for round-trip)
+        country: Country code (e.g., "SE" for Sweden)
     """
 
     def __init__(
@@ -134,6 +137,10 @@ class Signal:
         self.s_position = None  # Position along road
         self.validity_range = None  # (s_start, s_end) or None
         self.opendrive_id = None  # OpenDrive ID for round-trip import/export
+        # OpenDRIVE attributes for round-trip preservation
+        self.dynamic = "no"  # "yes" for traffic lights, "no" for static signs
+        self.subtype = ""  # OpenDRIVE subtype code
+        self.country = ""  # Country code (e.g., "SE")
 
     def to_dict(self) -> dict:
         """Serialize signal to dictionary for JSON storage."""
@@ -153,9 +160,15 @@ class Signal:
             's_position': self.s_position,
             'validity_range': list(self.validity_range) if self.validity_range else None
         }
-        # Only include optional field if set
+        # Only include optional fields if set (backward compatibility)
         if self.opendrive_id is not None:
             data['opendrive_id'] = self.opendrive_id
+        if self.dynamic != "no":
+            data['dynamic'] = self.dynamic
+        if self.subtype:
+            data['subtype'] = self.subtype
+        if self.country:
+            data['country'] = self.country
         return data
 
     @classmethod
@@ -214,6 +227,10 @@ class Signal:
         signal.s_position = data.get('s_position')
         signal.validity_range = tuple(data['validity_range']) if data.get('validity_range') else None
         signal.opendrive_id = data.get('opendrive_id')
+        # OpenDRIVE round-trip attributes
+        signal.dynamic = data.get('dynamic', 'no')
+        signal.subtype = data.get('subtype', '')
+        signal.country = data.get('country', '')
         return signal
 
     def get_display_name(self) -> str:
