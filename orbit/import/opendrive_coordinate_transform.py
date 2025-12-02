@@ -41,7 +41,11 @@ class OpenDriveCoordinateTransform:
         image_height: int,
         orbit_transformer = None,  # CoordinateTransformer from export module
         opendrive_geo_reference: Optional[str] = None,
-        scale_pixels_per_meter: float = 10.0
+        scale_pixels_per_meter: float = 10.0,
+        header_offset_x: float = 0.0,
+        header_offset_y: float = 0.0,
+        header_offset_z: float = 0.0,
+        header_offset_hdg: float = 0.0
     ):
         """
         Initialize coordinate transformer.
@@ -52,12 +56,21 @@ class OpenDriveCoordinateTransform:
             orbit_transformer: ORBIT CoordinateTransformer (if available)
             opendrive_geo_reference: OpenDrive geoReference PROJ4 string (if available)
             scale_pixels_per_meter: Default scale for synthetic mode
+            header_offset_x: X offset from OpenDRIVE header (meters)
+            header_offset_y: Y offset from OpenDRIVE header (meters)
+            header_offset_z: Z offset from OpenDRIVE header (meters)
+            header_offset_hdg: Heading offset from OpenDRIVE header (radians)
         """
         self.image_width = image_width
         self.image_height = image_height
         self.orbit_transformer = orbit_transformer
         self.opendrive_geo_reference = opendrive_geo_reference
         self.scale_pixels_per_meter = scale_pixels_per_meter
+        # Header offset - all coordinates in OpenDRIVE are relative to this
+        self.header_offset_x = header_offset_x
+        self.header_offset_y = header_offset_y
+        self.header_offset_z = header_offset_z
+        self.header_offset_hdg = header_offset_hdg
 
         # Transformation parameters
         self.mode = None
@@ -209,13 +222,20 @@ class OpenDriveCoordinateTransform:
         """
         Convert OpenDrive metric coordinates to lat/lon using geoReference.
 
+        Applies header offset before conversion - OpenDRIVE coordinates are
+        relative to the offset specified in the header.
+
         Args:
-            x_meters: X coordinate in meters
-            y_meters: Y coordinate in meters
+            x_meters: X coordinate in meters (relative to header offset)
+            y_meters: Y coordinate in meters (relative to header offset)
 
         Returns:
             Tuple of (longitude, latitude) in decimal degrees
         """
+        # Apply header offset - coordinates in file are relative to this offset
+        x_absolute = x_meters + self.header_offset_x
+        y_absolute = y_meters + self.header_offset_y
+
         # Parse PROJ4 string and use pyproj if available
         try:
             from pyproj import Proj, transform
@@ -224,7 +244,7 @@ class OpenDriveCoordinateTransform:
             proj = Proj(self.opendrive_geo_reference)
 
             # Convert to lat/lon (WGS84)
-            lon, lat = proj(x_meters, y_meters, inverse=True)
+            lon, lat = proj(x_absolute, y_absolute, inverse=True)
             return (lon, lat)
 
         except ImportError:
@@ -241,13 +261,13 @@ class OpenDriveCoordinateTransform:
                 meters_per_degree_lat = 111000.0
                 meters_per_degree_lon = 111000.0 * math.cos(math.radians(origin_lat))
 
-                lat = origin_lat + (y_meters / meters_per_degree_lat)
-                lon = origin_lon + (x_meters / meters_per_degree_lon)
+                lat = origin_lat + (y_absolute / meters_per_degree_lat)
+                lon = origin_lon + (x_absolute / meters_per_degree_lon)
 
                 return (lon, lat)
 
             # Last resort: return metric coords as if they were degrees (will be wrong)
-            return (x_meters, y_meters)
+            return (x_absolute, y_absolute)
 
     def _extract_origin_from_proj4(self) -> Tuple[Optional[float], Optional[float]]:
         """

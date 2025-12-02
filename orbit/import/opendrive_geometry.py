@@ -257,10 +257,14 @@ class GeometryConverter:
         """
         Convert paramPoly3 geometry to polyline points.
 
-        ParamPoly3 defines position as parametric cubic:
-        u(p) = aU + bU*p + cU*p² + dU*p³
-        v(p) = aV + bV*p + cV*p² + dV*p³
+        ParamPoly3 defines position as parametric cubic polynomials:
+        U(p) = aU + bU*p + cU*p² + dU*p³  (along reference line direction)
+        V(p) = aV + bV*p + cV*p² + dV*p³  (perpendicular to reference line)
         where p is normalized parameter [0, 1] or arc length [0, length]
+
+        According to OpenDRIVE spec:
+        - U is the local coordinate along the s-direction (forward/longitudinal)
+        - V is the local coordinate perpendicular to s (lateral)
         """
         aU = geom.params.get('aU', 0.0)
         bU = geom.params.get('bU', 0.0)
@@ -286,15 +290,18 @@ class GeometryConverter:
                 p = (i / (num_samples - 1)) * geom.length
 
             # Evaluate parametric curve
-            u = aU + bU * p + cU * p**2 + dU * p**3  # Lateral
-            v = aV + bV * p + cV * p**2 + dV * p**3  # Longitudinal
+            # U = forward/longitudinal (along reference line heading)
+            # V = lateral (perpendicular to reference line)
+            forward = aU + bU * p + cU * p**2 + dU * p**3
+            lateral = aV + bV * p + cV * p**2 + dV * p**3
 
             # Transform to global coordinates
             cos_hdg = math.cos(geom.hdg)
             sin_hdg = math.sin(geom.hdg)
 
-            x_global = geom.x + v * cos_hdg - u * sin_hdg
-            y_global = geom.y + v * sin_hdg + u * cos_hdg
+            # Forward is along heading, lateral is perpendicular (right is positive)
+            x_global = geom.x + forward * cos_hdg - lateral * sin_hdg
+            y_global = geom.y + forward * sin_hdg + lateral * cos_hdg
 
             points.append((x_global, y_global))
 

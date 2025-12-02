@@ -152,7 +152,11 @@ class OpenDriveImporter:
             image_height=self.image_height,
             orbit_transformer=self.orbit_transformer,
             opendrive_geo_reference=self.odr_data.geo_reference,
-            scale_pixels_per_meter=options.scale_pixels_per_meter
+            scale_pixels_per_meter=options.scale_pixels_per_meter,
+            header_offset_x=self.odr_data.header.offset_x,
+            header_offset_y=self.odr_data.header.offset_y,
+            header_offset_z=self.odr_data.header.offset_z,
+            header_offset_hdg=self.odr_data.header.offset_hdg
         )
 
         transform_result = self.coord_transform.setup_transform(sample_points)

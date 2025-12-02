@@ -317,6 +317,11 @@ class ODRHeader:
     east: float = 0.0
     west: float = 0.0
     vendor: str = ""
+    # Coordinate offset (all geometry coordinates are relative to this)
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+    offset_z: float = 0.0
+    offset_hdg: float = 0.0
 
 
 @dataclass
@@ -395,6 +400,14 @@ class OpenDriveParser:
         header.east = float(header_elem.get('east', '0'))
         header.west = float(header_elem.get('west', '0'))
         header.vendor = header_elem.get('vendor', '')
+
+        # Parse offset element if present (SUMO files use this)
+        offset_elem = header_elem.find('offset')
+        if offset_elem is not None:
+            header.offset_x = float(offset_elem.get('x', '0'))
+            header.offset_y = float(offset_elem.get('y', '0'))
+            header.offset_z = float(offset_elem.get('z', '0'))
+            header.offset_hdg = float(offset_elem.get('hdg', '0'))
 
         return header
 
