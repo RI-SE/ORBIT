@@ -448,25 +448,26 @@ def get_path_width_from_osm(tags: dict, lane_type: LaneType) -> float:
     Returns:
         Width in meters
 
-    Default widths:
-        - Bicycle path: 2.0m (typical single bike lane)
-        - Pedestrian/walking: 1.5m (typical footpath)
+    Default widths (per lane, paths use symmetric left+right lanes):
+        - Bicycle/shared path: 1.5m per lane (3.0m total)
+        - Pedestrian/walking: 1.0m per lane (2.0m total)
     """
-    # Check for explicit width tag
+    # Check for explicit width tag (this is total width, divide by 2 for per-lane)
     if 'width' in tags:
         try:
             width_str = tags['width']
             # Handle formats like "3", "3m", "3 m"
             width_str = width_str.replace('m', '').replace(' ', '').strip()
-            return float(width_str)
+            total_width = float(width_str)
+            return total_width / 2.0  # Return per-lane width
         except ValueError:
             pass
 
-    # Defaults based on lane type
+    # Defaults based on lane type (per-lane width)
     if lane_type == LaneType.BIKING:
-        return 2.0  # Typical bicycle path width
+        return 1.5  # Per-lane width for bicycle/shared paths
     elif lane_type in (LaneType.SIDEWALK, LaneType.WALKING):
-        return 1.5  # Typical footpath width
+        return 1.0  # Per-lane width for pedestrian paths
 
     # Fallback
-    return 2.0
+    return 1.5

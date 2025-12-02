@@ -376,6 +376,42 @@ class CoordinateTransformer:
         )
         return proj_string
 
+    def get_utm_projection_string(self) -> str:
+        """
+        Get UTM projection string calculated from reference coordinates.
+
+        UTM zones are 6 degrees wide, numbered 1-60 from 180°W.
+        Zone = floor((lon + 180) / 6) + 1
+
+        Returns:
+            PROJ4 UTM projection string (e.g., "+proj=utm +zone=33 ...")
+        """
+        # Calculate UTM zone from longitude
+        zone = int((self.reference_lon + 180) / 6) + 1
+
+        # Determine hemisphere
+        hemisphere = "+north" if self.reference_lat >= 0 else "+south"
+
+        proj_string = (
+            f"+proj=utm "
+            f"+zone={zone} "
+            f"{hemisphere} "
+            f"+ellps=WGS84 "
+            f"+datum=WGS84 "
+            f"+units=m "
+            f"+no_defs"
+        )
+        return proj_string
+
+    def get_utm_zone(self) -> int:
+        """
+        Get the UTM zone number for the reference coordinates.
+
+        Returns:
+            UTM zone number (1-60)
+        """
+        return int((self.reference_lon + 180) / 6) + 1
+
     def get_transformation_info(self) -> Dict:
         """
         Get information about the transformation for display/logging.

@@ -283,6 +283,10 @@ class OpenDriveImporter:
         # Step 7: Track unsupported features
         self._track_unsupported_features(result)
 
+        # Step 8: Preserve geoReference for round-trip export
+        if self.odr_data.geo_reference:
+            self.project.imported_geo_reference = self.odr_data.geo_reference
+
         result.success = True
         return result
 

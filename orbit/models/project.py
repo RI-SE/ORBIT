@@ -109,6 +109,7 @@ class Project:
     mc_sigma_pixels: float = 1.5  # Measurement error for Monte Carlo (pixels)
     baseline_uncertainty_m: float = 0.05  # Baseline position uncertainty (meters)
     gcp_suggestion_threshold: float = 0.2  # Threshold for GCP suggestions (meters)
+    imported_geo_reference: Optional[str] = None  # Preserved geoReference from OpenDRIVE import
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -330,7 +331,8 @@ class Project:
             'uncertainty_last_computed': self.uncertainty_last_computed,
             'mc_sigma_pixels': self.mc_sigma_pixels,
             'baseline_uncertainty_m': self.baseline_uncertainty_m,
-            'gcp_suggestion_threshold': self.gcp_suggestion_threshold
+            'gcp_suggestion_threshold': self.gcp_suggestion_threshold,
+            'imported_geo_reference': self.imported_geo_reference
         }
 
     @classmethod
@@ -395,6 +397,7 @@ class Project:
             mc_sigma_pixels=data.get('mc_sigma_pixels', 1.5),
             baseline_uncertainty_m=data.get('baseline_uncertainty_m', 0.05),
             gcp_suggestion_threshold=data.get('gcp_suggestion_threshold', 0.2),
+            imported_geo_reference=data.get('imported_geo_reference'),
             metadata=data.get('metadata', {})
         )
 

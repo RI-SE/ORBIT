@@ -102,6 +102,16 @@ class ExportDialog(BaseDialog):
         self.preserve_geometry_checkbox.stateChanged.connect(self.on_preserve_geometry_changed)
         options_layout.addRow("Geometry:", self.preserve_geometry_checkbox)
 
+        # Projection type checkbox (UTM vs Transverse Mercator)
+        self.use_tmerc_checkbox = QCheckBox("Use Transverse Mercator (local projection)")
+        self.use_tmerc_checkbox.setChecked(False)  # UTM is default
+        self.use_tmerc_checkbox.setToolTip(
+            "If unchecked (default), uses UTM projection with automatically calculated zone.\n"
+            "If an imported OpenDRIVE file had a geoReference, it will be preserved.\n"
+            "If checked, uses a local Transverse Mercator projection centered on control points."
+        )
+        options_layout.addRow("Projection:", self.use_tmerc_checkbox)
+
         # Output file selection
         output_layout = QHBoxLayout()
         self.output_path_edit = QLineEdit()
@@ -283,7 +293,8 @@ class ExportDialog(BaseDialog):
                 arc_tolerance=self.arc_tolerance_spin.value(),
                 preserve_geometry=self.preserve_geometry_checkbox.isChecked(),
                 right_hand_traffic=self.project.right_hand_traffic,
-                country_code=country_code
+                country_code=country_code,
+                use_tmerc=self.use_tmerc_checkbox.isChecked()
             )
 
             if success:

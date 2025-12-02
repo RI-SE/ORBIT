@@ -4,8 +4,8 @@ Lane data model for ORBIT.
 Represents a lane in a road with OpenDRIVE-compliant properties.
 """
 
-from typing import Optional, Dict, Any
-from dataclasses import dataclass
+from typing import Optional, Dict, Any, List
+from dataclasses import dataclass, field
 from enum import Enum
 
 from .polyline import RoadMarkType
@@ -67,6 +67,8 @@ class Lane:
         speed_limit_unit: Unit for speed limit (m/s, km/h, mph)
         left_boundary_id: Optional polyline ID defining left boundary
         right_boundary_id: Optional polyline ID defining right boundary
+        access_restrictions: List of allowed vehicle/user types for OpenDRIVE access element
+            (e.g., ["bicycle", "pedestrian"] for shared paths)
 
     Width polynomial: width(ds) = a + b*ds + c*ds² + d*ds³
     where ds is distance from start of lane section.
@@ -85,6 +87,7 @@ class Lane:
     speed_limit_unit: str = "m/s"  # Unit: "m/s", "km/h", or "mph"
     left_boundary_id: Optional[str] = None
     right_boundary_id: Optional[str] = None
+    access_restrictions: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -114,6 +117,9 @@ class Lane:
         if self.speed_limit is not None:
             data['speed_limit'] = self.speed_limit
             data['speed_limit_unit'] = self.speed_limit_unit
+        # Only include access restrictions if set
+        if self.access_restrictions:
+            data['access_restrictions'] = self.access_restrictions
         return data
 
     @classmethod
@@ -133,7 +139,8 @@ class Lane:
             speed_limit=data.get('speed_limit'),
             speed_limit_unit=data.get('speed_limit_unit', 'm/s'),
             left_boundary_id=data.get('left_boundary_id'),
-            right_boundary_id=data.get('right_boundary_id')
+            right_boundary_id=data.get('right_boundary_id'),
+            access_restrictions=data.get('access_restrictions', [])
         )
 
     def get_display_name(self) -> str:

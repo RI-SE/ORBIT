@@ -33,7 +33,8 @@ class OpenDriveWriter:
         transformer: CoordinateTransformer,
         curve_fitter: Optional[CurveFitter] = None,
         right_hand_traffic: bool = True,
-        country_code: str = "se"
+        country_code: str = "se",
+        use_tmerc: bool = False
     ):
         """
         Initialize OpenDrive writer.
@@ -44,12 +45,15 @@ class OpenDriveWriter:
             curve_fitter: Optional curve fitter (creates default if None)
             right_hand_traffic: True for right-hand traffic (default), False for left-hand
             country_code: Two-letter ISO 3166-1 country code (default: "se")
+            use_tmerc: If True, use Transverse Mercator projection; if False (default),
+                       use UTM projection or preserved geoReference from import
         """
         self.project = project
         self.transformer = transformer
         self.curve_fitter = curve_fitter or CurveFitter(preserve_geometry=True)
         self.right_hand_traffic = right_hand_traffic
         self.country_code = country_code.lower()
+        self.use_tmerc = use_tmerc
 
         # Build lookup maps
         self.polyline_map = {p.id: p for p in project.polylines}
@@ -266,8 +270,16 @@ class OpenDriveWriter:
         # Add georef if available
         if self.project.has_georeferencing():
             georef = etree.SubElement(header, 'geoReference')
-            # Use proper metric projection string
-            georef.text = self.transformer.get_projection_string()
+            # Select projection string based on export option
+            if self.use_tmerc:
+                # Use local Transverse Mercator projection centered on control points
+                georef.text = self.transformer.get_projection_string()
+            else:
+                # Prefer preserved geoReference from import, otherwise calculate UTM
+                if self.project.imported_geo_reference:
+                    georef.text = self.project.imported_geo_reference
+                else:
+                    georef.text = self.transformer.get_utm_projection_string()
 
         return header
 
@@ -830,7 +842,8 @@ def export_to_opendrive(
     arc_tolerance: float = 1.0,
     preserve_geometry: bool = True,
     right_hand_traffic: bool = True,
-    country_code: str = "se"
+    country_code: str = "se",
+    use_tmerc: bool = False
 ) -> bool:
     """
     Export project to OpenDrive format.
@@ -844,10 +857,12 @@ def export_to_opendrive(
         preserve_geometry: If True, preserve all polyline points (one line per segment)
         right_hand_traffic: True for right-hand traffic (default), False for left-hand
         country_code: Two-letter ISO 3166-1 country code (default: "se")
+        use_tmerc: If True, use Transverse Mercator projection; if False (default),
+                   use UTM projection or preserved geoReference
 
     Returns:
         True if successful
     """
     curve_fitter = CurveFitter(line_tolerance, arc_tolerance, preserve_geometry)
-    writer = OpenDriveWriter(project, transformer, curve_fitter, right_hand_traffic, country_code)
+    writer = OpenDriveWriter(project, transformer, curve_fitter, right_hand_traffic, country_code, use_tmerc)
     return writer.write(output_path)

@@ -197,4 +197,13 @@ class LaneBuilder:
             speed.set('max', f'{lane_obj.speed_limit:.6g}')
             speed.set('unit', lane_obj.speed_limit_unit)
 
+        # Access restrictions (for shared paths)
+        if lane_obj.access_restrictions:
+            access = etree.SubElement(lane, 'access')
+            access.set('sOffset', '0.0')
+            access.set('rule', 'allow')
+            for restriction_type in lane_obj.access_restrictions:
+                restriction = etree.SubElement(access, 'restriction')
+                restriction.set('type', restriction_type)
+
         return lane

@@ -1214,22 +1214,25 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
         # This is a bicycle or pedestrian path
         road_type_prefix, lane_type = path_info
 
+        # Determine if this is a shared path (both bicycle and pedestrian)
+        is_shared_path = 'Shared' in road_type_prefix or 'Segregated' in road_type_prefix
+
         # Get path name
         osm_name = osm_way.tags.get('name', '')
         road_name = f"{road_type_prefix} - {osm_name}" if osm_name else road_type_prefix
 
-        # Get path width
+        # Get path width (per-lane width, total width is 2x this)
         path_width = get_path_width_from_osm(osm_way.tags, lane_type)
 
-        # Create road with path type
+        # Create road with symmetric path lanes (left and right)
         from orbit.models.road import LaneInfo
         road = Road(
             name=road_name,
             road_type=RoadType.TOWN,  # Paths are typically in town/urban areas
             centerline_id=centerline.id,
             lane_info=LaneInfo(
-                left_count=0,
-                right_count=1,  # Single lane on right side
+                left_count=1,
+                right_count=1,  # Symmetric lanes
                 lane_width=path_width
             )
         )
@@ -1241,7 +1244,7 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
         else:
             road.speed_limit = None  # No speed limit for pedestrian paths
 
-        # Create single lane section with one path lane
+        # Create lane section with symmetric path lanes
         section = LaneSection(
             section_number=1,
             s_start=0.0,
@@ -1258,14 +1261,28 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
         )
         section.lanes.append(center_lane)
 
-        # Create single path lane on right side
-        path_lane = Lane(
-            id=-1,  # Single lane on right side
+        # Set access restrictions for shared paths
+        access_restrictions = ["bicycle", "pedestrian"] if is_shared_path else []
+
+        # Create left path lane (id=1)
+        left_lane = Lane(
+            id=1,
             lane_type=lane_type,  # BIKING or SIDEWALK
             road_mark_type=RoadMarkType.SOLID,  # Paths typically have solid edges
-            width=path_width
+            width=path_width,
+            access_restrictions=access_restrictions
         )
-        section.lanes.append(path_lane)
+        section.lanes.append(left_lane)
+
+        # Create right path lane (id=-1)
+        right_lane = Lane(
+            id=-1,
+            lane_type=lane_type,  # BIKING or SIDEWALK
+            road_mark_type=RoadMarkType.SOLID,  # Paths typically have solid edges
+            width=path_width,
+            access_restrictions=access_restrictions
+        )
+        section.lanes.append(right_lane)
 
         road.lane_sections.append(section)
 

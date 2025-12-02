@@ -8,7 +8,7 @@ from typing import Optional, TYPE_CHECKING
 
 from PyQt6.QtWidgets import (
     QDialog,
-    QComboBox, QLabel, QDoubleSpinBox
+    QComboBox, QLabel, QDoubleSpinBox, QCheckBox, QWidget, QHBoxLayout
 )
 
 from orbit.models import Lane, LaneType, RoadMarkType, Project, LineType
@@ -113,6 +113,30 @@ class LanePropertiesDialog(BaseDialog):
             self.width_spin.setToolTip("Lane width in meters (or pixels if not georeferenced)")
             props_layout.addRow("Width:", self.width_spin)
 
+        # Access restrictions (for path lanes)
+        self.access_widget = QWidget()
+        access_layout = QHBoxLayout(self.access_widget)
+        access_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.bicycle_access_checkbox = QCheckBox("Bicycle")
+        self.bicycle_access_checkbox.setToolTip("Allow bicycle access on this lane")
+        access_layout.addWidget(self.bicycle_access_checkbox)
+
+        self.pedestrian_access_checkbox = QCheckBox("Pedestrian")
+        self.pedestrian_access_checkbox.setToolTip("Allow pedestrian access on this lane")
+        access_layout.addWidget(self.pedestrian_access_checkbox)
+
+        access_layout.addStretch()
+        props_layout.addRow("Access:", self.access_widget)
+
+        # Access info label
+        self.access_info_label = QLabel(
+            "<i>For shared paths, enable both bicycle and pedestrian access.</i>"
+        )
+        self.access_info_label.setWordWrap(True)
+        self.access_info_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
+        props_layout.addRow("", self.access_info_label)
+
         # Description label
         self.description_label = QLabel()
         self.description_label.setWordWrap(True)
@@ -195,6 +219,13 @@ class LanePropertiesDialog(BaseDialog):
 
             self.update_width_info()
 
+        # Set access restrictions
+        self.bicycle_access_checkbox.setChecked('bicycle' in self.lane.access_restrictions)
+        self.pedestrian_access_checkbox.setChecked('pedestrian' in self.lane.access_restrictions)
+
+        # Update access visibility based on lane type
+        self.update_access_visibility()
+
         # Set boundary selections (if available)
         if self.project and self.road_id:
             # Left boundary
@@ -208,6 +239,7 @@ class LanePropertiesDialog(BaseDialog):
     def on_lane_type_changed(self):
         """Handle lane type change."""
         self.update_description()
+        self.update_access_visibility()
 
     def update_width_info(self):
         """Update the width transition info label for connecting road lanes."""
@@ -228,6 +260,14 @@ class LanePropertiesDialog(BaseDialog):
             self.width_info_label.setText(
                 f"<i>Lane width decreases by {abs(diff):.2f}m (linear transition).</i>"
             )
+
+    def update_access_visibility(self):
+        """Show/hide access restrictions based on lane type."""
+        lane_type = self.lane_type_combo.currentData()
+        # Show access restrictions for path-related lane types
+        is_path_lane = lane_type in (LaneType.BIKING, LaneType.SIDEWALK, LaneType.WALKING)
+        self.access_widget.setVisible(is_path_lane)
+        self.access_info_label.setVisible(is_path_lane)
 
     def update_description(self):
         """Update the description based on lane type."""
@@ -279,6 +319,14 @@ class LanePropertiesDialog(BaseDialog):
             ) / 2
             # Also update the individual lane's width to the average
             self.lane.width = self.connecting_road.lane_width
+
+        # Update access restrictions (for path lanes)
+        access_restrictions = []
+        if self.bicycle_access_checkbox.isChecked():
+            access_restrictions.append('bicycle')
+        if self.pedestrian_access_checkbox.isChecked():
+            access_restrictions.append('pedestrian')
+        self.lane.access_restrictions = access_restrictions
 
         # Update boundary selections (if available)
         if self.project and self.road_id:
