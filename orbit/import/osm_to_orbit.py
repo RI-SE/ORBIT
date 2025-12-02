@@ -974,6 +974,7 @@ def offset_road_endpoints_from_junctions(
     junctions: List['Junction'],
     offset_distance_meters: float = 8.0,
     transformer: 'CoordinateTransformer' = None,
+    minimum_length_meters: float = 1.0,
     verbose: bool = False
 ) -> None:
     """
@@ -988,6 +989,7 @@ def offset_road_endpoints_from_junctions(
         junctions: List of junctions
         offset_distance_meters: Distance in METERS to offset endpoints from junction center (default: 8.0m)
         transformer: CoordinateTransformer to convert meters to pixels (required)
+        minimum_length_meters: Minimum road length to preserve after offsetting (default: 1.0m)
         verbose: If True, print debug information
     """
     if transformer is None:
@@ -997,8 +999,9 @@ def offset_road_endpoints_from_junctions(
     scale_x, scale_y = transformer.get_scale_factor()
     avg_scale = (scale_x + scale_y) / 2.0
 
-    # Convert offset from meters to pixels
+    # Convert offset and minimum length from meters to pixels
     offset_distance_pixels = offset_distance_meters / avg_scale
+    minimum_length_pixels = minimum_length_meters / avg_scale
 
     if verbose:
         print(f"Offsetting junction endpoints by {offset_distance_meters}m ({offset_distance_pixels:.1f} pixels)")
@@ -1041,19 +1044,30 @@ def offset_road_endpoints_from_junctions(
                 # Calculate total path length first
                 path_length = calculate_path_length(points)
 
-                # Determine actual offset distance to use
+                # Determine actual offset distance to use, preserving minimum length
                 actual_offset = offset_distance_pixels
-                if path_length < offset_distance_pixels:
-                    # Road is shorter than offset distance - use max available
-                    actual_offset = path_length * 0.95  # Leave small margin
-                    if verbose:
-                        offset_m = offset_distance_meters
-                        actual_m = (actual_offset / offset_distance_pixels) * offset_distance_meters
-                        print(f"  WARNING: Road '{road.name}' is shorter than offset ({path_length:.1f} px), "
-                              f"using {actual_m:.1f}m instead of {offset_m:.1f}m")
+                max_allowed_offset = path_length - minimum_length_pixels
 
-                # Find point at offset distance along path
-                result = find_point_at_distance_along_path(points, actual_offset, from_start=True)
+                if max_allowed_offset <= 0:
+                    # Road is already at or below minimum length - skip offset
+                    if verbose:
+                        road_length_m = path_length * avg_scale
+                        print(f"  SKIP: Road '{road.name}' is too short ({road_length_m:.1f}m) "
+                              f"to offset while preserving {minimum_length_meters}m minimum")
+                    actual_offset = 0
+                elif actual_offset > max_allowed_offset:
+                    # Reduce offset to preserve minimum length
+                    actual_offset = max_allowed_offset
+                    if verbose:
+                        actual_m = actual_offset * avg_scale
+                        print(f"  WARNING: Road '{road.name}' offset reduced to {actual_m:.1f}m "
+                              f"to preserve {minimum_length_meters}m minimum length")
+
+                # Find point at offset distance along path (skip if no offset needed)
+                if actual_offset > 0:
+                    result = find_point_at_distance_along_path(points, actual_offset, from_start=True)
+                else:
+                    result = None
 
                 if result:
                     new_point, direction, segment_idx = result
@@ -1087,19 +1101,30 @@ def offset_road_endpoints_from_junctions(
                 # Calculate total path length first
                 path_length = calculate_path_length(points)
 
-                # Determine actual offset distance to use
+                # Determine actual offset distance to use, preserving minimum length
                 actual_offset = offset_distance_pixels
-                if path_length < offset_distance_pixels:
-                    # Road is shorter than offset distance - use max available
-                    actual_offset = path_length * 0.95  # Leave small margin
-                    if verbose:
-                        offset_m = offset_distance_meters
-                        actual_m = (actual_offset / offset_distance_pixels) * offset_distance_meters
-                        print(f"  WARNING: Road '{road.name}' is shorter than offset ({path_length:.1f} px), "
-                              f"using {actual_m:.1f}m instead of {offset_m:.1f}m")
+                max_allowed_offset = path_length - minimum_length_pixels
 
-                # Find point at offset distance along path from end
-                result = find_point_at_distance_along_path(points, actual_offset, from_start=False)
+                if max_allowed_offset <= 0:
+                    # Road is already at or below minimum length - skip offset
+                    if verbose:
+                        road_length_m = path_length * avg_scale
+                        print(f"  SKIP: Road '{road.name}' is too short ({road_length_m:.1f}m) "
+                              f"to offset while preserving {minimum_length_meters}m minimum")
+                    actual_offset = 0
+                elif actual_offset > max_allowed_offset:
+                    # Reduce offset to preserve minimum length
+                    actual_offset = max_allowed_offset
+                    if verbose:
+                        actual_m = actual_offset * avg_scale
+                        print(f"  WARNING: Road '{road.name}' offset reduced to {actual_m:.1f}m "
+                              f"to preserve {minimum_length_meters}m minimum length")
+
+                # Find point at offset distance along path from end (skip if no offset needed)
+                if actual_offset > 0:
+                    result = find_point_at_distance_along_path(points, actual_offset, from_start=False)
+                else:
+                    result = None
 
                 if result:
                     new_point, direction, segment_idx = result

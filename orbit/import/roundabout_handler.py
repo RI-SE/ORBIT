@@ -75,6 +75,29 @@ class RoundaboutInfo:
     tags: Dict[str, str] = field(default_factory=dict)
 
 
+def _get_road_lane_width(road: Road, default: float = 3.5) -> float:
+    """
+    Get the lane width for a road.
+
+    Checks lane_info first, then falls back to default.
+
+    Args:
+        road: The road to get lane width from
+        default: Default width if not set
+
+    Returns:
+        Lane width in meters
+    """
+    if road.lane_info and road.lane_info.lane_width:
+        return road.lane_info.lane_width
+    # Try to get from first lane section
+    if road.lane_sections:
+        for lane in road.lane_sections[0].lanes:
+            if lane.id != 0 and lane.width > 0:
+                return lane.width
+    return default
+
+
 def find_shared_nodes(roundabout_way: OSMWay, osm_data: OSMData) -> Dict[int, Set[int]]:
     """
     Find nodes in the roundabout that are shared with other ways.
@@ -958,9 +981,10 @@ def create_roundabout_connectors(
 
     # 1. Create THROUGH connector (ring continuation)
     if incoming_ring_road and outgoing_ring_road and incoming_end and outgoing_start:
-        # Calculate ring tangent headings at the endpoints
-        incoming_heading = _calculate_ring_tangent(incoming_end, roundabout.center, roundabout.clockwise)
-        outgoing_heading = _calculate_ring_tangent(outgoing_start, roundabout.center, roundabout.clockwise)
+        # Calculate headings from actual polyline directions (not theoretical ring tangent)
+        # This is correct after road endpoints have been offset from the junction
+        incoming_heading = _calculate_endpoint_heading(incoming_ring_polyline.points, at_start=False)
+        outgoing_heading = _calculate_endpoint_heading(outgoing_ring_polyline.points, at_start=True)
 
         # Generate smooth tangent-continuous path
         through_path, coeffs = generate_simple_connection_path(
@@ -976,16 +1000,23 @@ def create_roundabout_connectors(
             # Unpack ParamPoly3D coefficients
             aU, bU, cU, dU, aV, bV, cV, dV = coeffs
 
+            # Get lane widths from connected ring roads
+            incoming_width = _get_road_lane_width(incoming_ring_road, default_lane_width)
+            outgoing_width = _get_road_lane_width(outgoing_ring_road, default_lane_width)
+            avg_width = (incoming_width + outgoing_width) / 2
+
             through_connector = ConnectingRoad(
                 path=through_path,
                 lane_count_left=0,
                 lane_count_right=roundabout.lane_count,
-                lane_width=default_lane_width,
+                lane_width=avg_width,
                 predecessor_road_id=incoming_ring_road.id,
                 successor_road_id=outgoing_ring_road.id,
                 contact_point_start="end",
                 contact_point_end="start"
             )
+            through_connector.lane_width_start = incoming_width
+            through_connector.lane_width_end = outgoing_width
 
             # Store ParamPoly3D coefficients for proper OpenDrive export
             through_connector.aU = aU
@@ -1043,9 +1074,9 @@ def create_roundabout_connectors(
             entry_ring_road = outgoing_ring_road
             contact_end = "start"
 
-            # Calculate headings
+            # Calculate headings from actual polyline directions
             approach_heading = _calculate_endpoint_heading(approach_points, at_start=False)
-            ring_heading = _calculate_ring_tangent(entry_ring_pos, roundabout.center, roundabout.clockwise)
+            ring_heading = _calculate_endpoint_heading(outgoing_ring_polyline.points, at_start=True)
 
             # Generate smooth entry path
             entry_path, coeffs = generate_simple_connection_path(
@@ -1062,16 +1093,23 @@ def create_roundabout_connectors(
 
                 approach_lanes = approach_road.lane_info.right_count if approach_road.lane_info else 1
 
+                # Get lane widths from connected roads
+                approach_width = _get_road_lane_width(approach_road, default_lane_width)
+                ring_width = _get_road_lane_width(entry_ring_road, default_lane_width)
+                avg_width = (approach_width + ring_width) / 2
+
                 entry_connector = ConnectingRoad(
                     path=entry_path,
                     lane_count_left=0,
                     lane_count_right=min(approach_lanes, roundabout.lane_count),
-                    lane_width=default_lane_width,
+                    lane_width=avg_width,
                     predecessor_road_id=approach_road.id,
                     successor_road_id=entry_ring_road.id,
                     contact_point_start="end",
                     contact_point_end=contact_end
                 )
+                entry_connector.lane_width_start = approach_width
+                entry_connector.lane_width_end = ring_width
 
                 # Store ParamPoly3D coefficients
                 entry_connector.aU = aU
@@ -1124,8 +1162,8 @@ def create_roundabout_connectors(
             exit_ring_road = incoming_ring_road
             contact_start = "end"
 
-            # Calculate headings
-            ring_heading = _calculate_ring_tangent(exit_ring_pos, roundabout.center, roundabout.clockwise)
+            # Calculate headings from actual polyline directions
+            ring_heading = _calculate_endpoint_heading(incoming_ring_polyline.points, at_start=False)
             approach_heading = _calculate_endpoint_heading(approach_points, at_start=True)
 
             # Generate smooth exit path
@@ -1144,16 +1182,23 @@ def create_roundabout_connectors(
                 # Exit traffic uses RIGHT lanes of the approach road (negative lane IDs)
                 approach_lanes = approach_road.lane_info.right_count if approach_road.lane_info else 1
 
+                # Get lane widths from connected roads
+                ring_width = _get_road_lane_width(exit_ring_road, default_lane_width)
+                approach_width = _get_road_lane_width(approach_road, default_lane_width)
+                avg_width = (ring_width + approach_width) / 2
+
                 exit_connector = ConnectingRoad(
                     path=exit_path,
                     lane_count_left=0,
                     lane_count_right=min(approach_lanes, roundabout.lane_count),
-                    lane_width=default_lane_width,
+                    lane_width=avg_width,
                     predecessor_road_id=exit_ring_road.id,
                     successor_road_id=approach_road.id,
                     contact_point_start=contact_start,
                     contact_point_end="start"
                 )
+                exit_connector.lane_width_start = ring_width
+                exit_connector.lane_width_end = approach_width
 
                 # Store ParamPoly3D coefficients
                 exit_connector.aU = aU
