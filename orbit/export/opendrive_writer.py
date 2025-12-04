@@ -827,7 +827,15 @@ class OpenDriveWriter:
             for lane_conn in lane_connections:
                 lane_link = etree.SubElement(connection, 'laneLink')
                 lane_link.set('from', str(lane_conn.from_lane_id))
-                lane_link.set('to', str(lane_conn.to_lane_id))
+                # Use connecting_lane_id if set, otherwise derive from from_lane_id sign
+                # (OpenDRIVE laneLink.to is lane on connecting road, not outgoing road)
+                if lane_conn.connecting_lane_id is not None:
+                    connecting_lane = lane_conn.connecting_lane_id
+                else:
+                    # Fallback for older projects: map based on lane side
+                    # Negative from_lane → -1 (right), positive → +1 (left)
+                    connecting_lane = -1 if lane_conn.from_lane_id < 0 else 1
+                lane_link.set('to', str(connecting_lane))
 
             connection_id += 1
 

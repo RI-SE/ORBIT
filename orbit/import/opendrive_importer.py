@@ -17,6 +17,7 @@ from orbit.models.lane import Lane, LaneType as ORBITLaneType
 from orbit.models.lane_section import LaneSection
 from orbit.models.junction import JunctionConnection
 from orbit.models.connecting_road import ConnectingRoad
+from orbit.models.lane_connection import LaneConnection
 from orbit.models.signal import SignalType, SpeedUnit
 from orbit.models.object import ObjectType
 
@@ -610,6 +611,43 @@ class OpenDriveImporter:
             junction.connected_road_ids.append(predecessor_orbit_id)
         if successor_orbit_id and successor_orbit_id not in junction.connected_road_ids:
             junction.connected_road_ids.append(successor_orbit_id)
+
+        # Create LaneConnection objects from junction connection data
+        # Find the ODR junction to get lane link data
+        odr_junction = None
+        for j in self.odr_data.junctions:
+            if j.id == junction_odr_id:
+                odr_junction = j
+                break
+
+        if odr_junction:
+            # Find the connection that uses this connecting road
+            for odr_conn in odr_junction.connections:
+                if odr_conn.connecting_road == odr_road.id:
+                    # Get the incoming road ORBIT ID
+                    from_road_id = self.odr_road_to_orbit.get(odr_conn.incoming_road, "")
+
+                    # The to_road is the successor of the connecting road
+                    to_road_id = successor_orbit_id
+
+                    if from_road_id and to_road_id:
+                        # Create LaneConnection for each lane link
+                        for lane_link in odr_conn.lane_links:
+                            # Note: lane_link.to_lane is the lane on the connecting road,
+                            # not the outgoing road. We store it in connecting_lane_id.
+                            # to_lane_id is the outgoing road lane (assumed same as from_lane_id).
+                            lane_connection = LaneConnection(
+                                from_road_id=from_road_id,
+                                from_lane_id=lane_link.from_lane,
+                                to_road_id=to_road_id,
+                                to_lane_id=lane_link.from_lane,  # Assume same lane continues
+                                connecting_road_id=connecting_road.id,
+                                connecting_lane_id=lane_link.to_lane  # Lane on connecting road
+                            )
+                            junction.add_lane_connection(lane_connection)
+
+                        if options.verbose:
+                            print(f"    Created {len(odr_conn.lane_links)} lane connection(s)")
 
         if options.verbose:
             geom_type = "paramPoly3" if param_poly3 else "polyline"

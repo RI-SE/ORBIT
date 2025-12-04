@@ -25,6 +25,7 @@ class LaneConnection:
         to_road_id: ID of the outgoing road
         to_lane_id: Lane ID on outgoing road
         connecting_road_id: Optional reference to the ConnectingRoad that provides the geometry
+        connecting_lane_id: Lane ID on connecting road (used for OpenDRIVE laneLink.to attribute)
         turn_type: Classification of the turn ('straight', 'left', 'right', 'uturn', 'merge', 'diverge', 'unknown')
         priority: Priority level for conflict resolution (higher = higher priority)
         traffic_light_id: Optional reference to a traffic signal controlling this connection
@@ -42,6 +43,7 @@ class LaneConnection:
 
     # Reference to geometric path
     connecting_road_id: Optional[str] = None
+    connecting_lane_id: Optional[int] = None  # Lane ID on connecting road (for OpenDRIVE laneLink.to)
 
     # Connection properties
     turn_type: str = "unknown"  # 'straight', 'left', 'right', 'uturn', 'merge', 'diverge', 'unknown'
@@ -120,6 +122,8 @@ class LaneConnection:
         # Optional fields
         if self.connecting_road_id is not None:
             data['connecting_road_id'] = self.connecting_road_id
+        if self.connecting_lane_id is not None:
+            data['connecting_lane_id'] = self.connecting_lane_id
         if self.traffic_light_id is not None:
             data['traffic_light_id'] = self.traffic_light_id
         if self.stop_line_offset is not None:
@@ -145,6 +149,7 @@ class LaneConnection:
         lc.to_road_id = data.get('to_road_id', '')
         lc.to_lane_id = data.get('to_lane_id', -1)
         lc.connecting_road_id = data.get('connecting_road_id')
+        lc.connecting_lane_id = data.get('connecting_lane_id')
         lc.turn_type = data.get('turn_type', 'unknown')
         lc.priority = data.get('priority', 0)
         lc.traffic_light_id = data.get('traffic_light_id')

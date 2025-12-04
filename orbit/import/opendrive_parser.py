@@ -250,12 +250,20 @@ class ODRObject:
 
 
 @dataclass
+class ODRLaneLink:
+    """Lane link within a junction connection."""
+    from_lane: int  # Lane ID on incoming road
+    to_lane: int    # Lane ID on connecting road
+
+
+@dataclass
 class ODRConnection:
     """Junction connection from OpenDrive."""
     id: str
     incoming_road: str
     connecting_road: str
     contact_point: str  # "start" or "end"
+    lane_links: List[ODRLaneLink] = field(default_factory=list)
 
 
 @dataclass
@@ -703,11 +711,23 @@ class OpenDriveParser:
             contact_point = conn_elem.get('contactPoint', 'start')
 
             if conn_id and incoming_road and connecting_road:
+                # Parse lane links within this connection
+                lane_links = []
+                for link_elem in conn_elem.findall('laneLink'):
+                    from_lane = link_elem.get('from')
+                    to_lane = link_elem.get('to')
+                    if from_lane is not None and to_lane is not None:
+                        lane_links.append(ODRLaneLink(
+                            from_lane=int(from_lane),
+                            to_lane=int(to_lane)
+                        ))
+
                 junction.connections.append(ODRConnection(
                     id=conn_id,
                     incoming_road=incoming_road,
                     connecting_road=connecting_road,
-                    contact_point=contact_point
+                    contact_point=contact_point,
+                    lane_links=lane_links
                 ))
 
         return junction
