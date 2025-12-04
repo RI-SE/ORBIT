@@ -7,9 +7,10 @@ Allows editing of individual lane properties.
 from typing import Optional, TYPE_CHECKING
 
 from PyQt6.QtWidgets import (
-    QDialog,
-    QComboBox, QLabel, QDoubleSpinBox, QCheckBox, QWidget, QHBoxLayout
+    QDialog, QGroupBox, QFormLayout, QSpinBox,
+    QComboBox, QLabel, QDoubleSpinBox, QCheckBox, QWidget, QHBoxLayout, QToolButton
 )
+from PyQt6.QtCore import Qt
 
 from orbit.models import Lane, LaneType, RoadMarkType, Project, LineType
 from orbit.utils import format_enum_name
@@ -61,6 +62,30 @@ class LanePropertiesDialog(BaseDialog):
         for mark_type in RoadMarkType:
             self.road_mark_type_combo.addItem(format_enum_name(mark_type), mark_type)
         props_layout.addRow("Road Mark Type:", self.road_mark_type_combo)
+
+        # Road mark color dropdown
+        self.road_mark_color_combo = QComboBox()
+        for color in ["white", "yellow", "blue", "green", "red", "orange"]:
+            self.road_mark_color_combo.addItem(color.capitalize(), color)
+        self.road_mark_color_combo.setToolTip("Color of the road marking (e.g., yellow for center lines)")
+        props_layout.addRow("Road Mark Color:", self.road_mark_color_combo)
+
+        # Road mark weight dropdown
+        self.road_mark_weight_combo = QComboBox()
+        for weight in ["standard", "bold"]:
+            self.road_mark_weight_combo.addItem(weight.capitalize(), weight)
+        self.road_mark_weight_combo.setToolTip("Line weight (bold for edge lines)")
+        props_layout.addRow("Road Mark Weight:", self.road_mark_weight_combo)
+
+        # Road mark width spinbox
+        self.road_mark_width_spin = QDoubleSpinBox()
+        self.road_mark_width_spin.setRange(0.05, 0.50)
+        self.road_mark_width_spin.setSingleStep(0.01)
+        self.road_mark_width_spin.setDecimals(2)
+        self.road_mark_width_spin.setValue(0.12)
+        self.road_mark_width_spin.setSuffix(" m")
+        self.road_mark_width_spin.setToolTip("Width of the painted road marking in meters")
+        props_layout.addRow("Road Mark Width:", self.road_mark_width_spin)
 
         # Lane width - different UI for connecting road lanes
         self.width_spin = None
@@ -143,6 +168,10 @@ class LanePropertiesDialog(BaseDialog):
         self.description_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
         props_layout.addRow("", self.description_label)
 
+        # Collapsible Advanced section (only for regular road lanes, not connecting roads)
+        if not is_connecting_road_lane:
+            self._setup_advanced_section()
+
         # Boundary polylines (if project available)
         if self.project and self.road_id:
             boundary_layout = self.add_form_group("Boundary Polylines")
@@ -189,6 +218,100 @@ class LanePropertiesDialog(BaseDialog):
                 display_text = f"Polyline ({polyline.point_count()} pts)"
                 combo.addItem(display_text, polyline_id)
 
+    def _setup_advanced_section(self):
+        """Setup the collapsible Advanced section with width polynomials and speed limit."""
+        # Create collapsible group
+        self.advanced_toggle = QToolButton()
+        self.advanced_toggle.setStyleSheet("QToolButton { border: none; }")
+        self.advanced_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.advanced_toggle.setText("Advanced")
+        self.advanced_toggle.setCheckable(True)
+        self.advanced_toggle.setChecked(False)
+        self.advanced_toggle.clicked.connect(self._toggle_advanced)
+
+        self.get_main_layout().addWidget(self.advanced_toggle)
+
+        # Container for advanced content
+        self.advanced_widget = QWidget()
+        advanced_layout = QFormLayout(self.advanced_widget)
+        advanced_layout.setContentsMargins(20, 5, 0, 10)
+
+        # Width polynomial section
+        width_poly_label = QLabel("<b>Width Polynomial</b>")
+        width_poly_label.setToolTip("width(ds) = a + b·ds + c·ds² + d·ds³\nwhere ds is distance from section start")
+        advanced_layout.addRow(width_poly_label)
+
+        width_info = QLabel("<i>Controls lane width variation along the section</i>")
+        width_info.setStyleSheet("color: gray;")
+        advanced_layout.addRow(width_info)
+
+        # Width b coefficient (linear)
+        self.width_b_spin = QDoubleSpinBox()
+        self.width_b_spin.setRange(-1.0, 1.0)
+        self.width_b_spin.setSingleStep(0.001)
+        self.width_b_spin.setDecimals(4)
+        self.width_b_spin.setValue(0.0)
+        self.width_b_spin.setToolTip("Linear coefficient: width change per meter (m/m)")
+        advanced_layout.addRow("b (linear):", self.width_b_spin)
+
+        # Width c coefficient (quadratic)
+        self.width_c_spin = QDoubleSpinBox()
+        self.width_c_spin.setRange(-0.1, 0.1)
+        self.width_c_spin.setSingleStep(0.0001)
+        self.width_c_spin.setDecimals(5)
+        self.width_c_spin.setValue(0.0)
+        self.width_c_spin.setToolTip("Quadratic coefficient (m/m²)")
+        advanced_layout.addRow("c (quadratic):", self.width_c_spin)
+
+        # Width d coefficient (cubic)
+        self.width_d_spin = QDoubleSpinBox()
+        self.width_d_spin.setRange(-0.01, 0.01)
+        self.width_d_spin.setSingleStep(0.00001)
+        self.width_d_spin.setDecimals(6)
+        self.width_d_spin.setValue(0.0)
+        self.width_d_spin.setToolTip("Cubic coefficient (m/m³)")
+        advanced_layout.addRow("d (cubic):", self.width_d_spin)
+
+        # Speed limit section
+        speed_label = QLabel("<b>Lane Speed Limit</b>")
+        advanced_layout.addRow(speed_label)
+
+        speed_info = QLabel("<i>Optional lane-specific limit (0 = inherit from road)</i>")
+        speed_info.setStyleSheet("color: gray;")
+        advanced_layout.addRow(speed_info)
+
+        # Speed limit value
+        speed_widget = QWidget()
+        speed_layout = QHBoxLayout(speed_widget)
+        speed_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.speed_limit_spin = QSpinBox()
+        self.speed_limit_spin.setRange(0, 300)
+        self.speed_limit_spin.setValue(0)
+        self.speed_limit_spin.setSpecialValueText("Inherit")
+        self.speed_limit_spin.setToolTip("0 = inherit road speed limit")
+        speed_layout.addWidget(self.speed_limit_spin)
+
+        self.speed_unit_combo = QComboBox()
+        self.speed_unit_combo.addItem("km/h", "km/h")
+        self.speed_unit_combo.addItem("mph", "mph")
+        self.speed_unit_combo.addItem("m/s", "m/s")
+        speed_layout.addWidget(self.speed_unit_combo)
+
+        advanced_layout.addRow("Speed:", speed_widget)
+
+        self.advanced_widget.setVisible(False)
+        self.get_main_layout().addWidget(self.advanced_widget)
+
+    def _toggle_advanced(self, checked: bool):
+        """Toggle visibility of advanced section."""
+        self.advanced_widget.setVisible(checked)
+        if checked:
+            self.advanced_toggle.setArrowType(Qt.ArrowType.DownArrow)
+        else:
+            self.advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
+
     def load_properties(self):
         """Load lane properties into the form."""
         # Set lane ID display
@@ -200,6 +323,11 @@ class LanePropertiesDialog(BaseDialog):
 
         # Set road mark type
         set_combo_by_data(self.road_mark_type_combo, self.lane.road_mark_type)
+
+        # Set road mark styling
+        set_combo_by_data(self.road_mark_color_combo, self.lane.road_mark_color)
+        set_combo_by_data(self.road_mark_weight_combo, self.lane.road_mark_weight)
+        self.road_mark_width_spin.setValue(self.lane.road_mark_width)
 
         # Set width based on lane type
         if self.width_spin is not None:
@@ -225,6 +353,45 @@ class LanePropertiesDialog(BaseDialog):
 
         # Update access visibility based on lane type
         self.update_access_visibility()
+
+        # Load advanced section values (if available - not for connecting road lanes)
+        if hasattr(self, 'width_b_spin'):
+            self.width_b_spin.setValue(self.lane.width_b)
+            self.width_c_spin.setValue(self.lane.width_c)
+            self.width_d_spin.setValue(self.lane.width_d)
+
+            # Speed limit - convert from m/s if stored
+            if self.lane.speed_limit is not None:
+                # Convert to display unit
+                speed_val = self.lane.speed_limit
+                unit = self.lane.speed_limit_unit
+                if unit == "m/s":
+                    # Show as m/s
+                    self.speed_limit_spin.setValue(int(speed_val))
+                    set_combo_by_data(self.speed_unit_combo, "m/s")
+                elif unit == "km/h":
+                    self.speed_limit_spin.setValue(int(speed_val))
+                    set_combo_by_data(self.speed_unit_combo, "km/h")
+                elif unit == "mph":
+                    self.speed_limit_spin.setValue(int(speed_val))
+                    set_combo_by_data(self.speed_unit_combo, "mph")
+                else:
+                    # Default assume m/s, convert to km/h for display
+                    self.speed_limit_spin.setValue(int(speed_val * 3.6))
+                    set_combo_by_data(self.speed_unit_combo, "km/h")
+            else:
+                self.speed_limit_spin.setValue(0)
+
+            # Expand advanced section if any values are non-default
+            has_non_default = (
+                self.lane.width_b != 0.0 or
+                self.lane.width_c != 0.0 or
+                self.lane.width_d != 0.0 or
+                self.lane.speed_limit is not None
+            )
+            if has_non_default:
+                self.advanced_toggle.setChecked(True)
+                self._toggle_advanced(True)
 
         # Set boundary selections (if available)
         if self.project and self.road_id:
@@ -305,6 +472,11 @@ class LanePropertiesDialog(BaseDialog):
         self.lane.lane_type = self.lane_type_combo.currentData()
         self.lane.road_mark_type = self.road_mark_type_combo.currentData()
 
+        # Update road mark styling
+        self.lane.road_mark_color = self.road_mark_color_combo.currentData()
+        self.lane.road_mark_weight = self.road_mark_weight_combo.currentData()
+        self.lane.road_mark_width = self.road_mark_width_spin.value()
+
         # Update width based on lane type
         if self.width_spin is not None:
             # Regular road lane
@@ -327,6 +499,20 @@ class LanePropertiesDialog(BaseDialog):
         if self.pedestrian_access_checkbox.isChecked():
             access_restrictions.append('pedestrian')
         self.lane.access_restrictions = access_restrictions
+
+        # Update advanced properties (if available - not for connecting road lanes)
+        if hasattr(self, 'width_b_spin'):
+            self.lane.width_b = self.width_b_spin.value()
+            self.lane.width_c = self.width_c_spin.value()
+            self.lane.width_d = self.width_d_spin.value()
+
+            # Speed limit - store in the selected unit
+            speed_val = self.speed_limit_spin.value()
+            if speed_val > 0:
+                self.lane.speed_limit = float(speed_val)
+                self.lane.speed_limit_unit = self.speed_unit_combo.currentData()
+            else:
+                self.lane.speed_limit = None  # Inherit from road
 
         # Update boundary selections (if available)
         if self.project and self.road_id:

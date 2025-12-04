@@ -354,11 +354,11 @@ class ConnectingRoadLanesGraphicsItem:
                     for x, y in polygon_points:
                         polygon.append(QPointF(x, y))
 
-                    # Choose color based on lane side
-                    if lane_id > 0:
-                        color = QColor(100, 255, 100, 77)  # Green for right lanes
+                    # Choose color based on lane side (darker shades for connecting roads)
+                    if lane_id < 0:
+                        color = QColor(50, 180, 50, 77)  # Darker green for right lanes
                     else:
-                        color = QColor(100, 180, 255, 77)  # Blue for left lanes
+                        color = QColor(50, 120, 200, 77)  # Darker blue for left lanes
 
                     pen = QPen(QColor(200, 200, 200, 150), 1)
                     brush = QBrush(color)

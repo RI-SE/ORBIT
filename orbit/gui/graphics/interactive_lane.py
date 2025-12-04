@@ -52,12 +52,19 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
         self.is_connecting_road = is_connecting_road
 
         # Choose base color based on lane side (OpenDRIVE convention)
+        # Connecting road lanes use darker shades to distinguish from regular lanes
         if lane_id < 0:
-            # Right lanes (negative IDs in OpenDRIVE): light green
-            self.base_color = QColor(100, 255, 100)
+            # Right lanes (negative IDs in OpenDRIVE): green shades
+            if is_connecting_road:
+                self.base_color = QColor(50, 180, 50)  # Darker green for connecting roads
+            else:
+                self.base_color = QColor(100, 255, 100)  # Light green for regular roads
         elif lane_id > 0:
-            # Left lanes (positive IDs in OpenDRIVE): light blue
-            self.base_color = QColor(100, 180, 255)
+            # Left lanes (positive IDs in OpenDRIVE): blue shades
+            if is_connecting_road:
+                self.base_color = QColor(50, 120, 200)  # Darker blue for connecting roads
+            else:
+                self.base_color = QColor(100, 180, 255)  # Light blue for regular roads
         else:
             # Center lane (ID = 0)
             self.base_color = QColor(200, 200, 200)

@@ -127,11 +127,13 @@ class ElementsTreeWidget(QWidget):
         if self.project:
             pred_road = self.project.get_road(conn_road.predecessor_road_id)
             if pred_road:
-                predecessor_name = pred_road.name if pred_road.name else f"Road {pred_road.id[:8]}"
+                pred_id_short = pred_road.id[:8]
+                predecessor_name = f"{pred_road.name} ({pred_id_short})" if pred_road.name else f"Road {pred_id_short}"
 
             succ_road = self.project.get_road(conn_road.successor_road_id)
             if succ_road:
-                successor_name = succ_road.name if succ_road.name else f"Road {succ_road.id[:8]}"
+                succ_id_short = succ_road.id[:8]
+                successor_name = f"{succ_road.name} ({succ_id_short})" if succ_road.name else f"Road {succ_id_short}"
 
         # Display text showing which roads are connected
         text = f"{predecessor_name} → {successor_name}"
@@ -267,6 +269,12 @@ class ElementsTreeWidget(QWidget):
             edit_action.triggered.connect(lambda: self.edit_junction(data["id"]))
             menu.addAction(edit_action)
 
+            lane_connections_action = QAction("Edit Lane Connections", self)
+            lane_connections_action.triggered.connect(lambda: self.edit_lane_connections(data["id"]))
+            menu.addAction(lane_connections_action)
+
+            menu.addSeparator()
+
             delete_action = QAction("Delete Junction", self)
             delete_action.triggered.connect(lambda: self.delete_junction(data["id"]))
             menu.addAction(delete_action)
@@ -321,6 +329,16 @@ class ElementsTreeWidget(QWidget):
         if junction:
             dialog = JunctionDialog(junction, self.project, self)
             if dialog.exec():
+                self.junction_modified.emit(junction_id)
+                self.refresh_tree()
+
+    def edit_lane_connections(self, junction_id: str):
+        """Edit lane connections for a junction."""
+        from ..dialogs.lane_connection_dialog import LaneConnectionDialog
+
+        junction = self.project.get_junction(junction_id)
+        if junction:
+            if LaneConnectionDialog.edit_connections(junction, self.project, self):
                 self.junction_modified.emit(junction_id)
                 self.refresh_tree()
 

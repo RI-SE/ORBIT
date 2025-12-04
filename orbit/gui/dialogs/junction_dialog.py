@@ -7,7 +7,7 @@ Allows editing of junction properties and road connections.
 from typing import Optional, List
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout,
+    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QComboBox, QPushButton,
     QListWidget, QLabel, QMessageBox,
     QListWidgetItem, QGroupBox
@@ -142,12 +142,14 @@ class JunctionDialog(BaseDialog):
         # Load roads from project
         if self.project:
             for road in self.project.roads:
+                road_id_short = road.id[:8]
+                display_text = f"{road.name} ({road_id_short}, {road.road_type.value})"
                 if road.id not in self.junction.connected_road_ids:
-                    item = QListWidgetItem(f"{road.name} ({road.road_type.value})")
+                    item = QListWidgetItem(display_text)
                     item.setData(Qt.ItemDataRole.UserRole, road.id)
                     self.available_roads_list.addItem(item)
                 else:
-                    item = QListWidgetItem(f"{road.name} ({road.road_type.value})")
+                    item = QListWidgetItem(display_text)
                     item.setData(Qt.ItemDataRole.UserRole, road.id)
                     self.connected_roads_list.addItem(item)
 

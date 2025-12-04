@@ -7,7 +7,7 @@ Allows editing of connecting road properties including tangent adjustment for Pa
 from typing import Optional
 
 from PyQt6.QtWidgets import (
-    QDialog,
+    QDialog, QSpinBox, QComboBox,
     QLabel, QDoubleSpinBox, QPushButton
 )
 
@@ -34,12 +34,14 @@ class ConnectingRoadDialog(BaseDialog):
         # Connecting road identification (read-only)
         id_layout = self.add_form_group("Connection Information")
 
-        # Get road names
+        # Get road names with IDs
         if self.project:
             pred_road = self.project.get_road(self.connecting_road.predecessor_road_id)
             succ_road = self.project.get_road(self.connecting_road.successor_road_id)
-            pred_name = pred_road.name if pred_road and pred_road.name else f"Road {self.connecting_road.predecessor_road_id[:8]}"
-            succ_name = succ_road.name if succ_road and succ_road.name else f"Road {self.connecting_road.successor_road_id[:8]}"
+            pred_id_short = self.connecting_road.predecessor_road_id[:8]
+            succ_id_short = self.connecting_road.successor_road_id[:8]
+            pred_name = f"{pred_road.name} ({pred_id_short})" if pred_road and pred_road.name else f"Road {pred_id_short}"
+            succ_name = f"{succ_road.name} ({succ_id_short})" if succ_road and succ_road.name else f"Road {succ_id_short}"
         else:
             pred_name = f"Road {self.connecting_road.predecessor_road_id[:8]}"
             succ_name = f"Road {self.connecting_road.successor_road_id[:8]}"
@@ -53,6 +55,71 @@ class ConnectingRoadDialog(BaseDialog):
 
         self.lane_count_label = QLabel()
         id_layout.addRow("Lanes:", self.lane_count_label)
+
+        # Lane configuration
+        lane_layout = self.add_form_group("Lane Configuration")
+
+        # Lane count left
+        self.lane_count_left_spin = QSpinBox()
+        self.lane_count_left_spin.setRange(0, 4)
+        self.lane_count_left_spin.setValue(self.connecting_road.lane_count_left)
+        self.lane_count_left_spin.setToolTip("Number of left lanes (positive lane IDs)")
+        lane_layout.addRow("Left Lanes:", self.lane_count_left_spin)
+
+        # Lane count right
+        self.lane_count_right_spin = QSpinBox()
+        self.lane_count_right_spin.setRange(0, 4)
+        self.lane_count_right_spin.setValue(self.connecting_road.lane_count_right)
+        self.lane_count_right_spin.setToolTip("Number of right lanes (negative lane IDs)")
+        lane_layout.addRow("Right Lanes:", self.lane_count_right_spin)
+
+        # Width at start
+        self.width_start_spin = QDoubleSpinBox()
+        self.width_start_spin.setRange(0.5, 20.0)
+        self.width_start_spin.setSingleStep(0.1)
+        self.width_start_spin.setDecimals(2)
+        self.width_start_spin.setSuffix(" m")
+        start_width = self.connecting_road.lane_width_start or self.connecting_road.lane_width
+        self.width_start_spin.setValue(start_width)
+        self.width_start_spin.setToolTip("Lane width at the start of the connecting road (s=0)")
+        lane_layout.addRow("Width at Start:", self.width_start_spin)
+
+        # Width at end
+        self.width_end_spin = QDoubleSpinBox()
+        self.width_end_spin.setRange(0.5, 20.0)
+        self.width_end_spin.setSingleStep(0.1)
+        self.width_end_spin.setDecimals(2)
+        self.width_end_spin.setSuffix(" m")
+        end_width = self.connecting_road.lane_width_end or self.connecting_road.lane_width
+        self.width_end_spin.setValue(end_width)
+        self.width_end_spin.setToolTip("Lane width at the end of the connecting road")
+        lane_layout.addRow("Width at End:", self.width_end_spin)
+
+        # Contact points
+        contact_layout = self.add_form_group("Contact Points")
+
+        self.predecessor_contact_combo = QComboBox()
+        self.predecessor_contact_combo.addItem("Start", "start")
+        self.predecessor_contact_combo.addItem("End", "end")
+        pred_contact = self.connecting_road.contact_point_start or "end"
+        pred_index = 0 if pred_contact == "start" else 1
+        self.predecessor_contact_combo.setCurrentIndex(pred_index)
+        self.predecessor_contact_combo.setToolTip("Contact point on predecessor road")
+        contact_layout.addRow("Predecessor Contact:", self.predecessor_contact_combo)
+
+        self.successor_contact_combo = QComboBox()
+        self.successor_contact_combo.addItem("Start", "start")
+        self.successor_contact_combo.addItem("End", "end")
+        succ_contact = self.connecting_road.contact_point_end or "start"
+        succ_index = 0 if succ_contact == "start" else 1
+        self.successor_contact_combo.setCurrentIndex(succ_index)
+        self.successor_contact_combo.setToolTip("Contact point on successor road")
+        contact_layout.addRow("Successor Contact:", self.successor_contact_combo)
+
+        contact_info = QLabel("<i>Which end of each road this connection attaches to</i>")
+        contact_info.setWordWrap(True)
+        contact_info.setStyleSheet("color: gray;")
+        contact_layout.addRow("", contact_info)
 
         # Geometry conversion (for polyline -> parampoly3 upgrade)
         if self.connecting_road.geometry_type == "polyline":
@@ -273,6 +340,33 @@ class ConnectingRoadDialog(BaseDialog):
 
     def accept(self):
         """Save changes and accept dialog."""
+        # Save lane configuration
+        old_left = self.connecting_road.lane_count_left
+        old_right = self.connecting_road.lane_count_right
+        new_left = self.lane_count_left_spin.value()
+        new_right = self.lane_count_right_spin.value()
+
+        self.connecting_road.lane_count_left = new_left
+        self.connecting_road.lane_count_right = new_right
+
+        # Regenerate lanes if counts changed
+        if old_left != new_left or old_right != new_right:
+            # Clear lanes to force reinitialization with new counts
+            self.connecting_road.lanes = []
+            self.connecting_road.ensure_lanes_initialized()
+
+        # Save lane widths
+        self.connecting_road.lane_width_start = self.width_start_spin.value()
+        self.connecting_road.lane_width_end = self.width_end_spin.value()
+        # Update average width for backward compatibility
+        self.connecting_road.lane_width = (
+            self.connecting_road.lane_width_start + self.connecting_road.lane_width_end
+        ) / 2
+
+        # Save contact points
+        self.connecting_road.contact_point_start = self.predecessor_contact_combo.currentData()
+        self.connecting_road.contact_point_end = self.successor_contact_combo.currentData()
+
         # The curve has already been updated by on_regenerate_curve if the user clicked preview
         # Otherwise, update tangent_scale without regenerating
         if self.connecting_road.geometry_type == "parampoly3":
