@@ -194,6 +194,14 @@ class JunctionDialog(BaseDialog):
             road_id = item.data(Qt.ItemDataRole.UserRole)
             self.junction.connected_road_ids.append(road_id)
 
+        # Clear any stale road-to-road predecessor/successor links between roads
+        # that now connect through this junction (OpenDRIVE compliance)
+        if self.project:
+            import importlib
+            junction_analyzer = importlib.import_module('orbit.import.junction_analyzer')
+            roads_dict = {road.id: road for road in self.project.roads}
+            junction_analyzer.clear_cross_junction_links(self.junction, roads_dict)
+
     def accept(self):
         """Handle dialog acceptance."""
         # Validate at least 2 roads

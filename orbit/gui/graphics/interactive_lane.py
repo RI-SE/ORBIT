@@ -21,6 +21,10 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
     DEFAULT_ALPHA = 77    # ~30% opacity
     HOVER_ALPHA = 204     # ~80% opacity
     SELECTED_ALPHA = 204  # ~80% opacity (same as hover)
+    LINKED_ALPHA = 102    # ~40% opacity for connected lanes
+
+    # Tint color for linked (connected) lanes - yellow/orange
+    LINKED_TINT = QColor(255, 200, 50)
 
     def __init__(self, lane_id: int, section_number: int, road_id: str,
                  polygon_points: List[tuple], parent_view: 'ImageView',
@@ -49,6 +53,7 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
         self.road_id = road_id
         self.parent_view = parent_view
         self.is_selected = False
+        self.is_linked = False  # True when this lane is connected to a selected lane
         self.is_connecting_road = is_connecting_road
 
         # Choose base color based on lane side (OpenDRIVE convention)
@@ -83,36 +88,58 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
             pen = QPen(QColor(0, 0, 0, 255), 3)  # Black border, 3px width
             self.setPen(pen)
             self._update_brush(self.SELECTED_ALPHA)
+        elif self.is_linked:
+            # Linked: orange border and tinted fill
+            pen = QPen(QColor(255, 150, 0, 200), 2)  # Orange border, 2px width
+            self.setPen(pen)
+            self._update_brush(self.LINKED_ALPHA, tinted=True)
         else:
             # Not selected: default gray border and default opacity
             pen = QPen(QColor(200, 200, 200, 150), 1)
             self.setPen(pen)
             self._update_brush(self.DEFAULT_ALPHA)
 
-    def _update_brush(self, alpha: int) -> None:
-        """Update the brush with the specified alpha value."""
-        color = QColor(self.base_color)
-        color.setAlpha(alpha)
+    def _update_brush(self, alpha: int, tinted: bool = False) -> None:
+        """Update the brush with the specified alpha value.
+
+        Args:
+            alpha: Alpha value (0-255)
+            tinted: If True, blend base color with LINKED_TINT for connected lanes
+        """
+        if tinted:
+            # Blend base color with yellow/orange tint (50% blend)
+            r = (self.base_color.red() + self.LINKED_TINT.red()) // 2
+            g = (self.base_color.green() + self.LINKED_TINT.green()) // 2
+            b = (self.base_color.blue() + self.LINKED_TINT.blue()) // 2
+            color = QColor(r, g, b, alpha)
+        else:
+            color = QColor(self.base_color)
+            color.setAlpha(alpha)
         self.setBrush(QBrush(color))
 
     def set_selected(self, selected: bool) -> None:
         """Set selection state and update appearance."""
         self.is_selected = selected
         self._update_appearance()
-        if not selected:
-            # If not selected, restore default opacity
-            self._update_brush(self.DEFAULT_ALPHA)
+
+    def set_linked(self, linked: bool) -> None:
+        """Set linked state (connected to selected lane) and update appearance."""
+        self.is_linked = linked
+        self._update_appearance()
 
     def hoverEnterEvent(self, event) -> None:
         """Handle mouse enter - make more opaque."""
-        if not self.is_selected:
+        if not self.is_selected and not self.is_linked:
             self._update_brush(self.HOVER_ALPHA)
         super().hoverEnterEvent(event)
 
     def hoverLeaveEvent(self, event) -> None:
-        """Handle mouse leave - restore default transparency."""
-        if not self.is_selected:
+        """Handle mouse leave - restore appropriate transparency."""
+        if not self.is_selected and not self.is_linked:
             self._update_brush(self.DEFAULT_ALPHA)
+        elif self.is_linked and not self.is_selected:
+            # Restore linked appearance
+            self._update_brush(self.LINKED_ALPHA, tinted=True)
         super().hoverLeaveEvent(event)
 
     def mousePressEvent(self, event) -> None:

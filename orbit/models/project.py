@@ -416,7 +416,10 @@ class Project:
         """Load project from .orbit file."""
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        return cls.from_dict(data)
+        project = cls.from_dict(data)
+        # Clear any stale cross-junction road links (OpenDRIVE compliance)
+        project.clear_cross_junction_road_links()
+        return project
 
     def clear(self) -> None:
         """Clear all project data."""
@@ -432,6 +435,43 @@ class Project:
             'created': datetime.now().isoformat(),
             'modified': datetime.now().isoformat()
         }
+
+    def clear_cross_junction_road_links(self) -> int:
+        """
+        Clear predecessor/successor links between roads that connect through junctions.
+
+        In OpenDRIVE, roads connecting through a junction should NOT have direct
+        predecessor/successor links to each other. This method clears any such
+        stale links that may exist from older project versions.
+
+        Returns:
+            Number of links that were cleared
+        """
+        cleared_count = 0
+        roads_dict = {road.id: road for road in self.roads}
+
+        for junction in self.junctions:
+            connected_ids = set(junction.connected_road_ids)
+
+            for road_id in connected_ids:
+                road = roads_dict.get(road_id)
+                if not road:
+                    continue
+
+                # If predecessor is another road in this junction, clear it
+                if road.predecessor_id and road.predecessor_id in connected_ids:
+                    road.predecessor_id = None
+                    cleared_count += 1
+
+                # If successor is another road in this junction, clear it
+                if road.successor_id and road.successor_id in connected_ids:
+                    road.successor_id = None
+                    cleared_count += 1
+
+        if cleared_count > 0:
+            logger.info(f"Cleared {cleared_count} stale cross-junction road link(s)")
+
+        return cleared_count
 
     def __repr__(self) -> str:
         return (f"Project(polylines={len(self.polylines)}, roads={len(self.roads)}, "

@@ -443,6 +443,17 @@ class LaneConnectionDialog(BaseDialog):
 
         # Save connections back to junction
         self.junction.lane_connections = self.connections
+
+        # Clean up orphaned connecting roads (roads no longer referenced by any lane connection)
+        referenced_conn_road_ids = {
+            conn.connecting_road_id for conn in self.connections
+            if conn.connecting_road_id
+        }
+        self.junction.connecting_roads = [
+            cr for cr in self.junction.connecting_roads
+            if cr.id in referenced_conn_road_ids
+        ]
+
         super().accept()
 
     @classmethod

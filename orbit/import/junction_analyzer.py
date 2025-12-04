@@ -732,6 +732,37 @@ def create_connecting_roads_from_patterns(
             junction.add_lane_connection(lane_connection)
 
 
+def clear_cross_junction_links(junction: Junction, roads_dict: Dict[str, Road]) -> None:
+    """
+    Clear predecessor/successor links between roads that connect through this junction.
+
+    In OpenDRIVE, roads connecting through a junction should NOT have direct
+    predecessor/successor links to each other. Instead, the connection is:
+    Road -> Junction -> ConnectingRoad -> Road
+
+    This function clears any stale road-to-road links that exist between roads
+    in the same junction.
+
+    Args:
+        junction: Junction object whose roads should have cross-links cleared
+        roads_dict: Dictionary of road_id -> Road object
+    """
+    connected_ids = set(junction.connected_road_ids)
+
+    for road_id in connected_ids:
+        road = roads_dict.get(road_id)
+        if not road:
+            continue
+
+        # If predecessor is another road in this junction, clear it
+        if road.predecessor_id and road.predecessor_id in connected_ids:
+            road.predecessor_id = None
+
+        # If successor is another road in this junction, clear it
+        if road.successor_id and road.successor_id in connected_ids:
+            road.successor_id = None
+
+
 def generate_junction_connections(junction: Junction,
                                  roads_dict: Dict[str, Road],
                                  polylines_dict: Dict[str, Polyline],
@@ -776,3 +807,8 @@ def generate_junction_connections(junction: Junction,
 
     # Steps 4-6: Create connecting roads using the shared function
     create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup)
+
+    # Step 7: Clear any stale road-to-road predecessor/successor links
+    # In OpenDRIVE, roads connecting through a junction should link to the junction,
+    # not directly to roads on the other side
+    clear_cross_junction_links(junction, roads_dict)

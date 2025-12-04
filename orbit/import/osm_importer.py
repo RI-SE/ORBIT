@@ -248,6 +248,10 @@ class OSMImporter:
         if options.detail_level == DetailLevel.FULL:
             self._attach_objects_to_roads(options)
 
+        # Step 10: Clear stale cross-junction road links
+        # Roads in junctions should not have predecessor/successor pointing to each other
+        self.project.clear_cross_junction_road_links()
+
         # Mark success if we imported anything
         result.success = (
             result.roads_imported > 0 or
@@ -339,6 +343,10 @@ class OSMImporter:
         # Step 6a: Auto-attach objects to nearest roads
         if options.detail_level == DetailLevel.FULL:
             self._attach_objects_to_roads(options)
+
+        # Step 7: Clear stale cross-junction road links
+        # Roads in junctions should not have predecessor/successor pointing to each other
+        self.project.clear_cross_junction_road_links()
 
         # Mark success if we imported anything
         result.success = (

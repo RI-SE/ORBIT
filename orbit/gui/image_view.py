@@ -105,6 +105,7 @@ class ImageView(QGraphicsView):
         # Road lanes (visual representation of lanes)
         self.road_lanes_items: Dict[str, RoadLanesGraphicsItem] = {}
         self.selected_lane_key: Optional[Tuple[str, int, int]] = None  # (road_id, section_number, lane_id)
+        self.linked_lane_polygons: List = []  # Polygons currently highlighted as connected to selection
         self.project: Optional[Project] = None  # Reference to project for road lookups
 
         # Section boundaries (visual representation of lane section boundaries)
@@ -283,9 +284,37 @@ class ImageView(QGraphicsView):
             del self.junction_items[junction_id]
 
     def refresh_junction_graphics(self, junction_id: str):
-        """Refresh junction graphics after modification."""
+        """Refresh junction graphics after modification, including connecting roads."""
         if junction_id in self.junction_items:
             self.junction_items[junction_id].update_graphics()
+
+        # Also refresh/remove connecting road graphics for this junction
+        junction = self.project.get_junction(junction_id) if self.project else None
+        if junction:
+            # Get current connecting road IDs from the junction
+            current_conn_road_ids = {cr.id for cr in junction.connecting_roads}
+
+            # Find connecting road graphics that belong to this junction but are no longer valid
+            orphaned_ids = []
+            for conn_road_id in list(self.connecting_road_lanes_items.keys()):
+                # Check if this connecting road was part of this junction
+                # by checking if it's NOT in any junction's connecting_roads
+                found_in_any_junction = False
+                for j in self.project.junctions:
+                    if any(cr.id == conn_road_id for cr in j.connecting_roads):
+                        found_in_any_junction = True
+                        break
+                if not found_in_any_junction:
+                    orphaned_ids.append(conn_road_id)
+
+            # Remove orphaned connecting road graphics
+            for conn_road_id in orphaned_ids:
+                self.remove_connecting_road_graphics(conn_road_id)
+
+            # Update existing connecting road graphics
+            for conn_road in junction.connecting_roads:
+                if conn_road.id in self.connecting_road_lanes_items:
+                    self.connecting_road_lanes_items[conn_road.id].update_graphics()
 
     def add_signal_graphics(self, signal: Signal):
         """Add a signal to the graphics scene."""
@@ -1544,15 +1573,170 @@ class ImageView(QGraphicsView):
                 x, y = obj.position
                 self.centerOn(x, y)
 
+    def _get_connecting_road_lane_id(self, junction, connecting_road_id: str, source_lane_id: int) -> int:
+        """
+        Determine which lane on a connecting road corresponds to a source lane.
+
+        Maps source road lanes to connecting road lanes based on ordinal position.
+        For example:
+        - Source lane -1 (first right lane) -> Connecting road lane -1 (if it exists)
+        - Source lane -2 (second right lane) -> Connecting road lane -2 (if it exists)
+        - Source lane +1 (first left lane) -> Connecting road lane +1 (if it exists)
+
+        Args:
+            junction: Junction containing the connecting road
+            connecting_road_id: ID of the connecting road
+            source_lane_id: Lane ID on the source road
+
+        Returns:
+            Lane ID to use on the connecting road, or None if no valid mapping
+        """
+        conn_road = junction.get_connecting_road_by_id(connecting_road_id)
+        if not conn_road:
+            return -1  # Default to first right lane
+
+        # Get available lanes on the connecting road
+        right_lanes = list(range(-1, -(conn_road.lane_count_right + 1), -1))  # [-1, -2, ...]
+        left_lanes = list(range(1, conn_road.lane_count_left + 1))  # [1, 2, ...]
+
+        if source_lane_id < 0:
+            # Source is a right lane, map to connecting road right lanes
+            lane_ordinal = abs(source_lane_id) - 1  # 0-indexed ordinal
+            if lane_ordinal < len(right_lanes):
+                return right_lanes[lane_ordinal]
+            elif right_lanes:
+                return right_lanes[-1]  # Use last available right lane
+            elif left_lanes:
+                return left_lanes[0]  # Fall back to first left lane
+            else:
+                return -1  # Default
+        else:
+            # Source is a left lane, map to connecting road left lanes
+            lane_ordinal = source_lane_id - 1  # 0-indexed ordinal
+            if lane_ordinal < len(left_lanes):
+                return left_lanes[lane_ordinal]
+            elif left_lanes:
+                return left_lanes[-1]  # Use last available left lane
+            elif right_lanes:
+                return right_lanes[0]  # Fall back to first right lane
+            else:
+                return -1  # Default
+
+    def find_connected_lanes(self, road_id: str, section_number: int, lane_id: int) -> dict:
+        """
+        Find lanes connected to the specified lane via junctions and road links.
+
+        Args:
+            road_id: ID of the road containing the lane
+            section_number: Section number containing the lane
+            lane_id: Lane ID to find connections for
+
+        Returns:
+            Dictionary with:
+            - 'road_lanes': List of (road_id, section_number, lane_id) tuples for connected road lanes
+            - 'connecting_road_lanes': List of (connecting_road_id, lane_id) tuples
+        """
+        result = {
+            'road_lanes': [],
+            'connecting_road_lanes': []
+        }
+
+        if not self.project:
+            return result
+
+        road = self.project.get_road(road_id)
+        if not road or not road.lane_sections:
+            return result
+
+        # Determine if this section is at the start or end of the road
+        first_section = road.lane_sections[0].section_number
+        last_section = road.lane_sections[-1].section_number
+        is_first_section = (section_number == first_section)
+        is_last_section = (section_number == last_section)
+
+        # Check if predecessor/successor links should be skipped because they go through a junction
+        # If both this road and its predecessor/successor are in the same junction, the link is stale
+        skip_predecessor = False
+        skip_successor = False
+        for junction in self.project.junctions:
+            connected_ids = set(junction.connected_road_ids)
+            if road_id in connected_ids:
+                # If predecessor is also in this junction, skip direct link
+                if road.predecessor_id and road.predecessor_id in connected_ids:
+                    skip_predecessor = True
+                # If successor is also in this junction, skip direct link
+                if road.successor_id and road.successor_id in connected_ids:
+                    skip_successor = True
+
+        # 1. Check direct road predecessor/successor links (not through junctions)
+        # Skip if both roads are in the same junction - junction connections take precedence
+        if is_first_section and road.predecessor_id and not skip_predecessor:
+            pred_road = self.project.get_road(road.predecessor_id)
+            if pred_road and pred_road.lane_sections:
+                # Predecessor connects at its last section
+                pred_section = pred_road.lane_sections[-1].section_number
+                # Assume same lane exists in connected road (common case for continuous roads)
+                result['road_lanes'].append((road.predecessor_id, pred_section, lane_id))
+
+        if is_last_section and road.successor_id and not skip_successor:
+            succ_road = self.project.get_road(road.successor_id)
+            if succ_road and succ_road.lane_sections:
+                # Successor connects at its first section
+                succ_section = succ_road.lane_sections[0].section_number
+                # Assume same lane exists in connected road (common case for continuous roads)
+                result['road_lanes'].append((road.successor_id, succ_section, lane_id))
+
+        # 2. Search all junctions for lane connections involving this lane
+        for junction in self.project.junctions:
+            for lane_conn in junction.lane_connections:
+                # Check if this lane is the source (find successor via junction)
+                if lane_conn.from_road_id == road_id and lane_conn.from_lane_id == lane_id:
+                    # Only consider if this is the last section (connects to junction)
+                    if is_last_section:
+                        # Only add connecting road lane - don't show destination road beyond junction
+                        if lane_conn.connecting_road_id:
+                            conn_lane_id = self._get_connecting_road_lane_id(
+                                junction, lane_conn.connecting_road_id, lane_id
+                            )
+                            if conn_lane_id is not None:
+                                result['connecting_road_lanes'].append((lane_conn.connecting_road_id, conn_lane_id))
+
+                # Check if this lane is the destination (find predecessor via junction)
+                if lane_conn.to_road_id == road_id and lane_conn.to_lane_id == lane_id:
+                    # Only consider if this is the first section (connects from junction)
+                    if is_first_section:
+                        # Only add connecting road lane - don't show source road beyond junction
+                        if lane_conn.connecting_road_id:
+                            conn_lane_id = self._get_connecting_road_lane_id(
+                                junction, lane_conn.connecting_road_id, lane_conn.from_lane_id
+                            )
+                            if conn_lane_id is not None:
+                                result['connecting_road_lanes'].append((lane_conn.connecting_road_id, conn_lane_id))
+
+        return result
+
     def select_lane(self, road_id: str, section_number: int, lane_id: int):
         """
         Select and highlight a lane on the map.
+
+        Also highlights connected lanes (predecessors, successors, and connecting road lanes)
+        with a tinted fill to show the lane connection flow.
 
         Args:
             road_id: ID of the road
             section_number: Section number containing the lane
             lane_id: Lane ID within the section
         """
+        # Clear previously linked polygons (check if still valid - Qt object may have been deleted)
+        for polygon in self.linked_lane_polygons:
+            try:
+                if hasattr(polygon, 'set_linked') and polygon.scene() is not None:
+                    polygon.set_linked(False)
+            except RuntimeError:
+                # Qt object has been deleted, skip it
+                pass
+        self.linked_lane_polygons.clear()
+
         # Deselect previous lane
         if self.selected_lane_key:
             prev_road_id, prev_section, prev_lane = self.selected_lane_key
@@ -1576,6 +1760,121 @@ class ImageView(QGraphicsView):
                     lane_polygon.set_selected(True)
                     self.selected_lane_key = (road_id, section_number, lane_id)
                     break
+
+        # Find and highlight connected lanes
+        connected = self.find_connected_lanes(road_id, section_number, lane_id)
+
+        # Highlight connected road lanes
+        for conn_road_id, conn_section, conn_lane_id in connected['road_lanes']:
+            if conn_road_id in self.road_lanes_items:
+                lanes_item = self.road_lanes_items[conn_road_id]
+                for lane_polygon in lanes_item.lane_items:
+                    if (isinstance(lane_polygon, InteractiveLanePolygon) and
+                        lane_polygon.road_id == conn_road_id and
+                        lane_polygon.section_number == conn_section and
+                        lane_polygon.lane_id == conn_lane_id):
+                        lane_polygon.set_linked(True)
+                        self.linked_lane_polygons.append(lane_polygon)
+
+        # Highlight connecting road lanes
+        for conn_road_id, conn_lane_id in connected['connecting_road_lanes']:
+            if conn_road_id in self.connecting_road_lanes_items:
+                lanes_item = self.connecting_road_lanes_items[conn_road_id]
+                for lane_polygon in lanes_item.lane_items:
+                    if (isinstance(lane_polygon, InteractiveLanePolygon) and
+                        lane_polygon.road_id == conn_road_id and
+                        lane_polygon.lane_id == conn_lane_id):
+                        lane_polygon.set_linked(True)
+                        self.linked_lane_polygons.append(lane_polygon)
+
+    def select_connecting_road_lane(self, connecting_road_id: str, lane_id: int):
+        """
+        Select and highlight a connecting road lane on the map.
+
+        Also highlights the connected road lanes (from_road and to_road) with a tinted fill.
+
+        Args:
+            connecting_road_id: ID of the connecting road
+            lane_id: Lane ID within the connecting road
+        """
+        # Clear previously linked polygons
+        for polygon in self.linked_lane_polygons:
+            try:
+                if hasattr(polygon, 'set_linked') and polygon.scene() is not None:
+                    polygon.set_linked(False)
+            except RuntimeError:
+                pass
+        self.linked_lane_polygons.clear()
+
+        # Deselect previous regular lane if any
+        if self.selected_lane_key:
+            prev_road_id, prev_section, prev_lane = self.selected_lane_key
+            if prev_road_id in self.road_lanes_items:
+                lanes_item = self.road_lanes_items[prev_road_id]
+                for lane_polygon in lanes_item.lane_items:
+                    if (isinstance(lane_polygon, InteractiveLanePolygon) and
+                        lane_polygon.road_id == prev_road_id and
+                        lane_polygon.section_number == prev_section and
+                        lane_polygon.lane_id == prev_lane):
+                        lane_polygon.set_selected(False)
+            self.selected_lane_key = None
+
+        # Select the connecting road lane
+        if connecting_road_id in self.connecting_road_lanes_items:
+            lanes_item = self.connecting_road_lanes_items[connecting_road_id]
+            for lane_polygon in lanes_item.lane_items:
+                if (isinstance(lane_polygon, InteractiveLanePolygon) and
+                    lane_polygon.road_id == connecting_road_id and
+                    lane_polygon.lane_id == lane_id):
+                    lane_polygon.set_selected(True)
+                    break
+
+        # Find connected road lanes via lane connections
+        if not self.project:
+            return
+
+        for junction in self.project.junctions:
+            for lane_conn in junction.lane_connections:
+                if lane_conn.connecting_road_id == connecting_road_id:
+                    # Get the connecting road to check lane mapping
+                    conn_road = junction.get_connecting_road_by_id(connecting_road_id)
+                    if not conn_road:
+                        continue
+
+                    # Check if this lane connection corresponds to the selected lane
+                    expected_lane = self._get_connecting_road_lane_id(
+                        junction, connecting_road_id, lane_conn.from_lane_id
+                    )
+                    if expected_lane != lane_id:
+                        continue
+
+                    # Highlight the from_road lane (last section)
+                    from_road = self.project.get_road(lane_conn.from_road_id)
+                    if from_road and from_road.lane_sections:
+                        from_section = from_road.lane_sections[-1].section_number
+                        if lane_conn.from_road_id in self.road_lanes_items:
+                            lanes_item = self.road_lanes_items[lane_conn.from_road_id]
+                            for lane_polygon in lanes_item.lane_items:
+                                if (isinstance(lane_polygon, InteractiveLanePolygon) and
+                                    lane_polygon.road_id == lane_conn.from_road_id and
+                                    lane_polygon.section_number == from_section and
+                                    lane_polygon.lane_id == lane_conn.from_lane_id):
+                                    lane_polygon.set_linked(True)
+                                    self.linked_lane_polygons.append(lane_polygon)
+
+                    # Highlight the to_road lane (first section)
+                    to_road = self.project.get_road(lane_conn.to_road_id)
+                    if to_road and to_road.lane_sections:
+                        to_section = to_road.lane_sections[0].section_number
+                        if lane_conn.to_road_id in self.road_lanes_items:
+                            lanes_item = self.road_lanes_items[lane_conn.to_road_id]
+                            for lane_polygon in lanes_item.lane_items:
+                                if (isinstance(lane_polygon, InteractiveLanePolygon) and
+                                    lane_polygon.road_id == lane_conn.to_road_id and
+                                    lane_polygon.section_number == to_section and
+                                    lane_polygon.lane_id == lane_conn.to_lane_id):
+                                    lane_polygon.set_linked(True)
+                                    self.linked_lane_polygons.append(lane_polygon)
 
     # View controls
     def zoom_in(self):

@@ -287,6 +287,10 @@ class OpenDriveImporter:
         if self.odr_data.geo_reference:
             self.project.imported_geo_reference = self.odr_data.geo_reference
 
+        # Step 9: Clear stale cross-junction road links
+        # Roads in junctions should not have predecessor/successor pointing to each other
+        self.project.clear_cross_junction_road_links()
+
         result.success = True
         return result
 

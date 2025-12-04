@@ -1741,9 +1741,11 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Selected connecting road lane {lane_id}")
 
     def on_connecting_road_lane_clicked_in_view(self, connecting_road_id: str, lane_id: int):
-        """Handle connecting road lane click in the view - select it in the elements tree."""
+        """Handle connecting road lane click in the view - select and highlight connected lanes."""
         # Select the corresponding item in the elements tree
         self.elements_tree.select_connecting_road_lane(connecting_road_id, lane_id)
+        # Highlight the connecting road lane and connected road lanes
+        self.image_view.select_connecting_road_lane(connecting_road_id, lane_id)
         self.statusBar().showMessage(f"Connecting road lane {lane_id} selected")
 
     def highlight_connecting_road_lane(self, connecting_road_id: str, lane_id: int):
