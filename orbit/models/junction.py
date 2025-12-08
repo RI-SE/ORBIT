@@ -13,6 +13,206 @@ from .lane_connection import LaneConnection
 
 
 @dataclass
+class JunctionBoundarySegment:
+    """
+    A segment of a junction boundary.
+
+    Segments run counter-clockwise around the junction and form a closed boundary.
+    Two types: 'lane' (follows lane edge) and 'joint' (perpendicular at road start/end).
+    """
+    segment_type: str  # 'lane' or 'joint'
+    road_id: Optional[str] = None
+
+    # For 'lane' type segments
+    boundary_lane: Optional[int] = None  # Lane ID whose outer edge forms the segment
+    s_start: Optional[float] = None
+    s_end: Optional[float] = None
+
+    # For 'joint' type segments
+    contact_point: Optional[str] = None  # 'start' or 'end'
+    joint_lane_start: Optional[int] = None
+    joint_lane_end: Optional[int] = None
+    transition_length: Optional[float] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        data = {
+            'segment_type': self.segment_type,
+            'road_id': self.road_id
+        }
+        if self.segment_type == 'lane':
+            if self.boundary_lane is not None:
+                data['boundary_lane'] = self.boundary_lane
+            if self.s_start is not None:
+                data['s_start'] = self.s_start
+            if self.s_end is not None:
+                data['s_end'] = self.s_end
+        elif self.segment_type == 'joint':
+            if self.contact_point:
+                data['contact_point'] = self.contact_point
+            if self.joint_lane_start is not None:
+                data['joint_lane_start'] = self.joint_lane_start
+            if self.joint_lane_end is not None:
+                data['joint_lane_end'] = self.joint_lane_end
+            if self.transition_length is not None:
+                data['transition_length'] = self.transition_length
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'JunctionBoundarySegment':
+        """Create from dictionary."""
+        return cls(
+            segment_type=data.get('segment_type', 'lane'),
+            road_id=data.get('road_id'),
+            boundary_lane=data.get('boundary_lane'),
+            s_start=data.get('s_start'),
+            s_end=data.get('s_end'),
+            contact_point=data.get('contact_point'),
+            joint_lane_start=data.get('joint_lane_start'),
+            joint_lane_end=data.get('joint_lane_end'),
+            transition_length=data.get('transition_length')
+        )
+
+
+@dataclass
+class JunctionElevationGridPoint:
+    """A point in the junction elevation grid."""
+    center: Optional[str] = None  # Space-separated z-values
+    left: Optional[str] = None    # Space-separated z-values (inside to outside)
+    right: Optional[str] = None   # Space-separated z-values (inside to outside)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        data = {}
+        if self.center:
+            data['center'] = self.center
+        if self.left:
+            data['left'] = self.left
+        if self.right:
+            data['right'] = self.right
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'JunctionElevationGridPoint':
+        """Create from dictionary."""
+        return cls(
+            center=data.get('center'),
+            left=data.get('left'),
+            right=data.get('right')
+        )
+
+
+@dataclass
+class JunctionElevationGrid:
+    """
+    Elevation grid for junction surface (V1.8 feature).
+
+    A coarse square grid with z-values at evenly spaced points.
+    """
+    grid_spacing: Optional[str] = None
+    elevations: List[JunctionElevationGridPoint] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        data = {}
+        if self.grid_spacing:
+            data['grid_spacing'] = self.grid_spacing
+        if self.elevations:
+            data['elevations'] = [e.to_dict() for e in self.elevations]
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'JunctionElevationGrid':
+        """Create from dictionary."""
+        elevations = [
+            JunctionElevationGridPoint.from_dict(e)
+            for e in data.get('elevations', [])
+        ]
+        return cls(
+            grid_spacing=data.get('grid_spacing'),
+            elevations=elevations
+        )
+
+
+@dataclass
+class JunctionBoundary:
+    """
+    Defines the boundary enclosing a junction area (V1.8 feature).
+
+    The boundary encloses the area intended for traffic, including sidewalks.
+    Segments form a closed counter-clockwise loop around the junction.
+    """
+    segments: List[JunctionBoundarySegment] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            'segments': [s.to_dict() for s in self.segments]
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'JunctionBoundary':
+        """Create from dictionary."""
+        segments = [
+            JunctionBoundarySegment.from_dict(s)
+            for s in data.get('segments', [])
+        ]
+        return cls(segments=segments)
+
+
+@dataclass
+class JunctionGroup:
+    """
+    Represents a group of junctions that form a logical unit.
+
+    Used for roundabouts, complex junctions, and highway interchanges
+    where multiple junction elements are seen as one navigational node.
+
+    Attributes:
+        id: Unique identifier for this junction group
+        name: Optional human-readable name
+        group_type: Type of junction group ('roundabout', 'complexJunction', 'highwayInterchange', 'unknown')
+        junction_ids: List of junction IDs that belong to this group
+    """
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    name: Optional[str] = None
+    group_type: str = "unknown"  # 'roundabout', 'complexJunction', 'highwayInterchange', 'unknown'
+    junction_ids: List[str] = field(default_factory=list)
+
+    def add_junction(self, junction_id: str) -> None:
+        """Add a junction to this group."""
+        if junction_id not in self.junction_ids:
+            self.junction_ids.append(junction_id)
+
+    def remove_junction(self, junction_id: str) -> None:
+        """Remove a junction from this group."""
+        if junction_id in self.junction_ids:
+            self.junction_ids.remove(junction_id)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert junction group to dictionary for JSON serialization."""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'group_type': self.group_type,
+            'junction_ids': self.junction_ids
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'JunctionGroup':
+        """Create junction group from dictionary."""
+        return cls(
+            id=data.get('id', str(uuid.uuid4())),
+            name=data.get('name'),
+            group_type=data.get('group_type', 'unknown'),
+            junction_ids=data.get('junction_ids', [])
+        )
+
+    def __repr__(self) -> str:
+        return f"JunctionGroup(id={self.id[:8]}..., type='{self.group_type}', junctions={len(self.junction_ids)})"
+
+
+@dataclass
 class JunctionConnection:
     """
     Represents a connection between two roads at a junction.
@@ -80,6 +280,8 @@ class Junction:
     # New fields for enhanced junction support (v0.3.0+)
     connecting_roads: List[ConnectingRoad] = field(default_factory=list)
     lane_connections: List[LaneConnection] = field(default_factory=list)
+    boundary: Optional[JunctionBoundary] = None  # V1.8 junction boundary
+    elevation_grid: Optional[JunctionElevationGrid] = None  # V1.8 elevation grid
     is_roundabout: bool = False
     roundabout_center: Optional[Tuple[float, float]] = None
     roundabout_radius: Optional[float] = None
@@ -380,6 +582,10 @@ class Junction:
             data['roundabout_center'] = self.roundabout_center
         if self.roundabout_radius is not None:
             data['roundabout_radius'] = self.roundabout_radius
+        if self.boundary is not None:
+            data['boundary'] = self.boundary.to_dict()
+        if self.elevation_grid is not None:
+            data['elevation_grid'] = self.elevation_grid.to_dict()
 
         return data
 
@@ -417,6 +623,18 @@ class Junction:
         if roundabout_center is not None:
             roundabout_center = tuple(roundabout_center)
 
+        # Handle boundary (V1.8)
+        boundary = None
+        boundary_data = data.get('boundary')
+        if boundary_data:
+            boundary = JunctionBoundary.from_dict(boundary_data)
+
+        # Handle elevation_grid (V1.8)
+        elevation_grid = None
+        elev_grid_data = data.get('elevation_grid')
+        if elev_grid_data:
+            elevation_grid = JunctionElevationGrid.from_dict(elev_grid_data)
+
         return cls(
             id=data.get('id', str(uuid.uuid4())),
             name=data.get('name', 'Unnamed Junction'),
@@ -428,6 +646,8 @@ class Junction:
             # New fields (v0.3.0+) with defaults for backward compatibility
             connecting_roads=connecting_roads,
             lane_connections=lane_connections,
+            boundary=boundary,
+            elevation_grid=elevation_grid,
             is_roundabout=data.get('is_roundabout', False),
             roundabout_center=roundabout_center,
             roundabout_radius=data.get('roundabout_radius'),

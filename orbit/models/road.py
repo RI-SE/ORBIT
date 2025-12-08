@@ -89,6 +89,13 @@ class Road:
     opendrive_id: Optional[str] = None  # OpenDrive ID for round-trip import/export
     # Elevation profile: list of (s, a, b, c, d) tuples for polynomial elevation(ds) = a + b*ds + c*ds² + d*ds³
     elevation_profile: List[Tuple[float, float, float, float, float]] = field(default_factory=list)
+    # Superelevation (lateral profile): list of (s, a, b, c, d) tuples for polynomial superelevation(ds) = a + b*ds + c*ds² + d*ds³
+    # Value represents the cross slope (positive = tilted to left, negative = tilted to right)
+    superelevation_profile: List[Tuple[float, float, float, float, float]] = field(default_factory=list)
+    # Lane offset: list of (s, a, b, c, d) tuples shifting center lane from reference line
+    lane_offset: List[Tuple[float, float, float, float, float]] = field(default_factory=list)
+    # Surface CRG (OpenCRG) data: list of dicts with file, s_start, s_end, orientation, mode, purpose, s_offset, t_offset, z_offset, z_scale, h_offset
+    surface_crg: List[Dict[str, Any]] = field(default_factory=list)
 
     def add_polyline(self, polyline_id: str) -> None:
         """Add a polyline to this road."""
@@ -462,6 +469,12 @@ class Road:
             data['opendrive_id'] = self.opendrive_id
         if self.elevation_profile:
             data['elevation_profile'] = [list(elev) for elev in self.elevation_profile]
+        if self.superelevation_profile:
+            data['superelevation_profile'] = [list(se) for se in self.superelevation_profile]
+        if self.lane_offset:
+            data['lane_offset'] = [list(lo) for lo in self.lane_offset]
+        if self.surface_crg:
+            data['surface_crg'] = self.surface_crg
         return data
 
     @classmethod
@@ -503,7 +516,10 @@ class Road:
             successor_id=data.get('successor_id'),
             successor_contact=data.get('successor_contact', 'start'),
             opendrive_id=data.get('opendrive_id'),
-            elevation_profile=[tuple(e) for e in data.get('elevation_profile', [])]
+            elevation_profile=[tuple(e) for e in data.get('elevation_profile', [])],
+            superelevation_profile=[tuple(e) for e in data.get('superelevation_profile', [])],
+            lane_offset=[tuple(e) for e in data.get('lane_offset', [])],
+            surface_crg=data.get('surface_crg', [])
         )
 
         # Backward compatibility: migrate old format to lane_sections

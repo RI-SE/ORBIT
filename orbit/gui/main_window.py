@@ -201,6 +201,10 @@ class MainWindow(QMainWindow):
         self.preferences_action.setStatusTip("Configure project preferences")
         self.preferences_action.triggered.connect(self.show_preferences)
 
+        self.junction_groups_action = QAction("&Junction Groups...", self)
+        self.junction_groups_action.setStatusTip("Manage junction groups (roundabouts, complex junctions)")
+        self.junction_groups_action.triggered.connect(self.show_junction_groups)
+
         # View actions
         self.zoom_in_action = QAction("Zoom &In", self)
         self.zoom_in_action.setShortcut(QKeySequence.StandardKey.ZoomIn)
@@ -342,6 +346,8 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self.redo_action)
         edit_menu.addSeparator()
         edit_menu.addAction(self.delete_action)
+        edit_menu.addSeparator()
+        edit_menu.addAction(self.junction_groups_action)
         edit_menu.addSeparator()
         edit_menu.addAction(self.preferences_action)
 
@@ -596,6 +602,14 @@ class MainWindow(QMainWindow):
                         'num_training_points': len(training_points),
                         'num_validation_points': len(validation_points)
                     }
+
+    def show_junction_groups(self):
+        """Show junction groups management dialog."""
+        from .dialogs.junction_group_dialog import JunctionGroupDialog
+
+        if JunctionGroupDialog.edit_groups(self.project, self):
+            self.modified = True
+            self.statusBar().showMessage("Junction groups updated")
 
     def export_to_opendrive(self):
         """Export project to OpenDrive format."""

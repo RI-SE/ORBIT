@@ -7,7 +7,10 @@ and project management.
 
 from .polyline import Polyline, LineType, RoadMarkType
 from .road import Road, RoadType, LaneInfo
-from .junction import Junction, JunctionConnection
+from .junction import (
+    Junction, JunctionConnection, JunctionGroup, JunctionBoundary, JunctionBoundarySegment,
+    JunctionElevationGrid, JunctionElevationGridPoint
+)
 from .connecting_road import ConnectingRoad
 from .lane_connection import LaneConnection
 from .project import Project, ControlPoint
@@ -33,6 +36,11 @@ __all__ = [
     'LaneSection',
     'Junction',
     'JunctionConnection',
+    'JunctionGroup',
+    'JunctionBoundary',
+    'JunctionBoundarySegment',
+    'JunctionElevationGrid',
+    'JunctionElevationGridPoint',
     'ConnectingRoad',
     'LaneConnection',
     'Project',

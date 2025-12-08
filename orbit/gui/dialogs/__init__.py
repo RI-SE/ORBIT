@@ -21,6 +21,7 @@ from .osm_import_dialog import OSMImportDialog
 from .opendrive_import_dialog import OpenDriveImportDialog
 from .import_report_dialog import ImportReportDialog, show_opendrive_import_report
 from .roundabout_wizard_dialog import RoundaboutWizardDialog
+from .junction_group_dialog import JunctionGroupDialog
 
 __all__ = [
     'BaseDialog',
@@ -43,4 +44,5 @@ __all__ = [
     'ImportReportDialog',
     'show_opendrive_import_report',
     'RoundaboutWizardDialog',
+    'JunctionGroupDialog',
 ]

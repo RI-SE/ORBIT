@@ -15,7 +15,10 @@ from orbit.models.polyline import LineType, RoadMarkType
 from orbit.models.road import RoadType, LaneInfo
 from orbit.models.lane import Lane, LaneType as ORBITLaneType
 from orbit.models.lane_section import LaneSection
-from orbit.models.junction import JunctionConnection
+from orbit.models.junction import (
+    JunctionConnection, JunctionGroup, JunctionBoundary, JunctionBoundarySegment,
+    JunctionElevationGrid, JunctionElevationGridPoint
+)
 from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.lane_connection import LaneConnection
 from orbit.models.signal import SignalType, SpeedUnit
@@ -248,7 +251,14 @@ class OpenDriveImporter:
         except Exception as e:
             result.warnings.append(f"Failed to assign junction center points: {e}")
 
-        # Step 5c: Process deferred connecting roads (now that junctions exist)
+        # Step 5c: Import junction groups
+        for odr_jg in self.odr_data.junction_groups:
+            try:
+                self._import_junction_group(odr_jg)
+            except Exception as e:
+                result.warnings.append(f"Failed to import junction group {odr_jg.id}: {e}")
+
+        # Step 5d: Process deferred connecting roads (now that junctions exist)
         for pending in self.pending_connecting_roads:
             try:
                 if self._import_connecting_road(pending, options, result):
@@ -402,6 +412,18 @@ class OpenDriveImporter:
         # Store elevation profile for round-trip preservation
         if odr_road.elevation_profile and odr_road.elevation_profile.elevations:
             road.elevation_profile = odr_road.elevation_profile.elevations
+
+        # Store superelevation (lateral profile) for round-trip preservation
+        if odr_road.lateral_profile and odr_road.lateral_profile.superelevations:
+            road.superelevation_profile = odr_road.lateral_profile.superelevations
+
+        # Store lane offset for round-trip preservation
+        if odr_road.lane_offset and odr_road.lane_offset.offsets:
+            road.lane_offset = odr_road.lane_offset.offsets
+
+        # Store surface CRG (OpenCRG data) for round-trip preservation
+        if odr_road.surface_crg:
+            road.surface_crg = odr_road.surface_crg
 
         # Import lane sections
         if odr_road.lane_sections:
@@ -858,6 +880,23 @@ class OpenDriveImporter:
             speed_limit = first_speed.max_speed
             speed_limit_unit = first_speed.unit
 
+        # Convert material properties
+        materials = []
+        for mat in odr_lane.materials:
+            materials.append((mat.s_offset, mat.friction, mat.roughness, mat.surface))
+
+        # Convert height offsets
+        heights = []
+        for h in odr_lane.heights:
+            heights.append((h.s_offset, h.inner, h.outer))
+
+        # Get predecessor/successor IDs
+        predecessor_id = None
+        successor_id = None
+        if odr_lane.link:
+            predecessor_id = odr_lane.link.predecessor_id
+            successor_id = odr_lane.link.successor_id
+
         # Create lane with full width polynomial and road mark attributes
         lane = Lane(
             id=odr_lane.id,
@@ -871,7 +910,14 @@ class OpenDriveImporter:
             road_mark_weight=road_mark_weight,
             road_mark_width=road_mark_width,
             speed_limit=speed_limit,
-            speed_limit_unit=speed_limit_unit
+            speed_limit_unit=speed_limit_unit,
+            materials=materials,
+            heights=heights,
+            predecessor_id=predecessor_id,
+            successor_id=successor_id,
+            direction=odr_lane.direction,
+            advisory=odr_lane.advisory,
+            level=odr_lane.level
         )
 
         return lane
@@ -947,12 +993,66 @@ class OpenDriveImporter:
         # Remove duplicates from connected_road_ids
         junction.connected_road_ids = list(set(junction.connected_road_ids))
 
+        # Import boundary (V1.8 feature)
+        if odr_junction.boundary and odr_junction.boundary.segments:
+            segments = []
+            for odr_seg in odr_junction.boundary.segments:
+                segment = JunctionBoundarySegment(
+                    segment_type=odr_seg.segment_type,
+                    road_id=odr_seg.road_id,
+                    boundary_lane=odr_seg.boundary_lane,
+                    s_start=odr_seg.s_start,
+                    s_end=odr_seg.s_end,
+                    contact_point=odr_seg.contact_point,
+                    joint_lane_start=odr_seg.joint_lane_start,
+                    joint_lane_end=odr_seg.joint_lane_end,
+                    transition_length=odr_seg.transition_length
+                )
+                segments.append(segment)
+            junction.boundary = JunctionBoundary(segments=segments)
+
+        # Import elevation grid (V1.8 feature)
+        if odr_junction.elevation_grid and odr_junction.elevation_grid.elevations:
+            elevations = []
+            for odr_elev in odr_junction.elevation_grid.elevations:
+                point = JunctionElevationGridPoint(
+                    center=odr_elev.center,
+                    left=odr_elev.left,
+                    right=odr_elev.right
+                )
+                elevations.append(point)
+            junction.elevation_grid = JunctionElevationGrid(
+                grid_spacing=odr_junction.elevation_grid.grid_spacing,
+                elevations=elevations
+            )
+
         # Store junction for later processing (center point assignment)
         # This will be handled in _assign_junction_center_points()
         self.project.junctions.append(junction)
         self.odr_junction_to_orbit[odr_junction.id] = junction_id
 
         return True
+
+    def _import_junction_group(self, odr_jg) -> None:
+        """Import junction group from OpenDrive."""
+        # Map OpenDrive junction IDs to ORBIT junction IDs
+        orbit_junction_ids = []
+        for odr_junction_id in odr_jg.junction_ids:
+            orbit_id = self.odr_junction_to_orbit.get(odr_junction_id)
+            if orbit_id:
+                orbit_junction_ids.append(orbit_id)
+
+        if not orbit_junction_ids:
+            return  # No mapped junctions, skip this group
+
+        junction_group = JunctionGroup(
+            id=str(uuid.uuid4()),
+            name=odr_jg.name if odr_jg.name else None,
+            group_type=odr_jg.group_type,
+            junction_ids=orbit_junction_ids
+        )
+
+        self.project.junction_groups.append(junction_group)
 
     def _assign_junction_center_points(self, result: ImportResult):
         """

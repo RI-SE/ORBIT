@@ -8,7 +8,9 @@ from typing import Optional, TYPE_CHECKING
 
 from PyQt6.QtWidgets import (
     QDialog, QGroupBox, QFormLayout, QSpinBox,
-    QComboBox, QLabel, QDoubleSpinBox, QCheckBox, QWidget, QHBoxLayout, QToolButton
+    QComboBox, QLabel, QDoubleSpinBox, QCheckBox, QWidget, QHBoxLayout, QToolButton,
+    QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, QHeaderView,
+    QScrollArea, QFrame
 )
 from PyQt6.QtCore import Qt
 
@@ -26,7 +28,7 @@ class LanePropertiesDialog(BaseDialog):
 
     def __init__(self, lane: Lane, project: Optional[Project] = None, road_id: Optional[str] = None,
                  connecting_road: Optional['ConnectingRoad'] = None, parent=None):
-        super().__init__("Lane Properties", parent, min_width=450)
+        super().__init__("Lane Properties", parent, min_width=600)
 
         self.lane = lane
         self.project = project
@@ -219,8 +221,8 @@ class LanePropertiesDialog(BaseDialog):
                 combo.addItem(display_text, polyline_id)
 
     def _setup_advanced_section(self):
-        """Setup the collapsible Advanced section with width polynomials and speed limit."""
-        # Create collapsible group
+        """Setup the collapsible Advanced section with two-column layout."""
+        # Create collapsible toggle
         self.advanced_toggle = QToolButton()
         self.advanced_toggle.setStyleSheet("QToolButton { border: none; }")
         self.advanced_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -232,19 +234,26 @@ class LanePropertiesDialog(BaseDialog):
 
         self.get_main_layout().addWidget(self.advanced_toggle)
 
-        # Container for advanced content
+        # Scroll area for the advanced content
+        self.advanced_scroll = QScrollArea()
+        self.advanced_scroll.setWidgetResizable(True)
+        self.advanced_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.advanced_scroll.setMaximumHeight(400)
+
         self.advanced_widget = QWidget()
-        advanced_layout = QFormLayout(self.advanced_widget)
-        advanced_layout.setContentsMargins(20, 5, 0, 10)
+        advanced_layout = QVBoxLayout(self.advanced_widget)
+        advanced_layout.setContentsMargins(10, 5, 10, 10)
 
-        # Width polynomial section
-        width_poly_label = QLabel("<b>Width Polynomial</b>")
-        width_poly_label.setToolTip("width(ds) = a + b·ds + c·ds² + d·ds³\nwhere ds is distance from section start")
-        advanced_layout.addRow(width_poly_label)
+        # === TWO-COLUMN ROW ===
+        columns_widget = QWidget()
+        columns_layout = QHBoxLayout(columns_widget)
+        columns_layout.setContentsMargins(0, 0, 0, 0)
+        columns_layout.setSpacing(10)
 
-        width_info = QLabel("<i>Controls lane width variation along the section</i>")
-        width_info.setStyleSheet("color: gray;")
-        advanced_layout.addRow(width_info)
+        # LEFT COLUMN: Width Polynomial + Speed Limit
+        left_group = QGroupBox("Width && Speed")
+        left_layout = QFormLayout(left_group)
+        left_layout.setVerticalSpacing(4)
 
         # Width b coefficient (linear)
         self.width_b_spin = QDoubleSpinBox()
@@ -253,7 +262,7 @@ class LanePropertiesDialog(BaseDialog):
         self.width_b_spin.setDecimals(4)
         self.width_b_spin.setValue(0.0)
         self.width_b_spin.setToolTip("Linear coefficient: width change per meter (m/m)")
-        advanced_layout.addRow("b (linear):", self.width_b_spin)
+        left_layout.addRow("b (linear):", self.width_b_spin)
 
         # Width c coefficient (quadratic)
         self.width_c_spin = QDoubleSpinBox()
@@ -262,7 +271,7 @@ class LanePropertiesDialog(BaseDialog):
         self.width_c_spin.setDecimals(5)
         self.width_c_spin.setValue(0.0)
         self.width_c_spin.setToolTip("Quadratic coefficient (m/m²)")
-        advanced_layout.addRow("c (quadratic):", self.width_c_spin)
+        left_layout.addRow("c (quad):", self.width_c_spin)
 
         # Width d coefficient (cubic)
         self.width_d_spin = QDoubleSpinBox()
@@ -271,15 +280,7 @@ class LanePropertiesDialog(BaseDialog):
         self.width_d_spin.setDecimals(6)
         self.width_d_spin.setValue(0.0)
         self.width_d_spin.setToolTip("Cubic coefficient (m/m³)")
-        advanced_layout.addRow("d (cubic):", self.width_d_spin)
-
-        # Speed limit section
-        speed_label = QLabel("<b>Lane Speed Limit</b>")
-        advanced_layout.addRow(speed_label)
-
-        speed_info = QLabel("<i>Optional lane-specific limit (0 = inherit from road)</i>")
-        speed_info.setStyleSheet("color: gray;")
-        advanced_layout.addRow(speed_info)
+        left_layout.addRow("d (cubic):", self.width_d_spin)
 
         # Speed limit value
         speed_widget = QWidget()
@@ -299,18 +300,229 @@ class LanePropertiesDialog(BaseDialog):
         self.speed_unit_combo.addItem("m/s", "m/s")
         speed_layout.addWidget(self.speed_unit_combo)
 
-        advanced_layout.addRow("Speed:", speed_widget)
+        left_layout.addRow("Speed:", speed_widget)
 
-        self.advanced_widget.setVisible(False)
-        self.get_main_layout().addWidget(self.advanced_widget)
+        columns_layout.addWidget(left_group)
+
+        # RIGHT COLUMN: OpenDRIVE 1.8 Attributes + Lane Links
+        right_group = QGroupBox("OpenDRIVE 1.8")
+        right_layout = QFormLayout(right_group)
+        right_layout.setVerticalSpacing(4)
+
+        # Direction attribute
+        self.direction_combo = QComboBox()
+        self.direction_combo.addItem("(Not set)", None)
+        self.direction_combo.addItem("Standard", "standard")
+        self.direction_combo.addItem("Reversed", "reversed")
+        self.direction_combo.addItem("Both", "both")
+        self.direction_combo.setToolTip("Direction of travel in the lane (V1.8)")
+        right_layout.addRow("Direction:", self.direction_combo)
+
+        # Advisory attribute
+        self.advisory_combo = QComboBox()
+        self.advisory_combo.addItem("(Not set)", None)
+        self.advisory_combo.addItem("None", "none")
+        self.advisory_combo.addItem("Inner", "inner")
+        self.advisory_combo.addItem("Outer", "outer")
+        self.advisory_combo.addItem("Both", "both")
+        self.advisory_combo.setToolTip("Advisory restriction for shared lanes (V1.8)")
+        right_layout.addRow("Advisory:", self.advisory_combo)
+
+        # Level checkbox
+        self.level_checkbox = QCheckBox("Level")
+        self.level_checkbox.setToolTip("If checked, lane stays level and doesn't follow road superelevation")
+        right_layout.addRow("", self.level_checkbox)
+
+        # Predecessor link
+        self.predecessor_spin = QSpinBox()
+        self.predecessor_spin.setRange(-99, 99)
+        self.predecessor_spin.setValue(0)
+        self.predecessor_spin.setSpecialValueText("(None)")
+        self.predecessor_spin.setToolTip("Lane ID of predecessor lane (0 = none)")
+        right_layout.addRow("Predecessor:", self.predecessor_spin)
+
+        # Successor link
+        self.successor_spin = QSpinBox()
+        self.successor_spin.setRange(-99, 99)
+        self.successor_spin.setValue(0)
+        self.successor_spin.setSpecialValueText("(None)")
+        self.successor_spin.setToolTip("Lane ID of successor lane (0 = none)")
+        right_layout.addRow("Successor:", self.successor_spin)
+
+        columns_layout.addWidget(right_group)
+
+        advanced_layout.addWidget(columns_widget)
+
+        # === FULL-WIDTH TABLES ===
+        # Materials section
+        self._setup_materials_section(advanced_layout)
+
+        # Heights section
+        self._setup_heights_section(advanced_layout)
+
+        # Put advanced_widget in scroll area
+        self.advanced_scroll.setWidget(self.advanced_widget)
+        self.advanced_scroll.setVisible(False)
+        self.get_main_layout().addWidget(self.advanced_scroll)
 
     def _toggle_advanced(self, checked: bool):
         """Toggle visibility of advanced section."""
-        self.advanced_widget.setVisible(checked)
+        self.advanced_scroll.setVisible(checked)
         if checked:
             self.advanced_toggle.setArrowType(Qt.ArrowType.DownArrow)
         else:
             self.advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
+
+    def _setup_materials_section(self, parent_layout: QVBoxLayout):
+        """Setup the materials table section."""
+        materials_group = QGroupBox("Materials")
+        materials_layout = QVBoxLayout(materials_group)
+
+        materials_info = QLabel("<i>Surface properties along the lane (friction, roughness)</i>")
+        materials_info.setStyleSheet("color: gray;")
+        materials_layout.addWidget(materials_info)
+
+        # Materials table
+        self.materials_table = QTableWidget(0, 4)
+        self.materials_table.setHorizontalHeaderLabels(["S-Offset", "Friction", "Roughness", "Surface"])
+        self.materials_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.materials_table.setMinimumHeight(80)
+        materials_layout.addWidget(self.materials_table)
+
+        # Add/Remove buttons
+        materials_btn_widget = QWidget()
+        materials_btn_layout = QHBoxLayout(materials_btn_widget)
+        materials_btn_layout.setContentsMargins(0, 0, 0, 0)
+        materials_btn_layout.addStretch()
+
+        self.add_material_btn = QPushButton("+ Add")
+        self.add_material_btn.clicked.connect(self._add_material_row)
+        materials_btn_layout.addWidget(self.add_material_btn)
+
+        self.remove_material_btn = QPushButton("- Remove")
+        self.remove_material_btn.clicked.connect(self._remove_material_row)
+        materials_btn_layout.addWidget(self.remove_material_btn)
+
+        materials_layout.addWidget(materials_btn_widget)
+        parent_layout.addWidget(materials_group)
+
+    def _setup_heights_section(self, parent_layout: QVBoxLayout):
+        """Setup the heights table section."""
+        heights_group = QGroupBox("Heights")
+        heights_layout = QVBoxLayout(heights_group)
+
+        heights_info = QLabel("<i>Lane height offsets (for sidewalks, curbs)</i>")
+        heights_info.setStyleSheet("color: gray;")
+        heights_layout.addWidget(heights_info)
+
+        # Heights table
+        self.heights_table = QTableWidget(0, 3)
+        self.heights_table.setHorizontalHeaderLabels(["S-Offset", "Inner", "Outer"])
+        self.heights_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.heights_table.setMinimumHeight(80)
+        heights_layout.addWidget(self.heights_table)
+
+        # Add/Remove buttons
+        heights_btn_widget = QWidget()
+        heights_btn_layout = QHBoxLayout(heights_btn_widget)
+        heights_btn_layout.setContentsMargins(0, 0, 0, 0)
+        heights_btn_layout.addStretch()
+
+        self.add_height_btn = QPushButton("+ Add")
+        self.add_height_btn.clicked.connect(self._add_height_row)
+        heights_btn_layout.addWidget(self.add_height_btn)
+
+        self.remove_height_btn = QPushButton("- Remove")
+        self.remove_height_btn.clicked.connect(self._remove_height_row)
+        heights_btn_layout.addWidget(self.remove_height_btn)
+
+        heights_layout.addWidget(heights_btn_widget)
+        parent_layout.addWidget(heights_group)
+
+    def _add_material_row(self):
+        """Add a new material row to the table."""
+        row = self.materials_table.rowCount()
+        self.materials_table.insertRow(row)
+
+        # Default values
+        self.materials_table.setItem(row, 0, QTableWidgetItem("0.0"))  # s_offset
+        self.materials_table.setItem(row, 1, QTableWidgetItem("0.8"))  # friction
+        self.materials_table.setItem(row, 2, QTableWidgetItem("0.01"))  # roughness
+        self.materials_table.setItem(row, 3, QTableWidgetItem("asphalt"))  # surface
+
+    def _remove_material_row(self):
+        """Remove the selected material row."""
+        current_row = self.materials_table.currentRow()
+        if current_row >= 0:
+            self.materials_table.removeRow(current_row)
+
+    def _add_height_row(self):
+        """Add a new height row to the table."""
+        row = self.heights_table.rowCount()
+        self.heights_table.insertRow(row)
+
+        # Default values
+        self.heights_table.setItem(row, 0, QTableWidgetItem("0.0"))  # s_offset
+        self.heights_table.setItem(row, 1, QTableWidgetItem("0.0"))  # inner
+        self.heights_table.setItem(row, 2, QTableWidgetItem("0.0"))  # outer
+
+    def _remove_height_row(self):
+        """Remove the selected height row."""
+        current_row = self.heights_table.currentRow()
+        if current_row >= 0:
+            self.heights_table.removeRow(current_row)
+
+    def _load_materials_table(self):
+        """Load materials from lane into the table."""
+        self.materials_table.setRowCount(0)
+        for material in self.lane.materials:
+            row = self.materials_table.rowCount()
+            self.materials_table.insertRow(row)
+            # Unpack tuple: (s_offset, friction, roughness, surface)
+            s_offset, friction, roughness, surface = material[:4] if len(material) >= 4 else (material[0], material[1] if len(material) > 1 else 0.8, material[2] if len(material) > 2 else 0.01, "asphalt")
+            self.materials_table.setItem(row, 0, QTableWidgetItem(str(s_offset)))
+            self.materials_table.setItem(row, 1, QTableWidgetItem(str(friction)))
+            self.materials_table.setItem(row, 2, QTableWidgetItem(str(roughness)))
+            self.materials_table.setItem(row, 3, QTableWidgetItem(str(surface)))
+
+    def _load_heights_table(self):
+        """Load heights from lane into the table."""
+        self.heights_table.setRowCount(0)
+        for height in self.lane.heights:
+            row = self.heights_table.rowCount()
+            self.heights_table.insertRow(row)
+            # Unpack tuple: (s_offset, inner, outer)
+            s_offset, inner, outer = height[:3] if len(height) >= 3 else (height[0], height[1] if len(height) > 1 else 0.0, 0.0)
+            self.heights_table.setItem(row, 0, QTableWidgetItem(str(s_offset)))
+            self.heights_table.setItem(row, 1, QTableWidgetItem(str(inner)))
+            self.heights_table.setItem(row, 2, QTableWidgetItem(str(outer)))
+
+    def _get_materials_from_table(self) -> list:
+        """Get materials list from table."""
+        materials = []
+        for row in range(self.materials_table.rowCount()):
+            try:
+                s_offset = float(self.materials_table.item(row, 0).text()) if self.materials_table.item(row, 0) else 0.0
+                friction = float(self.materials_table.item(row, 1).text()) if self.materials_table.item(row, 1) else 0.8
+                roughness = float(self.materials_table.item(row, 2).text()) if self.materials_table.item(row, 2) else 0.01
+                surface = self.materials_table.item(row, 3).text() if self.materials_table.item(row, 3) else "asphalt"
+                materials.append((s_offset, friction, roughness, surface))
+            except ValueError:
+                continue
+        return materials
+
+    def _get_heights_from_table(self) -> list:
+        """Get heights list from table."""
+        heights = []
+        for row in range(self.heights_table.rowCount()):
+            try:
+                s_offset = float(self.heights_table.item(row, 0).text()) if self.heights_table.item(row, 0) else 0.0
+                inner = float(self.heights_table.item(row, 1).text()) if self.heights_table.item(row, 1) else 0.0
+                outer = float(self.heights_table.item(row, 2).text()) if self.heights_table.item(row, 2) else 0.0
+                heights.append((s_offset, inner, outer))
+            except ValueError:
+                continue
+        return heights
 
     def load_properties(self):
         """Load lane properties into the form."""
@@ -382,12 +594,39 @@ class LanePropertiesDialog(BaseDialog):
             else:
                 self.speed_limit_spin.setValue(0)
 
+            # Load V1.8 attributes
+            set_combo_by_data(self.direction_combo, self.lane.direction)
+            set_combo_by_data(self.advisory_combo, self.lane.advisory)
+            self.level_checkbox.setChecked(self.lane.level)
+
+            # Load lane links
+            if self.lane.predecessor_id is not None:
+                self.predecessor_spin.setValue(self.lane.predecessor_id)
+            else:
+                self.predecessor_spin.setValue(0)
+
+            if self.lane.successor_id is not None:
+                self.successor_spin.setValue(self.lane.successor_id)
+            else:
+                self.successor_spin.setValue(0)
+
+            # Load materials and heights tables
+            self._load_materials_table()
+            self._load_heights_table()
+
             # Expand advanced section if any values are non-default
             has_non_default = (
                 self.lane.width_b != 0.0 or
                 self.lane.width_c != 0.0 or
                 self.lane.width_d != 0.0 or
-                self.lane.speed_limit is not None
+                self.lane.speed_limit is not None or
+                self.lane.direction is not None or
+                self.lane.advisory is not None or
+                self.lane.level or
+                self.lane.predecessor_id is not None or
+                self.lane.successor_id is not None or
+                len(self.lane.materials) > 0 or
+                len(self.lane.heights) > 0
             )
             if has_non_default:
                 self.advanced_toggle.setChecked(True)
@@ -513,6 +752,22 @@ class LanePropertiesDialog(BaseDialog):
                 self.lane.speed_limit_unit = self.speed_unit_combo.currentData()
             else:
                 self.lane.speed_limit = None  # Inherit from road
+
+            # Update V1.8 attributes
+            self.lane.direction = self.direction_combo.currentData()
+            self.lane.advisory = self.advisory_combo.currentData()
+            self.lane.level = self.level_checkbox.isChecked()
+
+            # Update lane links (0 means None)
+            pred_val = self.predecessor_spin.value()
+            self.lane.predecessor_id = pred_val if pred_val != 0 else None
+
+            succ_val = self.successor_spin.value()
+            self.lane.successor_id = succ_val if succ_val != 0 else None
+
+            # Update materials and heights from tables
+            self.lane.materials = self._get_materials_from_table()
+            self.lane.heights = self._get_heights_from_table()
 
         # Update boundary selections (if available)
         if self.project and self.road_id:

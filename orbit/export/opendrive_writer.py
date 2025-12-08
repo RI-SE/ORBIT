@@ -6,6 +6,7 @@ Generates ASAM OpenDrive format XML from annotated roads and junctions.
 
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
+from pathlib import Path
 from lxml import etree
 import numpy as np
 import math
@@ -112,9 +113,41 @@ class OpenDriveWriter:
             logger.error(f"Error writing OpenDrive: {e}")
             return False
 
+    def write_and_validate(
+        self,
+        output_path: str,
+        schema_path: Optional[str] = None
+    ) -> Tuple[bool, List[str]]:
+        """
+        Write OpenDrive XML to file and validate against XSD schema.
+
+        Args:
+            output_path: Path to output .xodr file
+            schema_path: Path to OpenDRIVE XSD schema file (OpenDRIVE_Core.xsd).
+                        If None, uses bundled schema in test_projects/xsd_schema/
+
+        Returns:
+            Tuple of (success, list of validation errors/warnings)
+        """
+        errors = []
+
+        # Write the file first
+        if not self.write(output_path):
+            return False, ["Failed to write OpenDRIVE file"]
+
+        # Validate if schema available
+        validation_errors = validate_opendrive_file(output_path, schema_path)
+        if validation_errors:
+            errors.extend(validation_errors)
+            return False, errors
+
+        return True, []
+
     def _create_opendrive_root(self) -> etree.Element:
         """Create the root OpenDRIVE element with all content."""
-        root = etree.Element('OpenDRIVE')
+        # OpenDRIVE 1.8 namespace
+        nsmap = {None: "http://code.asam.net/simulation/standard/opendrive_schema"}
+        root = etree.Element('OpenDRIVE', nsmap=nsmap)
 
         # Add header
         header = self._create_header()
@@ -175,6 +208,12 @@ class OpenDriveWriter:
                 if junction_elem is not None:
                     root.append(junction_elem)
 
+        # 4. Add junction groups
+        for idx, junction_group in enumerate(self.project.junction_groups):
+            jg_elem = self._create_junction_group(junction_group, idx + 1)
+            if jg_elem is not None:
+                root.append(jg_elem)
+
         return root
 
     def _find_junction_for_road_endpoint(self, road_id: str, is_predecessor: bool) -> Optional[int]:
@@ -226,7 +265,7 @@ class OpenDriveWriter:
         """Create OpenDrive header element."""
         header = etree.Element('header')
         header.set('revMajor', '1')
-        header.set('revMinor', '7')
+        header.set('revMinor', '8')
 
         # Use map name from project, fallback to 'ORBIT Export' if empty
         map_name = self.project.map_name if self.project.map_name else 'ORBIT Export'
@@ -411,8 +450,18 @@ class OpenDriveWriter:
             elev.set('c', '0.0')
             elev.set('d', '0.0')
 
-        # Add lateral profile (no superelevation)
+        # Add lateral profile (superelevation/crossfall)
         lateral = etree.SubElement(road_elem, 'lateralProfile')
+        if road.superelevation_profile:
+            # Export stored superelevation polynomials for round-trip preservation
+            for se_data in road.superelevation_profile:
+                s, a, b, c, d = se_data
+                superelevation = etree.SubElement(lateral, 'superelevation')
+                superelevation.set('s', f'{s:.6g}')
+                superelevation.set('a', f'{a:.6g}')
+                superelevation.set('b', f'{b:.6g}')
+                superelevation.set('c', f'{c:.6g}')
+                superelevation.set('d', f'{d:.6g}')
 
         # Analyze lane boundaries
         boundary_infos, warning = self.lane_analyzer.analyze_road(road)
@@ -430,6 +479,33 @@ class OpenDriveWriter:
         objects = self.object_builder.create_objects(road, self.project.objects, centerline_points_pixel)
         if objects is not None:
             road_elem.append(objects)
+
+        # Add surface CRG references if present
+        if road.surface_crg:
+            surface = etree.SubElement(road_elem, 'surface')
+            for crg_data in road.surface_crg:
+                crg = etree.SubElement(surface, 'CRG')
+                crg.set('file', crg_data.get('file', ''))
+                if 'sStart' in crg_data:
+                    crg.set('sStart', f"{crg_data['sStart']:.6g}")
+                if 'sEnd' in crg_data:
+                    crg.set('sEnd', f"{crg_data['sEnd']:.6g}")
+                if 'orientation' in crg_data:
+                    crg.set('orientation', crg_data['orientation'])
+                if 'mode' in crg_data:
+                    crg.set('mode', crg_data['mode'])
+                if 'purpose' in crg_data:
+                    crg.set('purpose', crg_data['purpose'])
+                if 'sOffset' in crg_data:
+                    crg.set('sOffset', f"{crg_data['sOffset']:.6g}")
+                if 'tOffset' in crg_data:
+                    crg.set('tOffset', f"{crg_data['tOffset']:.6g}")
+                if 'zOffset' in crg_data:
+                    crg.set('zOffset', f"{crg_data['zOffset']:.6g}")
+                if 'zScale' in crg_data:
+                    crg.set('zScale', f"{crg_data['zScale']:.6g}")
+                if 'hOffset' in crg_data:
+                    crg.set('hOffset', f"{crg_data['hOffset']:.6g}")
 
         return road_elem
 
@@ -839,7 +915,83 @@ class OpenDriveWriter:
 
             connection_id += 1
 
+        # Add boundary (V1.8 feature)
+        if junction.boundary and junction.boundary.segments:
+            boundary_elem = etree.SubElement(junction_elem, 'boundary')
+            for segment in junction.boundary.segments:
+                seg_elem = etree.SubElement(boundary_elem, 'segment')
+                seg_elem.set('type', segment.segment_type)
+
+                if segment.road_id:
+                    seg_elem.set('roadId', segment.road_id)
+
+                if segment.segment_type == 'lane':
+                    if segment.boundary_lane is not None:
+                        seg_elem.set('boundaryLane', str(segment.boundary_lane))
+                    if segment.s_start is not None:
+                        seg_elem.set('sStart', f'{segment.s_start:.6g}')
+                    if segment.s_end is not None:
+                        seg_elem.set('sEnd', f'{segment.s_end:.6g}')
+                elif segment.segment_type == 'joint':
+                    if segment.contact_point:
+                        seg_elem.set('contactPoint', segment.contact_point)
+                    if segment.joint_lane_start is not None:
+                        seg_elem.set('jointLaneStart', str(segment.joint_lane_start))
+                    if segment.joint_lane_end is not None:
+                        seg_elem.set('jointLaneEnd', str(segment.joint_lane_end))
+                    if segment.transition_length is not None:
+                        seg_elem.set('transitionLength', f'{segment.transition_length:.6g}')
+
+        # Add elevation grid (V1.8 feature)
+        if junction.elevation_grid and junction.elevation_grid.elevations:
+            eg_elem = etree.SubElement(junction_elem, 'elevationGrid')
+            if junction.elevation_grid.grid_spacing:
+                eg_elem.set('gridSpacing', junction.elevation_grid.grid_spacing)
+            for elev_point in junction.elevation_grid.elevations:
+                elev_elem = etree.SubElement(eg_elem, 'elevation')
+                if elev_point.center:
+                    elev_elem.set('center', elev_point.center)
+                if elev_point.left:
+                    elev_elem.set('left', elev_point.left)
+                if elev_point.right:
+                    elev_elem.set('right', elev_point.right)
+
         return junction_elem
+
+    def _create_junction_group(self, junction_group, group_id: int) -> Optional[etree.Element]:
+        """
+        Create a junctionGroup element.
+
+        Args:
+            junction_group: JunctionGroup object
+            group_id: Numeric ID for this junction group in OpenDRIVE
+
+        Returns:
+            JunctionGroup XML element, or None if no valid junction references
+        """
+        # Map ORBIT junction IDs to numeric OpenDRIVE junction IDs
+        junction_refs = []
+        for junction_id in junction_group.junction_ids:
+            numeric_id = self.junction_numeric_ids.get(junction_id)
+            if numeric_id is not None:
+                junction_refs.append(numeric_id)
+
+        if not junction_refs:
+            return None
+
+        jg_elem = etree.Element('junctionGroup')
+        jg_elem.set('id', str(group_id))
+        jg_elem.set('type', junction_group.group_type)
+
+        if junction_group.name:
+            jg_elem.set('name', junction_group.name)
+
+        # Add junction references
+        for junction_numeric_id in junction_refs:
+            ref_elem = etree.SubElement(jg_elem, 'junctionReference')
+            ref_elem.set('junction', str(junction_numeric_id))
+
+        return jg_elem
 
 
 def export_to_opendrive(
@@ -874,3 +1026,68 @@ def export_to_opendrive(
     curve_fitter = CurveFitter(line_tolerance, arc_tolerance, preserve_geometry)
     writer = OpenDriveWriter(project, transformer, curve_fitter, right_hand_traffic, country_code, use_tmerc)
     return writer.write(output_path)
+
+
+def validate_opendrive_file(
+    file_path: str,
+    schema_path: Optional[str] = None
+) -> List[str]:
+    """
+    Validate an OpenDRIVE XML file against the XSD schema.
+
+    Args:
+        file_path: Path to the .xodr file to validate
+        schema_path: Path to OpenDRIVE XSD schema file (OpenDRIVE_Core.xsd).
+                    If None, attempts to use bundled schema in test_projects/xsd_schema/
+
+    Returns:
+        List of validation error messages. Empty list if valid.
+    """
+    errors = []
+
+    # Find schema path
+    if schema_path is None:
+        # Try to find bundled schema
+        module_dir = Path(__file__).parent.parent.parent
+        default_schema = module_dir / "test_projects" / "xsd_schema" / "OpenDRIVE_Core.xsd"
+        if default_schema.exists():
+            schema_path = str(default_schema)
+        else:
+            logger.warning(f"No schema path provided and bundled schema not found at {default_schema}")
+            return ["Schema file not found - validation skipped"]
+
+    try:
+        # Parse schema
+        schema_doc = etree.parse(schema_path)
+        schema = etree.XMLSchema(schema_doc)
+
+        # Parse document to validate
+        doc = etree.parse(file_path)
+
+        # Validate
+        if not schema.validate(doc):
+            for error in schema.error_log:
+                errors.append(f"Line {error.line}: {error.message}")
+
+    except etree.XMLSchemaParseError as e:
+        errors.append(f"Schema parse error: {e}")
+    except etree.XMLSyntaxError as e:
+        errors.append(f"XML syntax error: {e}")
+    except Exception as e:
+        errors.append(f"Validation error: {e}")
+
+    return errors
+
+
+def get_default_schema_path() -> Optional[str]:
+    """
+    Get the path to the bundled OpenDRIVE XSD schema.
+
+    Returns:
+        Path to OpenDRIVE_Core.xsd or None if not found
+    """
+    module_dir = Path(__file__).parent.parent.parent
+    schema_path = module_dir / "test_projects" / "xsd_schema" / "OpenDRIVE_Core.xsd"
+    if schema_path.exists():
+        return str(schema_path)
+    return None

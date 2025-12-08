@@ -73,6 +73,7 @@ class BaseDialog(QDialog):
         """
         group = QGroupBox(title)
         form_layout = QFormLayout()
+        form_layout.setVerticalSpacing(4)  # Tighter row spacing
         group.setLayout(form_layout)
 
         # Insert before button box if it exists, otherwise append

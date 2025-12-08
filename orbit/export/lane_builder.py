@@ -65,6 +65,17 @@ class LaneBuilder:
         """
         lanes = etree.Element('lanes')
 
+        # Add lane offset if present (shifts center lane from reference line)
+        if road.lane_offset:
+            for lo_data in road.lane_offset:
+                s, a, b, c, d = lo_data
+                lane_offset = etree.SubElement(lanes, 'laneOffset')
+                lane_offset.set('s', f'{s:.6g}')
+                lane_offset.set('a', f'{a:.6g}')
+                lane_offset.set('b', f'{b:.6g}')
+                lane_offset.set('c', f'{c:.6g}')
+                lane_offset.set('d', f'{d:.6g}')
+
         # Build map of lane_id to boundary info for quick lookup
         boundary_map = {b.lane_id: b for b in boundary_infos if b.lane_id is not None}
 
@@ -164,10 +175,22 @@ class LaneBuilder:
         lane = etree.Element('lane')
         lane.set('id', str(lane_obj.id))
         lane.set('type', lane_obj.lane_type.value)
-        lane.set('level', 'false')
+        lane.set('level', 'true' if lane_obj.level else 'false')
 
-        # Lane link (simplified)
-        etree.SubElement(lane, 'link')
+        # V1.8 direction and advisory attributes
+        if lane_obj.direction is not None:
+            lane.set('direction', lane_obj.direction)
+        if lane_obj.advisory is not None:
+            lane.set('advisory', lane_obj.advisory)
+
+        # Lane link with predecessor/successor
+        link = etree.SubElement(lane, 'link')
+        if lane_obj.predecessor_id is not None:
+            pred = etree.SubElement(link, 'predecessor')
+            pred.set('id', str(lane_obj.predecessor_id))
+        if lane_obj.successor_id is not None:
+            succ = etree.SubElement(link, 'successor')
+            succ.set('id', str(lane_obj.successor_id))
 
         # Lane width polynomial - use stored coefficients (already in meters)
         width_elem = etree.SubElement(lane, 'width')
@@ -205,5 +228,26 @@ class LaneBuilder:
             for restriction_type in lane_obj.access_restrictions:
                 restriction = etree.SubElement(access, 'restriction')
                 restriction.set('type', restriction_type)
+
+        # Lane material properties
+        if lane_obj.materials:
+            for mat_data in lane_obj.materials:
+                s_offset, friction, roughness, surface = mat_data
+                material = etree.SubElement(lane, 'material')
+                material.set('sOffset', f'{s_offset:.6g}')
+                material.set('friction', f'{friction:.6g}')
+                if roughness is not None:
+                    material.set('roughness', f'{roughness:.6g}')
+                if surface:
+                    material.set('surface', surface)
+
+        # Lane height offsets (for raised sidewalks, etc.)
+        if lane_obj.heights:
+            for h_data in lane_obj.heights:
+                s_offset, inner, outer = h_data
+                height = etree.SubElement(lane, 'height')
+                height.set('sOffset', f'{s_offset:.6g}')
+                height.set('inner', f'{inner:.6g}')
+                height.set('outer', f'{outer:.6g}')
 
         return lane

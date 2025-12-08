@@ -103,7 +103,8 @@ class CurveFitter:
             if line_end > i + 1:
                 # We have a line segment
                 element = self._create_line_element(points, i, line_end)
-                elements.append(element)
+                if element:  # Skip if zero-length
+                    elements.append(element)
                 i = line_end
             else:
                 # Try to fit an arc
@@ -118,12 +119,14 @@ class CurveFitter:
                     else:
                         # Arc fitting failed, use line segment
                         element = self._create_line_element(points, i, i + 1)
-                        elements.append(element)
+                        if element:  # Skip if zero-length
+                            elements.append(element)
                         i += 1
                 else:
                     # Not enough points for arc, use line
                     element = self._create_line_element(points, i, i + 1)
-                    elements.append(element)
+                    if element:  # Skip if zero-length
+                        elements.append(element)
                     i += 1
 
         return elements
@@ -304,13 +307,24 @@ class CurveFitter:
         points: List[Tuple[float, float]],
         start: int,
         end: int
-    ) -> GeometryElement:
-        """Create a line geometry element."""
+    ) -> Optional[GeometryElement]:
+        """
+        Create a line geometry element.
+
+        Returns None if the resulting length would be zero or near-zero,
+        as OpenDRIVE requires geometry length > 0.
+        """
         p1 = np.array(points[start])
         p2 = np.array(points[min(end, len(points) - 1)])
 
         direction = p2 - p1
         length = np.linalg.norm(direction)
+
+        # OpenDRIVE schema requires length > 0 (t_grZero type)
+        if length < 1e-9:
+            logger.debug(f"Skipping zero-length line segment at index {start}")
+            return None
+
         heading = np.arctan2(direction[1], direction[0])
 
         return GeometryElement(

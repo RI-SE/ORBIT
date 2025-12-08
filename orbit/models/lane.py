@@ -88,6 +88,17 @@ class Lane:
     left_boundary_id: Optional[str] = None
     right_boundary_id: Optional[str] = None
     access_restrictions: List[str] = field(default_factory=list)
+    # Lane material properties: (s_offset, friction, roughness, surface)
+    materials: List[tuple] = field(default_factory=list)
+    # Lane height offsets: list of (s_offset, inner_height, outer_height)
+    heights: List[tuple] = field(default_factory=list)
+    # Lane predecessor/successor links (lane IDs)
+    predecessor_id: Optional[int] = None
+    successor_id: Optional[int] = None
+    # OpenDRIVE 1.8 attributes
+    direction: Optional[str] = None  # "standard", "reversed", "both"
+    advisory: Optional[str] = None  # "none", "inner", "outer", "both"
+    level: bool = False  # Keep lane level (don't apply superelevation)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -120,6 +131,24 @@ class Lane:
         # Only include access restrictions if set
         if self.access_restrictions:
             data['access_restrictions'] = self.access_restrictions
+        # Only include material properties if set
+        if self.materials:
+            data['materials'] = [list(m) for m in self.materials]
+        # Only include height offsets if set
+        if self.heights:
+            data['heights'] = [list(h) for h in self.heights]
+        # Only include lane links if set
+        if self.predecessor_id is not None:
+            data['predecessor_id'] = self.predecessor_id
+        if self.successor_id is not None:
+            data['successor_id'] = self.successor_id
+        # Only include V1.8 attributes if set
+        if self.direction is not None:
+            data['direction'] = self.direction
+        if self.advisory is not None:
+            data['advisory'] = self.advisory
+        if self.level:
+            data['level'] = self.level
         return data
 
     @classmethod
@@ -140,7 +169,14 @@ class Lane:
             speed_limit_unit=data.get('speed_limit_unit', 'm/s'),
             left_boundary_id=data.get('left_boundary_id'),
             right_boundary_id=data.get('right_boundary_id'),
-            access_restrictions=data.get('access_restrictions', [])
+            access_restrictions=data.get('access_restrictions', []),
+            materials=[tuple(m) for m in data.get('materials', [])],
+            heights=[tuple(h) for h in data.get('heights', [])],
+            predecessor_id=data.get('predecessor_id'),
+            successor_id=data.get('successor_id'),
+            direction=data.get('direction'),
+            advisory=data.get('advisory'),
+            level=data.get('level', False)
         )
 
     def get_display_name(self) -> str:

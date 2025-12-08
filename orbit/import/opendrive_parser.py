@@ -84,6 +84,30 @@ class ElevationProfile:
 
 
 @dataclass
+class LateralProfile:
+    """
+    Represents lateral profile (superelevation/crossfall) for a road.
+
+    Attributes:
+        superelevations: List of (s, a, b, c, d) tuples for superelevation polynomial
+                        superelevation(ds) = a + b*ds + c*ds² + d*ds³
+    """
+    superelevations: List[Tuple[float, float, float, float, float]] = field(default_factory=list)
+
+
+@dataclass
+class LaneOffsetRecord:
+    """
+    Lane offset record shifting center lane from reference line.
+
+    Attributes:
+        offsets: List of (s, a, b, c, d) tuples for offset polynomial
+                offset(ds) = a + b*ds + c*ds² + d*ds³
+    """
+    offsets: List[Tuple[float, float, float, float, float]] = field(default_factory=list)
+
+
+@dataclass
 class LaneWidth:
     """
     Lane width polynomial from OpenDrive.
@@ -122,6 +146,30 @@ class LaneSpeed:
 
 
 @dataclass
+class LaneMaterial:
+    """Lane material properties."""
+    s_offset: float
+    friction: float = 1.0
+    roughness: Optional[float] = None
+    surface: str = "asphalt"
+
+
+@dataclass
+class LaneHeight:
+    """Lane height offset for raised lanes."""
+    s_offset: float
+    inner: float = 0.0  # Inner height offset (closer to center)
+    outer: float = 0.0  # Outer height offset (edge of lane)
+
+
+@dataclass
+class LaneLink:
+    """Lane predecessor/successor link."""
+    predecessor_id: Optional[int] = None
+    successor_id: Optional[int] = None
+
+
+@dataclass
 class ODRLane:
     """
     OpenDrive lane from XML.
@@ -133,6 +181,11 @@ class ODRLane:
         widths: List of width polynomials
         road_marks: List of road marking definitions
         speed_limits: List of speed limit records
+        materials: List of material properties
+        heights: List of height offsets
+        link: Lane predecessor/successor links
+        direction: V1.8 direction attribute
+        advisory: V1.8 advisory attribute
     """
     id: int
     type: str
@@ -140,6 +193,11 @@ class ODRLane:
     widths: List[LaneWidth] = field(default_factory=list)
     road_marks: List[LaneRoadMark] = field(default_factory=list)
     speed_limits: List[LaneSpeed] = field(default_factory=list)
+    materials: List[LaneMaterial] = field(default_factory=list)
+    heights: List[LaneHeight] = field(default_factory=list)
+    link: Optional[LaneLink] = None
+    direction: Optional[str] = None  # V1.8: "standard", "reversed", "both"
+    advisory: Optional[str] = None  # V1.8: "none", "inner", "outer", "both"
 
     def get_width_at_s(self, s: float) -> float:
         """
@@ -267,6 +325,43 @@ class ODRConnection:
 
 
 @dataclass
+class ODRBoundarySegment:
+    """A segment of junction boundary (V1.8 feature)."""
+    segment_type: str  # 'lane' or 'joint'
+    road_id: Optional[str] = None
+    # For 'lane' type
+    boundary_lane: Optional[int] = None
+    s_start: Optional[float] = None
+    s_end: Optional[float] = None
+    # For 'joint' type
+    contact_point: Optional[str] = None
+    joint_lane_start: Optional[int] = None
+    joint_lane_end: Optional[int] = None
+    transition_length: Optional[float] = None
+
+
+@dataclass
+class ODRJunctionBoundary:
+    """Junction boundary (V1.8 feature)."""
+    segments: List[ODRBoundarySegment] = field(default_factory=list)
+
+
+@dataclass
+class ODRElevationGridPoint:
+    """A point in junction elevation grid (V1.8 feature)."""
+    center: Optional[str] = None
+    left: Optional[str] = None
+    right: Optional[str] = None
+
+
+@dataclass
+class ODRJunctionElevationGrid:
+    """Junction elevation grid (V1.8 feature)."""
+    grid_spacing: Optional[str] = None
+    elevations: List[ODRElevationGridPoint] = field(default_factory=list)
+
+
+@dataclass
 class ODRJunction:
     """
     OpenDrive junction from XML.
@@ -275,10 +370,33 @@ class ODRJunction:
         id: Junction ID
         name: Junction name
         connections: List of connections between roads
+        boundary: V1.8 junction boundary
+        elevation_grid: V1.8 elevation grid
     """
     id: str
     name: str = ""
     connections: List[ODRConnection] = field(default_factory=list)
+    boundary: Optional[ODRJunctionBoundary] = None
+    elevation_grid: Optional[ODRJunctionElevationGrid] = None
+
+
+@dataclass
+class ODRJunctionGroup:
+    """
+    OpenDrive junction group from XML.
+
+    Groups multiple junctions that form a logical unit (roundabouts, highway interchanges).
+
+    Attributes:
+        id: Junction group ID
+        name: Optional name
+        group_type: Type of group ('roundabout', 'complexJunction', 'highwayInterchange', 'unknown')
+        junction_ids: List of junction IDs in this group
+    """
+    id: str
+    name: str = ""
+    group_type: str = "unknown"
+    junction_ids: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -310,9 +428,12 @@ class ODRRoad:
     junction_id: str = "-1"
     geometry: List[GeometryElement] = field(default_factory=list)
     elevation_profile: Optional[ElevationProfile] = None
+    lateral_profile: Optional[LateralProfile] = None
+    lane_offset: Optional[LaneOffsetRecord] = None
     lane_sections: List[ODRLaneSection] = field(default_factory=list)
     signals: List[ODRSignal] = field(default_factory=list)
     objects: List[ODRObject] = field(default_factory=list)
+    surface_crg: List[Dict[str, Any]] = field(default_factory=list)  # OpenCRG surface data
     predecessor_type: Optional[str] = None
     predecessor_id: Optional[str] = None
     predecessor_contact: Optional[str] = None
@@ -349,6 +470,7 @@ class OpenDriveData:
     geo_reference: Optional[str] = None  # PROJ4 string
     roads: List[ODRRoad] = field(default_factory=list)
     junctions: List[ODRJunction] = field(default_factory=list)
+    junction_groups: List[ODRJunctionGroup] = field(default_factory=list)
 
 
 class OpenDriveParser:
@@ -398,6 +520,12 @@ class OpenDriveParser:
             junction = self._parse_junction(junction_elem)
             if junction:
                 self.data.junctions.append(junction)
+
+        # Parse junction groups
+        for jg_elem in root.findall('junctionGroup'):
+            junction_group = self._parse_junction_group(jg_elem)
+            if junction_group:
+                self.data.junction_groups.append(junction_group)
 
         return self.data
 
@@ -472,10 +600,16 @@ class OpenDriveParser:
         if elev_profile_elem is not None:
             road.elevation_profile = self._parse_elevation_profile(elev_profile_elem)
 
-        # Parse lanes
+        # Parse lateralProfile (superelevation)
+        lateral_profile_elem = road_elem.find('lateralProfile')
+        if lateral_profile_elem is not None:
+            road.lateral_profile = self._parse_lateral_profile(lateral_profile_elem)
+
+        # Parse lanes (including laneOffset)
         lanes_elem = road_elem.find('lanes')
         if lanes_elem is not None:
             road.lane_sections = self._parse_lane_sections(lanes_elem)
+            road.lane_offset = self._parse_lane_offset(lanes_elem)
 
         # Parse signals
         signals_elem = road_elem.find('signals')
@@ -492,6 +626,25 @@ class OpenDriveParser:
                 obj = self._parse_object(object_elem)
                 if obj:
                     road.objects.append(obj)
+
+        # Parse surface CRG (OpenCRG road surface data)
+        surface_elem = road_elem.find('surface')
+        if surface_elem is not None:
+            for crg_elem in surface_elem.findall('CRG'):
+                crg_data = {
+                    'file': crg_elem.get('file', ''),
+                    'sStart': float(crg_elem.get('sStart', '0')),
+                    'sEnd': float(crg_elem.get('sEnd', '0')),
+                    'orientation': crg_elem.get('orientation', 'same'),
+                    'mode': crg_elem.get('mode', 'attached'),
+                    'purpose': crg_elem.get('purpose'),
+                    'sOffset': float(crg_elem.get('sOffset', '0')),
+                    'tOffset': float(crg_elem.get('tOffset', '0')),
+                    'zOffset': float(crg_elem.get('zOffset', '0')),
+                    'zScale': float(crg_elem.get('zScale', '1')),
+                    'hOffset': float(crg_elem.get('hOffset', '0')),
+                }
+                road.surface_crg.append(crg_data)
 
         return road
 
@@ -568,6 +721,34 @@ class OpenDriveParser:
 
         return profile
 
+    def _parse_lateral_profile(self, lateral_profile_elem: etree.Element) -> LateralProfile:
+        """Parse lateralProfile element (superelevation)."""
+        profile = LateralProfile()
+
+        for se_elem in lateral_profile_elem.findall('superelevation'):
+            s = float(se_elem.get('s', '0'))
+            a = float(se_elem.get('a', '0'))
+            b = float(se_elem.get('b', '0'))
+            c = float(se_elem.get('c', '0'))
+            d = float(se_elem.get('d', '0'))
+            profile.superelevations.append((s, a, b, c, d))
+
+        return profile
+
+    def _parse_lane_offset(self, lanes_elem: etree.Element) -> LaneOffsetRecord:
+        """Parse laneOffset elements from lanes."""
+        record = LaneOffsetRecord()
+
+        for lo_elem in lanes_elem.findall('laneOffset'):
+            s = float(lo_elem.get('s', '0'))
+            a = float(lo_elem.get('a', '0'))
+            b = float(lo_elem.get('b', '0'))
+            c = float(lo_elem.get('c', '0'))
+            d = float(lo_elem.get('d', '0'))
+            record.offsets.append((s, a, b, c, d))
+
+        return record
+
     def _parse_lane_sections(self, lanes_elem: etree.Element) -> List[ODRLaneSection]:
         """Parse lane sections."""
         sections = []
@@ -615,7 +796,9 @@ class OpenDriveParser:
         lane = ODRLane(
             id=int(lane_id),
             type=lane_elem.get('type', 'driving'),
-            level=lane_elem.get('level') == 'true'
+            level=lane_elem.get('level') == 'true',
+            direction=lane_elem.get('direction'),  # V1.8
+            advisory=lane_elem.get('advisory')  # V1.8
         )
 
         # Parse width elements
@@ -642,6 +825,32 @@ class OpenDriveParser:
             max_speed = float(speed_elem.get('max', '0'))
             unit = speed_elem.get('unit', 'm/s')
             lane.speed_limits.append(LaneSpeed(s_offset, max_speed, unit))
+
+        # Parse material elements
+        for mat_elem in lane_elem.findall('material'):
+            s_offset = float(mat_elem.get('sOffset', '0'))
+            friction = float(mat_elem.get('friction', '1.0'))
+            roughness_str = mat_elem.get('roughness')
+            roughness = float(roughness_str) if roughness_str else None
+            surface = mat_elem.get('surface', 'asphalt')
+            lane.materials.append(LaneMaterial(s_offset, friction, roughness, surface))
+
+        # Parse height elements (for raised lanes)
+        for height_elem in lane_elem.findall('height'):
+            s_offset = float(height_elem.get('sOffset', '0'))
+            inner = float(height_elem.get('inner', '0'))
+            outer = float(height_elem.get('outer', '0'))
+            lane.heights.append(LaneHeight(s_offset, inner, outer))
+
+        # Parse link element (predecessor/successor)
+        link_elem = lane_elem.find('link')
+        if link_elem is not None:
+            pred_elem = link_elem.find('predecessor')
+            succ_elem = link_elem.find('successor')
+            pred_id = int(pred_elem.get('id')) if pred_elem is not None else None
+            succ_id = int(succ_elem.get('id')) if succ_elem is not None else None
+            if pred_id is not None or succ_id is not None:
+                lane.link = LaneLink(predecessor_id=pred_id, successor_id=succ_id)
 
         return lane
 
@@ -730,4 +939,75 @@ class OpenDriveParser:
                     lane_links=lane_links
                 ))
 
+        # Parse boundary (V1.8 feature)
+        boundary_elem = junction_elem.find('boundary')
+        if boundary_elem is not None:
+            boundary = ODRJunctionBoundary()
+            for seg_elem in boundary_elem.findall('segment'):
+                seg_type = seg_elem.get('type', 'lane')
+                segment = ODRBoundarySegment(
+                    segment_type=seg_type,
+                    road_id=seg_elem.get('roadId')
+                )
+
+                if seg_type == 'lane':
+                    boundary_lane = seg_elem.get('boundaryLane')
+                    if boundary_lane is not None:
+                        segment.boundary_lane = int(boundary_lane)
+                    s_start = seg_elem.get('sStart')
+                    if s_start is not None and s_start != 'start' and s_start != 'end':
+                        segment.s_start = float(s_start)
+                    s_end = seg_elem.get('sEnd')
+                    if s_end is not None and s_end != 'start' and s_end != 'end':
+                        segment.s_end = float(s_end)
+                elif seg_type == 'joint':
+                    segment.contact_point = seg_elem.get('contactPoint')
+                    joint_start = seg_elem.get('jointLaneStart')
+                    if joint_start is not None:
+                        segment.joint_lane_start = int(joint_start)
+                    joint_end = seg_elem.get('jointLaneEnd')
+                    if joint_end is not None:
+                        segment.joint_lane_end = int(joint_end)
+                    trans_len = seg_elem.get('transitionLength')
+                    if trans_len is not None:
+                        segment.transition_length = float(trans_len)
+
+                boundary.segments.append(segment)
+            junction.boundary = boundary
+
+        # Parse elevation grid (V1.8 feature)
+        elev_grid_elem = junction_elem.find('elevationGrid')
+        if elev_grid_elem is not None:
+            elev_grid = ODRJunctionElevationGrid(
+                grid_spacing=elev_grid_elem.get('gridSpacing')
+            )
+            for elev_elem in elev_grid_elem.findall('elevation'):
+                point = ODRElevationGridPoint(
+                    center=elev_elem.get('center'),
+                    left=elev_elem.get('left'),
+                    right=elev_elem.get('right')
+                )
+                elev_grid.elevations.append(point)
+            junction.elevation_grid = elev_grid
+
         return junction
+
+    def _parse_junction_group(self, jg_elem: etree.Element) -> Optional[ODRJunctionGroup]:
+        """Parse junctionGroup element."""
+        group_id = jg_elem.get('id')
+        if not group_id:
+            return None
+
+        junction_group = ODRJunctionGroup(
+            id=group_id,
+            name=jg_elem.get('name', ''),
+            group_type=jg_elem.get('type', 'unknown')
+        )
+
+        # Parse junction references
+        for ref_elem in jg_elem.findall('junctionReference'):
+            junction_id = ref_elem.get('junction')
+            if junction_id:
+                junction_group.junction_ids.append(junction_id)
+
+        return junction_group

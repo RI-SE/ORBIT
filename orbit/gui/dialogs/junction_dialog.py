@@ -10,11 +10,17 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QComboBox, QPushButton,
     QListWidget, QLabel, QMessageBox,
-    QListWidgetItem, QGroupBox
+    QListWidgetItem, QGroupBox, QToolButton, QWidget,
+    QTableWidget, QTableWidgetItem, QHeaderView, QDoubleSpinBox, QSpinBox,
+    QScrollArea, QFrame
 )
 from PyQt6.QtCore import Qt
 
 from orbit.models import Junction, JunctionConnection, Project
+from orbit.models.junction import (
+    JunctionBoundary, JunctionBoundarySegment,
+    JunctionElevationGrid, JunctionElevationGridPoint
+)
 from .base_dialog import BaseDialog
 from ..utils.message_helpers import show_warning
 
@@ -115,6 +121,9 @@ class JunctionDialog(BaseDialog):
         connections_group.setLayout(connections_layout)
         self.get_main_layout().addWidget(connections_group)
 
+        # V1.8 Features (collapsible)
+        self._setup_v18_section()
+
         # Info section
         info_label = QLabel(
             "<i>Note: At least 2 roads should be connected to a junction.</i>"
@@ -124,6 +133,230 @@ class JunctionDialog(BaseDialog):
 
         # Create standard OK/Cancel buttons
         self.create_button_box()
+
+    def _setup_v18_section(self):
+        """Setup the collapsible V1.8 features section (boundary, elevation grid) with scroll area."""
+        # Create collapsible toggle
+        self.v18_toggle = QToolButton()
+        self.v18_toggle.setStyleSheet("QToolButton { border: none; }")
+        self.v18_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.v18_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.v18_toggle.setText("OpenDRIVE 1.8 Features (Boundary, Elevation Grid)")
+        self.v18_toggle.setCheckable(True)
+        self.v18_toggle.setChecked(False)
+        self.v18_toggle.clicked.connect(self._toggle_v18)
+
+        self.get_main_layout().addWidget(self.v18_toggle)
+
+        # Scroll area for the V1.8 content
+        self.v18_scroll = QScrollArea()
+        self.v18_scroll.setWidgetResizable(True)
+        self.v18_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.v18_scroll.setMaximumHeight(350)
+
+        # Container for V1.8 content
+        self.v18_widget = QWidget()
+        v18_layout = QVBoxLayout(self.v18_widget)
+        v18_layout.setContentsMargins(10, 5, 10, 10)
+
+        # Boundary section
+        boundary_label = QLabel("<b>Junction Boundary</b>")
+        v18_layout.addWidget(boundary_label)
+
+        boundary_info = QLabel("<i>Defines the area enclosing the junction (counter-clockwise segments)</i>")
+        boundary_info.setStyleSheet("color: gray;")
+        v18_layout.addWidget(boundary_info)
+
+        self.boundary_table = QTableWidget(0, 4)
+        self.boundary_table.setHorizontalHeaderLabels(["Type", "Road ID", "Lane ID", "Connection ID"])
+        self.boundary_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.boundary_table.setMinimumHeight(100)
+        v18_layout.addWidget(self.boundary_table)
+
+        boundary_btn_widget = QWidget()
+        boundary_btn_layout = QHBoxLayout(boundary_btn_widget)
+        boundary_btn_layout.setContentsMargins(0, 0, 0, 0)
+        boundary_btn_layout.addStretch()
+        self.add_boundary_btn = QPushButton("+ Add")
+        self.add_boundary_btn.clicked.connect(self._add_boundary_row)
+        boundary_btn_layout.addWidget(self.add_boundary_btn)
+        self.remove_boundary_btn = QPushButton("- Remove")
+        self.remove_boundary_btn.clicked.connect(self._remove_boundary_row)
+        boundary_btn_layout.addWidget(self.remove_boundary_btn)
+        v18_layout.addWidget(boundary_btn_widget)
+
+        # Elevation Grid section
+        elev_label = QLabel("<b>Elevation Grid</b>")
+        v18_layout.addWidget(elev_label)
+
+        elev_info = QLabel("<i>Grid of elevation points across the junction surface</i>")
+        elev_info.setStyleSheet("color: gray;")
+        v18_layout.addWidget(elev_info)
+
+        # Grid spacing
+        spacing_widget = QWidget()
+        spacing_layout = QHBoxLayout(spacing_widget)
+        spacing_layout.setContentsMargins(0, 0, 0, 0)
+        spacing_layout.addWidget(QLabel("Grid Spacing:"))
+        self.grid_spacing_spin = QDoubleSpinBox()
+        self.grid_spacing_spin.setRange(0.1, 100.0)
+        self.grid_spacing_spin.setValue(1.0)
+        self.grid_spacing_spin.setSuffix(" m")
+        self.grid_spacing_spin.setToolTip("Spacing between elevation grid points")
+        spacing_layout.addWidget(self.grid_spacing_spin)
+        spacing_layout.addStretch()
+        v18_layout.addWidget(spacing_widget)
+
+        self.elevation_table = QTableWidget(0, 3)
+        self.elevation_table.setHorizontalHeaderLabels(["Center", "Left", "Right"])
+        self.elevation_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.elevation_table.setMinimumHeight(100)
+        v18_layout.addWidget(self.elevation_table)
+
+        elev_btn_widget = QWidget()
+        elev_btn_layout = QHBoxLayout(elev_btn_widget)
+        elev_btn_layout.setContentsMargins(0, 0, 0, 0)
+        elev_btn_layout.addStretch()
+        self.add_elev_btn = QPushButton("+ Add")
+        self.add_elev_btn.clicked.connect(self._add_elevation_row)
+        elev_btn_layout.addWidget(self.add_elev_btn)
+        self.remove_elev_btn = QPushButton("- Remove")
+        self.remove_elev_btn.clicked.connect(self._remove_elevation_row)
+        elev_btn_layout.addWidget(self.remove_elev_btn)
+        v18_layout.addWidget(elev_btn_widget)
+
+        # Put v18_widget in scroll area
+        self.v18_scroll.setWidget(self.v18_widget)
+        self.v18_scroll.setVisible(False)
+        self.get_main_layout().addWidget(self.v18_scroll)
+
+    def _toggle_v18(self, checked: bool):
+        """Toggle visibility of V1.8 section."""
+        self.v18_scroll.setVisible(checked)
+        if checked:
+            self.v18_toggle.setArrowType(Qt.ArrowType.DownArrow)
+        else:
+            self.v18_toggle.setArrowType(Qt.ArrowType.RightArrow)
+
+    def _add_boundary_row(self):
+        """Add a new boundary segment row."""
+        row = self.boundary_table.rowCount()
+        self.boundary_table.insertRow(row)
+        # Default values
+        type_combo = QComboBox()
+        type_combo.addItems(["lane", "joint"])
+        self.boundary_table.setCellWidget(row, 0, type_combo)
+        self.boundary_table.setItem(row, 1, QTableWidgetItem(""))  # road_id
+        self.boundary_table.setItem(row, 2, QTableWidgetItem(""))  # boundary_lane
+        self.boundary_table.setItem(row, 3, QTableWidgetItem(""))  # connection_id
+
+    def _remove_boundary_row(self):
+        """Remove the selected boundary row."""
+        current_row = self.boundary_table.currentRow()
+        if current_row >= 0:
+            self.boundary_table.removeRow(current_row)
+
+    def _add_elevation_row(self):
+        """Add a new elevation grid point row."""
+        row = self.elevation_table.rowCount()
+        self.elevation_table.insertRow(row)
+        # Default values
+        self.elevation_table.setItem(row, 0, QTableWidgetItem("0.0"))  # center
+        self.elevation_table.setItem(row, 1, QTableWidgetItem("0.0"))  # left
+        self.elevation_table.setItem(row, 2, QTableWidgetItem("0.0"))  # right
+
+    def _remove_elevation_row(self):
+        """Remove the selected elevation row."""
+        current_row = self.elevation_table.currentRow()
+        if current_row >= 0:
+            self.elevation_table.removeRow(current_row)
+
+    def _load_boundary_table(self):
+        """Load boundary data into the table."""
+        self.boundary_table.setRowCount(0)
+        if self.junction.boundary is None:
+            return
+        for segment in self.junction.boundary.segments:
+            row = self.boundary_table.rowCount()
+            self.boundary_table.insertRow(row)
+            # Type combo
+            type_combo = QComboBox()
+            type_combo.addItems(["lane", "joint"])
+            type_combo.setCurrentText(segment.segment_type)
+            self.boundary_table.setCellWidget(row, 0, type_combo)
+            # Other fields
+            self.boundary_table.setItem(row, 1, QTableWidgetItem(segment.road_id or ""))
+            self.boundary_table.setItem(row, 2, QTableWidgetItem(str(segment.boundary_lane) if segment.boundary_lane is not None else ""))
+            self.boundary_table.setItem(row, 3, QTableWidgetItem(segment.connection_id or ""))
+
+    def _load_elevation_table(self):
+        """Load elevation grid data into the table."""
+        self.elevation_table.setRowCount(0)
+        if self.junction.elevation_grid is None:
+            return
+        # Set grid spacing
+        if self.junction.elevation_grid.grid_spacing:
+            try:
+                self.grid_spacing_spin.setValue(float(self.junction.elevation_grid.grid_spacing))
+            except ValueError:
+                pass
+        # Load elevation points
+        for point in self.junction.elevation_grid.elevations:
+            row = self.elevation_table.rowCount()
+            self.elevation_table.insertRow(row)
+            self.elevation_table.setItem(row, 0, QTableWidgetItem(point.center or "0.0"))
+            self.elevation_table.setItem(row, 1, QTableWidgetItem(point.left or "0.0"))
+            self.elevation_table.setItem(row, 2, QTableWidgetItem(point.right or "0.0"))
+
+    def _get_boundary_from_table(self) -> Optional[JunctionBoundary]:
+        """Get boundary data from table."""
+        if self.boundary_table.rowCount() == 0:
+            return None
+        segments = []
+        for row in range(self.boundary_table.rowCount()):
+            type_combo = self.boundary_table.cellWidget(row, 0)
+            segment_type = type_combo.currentText() if type_combo else "lane"
+
+            road_id_item = self.boundary_table.item(row, 1)
+            road_id = road_id_item.text() if road_id_item and road_id_item.text() else None
+
+            lane_item = self.boundary_table.item(row, 2)
+            boundary_lane = None
+            if lane_item and lane_item.text():
+                try:
+                    boundary_lane = int(lane_item.text())
+                except ValueError:
+                    pass
+
+            conn_item = self.boundary_table.item(row, 3)
+            connection_id = conn_item.text() if conn_item and conn_item.text() else None
+
+            segments.append(JunctionBoundarySegment(
+                segment_type=segment_type,
+                road_id=road_id,
+                boundary_lane=boundary_lane,
+                connection_id=connection_id
+            ))
+        return JunctionBoundary(segments=segments)
+
+    def _get_elevation_from_table(self) -> Optional[JunctionElevationGrid]:
+        """Get elevation grid data from table."""
+        if self.elevation_table.rowCount() == 0:
+            return None
+        elevations = []
+        for row in range(self.elevation_table.rowCount()):
+            center_item = self.elevation_table.item(row, 0)
+            left_item = self.elevation_table.item(row, 1)
+            right_item = self.elevation_table.item(row, 2)
+            elevations.append(JunctionElevationGridPoint(
+                center=center_item.text() if center_item else "0.0",
+                left=left_item.text() if left_item else "0.0",
+                right=right_item.text() if right_item else "0.0"
+            ))
+        return JunctionElevationGrid(
+            grid_spacing=str(self.grid_spacing_spin.value()),
+            elevations=elevations
+        )
 
     def load_properties(self):
         """Load data from the junction object."""
@@ -155,6 +388,19 @@ class JunctionDialog(BaseDialog):
 
         # Update connection summary
         self.update_connection_summary()
+
+        # Load V1.8 data
+        self._load_boundary_table()
+        self._load_elevation_table()
+
+        # Auto-expand V1.8 section if data exists
+        has_v18_data = (
+            self.junction.boundary is not None or
+            self.junction.elevation_grid is not None
+        )
+        if has_v18_data:
+            self.v18_toggle.setChecked(True)
+            self._toggle_v18(True)
 
     def add_selected_roads(self):
         """Add selected roads from available to connected."""
@@ -201,6 +447,10 @@ class JunctionDialog(BaseDialog):
             junction_analyzer = importlib.import_module('orbit.import.junction_analyzer')
             roads_dict = {road.id: road for road in self.project.roads}
             junction_analyzer.clear_cross_junction_links(self.junction, roads_dict)
+
+        # Save V1.8 data
+        self.junction.boundary = self._get_boundary_from_table()
+        self.junction.elevation_grid = self._get_elevation_from_table()
 
     def accept(self):
         """Handle dialog acceptance."""

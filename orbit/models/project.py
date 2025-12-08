@@ -14,7 +14,7 @@ from datetime import datetime
 from orbit.utils.logging_config import get_logger
 from .polyline import Polyline
 from .road import Road
-from .junction import Junction
+from .junction import Junction, JunctionGroup
 from .signal import Signal
 from .object import RoadObject
 
@@ -90,6 +90,7 @@ class Project:
     polylines: List[Polyline] = field(default_factory=list)
     roads: List[Road] = field(default_factory=list)
     junctions: List[Junction] = field(default_factory=list)
+    junction_groups: List[JunctionGroup] = field(default_factory=list)
     signals: List[Signal] = field(default_factory=list)
     objects: List[RoadObject] = field(default_factory=list)
     control_points: List[ControlPoint] = field(default_factory=list)
@@ -313,6 +314,7 @@ class Project:
             'polylines': [p.to_dict() for p in self.polylines],
             'roads': [r.to_dict() for r in self.roads],
             'junctions': [j.to_dict() for j in self.junctions],
+            'junction_groups': [jg.to_dict() for jg in self.junction_groups],
             'signals': [s.to_dict() for s in self.signals],
             'objects': [o.to_dict() for o in self.objects],
             'control_points': [cp.to_dict() for cp in self.control_points],
@@ -368,6 +370,7 @@ class Project:
         polylines = [Polyline.from_dict(p) for p in data.get('polylines', [])]
         roads = [Road.from_dict(r) for r in data.get('roads', [])]
         junctions = [Junction.from_dict(j) for j in data.get('junctions', [])]
+        junction_groups = [JunctionGroup.from_dict(jg) for jg in data.get('junction_groups', [])]
         signals = [Signal.from_dict(s) for s in data.get('signals', [])]
         objects = [RoadObject.from_dict(o) for o in data.get('objects', [])]
         control_points = [ControlPoint.from_dict(cp) for cp in data.get('control_points', [])]
@@ -377,6 +380,7 @@ class Project:
             polylines=polylines,
             roads=roads,
             junctions=junctions,
+            junction_groups=junction_groups,
             signals=signals,
             objects=objects,
             control_points=control_points,

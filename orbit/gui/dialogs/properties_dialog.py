@@ -9,7 +9,9 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox,
-    QPushButton, QGroupBox, QLabel, QDialogButtonBox, QCheckBox
+    QPushButton, QGroupBox, QLabel, QDialogButtonBox, QCheckBox,
+    QToolButton, QWidget, QTableWidget, QTableWidgetItem, QHeaderView,
+    QScrollArea, QFrame
 )
 from PyQt6.QtCore import Qt
 
@@ -209,6 +211,9 @@ class RoadPropertiesDialog(QDialog):
         lane_group.setLayout(lane_layout)
         layout.addWidget(lane_group)
 
+        # Profiles section (collapsible)
+        self._setup_profiles_section(layout)
+
         # Info section
         info_label = QLabel(
             "<i>Note: Lane widths are in meters for georeferenced projects, "
@@ -225,6 +230,242 @@ class RoadPropertiesDialog(QDialog):
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
+
+    def _setup_profiles_section(self, parent_layout: QVBoxLayout):
+        """Setup the collapsible Profiles section with scroll area."""
+        # Create collapsible toggle
+        self.profiles_toggle = QToolButton()
+        self.profiles_toggle.setStyleSheet("QToolButton { border: none; }")
+        self.profiles_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.profiles_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.profiles_toggle.setText("Road Profiles (Elevation, Superelevation, Lane Offset)")
+        self.profiles_toggle.setCheckable(True)
+        self.profiles_toggle.setChecked(False)
+        self.profiles_toggle.clicked.connect(self._toggle_profiles)
+
+        parent_layout.addWidget(self.profiles_toggle)
+
+        # Scroll area for the profiles content
+        self.profiles_scroll = QScrollArea()
+        self.profiles_scroll.setWidgetResizable(True)
+        self.profiles_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.profiles_scroll.setMaximumHeight(450)
+
+        # Container for profiles content
+        self.profiles_widget = QWidget()
+        profiles_layout = QVBoxLayout(self.profiles_widget)
+        profiles_layout.setContentsMargins(10, 5, 10, 10)
+
+        # Elevation Profile table
+        elev_label = QLabel("<b>Elevation Profile</b>")
+        profiles_layout.addWidget(elev_label)
+
+        elev_info = QLabel("<i>Height along road: elev(s) = a + b·s + c·s² + d·s³</i>")
+        elev_info.setStyleSheet("color: gray;")
+        profiles_layout.addWidget(elev_info)
+
+        self.elevation_table = QTableWidget(0, 5)
+        self.elevation_table.setHorizontalHeaderLabels(["s", "a", "b", "c", "d"])
+        self.elevation_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.elevation_table.setMinimumHeight(80)
+        profiles_layout.addWidget(self.elevation_table)
+
+        elev_btn_widget = QWidget()
+        elev_btn_layout = QHBoxLayout(elev_btn_widget)
+        elev_btn_layout.setContentsMargins(0, 0, 0, 0)
+        elev_btn_layout.addStretch()
+        self.add_elevation_btn = QPushButton("+ Add")
+        self.add_elevation_btn.clicked.connect(lambda: self._add_profile_row(self.elevation_table))
+        elev_btn_layout.addWidget(self.add_elevation_btn)
+        self.remove_elevation_btn = QPushButton("- Remove")
+        self.remove_elevation_btn.clicked.connect(lambda: self._remove_profile_row(self.elevation_table))
+        elev_btn_layout.addWidget(self.remove_elevation_btn)
+        profiles_layout.addWidget(elev_btn_widget)
+
+        # Superelevation Profile table
+        super_label = QLabel("<b>Superelevation Profile (Lateral Tilt)</b>")
+        profiles_layout.addWidget(super_label)
+
+        super_info = QLabel("<i>Road banking for curves: tilt(s) = a + b·s + c·s² + d·s³</i>")
+        super_info.setStyleSheet("color: gray;")
+        profiles_layout.addWidget(super_info)
+
+        self.superelevation_table = QTableWidget(0, 5)
+        self.superelevation_table.setHorizontalHeaderLabels(["s", "a", "b", "c", "d"])
+        self.superelevation_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.superelevation_table.setMinimumHeight(80)
+        profiles_layout.addWidget(self.superelevation_table)
+
+        super_btn_widget = QWidget()
+        super_btn_layout = QHBoxLayout(super_btn_widget)
+        super_btn_layout.setContentsMargins(0, 0, 0, 0)
+        super_btn_layout.addStretch()
+        self.add_superelevation_btn = QPushButton("+ Add")
+        self.add_superelevation_btn.clicked.connect(lambda: self._add_profile_row(self.superelevation_table))
+        super_btn_layout.addWidget(self.add_superelevation_btn)
+        self.remove_superelevation_btn = QPushButton("- Remove")
+        self.remove_superelevation_btn.clicked.connect(lambda: self._remove_profile_row(self.superelevation_table))
+        super_btn_layout.addWidget(self.remove_superelevation_btn)
+        profiles_layout.addWidget(super_btn_widget)
+
+        # Lane Offset Profile table
+        offset_label = QLabel("<b>Lane Offset Profile</b>")
+        profiles_layout.addWidget(offset_label)
+
+        offset_info = QLabel("<i>Center lane offset from reference line: offset(s) = a + b·s + c·s² + d·s³</i>")
+        offset_info.setStyleSheet("color: gray;")
+        profiles_layout.addWidget(offset_info)
+
+        self.lane_offset_table = QTableWidget(0, 5)
+        self.lane_offset_table.setHorizontalHeaderLabels(["s", "a", "b", "c", "d"])
+        self.lane_offset_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.lane_offset_table.setMinimumHeight(80)
+        profiles_layout.addWidget(self.lane_offset_table)
+
+        offset_btn_widget = QWidget()
+        offset_btn_layout = QHBoxLayout(offset_btn_widget)
+        offset_btn_layout.setContentsMargins(0, 0, 0, 0)
+        offset_btn_layout.addStretch()
+        self.add_lane_offset_btn = QPushButton("+ Add")
+        self.add_lane_offset_btn.clicked.connect(lambda: self._add_profile_row(self.lane_offset_table))
+        offset_btn_layout.addWidget(self.add_lane_offset_btn)
+        self.remove_lane_offset_btn = QPushButton("- Remove")
+        self.remove_lane_offset_btn.clicked.connect(lambda: self._remove_profile_row(self.lane_offset_table))
+        offset_btn_layout.addWidget(self.remove_lane_offset_btn)
+        profiles_layout.addWidget(offset_btn_widget)
+
+        # Surface CRG table
+        crg_label = QLabel("<b>Surface/CRG Links</b>")
+        profiles_layout.addWidget(crg_label)
+
+        crg_info = QLabel("<i>Links to OpenCRG surface files for detailed road roughness</i>")
+        crg_info.setStyleSheet("color: gray;")
+        profiles_layout.addWidget(crg_info)
+
+        self.surface_crg_table = QTableWidget(0, 5)
+        self.surface_crg_table.setHorizontalHeaderLabels(["File", "S-Start", "S-End", "Orientation", "Mode"])
+        self.surface_crg_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.surface_crg_table.setMinimumHeight(80)
+        profiles_layout.addWidget(self.surface_crg_table)
+
+        crg_btn_widget = QWidget()
+        crg_btn_layout = QHBoxLayout(crg_btn_widget)
+        crg_btn_layout.setContentsMargins(0, 0, 0, 0)
+        crg_btn_layout.addStretch()
+        self.add_crg_btn = QPushButton("+ Add")
+        self.add_crg_btn.clicked.connect(self._add_crg_row)
+        crg_btn_layout.addWidget(self.add_crg_btn)
+        self.remove_crg_btn = QPushButton("- Remove")
+        self.remove_crg_btn.clicked.connect(lambda: self._remove_profile_row(self.surface_crg_table))
+        crg_btn_layout.addWidget(self.remove_crg_btn)
+        profiles_layout.addWidget(crg_btn_widget)
+
+        # Put profiles_widget in scroll area
+        self.profiles_scroll.setWidget(self.profiles_widget)
+        self.profiles_scroll.setVisible(False)
+        parent_layout.addWidget(self.profiles_scroll)
+
+    def _toggle_profiles(self, checked: bool):
+        """Toggle visibility of profiles section."""
+        self.profiles_scroll.setVisible(checked)
+        if checked:
+            self.profiles_toggle.setArrowType(Qt.ArrowType.DownArrow)
+        else:
+            self.profiles_toggle.setArrowType(Qt.ArrowType.RightArrow)
+
+    def _add_profile_row(self, table: QTableWidget):
+        """Add a new row to a profile table with default polynomial values."""
+        row = table.rowCount()
+        table.insertRow(row)
+        # Default values: s=0, a=0, b=0, c=0, d=0
+        table.setItem(row, 0, QTableWidgetItem("0.0"))
+        table.setItem(row, 1, QTableWidgetItem("0.0"))
+        table.setItem(row, 2, QTableWidgetItem("0.0"))
+        table.setItem(row, 3, QTableWidgetItem("0.0"))
+        table.setItem(row, 4, QTableWidgetItem("0.0"))
+
+    def _add_crg_row(self):
+        """Add a new row to the CRG table."""
+        row = self.surface_crg_table.rowCount()
+        self.surface_crg_table.insertRow(row)
+        # Default values
+        self.surface_crg_table.setItem(row, 0, QTableWidgetItem(""))  # file
+        self.surface_crg_table.setItem(row, 1, QTableWidgetItem("0.0"))  # s_start
+        self.surface_crg_table.setItem(row, 2, QTableWidgetItem(""))  # s_end (empty = road end)
+        self.surface_crg_table.setItem(row, 3, QTableWidgetItem("same"))  # orientation
+        self.surface_crg_table.setItem(row, 4, QTableWidgetItem("genuine"))  # mode
+
+    def _remove_profile_row(self, table: QTableWidget):
+        """Remove the selected row from a profile table."""
+        current_row = table.currentRow()
+        if current_row >= 0:
+            table.removeRow(current_row)
+
+    def _load_profile_table(self, table: QTableWidget, data: list):
+        """Load polynomial profile data into a table."""
+        table.setRowCount(0)
+        for item in data:
+            row = table.rowCount()
+            table.insertRow(row)
+            # item is a tuple of (s, a, b, c, d)
+            for col, val in enumerate(item[:5]):
+                table.setItem(row, col, QTableWidgetItem(str(val)))
+
+    def _load_crg_table(self, data: list):
+        """Load CRG data into the surface CRG table."""
+        self.surface_crg_table.setRowCount(0)
+        for crg in data:
+            row = self.surface_crg_table.rowCount()
+            self.surface_crg_table.insertRow(row)
+            self.surface_crg_table.setItem(row, 0, QTableWidgetItem(str(crg.get('file', ''))))
+            self.surface_crg_table.setItem(row, 1, QTableWidgetItem(str(crg.get('s_start', '0.0'))))
+            self.surface_crg_table.setItem(row, 2, QTableWidgetItem(str(crg.get('s_end', ''))))
+            self.surface_crg_table.setItem(row, 3, QTableWidgetItem(str(crg.get('orientation', 'same'))))
+            self.surface_crg_table.setItem(row, 4, QTableWidgetItem(str(crg.get('mode', 'genuine'))))
+
+    def _get_profile_from_table(self, table: QTableWidget) -> list:
+        """Get polynomial profile data from a table as list of tuples."""
+        data = []
+        for row in range(table.rowCount()):
+            try:
+                values = []
+                for col in range(5):
+                    item = table.item(row, col)
+                    values.append(float(item.text()) if item else 0.0)
+                data.append(tuple(values))
+            except ValueError:
+                continue
+        return data
+
+    def _get_crg_from_table(self) -> list:
+        """Get CRG data from the surface CRG table as list of dicts."""
+        data = []
+        for row in range(self.surface_crg_table.rowCount()):
+            try:
+                file_item = self.surface_crg_table.item(row, 0)
+                file_val = file_item.text() if file_item else ""
+                if not file_val:
+                    continue  # Skip empty rows
+
+                s_start_item = self.surface_crg_table.item(row, 1)
+                s_end_item = self.surface_crg_table.item(row, 2)
+                orientation_item = self.surface_crg_table.item(row, 3)
+                mode_item = self.surface_crg_table.item(row, 4)
+
+                crg = {
+                    'file': file_val,
+                    's_start': float(s_start_item.text()) if s_start_item and s_start_item.text() else 0.0,
+                    'orientation': orientation_item.text() if orientation_item else 'same',
+                    'mode': mode_item.text() if mode_item else 'genuine'
+                }
+                # Only add s_end if specified
+                if s_end_item and s_end_item.text():
+                    crg['s_end'] = float(s_end_item.text())
+
+                data.append(crg)
+            except ValueError:
+                continue
+        return data
 
     def load_data(self):
         """Load data from the road object."""
@@ -278,6 +519,23 @@ class RoadPropertiesDialog(QDialog):
         self.right_lanes_spin.setValue(self.road.lane_info.right_count)
         self.lane_width_spin.setValue(self.road.lane_info.lane_width)
 
+        # Load profile tables
+        self._load_profile_table(self.elevation_table, self.road.elevation_profile)
+        self._load_profile_table(self.superelevation_table, self.road.superelevation_profile)
+        self._load_profile_table(self.lane_offset_table, self.road.lane_offset)
+        self._load_crg_table(self.road.surface_crg)
+
+        # Auto-expand profiles section if any profiles exist
+        has_profiles = (
+            len(self.road.elevation_profile) > 0 or
+            len(self.road.superelevation_profile) > 0 or
+            len(self.road.lane_offset) > 0 or
+            len(self.road.surface_crg) > 0
+        )
+        if has_profiles:
+            self.profiles_toggle.setChecked(True)
+            self._toggle_profiles(True)
+
     def save_data(self):
         """Save data back to the road object."""
         self.road.name = self.name_edit.text().strip() or "Unnamed Road"
@@ -316,6 +574,12 @@ class RoadPropertiesDialog(QDialog):
             old_right_count != new_right_count or
             old_lane_width != new_lane_width):
             self.road.generate_lanes()
+
+        # Save profile tables
+        self.road.elevation_profile = self._get_profile_from_table(self.elevation_table)
+        self.road.superelevation_profile = self._get_profile_from_table(self.superelevation_table)
+        self.road.lane_offset = self._get_profile_from_table(self.lane_offset_table)
+        self.road.surface_crg = self._get_crg_from_table()
 
     def update_centerline_warning(self):
         """Update the centerline warning based on how many centerlines exist."""
