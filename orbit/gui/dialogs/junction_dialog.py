@@ -21,7 +21,7 @@ from orbit.models.junction import (
     JunctionBoundary, JunctionBoundarySegment,
     JunctionElevationGrid, JunctionElevationGridPoint
 )
-from .base_dialog import BaseDialog
+from .base_dialog import BaseDialog, InfoIconLabel
 from ..utils.message_helpers import show_warning
 
 
@@ -56,11 +56,14 @@ class JunctionDialog(BaseDialog):
 
         # Connected roads section - custom layout
         from PyQt6.QtWidgets import QGroupBox
-        roads_group = QGroupBox("Connected Roads")
+        roads_group = QGroupBox()
         roads_layout = QVBoxLayout()
 
-        roads_info_label = QLabel("<i>Select roads that connect at this junction</i>")
-        roads_layout.addWidget(roads_info_label)
+        roads_title = InfoIconLabel(
+            "Connected Roads",
+            "Select roads that connect at this junction"
+        )
+        roads_layout.addWidget(roads_title)
 
         # Available roads list
         available_label = QLabel("Available Roads:")
@@ -93,14 +96,14 @@ class JunctionDialog(BaseDialog):
         self.get_main_layout().addWidget(roads_group)
 
         # Junction Connections section
-        connections_group = QGroupBox("Junction Connections")
+        connections_group = QGroupBox()
         connections_layout = QVBoxLayout()
 
-        connections_info_label = QLabel(
-            "<i>Automatically generate connecting roads and lane links based on junction geometry</i>"
+        connections_title = InfoIconLabel(
+            "Junction Connections",
+            "Automatically generate connecting roads and lane links based on junction geometry"
         )
-        connections_info_label.setWordWrap(True)
-        connections_layout.addWidget(connections_info_label)
+        connections_layout.addWidget(connections_title)
 
         # Connection summary label
         self.connections_summary_label = QLabel("No connections generated yet")
@@ -124,12 +127,13 @@ class JunctionDialog(BaseDialog):
         # V1.8 Features (collapsible)
         self._setup_v18_section()
 
-        # Info section
-        info_label = QLabel(
-            "<i>Note: At least 2 roads should be connected to a junction.</i>"
+        # Info note with icon (replaces inline text)
+        note_widget = InfoIconLabel(
+            "Note",
+            "At least 2 roads should be connected to a junction.",
+            bold=False
         )
-        info_label.setWordWrap(True)
-        self.get_main_layout().addWidget(info_label)
+        self.get_main_layout().addWidget(note_widget)
 
         # Create standard OK/Cancel buttons
         self.create_button_box()
@@ -160,12 +164,11 @@ class JunctionDialog(BaseDialog):
         v18_layout.setContentsMargins(10, 5, 10, 10)
 
         # Boundary section
-        boundary_label = QLabel("<b>Junction Boundary</b>")
-        v18_layout.addWidget(boundary_label)
-
-        boundary_info = QLabel("<i>Defines the area enclosing the junction (counter-clockwise segments)</i>")
-        boundary_info.setStyleSheet("color: gray;")
-        v18_layout.addWidget(boundary_info)
+        boundary_title = InfoIconLabel(
+            "Junction Boundary",
+            "Defines the area enclosing the junction (counter-clockwise segments)"
+        )
+        v18_layout.addWidget(boundary_title)
 
         self.boundary_table = QTableWidget(0, 4)
         self.boundary_table.setHorizontalHeaderLabels(["Type", "Road ID", "Lane ID", "Connection ID"])
@@ -186,12 +189,11 @@ class JunctionDialog(BaseDialog):
         v18_layout.addWidget(boundary_btn_widget)
 
         # Elevation Grid section
-        elev_label = QLabel("<b>Elevation Grid</b>")
-        v18_layout.addWidget(elev_label)
-
-        elev_info = QLabel("<i>Grid of elevation points across the junction surface</i>")
-        elev_info.setStyleSheet("color: gray;")
-        v18_layout.addWidget(elev_info)
+        elev_title = InfoIconLabel(
+            "Elevation Grid",
+            "Grid of elevation points across the junction surface"
+        )
+        v18_layout.addWidget(elev_title)
 
         # Grid spacing
         spacing_widget = QWidget()

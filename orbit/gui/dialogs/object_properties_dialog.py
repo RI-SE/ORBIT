@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QHBoxLayout, QFormLayout,
 from PyQt6.QtCore import Qt
 from orbit.models.object import RoadObject, ObjectType
 from orbit.utils.enum_formatting import format_enum_name, format_snake_case
-from .base_dialog import BaseDialog
+from .base_dialog import BaseDialog, InfoIconLabel
 from ..utils import get_scale_factors, format_with_metric
 
 
@@ -108,12 +108,14 @@ class ObjectPropertiesDialog(BaseDialog):
 
         # Validity length (for guardrails)
         if self.obj.type.supports_validity_length():
-            validity_group = QGroupBox("Validity Length")
+            validity_group = QGroupBox()
             validity_layout = QVBoxLayout()
 
-            validity_info = QLabel("For guardrails, validity length is calculated from the polyline length.")
-            validity_info.setWordWrap(True)
-            validity_layout.addWidget(validity_info)
+            validity_title = InfoIconLabel(
+                "Validity Length",
+                "For guardrails, validity length is calculated from the polyline length."
+            )
+            validity_layout.addWidget(validity_title)
 
             self.validity_length_label = QLabel("—")
             validity_form = QFormLayout()

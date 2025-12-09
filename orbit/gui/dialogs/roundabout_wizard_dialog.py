@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QAbstractItemView, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from .base_dialog import BaseDialog
+from .base_dialog import BaseDialog, InfoIconLabel
 
 
 class RoundaboutWizardDialog(BaseDialog):
@@ -172,15 +172,15 @@ class RoundaboutWizardDialog(BaseDialog):
         self.get_main_layout().addWidget(traffic_group)
 
         # Approach roads section
-        approach_group = QGroupBox("Approach Roads (Optional)")
+        approach_group = QGroupBox()
         approach_layout = QVBoxLayout()
 
-        approach_info = QLabel(
-            "Select roads that connect to this roundabout.\n"
+        approach_title = InfoIconLabel(
+            "Approach Roads (Optional)",
+            "Select roads that connect to this roundabout. "
             "Leave empty to create standalone roundabout."
         )
-        approach_info.setWordWrap(True)
-        approach_layout.addWidget(approach_info)
+        approach_layout.addWidget(approach_title)
 
         self.road_list = QListWidget()
         self.road_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)

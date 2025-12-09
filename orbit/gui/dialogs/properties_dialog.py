@@ -18,6 +18,7 @@ from PyQt6.QtCore import Qt
 from orbit.models import Road, RoadType, LaneInfo, Project, LineType
 from orbit.utils import format_enum_name
 from ..utils import set_combo_by_data
+from .base_dialog import InfoIconLabel
 
 
 class RoadPropertiesDialog(QDialog):
@@ -74,9 +75,17 @@ class RoadPropertiesDialog(QDialog):
 
         # Centerline selection group (only if project available)
         if self.project:
-            centerline_group = QGroupBox("Road Reference Line Selection")
-            centerline_layout = QFormLayout()
+            centerline_group = QGroupBox()
+            centerline_main_layout = QVBoxLayout()
 
+            centerline_title = InfoIconLabel(
+                "Road Reference Line Selection",
+                "The road reference line serves as the reference line in OpenDRIVE. "
+                "Each road must have exactly one road reference line."
+            )
+            centerline_main_layout.addWidget(centerline_title)
+
+            centerline_layout = QFormLayout()
             self.centerline_combo = QComboBox()
             self.centerline_combo.addItem("(No road reference line selected)", None)
 
@@ -89,7 +98,7 @@ class RoadPropertiesDialog(QDialog):
 
             centerline_layout.addRow("Road Reference Line:", self.centerline_combo)
 
-            # Warning label for centerline count
+            # Warning label for centerline count (dynamic - keep inline)
             self.centerline_warning_label = QLabel()
             self.centerline_warning_label.setWordWrap(True)
             centerline_layout.addRow("", self.centerline_warning_label)
@@ -97,21 +106,22 @@ class RoadPropertiesDialog(QDialog):
             # Update warning initially
             self.update_centerline_warning()
 
-            # Info label
-            centerline_info = QLabel(
-                "<i>The road reference line serves as the reference line in OpenDRIVE. "
-                "Each road must have exactly one road reference line.</i>"
-            )
-            centerline_info.setWordWrap(True)
-            centerline_info.setStyleSheet("QLabel { color: gray; font-style: italic; }")
-            centerline_layout.addRow("", centerline_info)
-
-            centerline_group.setLayout(centerline_layout)
+            centerline_main_layout.addLayout(centerline_layout)
+            centerline_group.setLayout(centerline_main_layout)
             layout.addWidget(centerline_group)
 
         # Road links group (only if project available)
         if self.project:
-            links_group = QGroupBox("Road Links (Predecessor/Successor)")
+            links_group = QGroupBox()
+            links_main_layout = QVBoxLayout()
+
+            links_title = InfoIconLabel(
+                "Road Links (Predecessor/Successor)",
+                "These links define road connectivity for OpenDRIVE export. "
+                "Set predecessor and successor to connect roads end-to-end."
+            )
+            links_main_layout.addWidget(links_title)
+
             links_layout = QFormLayout()
 
             # Predecessor selection
@@ -142,16 +152,8 @@ class RoadPropertiesDialog(QDialog):
             self.successor_contact_combo.addItem("End of successor", "end")
             links_layout.addRow("Connects at:", self.successor_contact_combo)
 
-            # Info label
-            links_info = QLabel(
-                "<i>These links define road connectivity for OpenDRIVE export. "
-                "Set predecessor and successor to connect roads end-to-end.</i>"
-            )
-            links_info.setWordWrap(True)
-            links_info.setStyleSheet("QLabel { color: gray; font-style: italic; }")
-            links_layout.addRow("", links_info)
-
-            links_group.setLayout(links_layout)
+            links_main_layout.addLayout(links_layout)
+            links_group.setLayout(links_main_layout)
             layout.addWidget(links_group)
 
         # Lane properties group
@@ -214,13 +216,14 @@ class RoadPropertiesDialog(QDialog):
         # Profiles section (collapsible)
         self._setup_profiles_section(layout)
 
-        # Info section
-        info_label = QLabel(
-            "<i>Note: Lane widths are in meters for georeferenced projects, "
-            "or in pixels for non-georeferenced projects.</i>"
+        # Info note with icon (replaces inline text)
+        note_widget = InfoIconLabel(
+            "Note",
+            "Lane widths are in meters for georeferenced projects, "
+            "or in pixels for non-georeferenced projects.",
+            bold=False
         )
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
+        layout.addWidget(note_widget)
 
         # Buttons
         button_box = QDialogButtonBox(
@@ -257,12 +260,11 @@ class RoadPropertiesDialog(QDialog):
         profiles_layout.setContentsMargins(10, 5, 10, 10)
 
         # Elevation Profile table
-        elev_label = QLabel("<b>Elevation Profile</b>")
-        profiles_layout.addWidget(elev_label)
-
-        elev_info = QLabel("<i>Height along road: elev(s) = a + b·s + c·s² + d·s³</i>")
-        elev_info.setStyleSheet("color: gray;")
-        profiles_layout.addWidget(elev_info)
+        elev_title = InfoIconLabel(
+            "Elevation Profile",
+            "Height along road: elev(s) = a + b·s + c·s² + d·s³"
+        )
+        profiles_layout.addWidget(elev_title)
 
         self.elevation_table = QTableWidget(0, 5)
         self.elevation_table.setHorizontalHeaderLabels(["s", "a", "b", "c", "d"])
@@ -283,12 +285,11 @@ class RoadPropertiesDialog(QDialog):
         profiles_layout.addWidget(elev_btn_widget)
 
         # Superelevation Profile table
-        super_label = QLabel("<b>Superelevation Profile (Lateral Tilt)</b>")
-        profiles_layout.addWidget(super_label)
-
-        super_info = QLabel("<i>Road banking for curves: tilt(s) = a + b·s + c·s² + d·s³</i>")
-        super_info.setStyleSheet("color: gray;")
-        profiles_layout.addWidget(super_info)
+        super_title = InfoIconLabel(
+            "Superelevation Profile (Lateral Tilt)",
+            "Road banking for curves: tilt(s) = a + b·s + c·s² + d·s³"
+        )
+        profiles_layout.addWidget(super_title)
 
         self.superelevation_table = QTableWidget(0, 5)
         self.superelevation_table.setHorizontalHeaderLabels(["s", "a", "b", "c", "d"])
@@ -309,12 +310,11 @@ class RoadPropertiesDialog(QDialog):
         profiles_layout.addWidget(super_btn_widget)
 
         # Lane Offset Profile table
-        offset_label = QLabel("<b>Lane Offset Profile</b>")
-        profiles_layout.addWidget(offset_label)
-
-        offset_info = QLabel("<i>Center lane offset from reference line: offset(s) = a + b·s + c·s² + d·s³</i>")
-        offset_info.setStyleSheet("color: gray;")
-        profiles_layout.addWidget(offset_info)
+        offset_title = InfoIconLabel(
+            "Lane Offset Profile",
+            "Center lane offset from reference line: offset(s) = a + b·s + c·s² + d·s³"
+        )
+        profiles_layout.addWidget(offset_title)
 
         self.lane_offset_table = QTableWidget(0, 5)
         self.lane_offset_table.setHorizontalHeaderLabels(["s", "a", "b", "c", "d"])
@@ -335,12 +335,11 @@ class RoadPropertiesDialog(QDialog):
         profiles_layout.addWidget(offset_btn_widget)
 
         # Surface CRG table
-        crg_label = QLabel("<b>Surface/CRG Links</b>")
-        profiles_layout.addWidget(crg_label)
-
-        crg_info = QLabel("<i>Links to OpenCRG surface files for detailed road roughness</i>")
-        crg_info.setStyleSheet("color: gray;")
-        profiles_layout.addWidget(crg_info)
+        crg_title = InfoIconLabel(
+            "Surface/CRG Links",
+            "Links to OpenCRG surface files for detailed road roughness"
+        )
+        profiles_layout.addWidget(crg_title)
 
         self.surface_crg_table = QTableWidget(0, 5)
         self.surface_crg_table.setHorizontalHeaderLabels(["File", "S-Start", "S-End", "Orientation", "Mode"])

@@ -21,7 +21,7 @@ from PyQt6.QtGui import QFont
 
 from orbit.utils.logging_config import get_logger
 from orbit.models import Project, ControlPoint
-from .base_dialog import BaseDialog
+from .base_dialog import BaseDialog, InfoIconLabel
 from ..utils.message_helpers import show_error, show_warning, show_info, ask_yes_no
 
 logger = get_logger(__name__)
@@ -58,31 +58,24 @@ class GeoreferenceDialog(BaseDialog):
     def setup_ui(self):
         """Setup the dialog UI."""
 
-        # Info section
-        info_group = QGroupBox("Information")
-        info_layout = QVBoxLayout()
-
+        # Info section - compact with tooltip for details
         # Get minimum points required based on transform method
         min_points = 4 if self.project.transform_method == 'homography' else 3
         method_name = 'Homography' if self.project.transform_method == 'homography' else 'Affine'
 
-        info_text = QLabel(
-            f"<b>Georeferencing Control Points</b><br><br>"
-            f"Current method: <b>{method_name}</b> (requires {min_points}+ training points)<br>"
-            f"Change method in Edit → Preferences<br><br>"
-            "<b>GCP (Georef Control Point):</b> Training points used to compute transformation<br>"
-            "<b>GVP (Georef Validation Point):</b> Test points used to validate accuracy<br><br>"
-            "<i>Steps:</i><br>"
-            "1. Click 'Pick Point on Image' to select a location<br>"
-            "2. Enter the longitude and latitude for that location<br>"
-            f"3. Choose 'Training (GCP)' or 'Validation (GVP)'<br>"
-            "4. Click 'Add Control Point'<br>"
-            f"5. Add at least {min_points} training points for transformation"
+        info_widget = InfoIconLabel(
+            f"Georeferencing Control Points ({method_name}, {min_points}+ points needed)",
+            f"Steps:\n"
+            f"1. Click 'Pick Point on Image' to select a location\n"
+            f"2. Enter the longitude and latitude for that location\n"
+            f"3. Choose 'Training (GCP)' or 'Validation (GVP)'\n"
+            f"4. Click 'Add Control Point'\n"
+            f"5. Add at least {min_points} training points for transformation\n\n"
+            f"GCP = Training points to compute transformation\n"
+            f"GVP = Test points to validate accuracy\n"
+            f"Change method in Edit → Preferences"
         )
-        info_text.setWordWrap(True)
-        info_layout.addWidget(info_text)
-        info_group.setLayout(info_layout)
-        self.get_main_layout().addWidget(info_group)
+        self.get_main_layout().addWidget(info_widget)
 
         # Control points table
         points_group = QGroupBox("Control Points")

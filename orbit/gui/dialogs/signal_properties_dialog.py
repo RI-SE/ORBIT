@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QFormLayout,
 from PyQt6.QtCore import Qt
 from orbit.models.signal import Signal, SignalType, SpeedUnit
 from orbit.utils.enum_formatting import format_enum_name
-from .base_dialog import BaseDialog
+from .base_dialog import BaseDialog, InfoIconLabel
 from ..utils import get_scale_factors, format_with_metric
 
 
@@ -88,11 +88,13 @@ class SignalPropertiesDialog(BaseDialog):
         self.h_offset_spin.setToolTip("Rotation offset from perpendicular to road (0° = perpendicular)")
         position_layout.addRow("Heading Offset:", self.h_offset_spin)
 
-        # Add note about orientation
-        orientation_note = QLabel("Note: Signal faces perpendicular to road by default. Use heading offset to adjust.")
-        orientation_note.setStyleSheet("color: gray; font-style: italic; font-size: 9pt;")
-        orientation_note.setWordWrap(True)
-        position_layout.addRow("", orientation_note)
+        # Add note about orientation with info icon
+        orientation_tip = InfoIconLabel(
+            "Note",
+            "Signal faces perpendicular to road by default. Use heading offset to adjust.",
+            bold=False
+        )
+        position_layout.addRow("", orientation_tip)
 
         self.z_offset_spin = QDoubleSpinBox()
         self.z_offset_spin.setRange(0.1, 100.0)

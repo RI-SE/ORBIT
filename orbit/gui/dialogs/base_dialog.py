@@ -5,8 +5,54 @@ Provides common functionality and structure for property editing dialogs.
 """
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QFormLayout, QGroupBox, QDialogButtonBox
+    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QDialogButtonBox,
+    QLabel, QToolButton, QWidget
 )
+from PyQt6.QtCore import Qt
+
+
+class InfoIconLabel(QWidget):
+    """
+    A label with an info icon that shows tooltip on hover.
+
+    Used to replace inline explanatory text with a compact icon
+    that shows the help text on hover.
+    """
+
+    def __init__(self, title: str, info_text: str, bold: bool = True, parent=None):
+        """
+        Create a label with an info icon.
+
+        Args:
+            title: The visible label text
+            info_text: Text to show in tooltip when hovering over info icon
+            bold: Whether to make the title bold (default True)
+            parent: Parent widget
+        """
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        # Title label
+        if bold:
+            title_label = QLabel(f"<b>{title}</b>")
+        else:
+            title_label = QLabel(title)
+        layout.addWidget(title_label)
+
+        # Info icon button
+        info_btn = QToolButton()
+        info_btn.setText("ⓘ")
+        info_btn.setToolTip(info_text)
+        info_btn.setStyleSheet(
+            "QToolButton { border: none; color: #666; font-size: 12px; }"
+            "QToolButton:hover { color: #333; }"
+        )
+        info_btn.setCursor(Qt.CursorShape.WhatsThisCursor)
+        layout.addWidget(info_btn)
+
+        layout.addStretch()
 
 
 class BaseDialog(QDialog):
@@ -75,6 +121,45 @@ class BaseDialog(QDialog):
         form_layout = QFormLayout()
         form_layout.setVerticalSpacing(4)  # Tighter row spacing
         group.setLayout(form_layout)
+
+        # Insert before button box if it exists, otherwise append
+        if self._button_box:
+            insert_index = self._main_layout.count() - 1
+            self._main_layout.insertWidget(insert_index, group)
+        else:
+            self._main_layout.addWidget(group)
+
+        return form_layout
+
+    def add_form_group_with_info(self, title: str, info_text: str) -> QFormLayout:
+        """
+        Add a QGroupBox with title + info icon tooltip.
+
+        Similar to add_form_group() but includes an info icon next to the title
+        that shows explanatory text on hover.
+
+        Args:
+            title: Title for the group box
+            info_text: Text to show in tooltip when hovering over info icon
+
+        Returns:
+            QFormLayout that can be used to add form rows
+        """
+        group = QGroupBox()
+        group_layout = QVBoxLayout()
+        group_layout.setContentsMargins(10, 10, 10, 10)
+        group_layout.setSpacing(6)
+
+        # Title with info icon
+        title_widget = InfoIconLabel(title, info_text)
+        group_layout.addWidget(title_widget)
+
+        # Form layout for content
+        form_layout = QFormLayout()
+        form_layout.setVerticalSpacing(4)
+        group_layout.addLayout(form_layout)
+
+        group.setLayout(group_layout)
 
         # Insert before button box if it exists, otherwise append
         if self._button_box:

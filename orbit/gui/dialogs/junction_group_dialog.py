@@ -16,6 +16,7 @@ from PyQt6.QtCore import Qt
 
 from orbit.models import Project
 from orbit.models.junction import JunctionGroup
+from .base_dialog import InfoIconLabel
 
 
 class JunctionGroupDialog(QDialog):
@@ -36,13 +37,13 @@ class JunctionGroupDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        # Info label
-        info_label = QLabel(
-            "<i>Junction groups combine multiple junctions into logical units "
-            "(e.g., roundabouts, highway interchanges). This is an OpenDRIVE 1.8 feature.</i>"
+        # Info label with icon
+        info_widget = InfoIconLabel(
+            "Junction Groups",
+            "Junction groups combine multiple junctions into logical units "
+            "(e.g., roundabouts, highway interchanges). This is an OpenDRIVE 1.8 feature."
         )
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
+        layout.addWidget(info_widget)
 
         # Main horizontal layout: group list | group details
         main_layout = QHBoxLayout()

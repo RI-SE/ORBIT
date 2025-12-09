@@ -16,7 +16,7 @@ from PyQt6.QtCore import Qt
 
 from orbit.models import Lane, LaneType, RoadMarkType, Project, LineType
 from orbit.utils import format_enum_name
-from .base_dialog import BaseDialog
+from .base_dialog import BaseDialog, InfoIconLabel
 from ..utils import set_combo_by_data
 
 if TYPE_CHECKING:
@@ -156,12 +156,12 @@ class LanePropertiesDialog(BaseDialog):
         access_layout.addStretch()
         props_layout.addRow("Access:", self.access_widget)
 
-        # Access info label
-        self.access_info_label = QLabel(
-            "<i>For shared paths, enable both bicycle and pedestrian access.</i>"
+        # Access info label with icon (shown only for path lanes)
+        self.access_info_label = InfoIconLabel(
+            "Tip",
+            "For shared paths, enable both bicycle and pedestrian access.",
+            bold=False
         )
-        self.access_info_label.setWordWrap(True)
-        self.access_info_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
         props_layout.addRow("", self.access_info_label)
 
         # Description label
@@ -176,7 +176,11 @@ class LanePropertiesDialog(BaseDialog):
 
         # Boundary polylines (if project available)
         if self.project and self.road_id:
-            boundary_layout = self.add_form_group("Boundary Polylines")
+            boundary_layout = self.add_form_group_with_info(
+                "Boundary Polylines",
+                "Assign polylines that define the left and right edges of this lane. "
+                "Leave unassigned if boundaries should be inferred from road mark type."
+            )
 
             # Left boundary selector
             self.left_boundary_combo = QComboBox()
@@ -189,15 +193,6 @@ class LanePropertiesDialog(BaseDialog):
             self.right_boundary_combo.addItem("(Not assigned)", None)
             self._populate_boundary_polylines(self.right_boundary_combo)
             boundary_layout.addRow("Right Boundary:", self.right_boundary_combo)
-
-            # Info label
-            boundary_info = QLabel(
-                "<i>Assign polylines that define the left and right edges of this lane. "
-                "Leave unassigned if boundaries should be inferred from road mark type.</i>"
-            )
-            boundary_info.setWordWrap(True)
-            boundary_info.setStyleSheet("QLabel { color: gray; font-style: italic; }")
-            boundary_layout.addRow("", boundary_info)
 
         # Create standard OK/Cancel buttons
         self.create_button_box()
@@ -375,12 +370,14 @@ class LanePropertiesDialog(BaseDialog):
 
     def _setup_materials_section(self, parent_layout: QVBoxLayout):
         """Setup the materials table section."""
-        materials_group = QGroupBox("Materials")
+        materials_group = QGroupBox()
         materials_layout = QVBoxLayout(materials_group)
 
-        materials_info = QLabel("<i>Surface properties along the lane (friction, roughness)</i>")
-        materials_info.setStyleSheet("color: gray;")
-        materials_layout.addWidget(materials_info)
+        materials_title = InfoIconLabel(
+            "Materials",
+            "Surface properties along the lane (friction, roughness)"
+        )
+        materials_layout.addWidget(materials_title)
 
         # Materials table
         self.materials_table = QTableWidget(0, 4)
@@ -408,12 +405,14 @@ class LanePropertiesDialog(BaseDialog):
 
     def _setup_heights_section(self, parent_layout: QVBoxLayout):
         """Setup the heights table section."""
-        heights_group = QGroupBox("Heights")
+        heights_group = QGroupBox()
         heights_layout = QVBoxLayout(heights_group)
 
-        heights_info = QLabel("<i>Lane height offsets (for sidewalks, curbs)</i>")
-        heights_info.setStyleSheet("color: gray;")
-        heights_layout.addWidget(heights_info)
+        heights_title = InfoIconLabel(
+            "Heights",
+            "Lane height offsets (for sidewalks, curbs)"
+        )
+        heights_layout.addWidget(heights_title)
 
         # Heights table
         self.heights_table = QTableWidget(0, 3)

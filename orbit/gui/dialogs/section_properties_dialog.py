@@ -14,7 +14,7 @@ from PyQt6.QtCore import Qt
 
 from orbit.models import LaneSection
 from orbit.export import CoordinateTransformer
-from .base_dialog import BaseDialog
+from .base_dialog import BaseDialog, InfoIconLabel
 
 
 class SectionPropertiesDialog(BaseDialog):
@@ -198,14 +198,14 @@ class SectionPropertiesDialog(BaseDialog):
 
         opendrive_layout.addRow("Single Side:", self.single_side_combo)
 
-        # Add help text
-        help_label = QLabel(
+        # Add help tip with icon
+        help_tip = InfoIconLabel(
+            "Tip",
             "Single Side restricts lanes to one side of the reference line. "
-            "Use 'Both sides' for normal road sections with lanes on both sides."
+            "Use 'Both sides' for normal road sections with lanes on both sides.",
+            bold=False
         )
-        help_label.setWordWrap(True)
-        help_label.setStyleSheet("QLabel { color: gray; font-size: 9pt; }")
-        opendrive_layout.addRow("", help_label)
+        opendrive_layout.addRow("", help_tip)
 
         # Buttons
         self.create_button_box()

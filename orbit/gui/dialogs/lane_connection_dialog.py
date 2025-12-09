@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from orbit.models import Junction, Project, LaneConnection
-from .base_dialog import BaseDialog
+from .base_dialog import BaseDialog, InfoIconLabel
 
 
 # Valid turn types for the dropdown
@@ -38,14 +38,17 @@ class LaneConnectionDialog(BaseDialog):
 
     def setup_ui(self):
         """Setup the dialog UI."""
-        # Info section
-        info_label = QLabel(
-            f"<b>Junction:</b> {self.junction.name}<br>"
-            f"<i>Edit lane-to-lane connections through this junction. "
-            f"Each connection maps an incoming lane to an outgoing lane.</i>"
+        # Junction name label
+        junction_label = QLabel(f"<b>Junction:</b> {self.junction.name}")
+        self.get_main_layout().addWidget(junction_label)
+
+        # Info section with icon
+        info_widget = InfoIconLabel(
+            "Lane Connections",
+            "Edit lane-to-lane connections through this junction. "
+            "Each connection maps an incoming lane to an outgoing lane."
         )
-        info_label.setWordWrap(True)
-        self.get_main_layout().addWidget(info_label)
+        self.get_main_layout().addWidget(info_widget)
 
         # Table section
         table_group = QGroupBox("Lane Connections")

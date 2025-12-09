@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 
 from orbit.models.connecting_road import ConnectingRoad
 from orbit.models import Project
-from .base_dialog import BaseDialog
+from .base_dialog import BaseDialog, InfoIconLabel
 from orbit.utils.geometry import generate_simple_connection_path
 import math
 
@@ -116,10 +116,12 @@ class ConnectingRoadDialog(BaseDialog):
         self.successor_contact_combo.setToolTip("Contact point on successor road")
         contact_layout.addRow("Successor Contact:", self.successor_contact_combo)
 
-        contact_info = QLabel("<i>Which end of each road this connection attaches to</i>")
-        contact_info.setWordWrap(True)
-        contact_info.setStyleSheet("color: gray;")
-        contact_layout.addRow("", contact_info)
+        contact_tip = InfoIconLabel(
+            "Tip",
+            "Which end of each road this connection attaches to",
+            bold=False
+        )
+        contact_layout.addRow("", contact_tip)
 
         # Geometry conversion (for polyline -> parampoly3 upgrade)
         if self.connecting_road.geometry_type == "polyline":
@@ -153,14 +155,14 @@ class ConnectingRoadDialog(BaseDialog):
             )
             curve_layout.addRow("Tangent Scale:", self.tangent_scale_spin)
 
-            # Info label
-            info_label = QLabel(
-                "<i>Tangent scale controls how tight or wide the curve is. "
-                "Adjust this value to fine-tune the connection path.</i>"
+            # Info tip with icon
+            curve_tip = InfoIconLabel(
+                "Tip",
+                "Tangent scale controls how tight or wide the curve is. "
+                "Adjust this value to fine-tune the connection path.",
+                bold=False
             )
-            info_label.setWordWrap(True)
-            info_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
-            curve_layout.addRow("", info_label)
+            curve_layout.addRow("", curve_tip)
 
             # Regenerate button
             self.regenerate_button = QPushButton("Preview Curve")
