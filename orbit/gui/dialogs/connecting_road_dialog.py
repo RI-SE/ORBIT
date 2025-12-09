@@ -96,7 +96,10 @@ class ConnectingRoadDialog(BaseDialog):
         lane_layout.addRow("Width at End:", self.width_end_spin)
 
         # Contact points
-        contact_layout = self.add_form_group("Contact Points")
+        contact_layout = self.add_form_group_with_info(
+            "Contact Points",
+            "Which end of each road this connection attaches to"
+        )
 
         self.predecessor_contact_combo = QComboBox()
         self.predecessor_contact_combo.addItem("Start", "start")
@@ -115,13 +118,6 @@ class ConnectingRoadDialog(BaseDialog):
         self.successor_contact_combo.setCurrentIndex(succ_index)
         self.successor_contact_combo.setToolTip("Contact point on successor road")
         contact_layout.addRow("Successor Contact:", self.successor_contact_combo)
-
-        contact_tip = InfoIconLabel(
-            "Tip",
-            "Which end of each road this connection attaches to",
-            bold=False
-        )
-        contact_layout.addRow("", contact_tip)
 
         # Geometry conversion (for polyline -> parampoly3 upgrade)
         if self.connecting_road.geometry_type == "polyline":
@@ -142,7 +138,11 @@ class ConnectingRoadDialog(BaseDialog):
 
         # ParamPoly3D properties (only shown for parampoly3 geometry)
         if self.connecting_road.geometry_type == "parampoly3":
-            curve_layout = self.add_form_group("Curve Parameters")
+            curve_layout = self.add_form_group_with_info(
+                "Curve Parameters",
+                "Tangent scale controls how tight or wide the curve is. "
+                "Adjust this value to fine-tune the connection path."
+            )
 
             # Tangent scale spinner
             self.tangent_scale_spin = QDoubleSpinBox()
@@ -154,15 +154,6 @@ class ConnectingRoadDialog(BaseDialog):
                 "higher values create wider, smoother curves."
             )
             curve_layout.addRow("Tangent Scale:", self.tangent_scale_spin)
-
-            # Info tip with icon
-            curve_tip = InfoIconLabel(
-                "Tip",
-                "Tangent scale controls how tight or wide the curve is. "
-                "Adjust this value to fine-tune the connection path.",
-                bold=False
-            )
-            curve_layout.addRow("", curve_tip)
 
             # Regenerate button
             self.regenerate_button = QPushButton("Preview Curve")

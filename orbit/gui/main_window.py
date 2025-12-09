@@ -22,6 +22,7 @@ from .image_view import ImageView
 from .widgets.road_tree import RoadTreeWidget
 from .widgets.elements_tree import ElementsTreeWidget
 from .utils.message_helpers import show_error, show_warning, show_info, ask_yes_no
+from .utils.scale_utils import get_transformer
 
 logger = get_logger(__name__)
 
@@ -1008,9 +1009,9 @@ class MainWindow(QMainWindow):
         # Get scale factor if georeferenced
         scale_factor = None
         if self.project.has_georeferencing():
-            transformer = self.project.get_coordinate_transformer()
+            transformer = get_transformer(self.project)
             if transformer:
-                scale_factor = transformer.get_scale_x()
+                scale_factor = transformer.get_scale_factor()[0]  # scale_x
 
         # Show wizard dialog
         params = RoundaboutWizardDialog.create_roundabout(

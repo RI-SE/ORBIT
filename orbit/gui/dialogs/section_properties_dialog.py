@@ -188,7 +188,11 @@ class SectionPropertiesDialog(BaseDialog):
         info_layout.addRow("Lanes in Section:", lanes_label)
 
         # OpenDRIVE properties group
-        opendrive_layout = self.add_form_group("OpenDRIVE Properties")
+        opendrive_layout = self.add_form_group_with_info(
+            "OpenDRIVE Properties",
+            "Single Side restricts lanes to one side of the reference line. "
+            "Use 'Both sides' for normal road sections with lanes on both sides."
+        )
 
         # Single side property
         self.single_side_combo = QComboBox()
@@ -197,15 +201,6 @@ class SectionPropertiesDialog(BaseDialog):
         self.single_side_combo.addItem("Right only", "right")
 
         opendrive_layout.addRow("Single Side:", self.single_side_combo)
-
-        # Add help tip with icon
-        help_tip = InfoIconLabel(
-            "Tip",
-            "Single Side restricts lanes to one side of the reference line. "
-            "Use 'Both sides' for normal road sections with lanes on both sides.",
-            bold=False
-        )
-        opendrive_layout.addRow("", help_tip)
 
         # Buttons
         self.create_button_box()

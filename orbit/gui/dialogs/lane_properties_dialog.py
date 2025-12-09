@@ -154,15 +154,14 @@ class LanePropertiesDialog(BaseDialog):
         access_layout.addWidget(self.pedestrian_access_checkbox)
 
         access_layout.addStretch()
-        props_layout.addRow("Access:", self.access_widget)
 
-        # Access info label with icon (shown only for path lanes)
-        self.access_info_label = InfoIconLabel(
-            "Tip",
+        # Access label with info icon (shown only for path lanes)
+        self.access_label_widget = InfoIconLabel(
+            "Access",
             "For shared paths, enable both bicycle and pedestrian access.",
             bold=False
         )
-        props_layout.addRow("", self.access_info_label)
+        props_layout.addRow(self.access_label_widget, self.access_widget)
 
         # Description label
         self.description_label = QLabel()
@@ -672,7 +671,7 @@ class LanePropertiesDialog(BaseDialog):
         # Show access restrictions for path-related lane types
         is_path_lane = lane_type in (LaneType.BIKING, LaneType.SIDEWALK, LaneType.WALKING)
         self.access_widget.setVisible(is_path_lane)
-        self.access_info_label.setVisible(is_path_lane)
+        self.access_label_widget.setVisible(is_path_lane)
 
     def update_description(self):
         """Update the description based on lane type."""

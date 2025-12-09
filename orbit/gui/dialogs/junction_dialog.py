@@ -127,14 +127,6 @@ class JunctionDialog(BaseDialog):
         # V1.8 Features (collapsible)
         self._setup_v18_section()
 
-        # Info note with icon (replaces inline text)
-        note_widget = InfoIconLabel(
-            "Note",
-            "At least 2 roads should be connected to a junction.",
-            bold=False
-        )
-        self.get_main_layout().addWidget(note_widget)
-
         # Create standard OK/Cancel buttons
         self.create_button_box()
 
