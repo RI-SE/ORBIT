@@ -6,11 +6,11 @@ traffic side, and country code.
 """
 
 from PyQt6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QLabel, QLineEdit
+    QComboBox, QDoubleSpinBox, QLineEdit
 )
 
 from orbit.models import Project
-from .base_dialog import BaseDialog
+from .base_dialog import BaseDialog, InfoIconLabel
 
 
 class PreferencesDialog(BaseDialog):
@@ -31,17 +31,14 @@ class PreferencesDialog(BaseDialog):
         # Map name
         self.map_name_edit = QLineEdit()
         self.map_name_edit.setPlaceholderText("e.g., City Center, Highway Junction")
-        self.map_name_edit.setToolTip("Name of the map for OpenDrive export (defaults to image filename)")
 
-        map_name_help = QLabel(
-            "<small>This name will be used in the OpenDrive header. "
-            "Defaults to the image filename when loaded.</small>"
+        map_name_label = InfoIconLabel(
+            "Map Name:",
+            "This name will be used in the OpenDrive header. "
+            "Defaults to the image filename when loaded.",
+            bold=False
         )
-        map_name_help.setWordWrap(True)
-        map_name_help.setStyleSheet("QLabel { color: gray; }")
-
-        map_layout.addRow("Map Name:", self.map_name_edit)
-        map_layout.addRow("", map_name_help)
+        map_layout.addRow(map_name_label, self.map_name_edit)
 
         # Georeferencing section
         georef_layout = self.add_form_group("Georeferencing")
@@ -51,17 +48,13 @@ class PreferencesDialog(BaseDialog):
         self.transform_method_combo.addItem("Affine (for orthophotos, satellite imagery)", "affine")
         self.transform_method_combo.addItem("Homography (for oblique drone imagery)", "homography")
 
-        transform_help = QLabel(
-            "<small><b>Affine:</b> Best for nadir (straight down) aerial/satellite images. "
-            "Requires 3+ control points.<br>"
-            "<b>Homography:</b> Best for tilted camera drone images with perspective. "
-            "Requires 4+ control points.</small>"
+        transform_label = InfoIconLabel(
+            "Transformation Method:",
+            "Affine: Best for nadir (straight down) aerial/satellite images. Requires 3+ control points.\n"
+            "Homography: Best for tilted camera drone images with perspective. Requires 4+ control points.",
+            bold=False
         )
-        transform_help.setWordWrap(True)
-        transform_help.setStyleSheet("QLabel { color: gray; }")
-
-        georef_layout.addRow("Transformation Method:", self.transform_method_combo)
-        georef_layout.addRow("", transform_help)
+        georef_layout.addRow(transform_label, self.transform_method_combo)
 
         # Traffic and location section
         traffic_layout = self.add_form_group("Traffic and Location")
@@ -71,31 +64,27 @@ class PreferencesDialog(BaseDialog):
         self.traffic_combo.addItem("Right-hand traffic", True)
         self.traffic_combo.addItem("Left-hand traffic", False)
 
-        traffic_help = QLabel(
-            "<small>Right-hand: Vehicles drive on right side (USA, Europe, etc.)<br>"
-            "Left-hand: Vehicles drive on left side (UK, Japan, etc.)</small>"
+        traffic_label = InfoIconLabel(
+            "Traffic Side:",
+            "Right-hand: Vehicles drive on right side (USA, Europe, etc.)\n"
+            "Left-hand: Vehicles drive on left side (UK, Japan, etc.)",
+            bold=False
         )
-        traffic_help.setWordWrap(True)
-        traffic_help.setStyleSheet("QLabel { color: gray; }")
+        traffic_layout.addRow(traffic_label, self.traffic_combo)
 
         # Country code
         self.country_code_edit = QLineEdit()
         self.country_code_edit.setText("se")
         self.country_code_edit.setMaxLength(2)
         self.country_code_edit.setPlaceholderText("e.g., se, us, de")
-        self.country_code_edit.setToolTip("Two-letter ISO 3166-1 country code (lowercase)")
         self.country_code_edit.setMaximumWidth(100)
 
-        country_help = QLabel(
-            "<small>ISO 3166-1 two-letter country code for OpenDrive export.</small>"
+        country_label = InfoIconLabel(
+            "Country Code:",
+            "ISO 3166-1 two-letter country code for OpenDrive export.",
+            bold=False
         )
-        country_help.setWordWrap(True)
-        country_help.setStyleSheet("QLabel { color: gray; }")
-
-        traffic_layout.addRow("Traffic Side:", self.traffic_combo)
-        traffic_layout.addRow("", traffic_help)
-        traffic_layout.addRow("Country Code:", self.country_code_edit)
-        traffic_layout.addRow("", country_help)
+        traffic_layout.addRow(country_label, self.country_code_edit)
 
         # Junction settings section
         junction_layout = self.add_form_group("Junction Settings")
@@ -106,17 +95,14 @@ class PreferencesDialog(BaseDialog):
         self.junction_offset_spin.setSingleStep(1.0)
         self.junction_offset_spin.setDecimals(1)
         self.junction_offset_spin.setSuffix(" m")
-        self.junction_offset_spin.setToolTip("Distance to offset road endpoints from junction centers when importing from OSM")
 
-        junction_offset_help = QLabel(
-            "<small>When importing from OSM, road endpoints are moved away from junction centers "
-            "by this distance to create space for connecting roads. Typical values: 5-15m.</small>"
+        junction_offset_label = InfoIconLabel(
+            "Junction Offset Distance:",
+            "When importing from OSM, road endpoints are moved away from junction centers "
+            "by this distance to create space for connecting roads. Typical values: 5-15m.",
+            bold=False
         )
-        junction_offset_help.setWordWrap(True)
-        junction_offset_help.setStyleSheet("QLabel { color: gray; }")
-
-        junction_layout.addRow("Junction Offset Distance:", self.junction_offset_spin)
-        junction_layout.addRow("", junction_offset_help)
+        junction_layout.addRow(junction_offset_label, self.junction_offset_spin)
 
         # Roundabout ring offset distance
         self.roundabout_ring_offset_spin = QDoubleSpinBox()
@@ -124,16 +110,14 @@ class PreferencesDialog(BaseDialog):
         self.roundabout_ring_offset_spin.setSingleStep(0.5)
         self.roundabout_ring_offset_spin.setDecimals(1)
         self.roundabout_ring_offset_spin.setSuffix(" m")
-        self.roundabout_ring_offset_spin.setToolTip("Distance to offset ring segment endpoints from roundabout junctions")
 
-        roundabout_ring_help = QLabel(
-            "<small>Ring segments are moved back by this distance to create space for connecting roads. Typical values: 2-6m.</small>"
+        roundabout_ring_label = InfoIconLabel(
+            "Roundabout Ring Offset:",
+            "Ring segments are moved back by this distance to create space for connecting roads. "
+            "Typical values: 2-6m.",
+            bold=False
         )
-        roundabout_ring_help.setWordWrap(True)
-        roundabout_ring_help.setStyleSheet("QLabel { color: gray; }")
-
-        junction_layout.addRow("Roundabout Ring Offset:", self.roundabout_ring_offset_spin)
-        junction_layout.addRow("", roundabout_ring_help)
+        junction_layout.addRow(roundabout_ring_label, self.roundabout_ring_offset_spin)
 
         # Roundabout approach road offset distance
         self.roundabout_approach_offset_spin = QDoubleSpinBox()
@@ -141,16 +125,14 @@ class PreferencesDialog(BaseDialog):
         self.roundabout_approach_offset_spin.setSingleStep(0.5)
         self.roundabout_approach_offset_spin.setDecimals(1)
         self.roundabout_approach_offset_spin.setSuffix(" m")
-        self.roundabout_approach_offset_spin.setToolTip("Distance to offset approach road endpoints from roundabout junctions")
 
-        roundabout_approach_help = QLabel(
-            "<small>Approach roads are moved back by this distance. Larger values create longer entry/exit connectors. Typical values: 6-12m.</small>"
+        roundabout_approach_label = InfoIconLabel(
+            "Roundabout Approach Offset:",
+            "Approach roads are moved back by this distance. Larger values create longer "
+            "entry/exit connectors. Typical values: 6-12m.",
+            bold=False
         )
-        roundabout_approach_help.setWordWrap(True)
-        roundabout_approach_help.setStyleSheet("QLabel { color: gray; }")
-
-        junction_layout.addRow("Roundabout Approach Offset:", self.roundabout_approach_offset_spin)
-        junction_layout.addRow("", roundabout_approach_help)
+        junction_layout.addRow(roundabout_approach_label, self.roundabout_approach_offset_spin)
 
         # Create standard OK/Cancel buttons
         self.create_button_box()
