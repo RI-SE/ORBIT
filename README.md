@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/version-0.4.0-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/python-3.10+-green" alt="Python"/>
   <img src="https://img.shields.io/badge/OpenDRIVE-1.8-orange" alt="OpenDRIVE"/>
-  <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License"/>
+  <img src="https://img.shields.io/badge/license-GPL%203.0-lightgrey" alt="License"/>
 </p>
 
 ---
