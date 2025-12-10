@@ -6,7 +6,7 @@ A GUI application for annotating roads in aerial/satellite imagery
 and exporting to ASAM OpenDrive format.
 
 Usage:
-    start_orbit [image_path]
+    orbit [image_path] [--verbose] [--xodr_schema PATH]
 
     image_path: Optional path to image file to load on startup
 """
@@ -28,9 +28,10 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  orbit.py                          Start with empty project
-  orbit.py image.jpg                Load image on startup
-  orbit.py /path/to/aerial.jpg      Load image with full path
+  orbit                             Start with empty project
+  orbit image.jpg                   Load image on startup
+  orbit /path/to/aerial.jpg         Load image with full path
+  orbit --verbose                   Enable debug logging
         """
     )
 
@@ -45,7 +46,7 @@ Examples:
     parser.add_argument(
         '--version',
         action='version',
-        version='ORBIT 0.2.0'
+        version='ORBIT 0.4.0'
     )
 
     parser.add_argument(

@@ -26,6 +26,9 @@ dev = [
     "pytest-mock>=3.11.0",
 ]
 
+[project.scripts]
+orbit = "run_orbit:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

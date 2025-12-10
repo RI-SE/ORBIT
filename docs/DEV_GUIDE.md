@@ -59,14 +59,16 @@ pip install -e ".[dev]"
 
 ```bash
 # Start empty
-uv run python start_orbit
+orbit
 
 # Start with image
-uv run python start_orbit path/to/aerial_image.jpg
+orbit path/to/aerial_image.jpg
 
 # Verbose mode (debug logging)
-uv run python start_orbit --verbose
+orbit --verbose
 ```
+
+> **Note**: The `orbit` command is installed via `project.scripts` in pyproject.toml. Use `uv run orbit` if not in PATH.
 
 ### Running Tests
 
@@ -782,7 +784,7 @@ For GUI changes, test manually:
 
 | File | Purpose |
 |------|---------|
-| `start_orbit` | Entry point |
+| `run_orbit.py` | Entry point (provides `orbit` command) |
 | `models/project.py` | Project container, save/load |
 | `models/road.py` | Road with lane sections |
 | `gui/image_view.py` | Main drawing canvas |

@@ -1,187 +1,185 @@
-# ORBIT - OpenDrive Road Builder from Imagery Tool
+<p align="center">
+  <img src="docs/orbit_logo_t.png" alt="ORBIT Logo" width="200"/>
+</p>
 
-**Version:** 0.3.1
+<h1 align="center">ORBIT</h1>
 
-A PyQt6-based GUI application for annotating roads in drone/aerial/satellite imagery and exporting to ASAM OpenDRIVE format.
+<p align="center">
+  <strong>OpenDrive Road Builder from Imagery Tool</strong><br>
+  A visual tool for creating ASAM OpenDRIVE road networks from aerial and satellite imagery.
+</p>
 
-## Documentation
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.4.0-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/python-3.10+-green" alt="Python"/>
+  <img src="https://img.shields.io/badge/OpenDRIVE-1.8-orange" alt="OpenDRIVE"/>
+  <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License"/>
+</p>
 
-- **[README.md](README.md)** - This file (quick start)
-- **[USAGE_GUIDE.md](docs/USAGE_GUIDE.md)** - Detailed user guide with tips and shortcuts
-- **[COMPLETE_WORKFLOW.md](docs/COMPLETE_WORKFLOW.md)** - End-to-end workflow tutorial
-- **[GEOREFERENCING_GUIDE.md](docs/GEOREFERENCING_GUIDE.md)** - Complete georeferencing guide with uncertainty analysis
-- **[VALIDATION_AND_UNCERTAINTY.md](docs/VALIDATION_AND_UNCERTAINTY.md)** - Technical deep-dive: validation metrics, uncertainty estimation, and GCP suggestions
-- **[OSM_IMPORT_GUIDE.md](docs/OSM_IMPORT_GUIDE.md)** - OpenStreetMap import feature guide
-- **[DEV_GUIDE.md](docs/DEV_GUIDE.md)** - Developer guide for contributors
+---
+
+## Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [License](#license)
+
+---
 
 ## Features
 
 ### Road Annotation
-- **Interactive polyline drawing and editing** on aerial/satellite images
-- **Centerline and lane boundary distinction** with ASAM OpenDRIVE road mark types
-- **Measured lane widths** calculated from georeferenced boundary positions
-- **Group polylines into roads** with properties (lanes, width, type, speed limits)
-- **Lane sections** - Split roads where lane configuration changes
-- **Data-driven road marks** using actual annotated line types
+- **Interactive polyline drawing** on aerial/satellite/drone images
+- **Centerline and lane boundary** distinction with road mark types (solid, broken, etc.)
+- **Lane sections** for roads where lane configuration changes
+- **Road splitting and merging** for flexible network editing
+- **Data-driven road marks** from actual annotated line types
+- **OpenDRIVE 1.8 lane attributes** (direction, advisory)
 
-### Junctions
-- **Junction/intersection annotation** with drag-and-drop positioning
-- **Connecting roads** - Geometric paths through junctions with proper OpenDRIVE export
-- **Lane-level connections** - Explicit lane-to-lane mappings
-- **Automatic connection generation** from road geometry analysis
-- **Visual connection display** in the GUI
+### Junction Support
+- **Junction annotation** with drag-and-drop positioning
+- **Roundabout wizard** for creating circular intersections
+- **Connecting roads** with proper geometric paths through junctions
+- **Lane-level connections** with explicit lane-to-lane mappings
+- **Automatic connection generation** from road geometry
 
-### Import
-- **OpenStreetMap import** - Automatically import road networks from OSM via Overpass API
-  - Roads with lane configurations and speed limits
-  - Traffic signals and speed limit signs
-  - Junction detection with connecting road generation
-  - Roadside objects (lampposts, guardrails, trees, buildings)
-- **OpenDRIVE import** - Load existing .xodr files for editing (round-trip support)
+### Import Capabilities
+- **OpenStreetMap import** via Overpass API (roads, signals, junctions, objects)
+- **OpenDRIVE import** for editing existing .xodr files (round-trip support)
 
 ### Georeferencing
-- **Control points** for pixel-to-geographic coordinate transformation
-- **Manual control point placement** or **CSV import** for batch points
-- **Training and validation point separation**
-- **Monte Carlo uncertainty analysis** with configurable parameters
-- **Uncertainty visualization overlay**
-- **Reprojection error validation**
+- **Control point system** for pixel-to-geographic transformation
+- **CSV import** for batch control points
+- **Monte Carlo uncertainty analysis** with visualization
+- **Validation metrics** with reprojection error
 
 ### Export
-- **ASAM OpenDRIVE 1.7 XML** format with automatic curve fitting
-- **Proper junction export** with connecting roads and lane links
-- **Configurable geometry** - preserve all points or fit curves
-- **Geographic reference** - PROJ4 string for coordinate system
+- **ASAM OpenDRIVE 1.8** XML format
+- **XSD schema validation** against official ASAM schema ([download](https://publications.pages.asam.net/standards/ASAM_OpenDRIVE/ASAM_OpenDRIVE_Specification/latest/specification/))
+- **Configurable geometry** — preserve all points or fit curves
+- **Geographic reference** with PROJ4 projection string
+- **Complete junction export** with connecting roads and lane links
+
+---
 
 ## Installation
 
 ### Using uv (recommended)
 
 ```bash
-# Install uv if you haven't already
+# Install uv if needed
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install dependencies
+# Clone and install
+git clone <repository-url>
+cd ORBIT
 uv sync
-
-# Install with dev dependencies (for testing)
-uv sync --extra dev
 ```
 
-### Using pip (alternative)
+### Using pip
 
 ```bash
-# Create virtual environment
 python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install from pyproject.toml
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e .
-
-# Install with dev dependencies
-pip install -e ".[dev]"
 ```
 
-## Usage
+---
 
-### Start with an image
+## Quick Start
+
 ```bash
-uv run python start_orbit path/to/image.jpg
+# Start with an image
+orbit path/to/aerial_image.jpg
+
+# Start empty (load image via File menu)
+orbit
+
+# Enable verbose logging
+orbit --verbose
+
+# Enable XSD schema validation for exports
+orbit --xodr_schema /path/to/OpenDRIVE_Core.xsd
 ```
 
-### Start without image (load later via GUI)
-```bash
-uv run python start_orbit
+> **Note**: After installation with `uv sync` or `pip install -e .`, the `orbit` command is available directly. Alternatively, use `uv run orbit` or `python run_orbit.py`.
+
+### Basic Workflow
+
+1. **Load image** — File → Load Image or pass path on command line
+2. **Draw centerline** — Click "New Line", trace road center, double-click to finish
+3. **Set as centerline** — Double-click polyline, change Line Type to "Centerline"
+4. **Draw boundaries** — Trace lane markings with appropriate road mark types
+5. **Create road** — Select polylines, press Ctrl+G to group into road
+6. **Add control points** — Tools → Georeferencing (minimum 3 points)
+7. **Export** — File → Export to OpenDrive
+
+---
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Usage Guide](docs/USAGE_GUIDE.md) | Detailed user guide with tips and keyboard shortcuts |
+| [Complete Workflow](docs/COMPLETE_WORKFLOW.md) | End-to-end tutorial from image to OpenDRIVE |
+| [Georeferencing Guide](docs/GEOREFERENCING_GUIDE.md) | Control points and uncertainty analysis |
+| [OSM Import Guide](docs/OSM_IMPORT_GUIDE.md) | OpenStreetMap import feature |
+| [Validation Guide](docs/VALIDATION_AND_UNCERTAINTY.md) | Validation metrics and uncertainty estimation |
+| [Developer Guide](docs/DEV_GUIDE.md) | Architecture and contribution guidelines |
+
+---
+
+## Project Structure
+
+```
+orbit/
+├── models/       # Data models (Road, Polyline, Junction, Lane, Signal, etc.)
+├── gui/          # PyQt6 GUI (MainWindow, ImageView, dialogs, widgets)
+├── export/       # OpenDRIVE XML generation (writers, builders)
+├── import_/      # OSM and OpenDRIVE importers
+└── utils/        # Coordinate transforms, geometry utilities
 ```
 
-### Enable verbose logging
-```bash
-uv run python start_orbit --verbose
-```
+### Project Files
 
-## Workflow
-
-### Manual Annotation
-1. **Load Image**: Start with an image or load via File → Load Image
-2. **Draw Centerline**: Click "New Line" and trace the road center
-3. **Set as Centerline**: Double-click polyline, change Line Type to "Centerline"
-4. **Draw Lane Boundaries**: Trace visible lane markings (solid, broken, etc.)
-5. **Set Road Mark Types**: Double-click boundaries, set Road Mark Type (solid, broken, etc.)
-6. **Group to Road**: Select all polylines (centerline + boundaries) and group into road
-7. **Configure Road**: Set lane count, road type, speed limits
-8. **Split Sections**: Right-click centerline points to split where lanes change
-9. **Mark Junctions**: Define intersections and connecting roads
-10. **Save Project**: File → Save Project (saves as .orbit file with pixel coordinates)
-11. **Georeference**: Tools → Georeferencing to add control points with lat/lon
-12. **Export**: File → Export to OpenDrive
-
-### OSM Import
-1. **Load Image**: Start with an aerial/satellite image
-2. **Georeference**: Tools → Georeferencing (add 3+ control points with lat/lon)
-3. **Import OSM**: File → Import OpenStreetMap Data (`Ctrl+Shift+I`)
-4. **Configure**: Choose detail level (Moderate/Full), import mode, lane width
-5. **Review**: Inspect imported roads, junctions, signals, and objects
-6. **Refine**: Manually adjust imported data if needed
-7. **Export**: File → Export to OpenDrive
-
-See [OSM_IMPORT_GUIDE.md](docs/OSM_IMPORT_GUIDE.md) for detailed instructions.
-
-## Project File Format
-
-Projects are saved as JSON files with `.orbit` extension containing:
-- Image path
+Projects save as `.orbit` JSON files containing:
+- Image path and metadata
 - Polylines (pixel coordinates)
 - Roads with lane sections
-- Junctions with connecting roads and lane connections
-- Signals and objects
-- Control points (for georeferencing)
-- Uncertainty analysis cache
-- Metadata (version, timestamps)
+- Junctions with connections
+- Control points for georeferencing
+- Signals and roadside objects
 
-## OpenDRIVE Export
-
-The export process:
-1. Validates each road has exactly one centerline
-2. Converts pixel coordinates to metric coordinates using control points
-3. Creates local Transverse Mercator projection centered on control points
-4. Uses centerline for road reference geometry (planView)
-5. Fits curves (lines, arcs) to centerline polyline
-6. Exports lane sections with proper s-coordinates
-7. Uses actual Road Mark Types from annotated boundaries
-8. Exports junctions with:
-   - Connecting roads (full road elements with geometry)
-   - Lane links (lane-to-lane mappings)
-   - Proper predecessor/successor references
-9. Generates ASAM OpenDRIVE 1.7 XML
+---
 
 ## Development
 
-See [DEV_GUIDE.md](docs/DEV_GUIDE.md) for architecture overview and contribution guidelines.
+### Setup
 
-### Running Tests
 ```bash
+# Install with dev dependencies
+uv sync --extra dev
+
+# Run tests
 uv run python -m pytest tests/ -v
 ```
 
-### Project Structure
-```
-orbit/
-├── models/       # Data classes (Road, Polyline, Junction, etc.)
-├── gui/          # PyQt6 GUI components
-├── export/       # OpenDRIVE XML generation
-├── import/       # OSM and OpenDRIVE import
-└── utils/        # Coordinate transforms, geometry
-```
+### Key Technologies
 
-## Recent Changes (v0.3.1)
+- **PyQt6** — GUI framework
+- **NumPy/SciPy** — Geometry and transformations
+- **lxml** — XML generation
+- **pyproj** — Coordinate projections
+- **xmlschema** — OpenDRIVE XSD validation
 
-- **Junction improvements**: Full connecting road and lane connection support
-- **Export refactoring**: Extracted LaneBuilder, SignalBuilder, ObjectBuilder classes
-- **Graphics refactoring**: Extracted graphics items to `gui/graphics/` module
-- **Bug fixes**: Virtual junction export, lane width calculations
-- **Code cleanup**: Removed deprecated code, added unit tests
-- **Documentation**: Added developer guide
+See [Developer Guide](docs/DEV_GUIDE.md) for architecture details.
+
+---
 
 ## License
 
-MIT License - See LICENSE file for details.
+GPL 3.0 License — See [LICENSE](LICENSE) for details.
