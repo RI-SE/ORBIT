@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFont
 
 from orbit.models import Project
-from orbit.export import CoordinateTransformer, create_transformer, export_to_opendrive, TransformMethod
+from orbit.export import CoordinateTransformer, create_transformer, export_to_opendrive, TransformMethod, validate_opendrive_file
 from .base_dialog import BaseDialog
 from ..utils.message_helpers import show_error, show_warning, show_info
 
@@ -24,12 +24,13 @@ from ..utils.message_helpers import show_error, show_warning, show_info
 class ExportDialog(BaseDialog):
     """Dialog for OpenDrive export with preview."""
 
-    def __init__(self, project: Project, parent=None):
+    def __init__(self, project: Project, parent=None, xodr_schema_path: Optional[str] = None):
         super().__init__("Export to OpenDrive", parent, min_width=700, min_height=600)
 
         self.project = project
         self.transformer: Optional[CoordinateTransformer] = None
         self.output_path: Optional[Path] = None
+        self.xodr_schema_path = xodr_schema_path  # Path to XSD schema for validation (optional)
 
         self.setup_ui()
         self.load_properties()
@@ -298,9 +299,35 @@ class ExportDialog(BaseDialog):
             )
 
             if success:
+                # Validate against schema if path was provided
+                validation_msg = ""
+                if self.xodr_schema_path:
+                    validation_errors = validate_opendrive_file(str(self.output_path), self.xodr_schema_path)
+                    if validation_errors is None:
+                        validation_msg = "\n\nSchema validation: Skipped (no schema)"
+                    elif validation_errors:
+                        # Log all errors to console
+                        print(f"\n=== OpenDRIVE Schema Validation Errors ({len(validation_errors)}) ===")
+                        for err in validation_errors:
+                            print(f"  {err}")
+                        print("=" * 50)
+
+                        # Show validation errors in dialog but don't fail the export
+                        error_text = "\n".join(validation_errors[:10])  # Show first 10 errors
+                        if len(validation_errors) > 10:
+                            error_text += f"\n... and {len(validation_errors) - 10} more errors"
+                        show_warning(self, f"OpenDrive file exported but has schema validation errors:\n\n{error_text}",
+                                   "Validation Warnings")
+                        validation_msg = f"\n\nSchema validation: {len(validation_errors)} error(s)"
+                    else:
+                        print("OpenDRIVE schema validation: Passed")
+                        validation_msg = "\n\nSchema validation: Passed"
+                else:
+                    validation_msg = "\n\nSchema validation: Skipped (use --xodr_schema to enable)"
+
                 show_info(self, f"OpenDrive file exported successfully to:\n{self.output_path}\n\n"
                     f"Roads: {len(self.project.roads)}\n"
-                    f"Junctions: {len(self.project.junctions)}", "Export Successful")
+                    f"Junctions: {len(self.project.junctions)}{validation_msg}", "Export Successful")
                 self.accept()
             else:
                 show_error(self, "Failed to export OpenDrive file. Check console for errors.", "Export Failed")

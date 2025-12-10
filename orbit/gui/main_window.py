@@ -30,7 +30,8 @@ logger = get_logger(__name__)
 class MainWindow(QMainWindow):
     """Main application window for ORBIT."""
 
-    def __init__(self, image_path: Optional[Path] = None, verbose: bool = False, parent=None):
+    def __init__(self, image_path: Optional[Path] = None, verbose: bool = False,
+                 xodr_schema_path: Optional[str] = None, parent=None):
         super().__init__(parent)
 
         # Project state
@@ -38,6 +39,7 @@ class MainWindow(QMainWindow):
         self.current_project_file: Optional[Path] = None
         self.modified = False
         self.verbose = verbose  # Debug flag
+        self.xodr_schema_path = xodr_schema_path  # Path to OpenDRIVE XSD schema for validation
 
         # Cached transformer for real-time coordinate display
         self._cached_transformer = None
@@ -93,6 +95,7 @@ class MainWindow(QMainWindow):
         self.image_view.object_selected.connect(self.on_object_selected_in_view)
         self.image_view.object_placement_requested.connect(self.on_object_placement_requested)
         self.image_view.section_split_requested.connect(self.on_section_split_requested)
+        self.image_view.road_split_requested.connect(self.on_road_split_requested)
         self.image_view.section_modified.connect(self.on_section_modified)
         self.image_view.lane_segment_clicked.connect(self.on_lane_segment_clicked)
         self.image_view.connecting_road_lane_clicked.connect(self.on_connecting_road_lane_clicked_in_view)
@@ -622,8 +625,8 @@ class MainWindow(QMainWindow):
                 "Please create at least one road first.", "No Roads")
             return
 
-        # Show export dialog
-        dialog = ExportDialog(self.project, self)
+        # Show export dialog with optional schema path for validation
+        dialog = ExportDialog(self.project, self, xodr_schema_path=self.xodr_schema_path)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.statusBar().showMessage("Export completed successfully")
         else:
@@ -2048,6 +2051,51 @@ class MainWindow(QMainWindow):
             self.update_affected_road_lanes()
         else:
             show_warning(self, "Failed to split lane section. The point may be outside section boundaries.", "Split Failed")
+
+    def on_road_split_requested(self, road_id: str, polyline_id: str, point_index: int):
+        """
+        Handle road split request from ImageView.
+
+        Splits the road at the specified centerline point, creating two connected
+        roads with proper predecessor/successor links. Both centerline and boundary
+        polylines are split at corresponding positions.
+
+        Args:
+            road_id: ID of the road to split
+            polyline_id: ID of the centerline polyline
+            point_index: Index of the point where to split
+        """
+        # Remember polylines before split so we can identify new ones
+        polylines_before = {p.id for p in self.project.polylines}
+
+        result = self.project.split_road_at_point(road_id, polyline_id, point_index)
+
+        if result:
+            road1, road2 = result
+            self.modified = True
+
+            # Find new polylines created by the split
+            new_polylines = [p for p in self.project.polylines if p.id not in polylines_before]
+
+            # Add graphics for new polylines
+            for polyline in new_polylines:
+                self.image_view.add_polyline_graphics(polyline)
+
+            # Update graphics for modified polylines (the ones that were split)
+            for pid in road1.polyline_ids:
+                self.image_view.update_polyline(pid)
+
+            # Refresh trees to show new road and updated polylines
+            self.road_tree.refresh_tree()
+            self.elements_tree.refresh_tree()
+            self.update_window_title()
+
+            # Refresh lane graphics for both roads
+            self.update_affected_road_lanes()
+
+            self.statusBar().showMessage(f"Road split into '{road1.name}' and '{road2.name}'")
+        else:
+            show_warning(self, "Failed to split road. Check the console for details.", "Split Failed")
 
     def on_section_modified(self, road_id: str):
         """Handle section modified signal."""

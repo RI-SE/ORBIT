@@ -16,6 +16,7 @@ dependencies = [
     "scipy>=1.11.0",
     "lxml>=4.9.0",
     "pyproj>=3.6.0",
+    "xmlschema>=4.2.0",
 ]
 
 [project.optional-dependencies]

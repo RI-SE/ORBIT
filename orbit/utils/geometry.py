@@ -1231,6 +1231,250 @@ def fit_circle_to_points(
     return ((cx, cy), radius)
 
 
+# ============================================================================
+# Polyline splitting utilities (for road splitting)
+# ============================================================================
+
+
+def project_point_to_polyline(
+    point: Tuple[float, float],
+    polyline_points: List[Tuple[float, float]]
+) -> Tuple[float, float, int]:
+    """
+    Project a point onto a polyline, returning s-coordinate and distance.
+
+    Finds the closest point on the polyline to the given point.
+
+    Args:
+        point: Point to project (x, y)
+        polyline_points: Points defining the polyline
+
+    Returns:
+        Tuple of (s_coordinate, perpendicular_distance, segment_index):
+        - s_coordinate: Distance along polyline to the projected point
+        - perpendicular_distance: Distance from point to projection (positive = right of direction)
+        - segment_index: Index of segment where projection lands
+    """
+    if len(polyline_points) < 2:
+        if len(polyline_points) == 1:
+            dist = distance_between_points(point, polyline_points[0])
+            return (0.0, dist, 0)
+        return (0.0, 0.0, 0)
+
+    best_s = 0.0
+    best_dist = float('inf')
+    best_segment = 0
+    accumulated_s = 0.0
+
+    px, py = point
+
+    for i in range(len(polyline_points) - 1):
+        p1 = polyline_points[i]
+        p2 = polyline_points[i + 1]
+
+        # Segment vector
+        dx = p2[0] - p1[0]
+        dy = p2[1] - p1[1]
+        seg_len_sq = dx * dx + dy * dy
+
+        if seg_len_sq < 1e-10:
+            # Zero-length segment
+            dist = distance_between_points(point, p1)
+            if dist < best_dist:
+                best_dist = dist
+                best_s = accumulated_s
+                best_segment = i
+            continue
+
+        seg_len = math.sqrt(seg_len_sq)
+
+        # Project point onto segment line
+        # t = ((P - P1) · (P2 - P1)) / |P2 - P1|²
+        t = ((px - p1[0]) * dx + (py - p1[1]) * dy) / seg_len_sq
+
+        # Clamp t to [0, 1] to stay within segment
+        t = max(0.0, min(1.0, t))
+
+        # Closest point on segment
+        closest_x = p1[0] + t * dx
+        closest_y = p1[1] + t * dy
+
+        dist = math.sqrt((px - closest_x) ** 2 + (py - closest_y) ** 2)
+
+        if dist < best_dist:
+            best_dist = dist
+            best_s = accumulated_s + t * seg_len
+            best_segment = i
+
+            # Calculate signed distance (positive = right of direction)
+            # Cross product: (P2-P1) × (P-P1) / |P2-P1|
+            cross = dx * (py - p1[1]) - dy * (px - p1[0])
+            best_dist = -cross / seg_len  # Negative because screen coords
+
+        accumulated_s += seg_len
+
+    return (best_s, best_dist, best_segment)
+
+
+def find_point_on_polyline_at_s(
+    polyline_points: List[Tuple[float, float]],
+    target_s: float
+) -> Optional[Tuple[Tuple[float, float], int, float]]:
+    """
+    Find the point on a polyline at a given s-coordinate (distance along).
+
+    Args:
+        polyline_points: Points defining the polyline
+        target_s: Target distance along the polyline
+
+    Returns:
+        Tuple of (point, segment_index, t_within_segment) or None if s exceeds length:
+        - point: (x, y) coordinates at target_s
+        - segment_index: Index of the segment containing the point
+        - t_within_segment: Interpolation parameter within segment [0, 1]
+    """
+    if len(polyline_points) < 2:
+        return None
+
+    if target_s <= 0:
+        return (polyline_points[0], 0, 0.0)
+
+    accumulated_s = 0.0
+
+    for i in range(len(polyline_points) - 1):
+        p1 = polyline_points[i]
+        p2 = polyline_points[i + 1]
+
+        seg_len = distance_between_points(p1, p2)
+
+        if seg_len < 1e-10:
+            continue
+
+        if accumulated_s + seg_len >= target_s:
+            # Target is in this segment
+            remaining = target_s - accumulated_s
+            t = remaining / seg_len
+
+            point = (
+                p1[0] + t * (p2[0] - p1[0]),
+                p1[1] + t * (p2[1] - p1[1])
+            )
+            return (point, i, t)
+
+        accumulated_s += seg_len
+
+    # Target exceeds polyline length, return last point
+    return (polyline_points[-1], len(polyline_points) - 2, 1.0)
+
+
+def split_polyline_at_index(
+    points: List[Tuple[float, float]],
+    split_index: int,
+    duplicate_point: bool = True
+) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
+    """
+    Split a polyline at a given point index.
+
+    Args:
+        points: List of (x, y) points
+        split_index: Index of the point to split at
+        duplicate_point: If True, split point appears in both result lists
+
+    Returns:
+        Tuple of (first_segment, second_segment)
+    """
+    if split_index <= 0:
+        return ([], list(points))
+    if split_index >= len(points) - 1:
+        return (list(points), [])
+
+    if duplicate_point:
+        first = points[:split_index + 1]
+        second = points[split_index:]
+    else:
+        first = points[:split_index + 1]
+        second = points[split_index + 1:]
+
+    return (list(first), list(second))
+
+
+def split_boundary_at_centerline_s(
+    boundary_points: List[Tuple[float, float]],
+    centerline_points: List[Tuple[float, float]],
+    target_s: float
+) -> Optional[Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]]:
+    """
+    Split a boundary polyline at the position corresponding to a centerline s-coordinate.
+
+    Projects each boundary point onto the centerline to find where the boundary
+    crosses the target s-coordinate, then splits at that point.
+
+    Args:
+        boundary_points: Points of the boundary polyline to split
+        centerline_points: Points of the centerline
+        target_s: Target s-coordinate along centerline where to split
+
+    Returns:
+        Tuple of (first_segment, second_segment) with split point duplicated in both,
+        or None if the boundary doesn't span the target s-coordinate.
+    """
+    if len(boundary_points) < 2 or len(centerline_points) < 2:
+        return None
+
+    # Project each boundary point onto centerline to get its s-coordinate
+    boundary_s_coords = []
+    for pt in boundary_points:
+        s, _, _ = project_point_to_polyline(pt, centerline_points)
+        boundary_s_coords.append(s)
+
+    # Find where boundary crosses target_s
+    split_segment = None
+    for i in range(len(boundary_s_coords) - 1):
+        s1 = boundary_s_coords[i]
+        s2 = boundary_s_coords[i + 1]
+
+        # Check if target_s is between s1 and s2
+        if (s1 <= target_s <= s2) or (s2 <= target_s <= s1):
+            split_segment = i
+            break
+
+    if split_segment is None:
+        # Boundary doesn't span the target s-coordinate
+        # Return all points in first segment if boundary is entirely before target_s
+        # or all in second segment if entirely after
+        if all(s <= target_s for s in boundary_s_coords):
+            return (list(boundary_points), [boundary_points[-1]])
+        elif all(s >= target_s for s in boundary_s_coords):
+            return ([boundary_points[0]], list(boundary_points))
+        return None
+
+    # Interpolate to find exact split point
+    s1 = boundary_s_coords[split_segment]
+    s2 = boundary_s_coords[split_segment + 1]
+    p1 = boundary_points[split_segment]
+    p2 = boundary_points[split_segment + 1]
+
+    # Handle edge case where s1 == s2
+    if abs(s2 - s1) < 1e-10:
+        t = 0.5
+    else:
+        t = (target_s - s1) / (s2 - s1)
+
+    # Clamp t to [0, 1]
+    t = max(0.0, min(1.0, t))
+
+    split_point = (
+        p1[0] + t * (p2[0] - p1[0]),
+        p1[1] + t * (p2[1] - p1[1])
+    )
+
+    # Create the two segments with split point duplicated
+    first_segment = list(boundary_points[:split_segment + 1]) + [split_point]
+    second_segment = [split_point] + list(boundary_points[split_segment + 1:])
+
+    return (first_segment, second_segment)
+
+
 def sample_bezier(
     control_points: List[Tuple[float, float]],
     num_points: int = 20

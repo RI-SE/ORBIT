@@ -59,6 +59,7 @@ class ImageView(QGraphicsView):
     object_selected = pyqtSignal(str)  # Emits object ID when selected in view
     object_placement_requested = pyqtSignal(float, float, object)  # Emits x, y coordinates and ObjectType
     section_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index
+    road_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index for splitting road
     section_modified = pyqtSignal(str)  # Emits road ID
     lane_segment_clicked = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id
     connecting_road_lane_clicked = pyqtSignal(str, int)  # Emits connecting_road_id, lane_id
@@ -2011,7 +2012,7 @@ class ImageView(QGraphicsView):
 
     def _show_centerline_point_menu(self, view_pos, polyline_id: str, point_index: int):
         """
-        Show context menu for centerline point with Delete and Split Section options.
+        Show context menu for centerline point with Delete, Split Section, and Split Road options.
 
         Args:
             view_pos: Position in view coordinates
@@ -2020,22 +2021,31 @@ class ImageView(QGraphicsView):
         """
         menu = QMenu()
         delete_action = menu.addAction("Delete Point")
-        split_action = menu.addAction("Split Section Here")
+        split_section_action = menu.addAction("Split Section Here")
+        split_road_action = menu.addAction("Split Road Here")
 
         # Get the road that owns this centerline
         road = self._find_road_by_centerline(polyline_id)
+        polyline = self.polyline_items[polyline_id].polyline
+
         if not road or not road.lane_sections:
-            # No road or no sections - disable split option
-            split_action.setEnabled(False)
+            # No road or no sections - disable split section option
+            split_section_action.setEnabled(False)
+
+        if not road:
+            # No road - disable split road option
+            split_road_action.setEnabled(False)
+        elif point_index == 0 or point_index >= polyline.point_count() - 1:
+            # Cannot split at first or last point (would create empty road)
+            split_road_action.setEnabled(False)
 
         # Show menu and get selected action
         action = menu.exec(self.mapToGlobal(view_pos))
 
         if action == delete_action:
             self._delete_point(polyline_id, point_index)
-        elif action == split_action and road:
+        elif action == split_section_action and road:
             # Warn if creating a small section
-            polyline = self.polyline_items[polyline_id].polyline
             s_coords = road.calculate_centerline_s_coordinates(polyline.points)
             if point_index < len(s_coords):
                 s = s_coords[point_index]
@@ -2053,6 +2063,9 @@ class ImageView(QGraphicsView):
 
             # Emit signal for MainWindow to handle
             self.section_split_requested.emit(road.id, polyline_id, point_index)
+        elif action == split_road_action and road:
+            # Emit signal for MainWindow to handle road splitting
+            self.road_split_requested.emit(road.id, polyline_id, point_index)
 
     def _find_road_by_centerline(self, polyline_id: str) -> Optional[Road]:
         """

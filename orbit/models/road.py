@@ -328,6 +328,98 @@ class Road:
         for i, section in enumerate(self.lane_sections, start=1):
             section.section_number = i
 
+    def distribute_lane_sections_for_split(
+        self,
+        split_s: float,
+        split_point_index: int
+    ) -> Tuple[List[LaneSection], List[LaneSection]]:
+        """
+        Distribute lane sections between two roads when splitting at split_s.
+
+        Sections entirely before split_s go to road 1.
+        Sections entirely after split_s go to road 2 (with adjusted s-coordinates).
+        Sections spanning split_s are split into two.
+
+        Args:
+            split_s: S-coordinate where the road is being split
+            split_point_index: Index of the centerline point at the split
+
+        Returns:
+            Tuple of (sections_for_road1, sections_for_road2)
+        """
+        from copy import deepcopy
+
+        sections_road1 = []
+        sections_road2 = []
+
+        for section in self.lane_sections:
+            if section.s_end <= split_s:
+                # Section entirely in road 1
+                sections_road1.append(deepcopy(section))
+
+            elif section.s_start >= split_s:
+                # Section entirely in road 2 - adjust s-coordinates
+                new_section = deepcopy(section)
+                new_section.s_start = section.s_start - split_s
+                new_section.s_end = section.s_end - split_s
+                # Adjust end_point_index relative to new road
+                if new_section.end_point_index is not None:
+                    new_section.end_point_index = new_section.end_point_index - split_point_index
+                    if new_section.end_point_index < 0:
+                        new_section.end_point_index = None
+                sections_road2.append(new_section)
+
+            else:
+                # Section spans split_s - need to split it
+                # Create section for road 1 (from s_start to split_s)
+                section1 = LaneSection(
+                    section_number=section.section_number,
+                    s_start=section.s_start,
+                    s_end=split_s,
+                    single_side=section.single_side,
+                    lanes=section._duplicate_lanes(),
+                    end_point_index=split_point_index
+                )
+                sections_road1.append(section1)
+
+                # Create section for road 2 (from 0 to original s_end - split_s)
+                section2 = LaneSection(
+                    section_number=1,  # Will be renumbered later
+                    s_start=0.0,
+                    s_end=section.s_end - split_s,
+                    single_side=section.single_side,
+                    lanes=section._duplicate_lanes(),
+                    end_point_index=section.end_point_index - split_point_index if section.end_point_index is not None else None
+                )
+                if section2.end_point_index is not None and section2.end_point_index < 0:
+                    section2.end_point_index = None
+                sections_road2.append(section2)
+
+        # Renumber sections in each list
+        for i, section in enumerate(sections_road1, start=1):
+            section.section_number = i
+        for i, section in enumerate(sections_road2, start=1):
+            section.section_number = i
+
+        # If no sections for a road, create a default one
+        if not sections_road1:
+            sections_road1 = [LaneSection(
+                section_number=1,
+                s_start=0.0,
+                s_end=split_s,
+                lanes=self.lane_sections[0]._duplicate_lanes() if self.lane_sections else []
+            )]
+        if not sections_road2:
+            total_length = self.lane_sections[-1].s_end if self.lane_sections else split_s
+            sections_road2 = [LaneSection(
+                section_number=1,
+                s_start=0.0,
+                s_end=total_length - split_s,
+                lanes=self.lane_sections[-1]._duplicate_lanes() if self.lane_sections else []
+            )]
+
+        return (sections_road1, sections_road2)
+
     def update_section_boundaries(self, centerline_points: List[Tuple[float, float]]) -> None:
         """
         Update section boundaries after centerline changes.

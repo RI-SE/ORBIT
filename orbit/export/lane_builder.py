@@ -104,16 +104,20 @@ class LaneBuilder:
             # Build map of lane_id to Lane object for this section
             lane_map = {lane.id: lane for lane in section.lanes}
 
+            # OpenDRIVE requires elements in order: left, center, right
+            # Only add left/right if there are lanes
+
             # Left lanes (positive IDs)
-            left = etree.SubElement(lane_section, 'left')
             left_lanes = [lane for lane in section.lanes if lane.id > 0]
             left_lanes.sort(key=lambda l: l.id)  # Sort ascending: 1, 2, 3...
-            for lane_obj in left_lanes:
-                boundary_info = boundary_map.get(lane_obj.id)
-                lane = self._create_lane(lane_obj, boundary_info)
-                left.append(lane)
+            if left_lanes:
+                left = etree.SubElement(lane_section, 'left')
+                for lane_obj in left_lanes:
+                    boundary_info = boundary_map.get(lane_obj.id)
+                    lane = self._create_lane(lane_obj, boundary_info)
+                    left.append(lane)
 
-            # Center lane (reference lane, id=0)
+            # Center lane (reference lane, id=0) - required
             center = etree.SubElement(lane_section, 'center')
             center_lane_obj = lane_map.get(0)
             if center_lane_obj:
@@ -124,13 +128,14 @@ class LaneBuilder:
                 center.append(center_lane)
 
             # Right lanes (negative IDs)
-            right = etree.SubElement(lane_section, 'right')
             right_lanes = [lane for lane in section.lanes if lane.id < 0]
             right_lanes.sort(key=lambda l: l.id, reverse=True)  # Sort descending: -1, -2, -3...
-            for lane_obj in right_lanes:
-                boundary_info = boundary_map.get(lane_obj.id)
-                lane = self._create_lane(lane_obj, boundary_info)
-                right.append(lane)
+            if right_lanes:
+                right = etree.SubElement(lane_section, 'right')
+                for lane_obj in right_lanes:
+                    boundary_info = boundary_map.get(lane_obj.id)
+                    lane = self._create_lane(lane_obj, boundary_info)
+                    right.append(lane)
 
     def _create_center_lane(self, center_lane_obj) -> etree.Element:
         """Create center lane element from Lane object."""

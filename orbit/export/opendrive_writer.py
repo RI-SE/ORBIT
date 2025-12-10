@@ -117,31 +117,34 @@ class OpenDriveWriter:
         self,
         output_path: str,
         schema_path: Optional[str] = None
-    ) -> Tuple[bool, List[str]]:
+    ) -> Tuple[bool, List[str], bool]:
         """
-        Write OpenDrive XML to file and validate against XSD schema.
+        Write OpenDrive XML to file and optionally validate against XSD schema.
 
         Args:
             output_path: Path to output .xodr file
             schema_path: Path to OpenDRIVE XSD schema file (OpenDRIVE_Core.xsd).
-                        If None, uses bundled schema in test_projects/xsd_schema/
+                        If None, validation is skipped.
 
         Returns:
-            Tuple of (success, list of validation errors/warnings)
+            Tuple of (success, list of validation errors/warnings, validation_performed)
         """
         errors = []
 
         # Write the file first
         if not self.write(output_path):
-            return False, ["Failed to write OpenDRIVE file"]
+            return False, ["Failed to write OpenDRIVE file"], False
 
-        # Validate if schema available
+        # Validate if schema path provided
         validation_errors = validate_opendrive_file(output_path, schema_path)
-        if validation_errors:
+        if validation_errors is None:
+            # Validation was skipped (no schema)
+            return True, [], False
+        elif validation_errors:
             errors.extend(validation_errors)
-            return False, errors
+            return False, errors, True
 
-        return True, []
+        return True, [], True
 
     def _create_opendrive_root(self) -> etree.Element:
         """Create the root OpenDRIVE element with all content."""
@@ -289,24 +292,8 @@ class OpenDriveWriter:
 
         header.set('vendor', 'ORBIT by RISE Research Institutes of Sweden')
 
-        # Add tool information as userData
-        tool_data = etree.SubElement(header, 'userData')
-        tool_data.set('code', 'tool')
-        tool_data.text = 'Produced by ORBIT (https://github.com/fwrise/ORBIT)'
-
-        # Add license information as userData
-        # License userData is always included
-        license_data = etree.SubElement(header, 'userData')
-        license_data.set('code', 'license')
-        license_data.text = 'Licensed under the Open Database License (https://opendatacommons.org/licenses/odbl/1-0/)'
-
-        # Source attribution userData only if OpenStreetMap was used
-        if self.project.openstreetmap_used:
-            source_data = etree.SubElement(header, 'userData')
-            source_data.set('code', 'sourceAttribution')
-            source_data.text = 'Map data from OpenStreetMap (https://www.openstreetmap.org/copyright)'
-
-        # Add georef if available
+        # OpenDRIVE schema requires elements in order: geoReference, offset, license, userData
+        # Add georef first if available
         if self.project.has_georeferencing():
             georef = etree.SubElement(header, 'geoReference')
             # Select projection string based on export option
@@ -319,6 +306,22 @@ class OpenDriveWriter:
                     georef.text = self.project.imported_geo_reference
                 else:
                     georef.text = self.transformer.get_utm_projection_string()
+
+        # Add tool information as userData (after geoReference per schema order)
+        tool_data = etree.SubElement(header, 'userData')
+        tool_data.set('code', 'tool')
+        tool_data.text = 'Produced by ORBIT (https://github.com/fwrise/ORBIT)'
+
+        # Add license information as userData
+        license_data = etree.SubElement(header, 'userData')
+        license_data.set('code', 'license')
+        license_data.text = 'Licensed under the Open Database License (https://opendatacommons.org/licenses/odbl/1-0/)'
+
+        # Source attribution userData only if OpenStreetMap was used
+        if self.project.openstreetmap_used:
+            source_data = etree.SubElement(header, 'userData')
+            source_data.set('code', 'sourceAttribution')
+            source_data.text = 'Map data from OpenStreetMap (https://www.openstreetmap.org/copyright)'
 
         return header
 
@@ -730,13 +733,6 @@ class OpenDriveWriter:
         lane_section = etree.SubElement(lanes, 'laneSection')
         lane_section.set('s', '0.0')
 
-        # Center lane (always required)
-        center = etree.SubElement(lane_section, 'center')
-        center_lane = etree.SubElement(center, 'lane')
-        center_lane.set('id', '0')
-        center_lane.set('type', 'none')
-        center_lane.set('level', 'false')
-
         # Calculate lane width polynomial coefficients for linear transition
         # width(s) = a + b*s + c*s² + d*s³
         # For linear transition: a = start_width, b = (end_width - start_width) / length
@@ -751,6 +747,8 @@ class OpenDriveWriter:
             # Constant width (backward compatibility)
             width_a = connecting_road.lane_width
             width_b = 0.0
+
+        # OpenDRIVE schema requires order: left, center, right
 
         # Left lanes (positive IDs: 1, 2, 3...)
         if connecting_road.lane_count_left > 0:
@@ -776,6 +774,13 @@ class OpenDriveWriter:
                 roadMark.set('weight', 'standard')
                 roadMark.set('color', 'white')
                 roadMark.set('width', '0.12')
+
+        # Center lane (always required)
+        center = etree.SubElement(lane_section, 'center')
+        center_lane = etree.SubElement(center, 'lane')
+        center_lane.set('id', '0')
+        center_lane.set('type', 'none')
+        center_lane.set('level', 'false')
 
         # Right lanes (negative IDs: -1, -2, -3...)
         if connecting_road.lane_count_right > 0:
@@ -893,11 +898,8 @@ class OpenDriveWriter:
             connection.set('connectingRoad', str(connecting_road.road_id))
             connection.set('contactPoint', 'start')  # Connecting roads start at junction
 
-            # Add priority if available (use highest priority in group)
-            if lane_connections:
-                max_priority = max(lc.priority for lc in lane_connections if lc.priority is not None)
-                if max_priority is not None and max_priority > 0:
-                    connection.set('priority', str(max_priority))
+            # Note: priority is a child element of junction, not an attribute of connection
+            # Priority handling would need to be done at the junction level if needed
 
             # Add lane links for this connection
             for lane_conn in lane_connections:
@@ -1031,63 +1033,67 @@ def export_to_opendrive(
 def validate_opendrive_file(
     file_path: str,
     schema_path: Optional[str] = None
-) -> List[str]:
+) -> Optional[List[str]]:
     """
     Validate an OpenDRIVE XML file against the XSD schema.
+
+    Uses the xmlschema library which supports XSD 1.1 features used by
+    OpenDRIVE 1.8 schemas (like xs:assert).
 
     Args:
         file_path: Path to the .xodr file to validate
         schema_path: Path to OpenDRIVE XSD schema file (OpenDRIVE_Core.xsd).
-                    If None, attempts to use bundled schema in test_projects/xsd_schema/
+                    If None, validation is skipped. All other schema files
+                    (OpenDRIVE_Road.xsd, etc.) must be in the same directory.
 
     Returns:
-        List of validation error messages. Empty list if valid.
+        List of validation error messages (empty if valid),
+        or None if validation was skipped (no schema provided).
     """
+    if schema_path is None:
+        logger.info("No schema path provided - validation skipped")
+        return None
+
     errors = []
 
-    # Find schema path
-    if schema_path is None:
-        # Try to find bundled schema
-        module_dir = Path(__file__).parent.parent.parent
-        default_schema = module_dir / "test_projects" / "xsd_schema" / "OpenDRIVE_Core.xsd"
-        if default_schema.exists():
-            schema_path = str(default_schema)
-        else:
-            logger.warning(f"No schema path provided and bundled schema not found at {default_schema}")
-            return ["Schema file not found - validation skipped"]
+    try:
+        import xmlschema
+    except ImportError:
+        errors.append("xmlschema library not installed - validation skipped")
+        return errors
 
     try:
-        # Parse schema
-        schema_doc = etree.parse(schema_path)
-        schema = etree.XMLSchema(schema_doc)
+        # Convert to absolute path for file URI generation
+        schema_path_abs = Path(schema_path).resolve()
+        schema_dir = schema_path_abs.parent
 
-        # Parse document to validate
-        doc = etree.parse(file_path)
+        # Build URI mapper to redirect online URLs to local files.
+        # OpenDRIVE schemas use xs:include with absolute URLs like:
+        # https://opendrive.asam.net/V1-8-0/xsd_schema/OpenDRIVE_Railroad.xsd
+        # The uri_mapper rewrites these to local file:// URLs before fetching.
+        uri_map = {}
+        for xsd_file in schema_dir.glob("*.xsd"):
+            filename = xsd_file.name
+            # OpenDRIVE 1.8 URL pattern
+            url_v18 = f"https://opendrive.asam.net/V1-8-0/xsd_schema/{filename}"
+            uri_map[url_v18] = xsd_file.resolve().as_uri()
 
-        # Validate
-        if not schema.validate(doc):
-            for error in schema.error_log:
-                errors.append(f"Line {error.line}: {error.message}")
+        # Load schema with XSD 1.1 support and URI mapper
+        schema = xmlschema.XMLSchema11(
+            str(schema_path_abs),
+            uri_mapper=uri_map
+        )
 
-    except etree.XMLSchemaParseError as e:
-        errors.append(f"Schema parse error: {e}")
-    except etree.XMLSyntaxError as e:
-        errors.append(f"XML syntax error: {e}")
+        # Validate the file
+        validation_errors = list(schema.iter_errors(file_path))
+
+        for error in validation_errors:
+            if hasattr(error, 'reason') and error.reason:
+                errors.append(f"Line {error.sourceline}: {error.reason}")
+            else:
+                errors.append(f"Line {error.sourceline}: {error.message}")
+
     except Exception as e:
         errors.append(f"Validation error: {e}")
 
     return errors
-
-
-def get_default_schema_path() -> Optional[str]:
-    """
-    Get the path to the bundled OpenDRIVE XSD schema.
-
-    Returns:
-        Path to OpenDRIVE_Core.xsd or None if not found
-    """
-    module_dir = Path(__file__).parent.parent.parent
-    schema_path = module_dir / "test_projects" / "xsd_schema" / "OpenDRIVE_Core.xsd"
-    if schema_path.exists():
-        return str(schema_path)
-    return None

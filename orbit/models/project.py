@@ -160,6 +160,249 @@ class Project:
                 return road
         return None
 
+    def split_road_at_point(
+        self,
+        road_id: str,
+        polyline_id: str,
+        point_index: int
+    ) -> Optional[Tuple[Road, Road]]:
+        """
+        Split a road at a centerline point, creating two connected roads.
+
+        The original road is modified to become the first segment, and a new road
+        is created for the second segment. Both centerline and boundary polylines
+        are split at the corresponding positions.
+
+        Args:
+            road_id: ID of the road to split
+            polyline_id: ID of the centerline polyline
+            point_index: Index of the point where to split
+
+        Returns:
+            Tuple of (road1, road2) if successful, None on failure
+        """
+        from orbit.utils.geometry import (
+            split_polyline_at_index,
+            split_boundary_at_centerline_s,
+            calculate_path_length
+        )
+
+        # Get road and centerline
+        road = self.get_road(road_id)
+        if not road:
+            logger.error(f"Road {road_id} not found")
+            return None
+
+        centerline = self.get_polyline(polyline_id)
+        if not centerline:
+            logger.error(f"Centerline polyline {polyline_id} not found")
+            return None
+
+        if road.centerline_id != polyline_id:
+            logger.error(f"Polyline {polyline_id} is not the centerline of road {road_id}")
+            return None
+
+        # Validate point_index (cannot split at first or last point)
+        if point_index <= 0 or point_index >= centerline.point_count() - 1:
+            logger.error(f"Invalid split point index {point_index}")
+            return None
+
+        # Store original centerline points before modification (needed for boundary projection)
+        original_centerline_points = list(centerline.points)
+
+        # Calculate s-coordinate at split point
+        s_coords = road.calculate_centerline_s_coordinates(centerline.points)
+        split_s = s_coords[point_index]
+
+        # Split centerline polyline
+        centerline_pts1, centerline_pts2 = split_polyline_at_index(
+            centerline.points, point_index, duplicate_point=True
+        )
+
+        # Create new centerline polyline for road 2
+        new_centerline = Polyline(
+            points=centerline_pts2,
+            line_type=centerline.line_type,
+            road_mark_type=centerline.road_mark_type
+        )
+        self.add_polyline(new_centerline)
+
+        # Update original centerline
+        centerline.points = centerline_pts1
+
+        # Split boundary polylines
+        new_boundary_ids = []
+        for boundary_id in road.polyline_ids:
+            if boundary_id == polyline_id:
+                continue  # Skip centerline, already handled
+
+            boundary = self.get_polyline(boundary_id)
+            if not boundary:
+                continue
+
+            # Split boundary at corresponding s-coordinate
+            result = split_boundary_at_centerline_s(
+                boundary.points,
+                original_centerline_points,  # Use original (unsplit) centerline for projection
+                split_s
+            )
+
+            if result:
+                boundary_pts1, boundary_pts2 = result
+
+                # Create new boundary for road 2
+                new_boundary = Polyline(
+                    points=boundary_pts2,
+                    line_type=boundary.line_type,
+                    road_mark_type=boundary.road_mark_type
+                )
+                self.add_polyline(new_boundary)
+                new_boundary_ids.append(new_boundary.id)
+
+                # Update original boundary
+                boundary.points = boundary_pts1
+
+        # Distribute lane sections
+        sections_road1, sections_road2 = road.distribute_lane_sections_for_split(
+            split_s, point_index
+        )
+
+        # Generate segment names
+        original_name = road.name
+        # Check if name already has segment suffix
+        import re
+        seg_match = re.match(r'^(.*?)\s*\(seg \d+/\d+\)$', original_name)
+        if seg_match:
+            base_name = seg_match.group(1)
+        else:
+            base_name = original_name
+
+        road1_name = f"{base_name} (seg 1/2)"
+        road2_name = f"{base_name} (seg 2/2)"
+
+        # Store original junction_id before we clear it from road1
+        original_junction_id = road.junction_id
+
+        # Create new road (road 2) with second segment
+        road2 = Road(
+            name=road2_name,
+            polyline_ids=[new_centerline.id] + new_boundary_ids,
+            centerline_id=new_centerline.id,
+            road_type=road.road_type,
+            lane_info=road.lane_info,
+            lane_sections=sections_road2,
+            speed_limit=road.speed_limit,
+            junction_id=None,  # Will be set below if needed
+            predecessor_id=road.id,  # Link to first road
+            predecessor_contact="end",
+            successor_id=road.successor_id,  # Keep original successor
+            successor_contact=road.successor_contact
+        )
+
+        # Update road 1 (original road)
+        road.name = road1_name
+        road.polyline_ids = [polyline_id] + [
+            bid for bid in road.polyline_ids
+            if bid != polyline_id and bid not in [nb.id for nb in [self.get_polyline(nid) for nid in new_boundary_ids if self.get_polyline(nid)]]
+        ]
+        road.lane_sections = sections_road1
+        road.successor_id = road2.id
+        road.successor_contact = "start"
+
+        # Add new road to project
+        self.add_road(road2)
+
+        # Handle junction remapping
+        # If the original road was connected to a junction, we need to update the junction
+        # to point to road2 instead (since road2 now has the "end" that was connected)
+        self._remap_junctions_after_road_split(road.id, road2.id, original_junction_id)
+
+        logger.info(f"Split road '{original_name}' into '{road1_name}' and '{road2_name}'")
+
+        return (road, road2)
+
+    def _remap_junctions_after_road_split(
+        self,
+        original_road_id: str,
+        new_road_id: str,
+        original_junction_id: Optional[str]
+    ) -> None:
+        """
+        Update junction references after a road split.
+
+        When a road is split, the "end" of the original road becomes the "end" of
+        the new road (road2). Any junctions that were connected to the original
+        road's end need to be updated to reference the new road instead.
+
+        Args:
+            original_road_id: ID of the original road (now road1, the first segment)
+            new_road_id: ID of the new road (road2, the second segment)
+            original_junction_id: The junction_id that was on the original road (if any)
+        """
+        road2 = self.get_road(new_road_id)
+        if not road2:
+            return
+
+        # If original road had a junction_id, transfer it to road2
+        # (the junction_id field typically means the road connects to that junction at its end)
+        if original_junction_id:
+            road2.junction_id = original_junction_id
+            # Clear from road1 (the original road object is already updated)
+            road1 = self.get_road(original_road_id)
+            if road1:
+                road1.junction_id = None
+
+        # Update all junctions that reference the original road
+        for junction in self.junctions:
+            remapped = False
+
+            # Update connected_road_ids
+            if original_road_id in junction.connected_road_ids:
+                # Replace original road with new road in the list
+                idx = junction.connected_road_ids.index(original_road_id)
+                junction.connected_road_ids[idx] = new_road_id
+                remapped = True
+
+            # Update entry_roads (for roundabouts)
+            if original_road_id in junction.entry_roads:
+                idx = junction.entry_roads.index(original_road_id)
+                junction.entry_roads[idx] = new_road_id
+                remapped = True
+
+            # Update exit_roads (for roundabouts)
+            if original_road_id in junction.exit_roads:
+                idx = junction.exit_roads.index(original_road_id)
+                junction.exit_roads[idx] = new_road_id
+                remapped = True
+
+            # Update connecting_roads
+            for conn_road in junction.connecting_roads:
+                if conn_road.predecessor_road_id == original_road_id:
+                    conn_road.predecessor_road_id = new_road_id
+                    remapped = True
+                if conn_road.successor_road_id == original_road_id:
+                    conn_road.successor_road_id = new_road_id
+                    remapped = True
+
+            # Update lane_connections
+            for lane_conn in junction.lane_connections:
+                if lane_conn.from_road_id == original_road_id:
+                    lane_conn.from_road_id = new_road_id
+                    remapped = True
+                if lane_conn.to_road_id == original_road_id:
+                    lane_conn.to_road_id = new_road_id
+                    remapped = True
+
+            # Update boundary segments
+            if junction.boundary:
+                for segment in junction.boundary.segments:
+                    if segment.road_id == original_road_id:
+                        segment.road_id = new_road_id
+                        remapped = True
+
+            if remapped:
+                logger.info(f"Remapped junction '{junction.name}' to reference new road {new_road_id[:8]}...")
+
     # Junction management
     def add_junction(self, junction: Junction) -> None:
         """Add a junction to the project."""

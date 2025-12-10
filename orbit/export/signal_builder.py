@@ -23,7 +23,7 @@ class SignalBuilder:
             country_code: Two-letter ISO 3166-1 country code
         """
         self.scale_x = scale_x
-        self.country_code = country_code.lower()
+        self.country_code = country_code.upper()  # Schema requires uppercase [A-Z]{2}
 
     def create_signals(
         self,
