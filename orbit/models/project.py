@@ -403,6 +403,246 @@ class Project:
             if remapped:
                 logger.info(f"Remapped junction '{junction.name}' to reference new road {new_road_id[:8]}...")
 
+    def merge_consecutive_roads(
+        self,
+        road1_id: str,
+        road2_id: str
+    ) -> Optional[Road]:
+        """
+        Merge two consecutive roads into one.
+
+        Road1 must be the predecessor of Road2 (road1.successor_id == road2.id).
+        The merged road keeps road1's ID and most properties. Road2 and its
+        polylines are deleted after merging.
+
+        Args:
+            road1_id: ID of the first road (predecessor)
+            road2_id: ID of the second road (successor)
+
+        Returns:
+            The merged road (road1 with updated data), or None on failure
+        """
+        import re
+        from orbit.utils.geometry import (
+            merge_polylines_at_junction,
+            calculate_path_length,
+            distance_between_points
+        )
+
+        # Get both roads
+        road1 = self.get_road(road1_id)
+        road2 = self.get_road(road2_id)
+
+        if not road1 or not road2:
+            logger.error(f"Road not found: road1={road1_id}, road2={road2_id}")
+            return None
+
+        # Validate that roads are consecutive
+        if road1.successor_id != road2.id or road2.predecessor_id != road1.id:
+            logger.error(
+                f"Roads are not consecutive: road1.successor={road1.successor_id}, "
+                f"road2.predecessor={road2.predecessor_id}"
+            )
+            return None
+
+        # Get centerlines
+        centerline1 = self.get_polyline(road1.centerline_id)
+        centerline2 = self.get_polyline(road2.centerline_id)
+
+        if not centerline1 or not centerline2:
+            logger.error("Missing centerline polyline")
+            return None
+
+        # Store road1's original centerline point count for section index adjustment
+        road1_point_count = len(centerline1.points)
+
+        # Merge centerlines
+        merged_centerline_pts = merge_polylines_at_junction(
+            centerline1.points,
+            centerline2.points,
+            tolerance=5.0  # Allow some tolerance for junction points
+        )
+
+        if merged_centerline_pts is None:
+            logger.error(
+                f"Centerlines cannot be joined: end1={centerline1.points[-1]}, "
+                f"start2={centerline2.points[0]}"
+            )
+            return None
+
+        # Calculate road1's length before merge (needed for section adjustment)
+        road1_length_before = calculate_path_length(centerline1.points)
+
+        # Update road1's centerline
+        centerline1.points = merged_centerline_pts
+
+        # Merge boundary polylines by matching endpoints
+        road1_boundaries = [
+            bid for bid in road1.polyline_ids if bid != road1.centerline_id
+        ]
+        road2_boundaries = [
+            bid for bid in road2.polyline_ids if bid != road2.centerline_id
+        ]
+
+        boundaries_to_delete = []
+
+        for b1_id in road1_boundaries:
+            b1 = self.get_polyline(b1_id)
+            if not b1 or not b1.points:
+                continue
+
+            # Find matching boundary in road2 (by endpoint proximity)
+            best_match_id = None
+            best_match_dist = float('inf')
+
+            for b2_id in road2_boundaries:
+                b2 = self.get_polyline(b2_id)
+                if not b2 or not b2.points:
+                    continue
+
+                dist = distance_between_points(b1.points[-1], b2.points[0])
+                if dist < best_match_dist:
+                    best_match_dist = dist
+                    best_match_id = b2_id
+
+            # Merge if match found within tolerance
+            if best_match_id and best_match_dist < 10.0:
+                b2 = self.get_polyline(best_match_id)
+                merged_boundary_pts = merge_polylines_at_junction(
+                    b1.points, b2.points, tolerance=10.0
+                )
+                if merged_boundary_pts:
+                    b1.points = merged_boundary_pts
+                    boundaries_to_delete.append(best_match_id)
+                    road2_boundaries.remove(best_match_id)
+
+        # Merge lane sections
+        # First, keep all of road1's sections as-is
+        # Then append road2's sections with adjusted s-coordinates
+
+        for section in road2.lane_sections:
+            # Adjust s-coordinates (add road1's length)
+            section.s_start += road1_length_before
+            section.s_end += road1_length_before
+
+            # Adjust end_point_index (add road1's point count minus 1 for junction overlap)
+            if section.end_point_index is not None:
+                section.end_point_index += road1_point_count - 1
+
+            road1.lane_sections.append(section)
+
+        # Renumber all sections
+        road1.renumber_sections()
+
+        # Update road1's properties
+        # Strip segment suffix from name if present
+        base_name = road1.name
+        seg_match = re.match(r'^(.*?)\s*\(seg \d+/\d+\)$', base_name)
+        if seg_match:
+            base_name = seg_match.group(1).strip()
+        road1.name = base_name
+
+        # Inherit road2's successor
+        road1.successor_id = road2.successor_id
+        road1.successor_contact = road2.successor_contact
+
+        # Inherit road2's junction_id if it had one (at its end)
+        if road2.junction_id:
+            road1.junction_id = road2.junction_id
+
+        # Remap junctions: any reference to road2 should now point to road1
+        self._remap_junctions_after_road_merge(road1.id, road2.id)
+
+        # Update any road that had road2 as predecessor to now have road1
+        for road in self.roads:
+            if road.predecessor_id == road2.id:
+                road.predecessor_id = road1.id
+
+        # Delete road2's polylines
+        for b_id in boundaries_to_delete:
+            self.remove_polyline(b_id)
+
+        # Delete road2's centerline
+        self.remove_polyline(road2.centerline_id)
+
+        # Delete any remaining road2 boundaries that weren't merged
+        for b_id in road2_boundaries:
+            self.remove_polyline(b_id)
+
+        # Delete road2
+        self.remove_road(road2.id)
+
+        logger.info(f"Merged roads into '{road1.name}' (id={road1.id[:8]}...)")
+
+        return road1
+
+    def _remap_junctions_after_road_merge(
+        self,
+        kept_road_id: str,
+        deleted_road_id: str
+    ) -> None:
+        """
+        Update junction references after merging roads.
+
+        Any reference to deleted_road_id in junctions is replaced with kept_road_id.
+
+        Args:
+            kept_road_id: ID of the road that remains (merged result)
+            deleted_road_id: ID of the road being deleted
+        """
+        for junction in self.junctions:
+            remapped = False
+
+            # Update connected_road_ids
+            if deleted_road_id in junction.connected_road_ids:
+                junction.connected_road_ids.remove(deleted_road_id)
+                if kept_road_id not in junction.connected_road_ids:
+                    junction.connected_road_ids.append(kept_road_id)
+                remapped = True
+
+            # Update entry_roads (for roundabouts)
+            if deleted_road_id in junction.entry_roads:
+                idx = junction.entry_roads.index(deleted_road_id)
+                junction.entry_roads[idx] = kept_road_id
+                remapped = True
+
+            # Update exit_roads (for roundabouts)
+            if deleted_road_id in junction.exit_roads:
+                idx = junction.exit_roads.index(deleted_road_id)
+                junction.exit_roads[idx] = kept_road_id
+                remapped = True
+
+            # Update connecting_roads
+            for conn_road in junction.connecting_roads:
+                if conn_road.predecessor_road_id == deleted_road_id:
+                    conn_road.predecessor_road_id = kept_road_id
+                    remapped = True
+                if conn_road.successor_road_id == deleted_road_id:
+                    conn_road.successor_road_id = kept_road_id
+                    remapped = True
+
+            # Update lane_connections
+            for lane_conn in junction.lane_connections:
+                if lane_conn.from_road_id == deleted_road_id:
+                    lane_conn.from_road_id = kept_road_id
+                    remapped = True
+                if lane_conn.to_road_id == deleted_road_id:
+                    lane_conn.to_road_id = kept_road_id
+                    remapped = True
+
+            # Update boundary segments
+            if junction.boundary:
+                for segment in junction.boundary.segments:
+                    if segment.road_id == deleted_road_id:
+                        segment.road_id = kept_road_id
+                        remapped = True
+
+            if remapped:
+                logger.info(
+                    f"Remapped junction '{junction.name}' references from "
+                    f"{deleted_road_id[:8]}... to {kept_road_id[:8]}..."
+                )
+
     # Junction management
     def add_junction(self, junction: Junction) -> None:
         """Add a junction to the project."""

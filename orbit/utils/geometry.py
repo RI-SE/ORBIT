@@ -1475,6 +1475,40 @@ def split_boundary_at_centerline_s(
     return (first_segment, second_segment)
 
 
+def merge_polylines_at_junction(
+    polyline1_points: List[Tuple[float, float]],
+    polyline2_points: List[Tuple[float, float]],
+    tolerance: float = 1.0
+) -> Optional[List[Tuple[float, float]]]:
+    """
+    Merge two polylines that share a junction point.
+
+    The first polyline's end point should be at or near the second polyline's start point.
+    The duplicate junction point is removed in the merged result.
+
+    Args:
+        polyline1_points: First polyline (ends at junction)
+        polyline2_points: Second polyline (starts at junction)
+        tolerance: Max distance between endpoints to consider them as same point (pixels)
+
+    Returns:
+        Merged points list (removes duplicate junction point), or None if not joinable
+    """
+    if not polyline1_points or not polyline2_points:
+        return None
+
+    end1 = polyline1_points[-1]
+    start2 = polyline2_points[0]
+
+    # Check if endpoints are close enough
+    dist = math.sqrt((end1[0] - start2[0])**2 + (end1[1] - start2[1])**2)
+    if dist > tolerance:
+        return None
+
+    # Merge: all of polyline1 + polyline2 without first point (remove duplicate junction)
+    return list(polyline1_points) + list(polyline2_points[1:])
+
+
 def sample_bezier(
     control_points: List[Tuple[float, float]],
     num_points: int = 20

@@ -4,7 +4,7 @@ Road tree widget for ORBIT.
 Displays hierarchical view of roads and their polylines with management capabilities.
 """
 
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
@@ -25,6 +25,7 @@ class RoadTreeWidget(QWidget):
     road_added = pyqtSignal(object)  # Emits Road
     road_modified = pyqtSignal(str)  # Emits road ID
     road_deleted = pyqtSignal(str)  # Emits road ID
+    roads_merge_requested = pyqtSignal(str, str)  # Emits (road1_id, road2_id) for merge
     polyline_selected = pyqtSignal(str)  # Emits polyline ID
     polyline_deleted = pyqtSignal(str)  # Emits polyline ID
     lane_selected = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id
@@ -258,6 +259,37 @@ class RoadTreeWidget(QWidget):
 
     def show_context_menu(self, position):
         """Show context menu for tree items."""
+        # Check for multi-road selection first (for merge operation)
+        selected_items = self.tree.selectedItems()
+        selected_roads = []
+        for sel_item in selected_items:
+            sel_data = sel_item.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(sel_data, dict) and sel_data.get("type") == "road":
+                selected_roads.append(sel_data["id"])
+
+        # If exactly 2 roads selected, show merge menu
+        if len(selected_roads) == 2:
+            menu = QMenu(self)
+            merge_action = QAction("Merge Roads", self)
+
+            # Validate merge is possible and determine order
+            can_merge, road1_id, road2_id = self._can_merge_roads(
+                selected_roads[0], selected_roads[1]
+            )
+            merge_action.setEnabled(can_merge)
+            if not can_merge:
+                merge_action.setText("Merge Roads (not consecutive)")
+
+            # Capture IDs for lambda
+            r1_id, r2_id = road1_id, road2_id
+            merge_action.triggered.connect(
+                lambda checked, r1=r1_id, r2=r2_id: self.roads_merge_requested.emit(r1, r2)
+            )
+            menu.addAction(merge_action)
+            menu.exec(self.tree.viewport().mapToGlobal(position))
+            return
+
+        # Single item context menu
         item = self.tree.itemAt(position)
         if not item:
             return
@@ -493,3 +525,36 @@ class RoadTreeWidget(QWidget):
                     self.tree.scrollToItem(item)
                     return
             iterator += 1
+
+    def _can_merge_roads(
+        self,
+        road_a_id: str,
+        road_b_id: str
+    ) -> Tuple[bool, str, str]:
+        """
+        Check if two roads can be merged and determine the correct order.
+
+        Roads can be merged if they are consecutive (one is predecessor of the other).
+
+        Args:
+            road_a_id: ID of first selected road
+            road_b_id: ID of second selected road
+
+        Returns:
+            Tuple of (can_merge, road1_id, road2_id) where road1 is the predecessor
+        """
+        road_a = self.project.get_road(road_a_id)
+        road_b = self.project.get_road(road_b_id)
+
+        if not road_a or not road_b:
+            return (False, road_a_id, road_b_id)
+
+        # Check if A is predecessor of B (A.successor == B and B.predecessor == A)
+        if road_a.successor_id == road_b.id and road_b.predecessor_id == road_a.id:
+            return (True, road_a_id, road_b_id)
+
+        # Check if B is predecessor of A (B.successor == A and A.predecessor == B)
+        if road_b.successor_id == road_a.id and road_a.predecessor_id == road_b.id:
+            return (True, road_b_id, road_a_id)
+
+        return (False, road_a_id, road_b_id)

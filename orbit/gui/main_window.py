@@ -459,6 +459,7 @@ class MainWindow(QMainWindow):
         self.road_tree.polyline_selected.connect(self.on_polyline_selected_in_tree)
         self.road_tree.polyline_deleted.connect(self.on_polyline_deleted_in_tree)
         self.road_tree.lane_selected.connect(self.on_lane_selected_in_tree)
+        self.road_tree.roads_merge_requested.connect(self.on_roads_merge_requested)
 
     # Project management
     def new_project(self):
@@ -2096,6 +2097,80 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Road split into '{road1.name}' and '{road2.name}'")
         else:
             show_warning(self, "Failed to split road. Check the console for details.", "Split Failed")
+
+    def on_roads_merge_requested(self, road1_id: str, road2_id: str):
+        """
+        Handle road merge request from RoadTreeWidget.
+
+        Merges two consecutive roads into one, combining their centerlines,
+        boundaries, and lane sections.
+
+        Args:
+            road1_id: ID of the first road (predecessor)
+            road2_id: ID of the second road (successor)
+        """
+        road1 = self.project.get_road(road1_id)
+        road2 = self.project.get_road(road2_id)
+
+        if not road1 or not road2:
+            return
+
+        # Confirm with user
+        reply = QMessageBox.question(
+            self,
+            "Merge Roads",
+            f"Merge '{road1.name}' and '{road2.name}' into a single road?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Remember polylines that will be deleted
+        road2_polylines = set(road2.polyline_ids)
+
+        result = self.project.merge_consecutive_roads(road1_id, road2_id)
+
+        if result:
+            self.modified = True
+
+            # Remove graphics for deleted polylines (road2's polylines that are no longer in project)
+            for pid in road2_polylines:
+                # Check if this polyline still exists (some were merged, some deleted)
+                if not self.project.get_polyline(pid):
+                    # Polyline was deleted - remove its graphics
+                    if pid in self.image_view.polyline_items:
+                        item = self.image_view.polyline_items[pid]
+                        item.remove()
+                        # Remove s-offset labels if they exist
+                        if pid in self.image_view.soffset_labels:
+                            for text_item, bg_item in self.image_view.soffset_labels[pid]:
+                                if text_item.scene() == self.image_view.scene:
+                                    self.image_view.scene.removeItem(text_item)
+                                if bg_item.scene() == self.image_view.scene:
+                                    self.image_view.scene.removeItem(bg_item)
+                            del self.image_view.soffset_labels[pid]
+                        del self.image_view.polyline_items[pid]
+
+            # Update graphics for road1's polylines (they were modified)
+            for pid in result.polyline_ids:
+                self.image_view.update_polyline(pid)
+
+            # Refresh trees
+            self.road_tree.refresh_tree()
+            self.elements_tree.refresh_tree()
+            self.update_window_title()
+
+            # Refresh lane graphics
+            self.update_affected_road_lanes()
+
+            self.statusBar().showMessage(f"Merged roads into '{result.name}'")
+        else:
+            show_warning(
+                self,
+                "Failed to merge roads. Check the console for details.",
+                "Merge Failed"
+            )
 
     def on_section_modified(self, road_id: str):
         """Handle section modified signal."""
