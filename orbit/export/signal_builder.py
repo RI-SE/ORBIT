@@ -105,14 +105,29 @@ class SignalBuilder:
         # Map signal type to OpenDRIVE type/subtype
         self._set_signal_type_attributes(signal_elem, signal)
 
-        # Validity range (optional)
-        if signal.validity_range:
-            validity = etree.SubElement(signal_elem, 'validity')
-            # Convert pixel coordinates to meters
-            from_s = signal.validity_range[0] * self.scale_x
-            to_s = signal.validity_range[1] * self.scale_x
-            validity.set('fromLane', '0')
-            validity.set('toLane', '0')
+        # Lane validity (which lanes this signal applies to)
+        if signal.validity_lanes is not None and len(signal.validity_lanes) > 0:
+            # Export each lane range as a validity element
+            # OpenDRIVE validity uses fromLane/toLane (inclusive range)
+            # Sort lanes and group into contiguous ranges
+            sorted_lanes = sorted(signal.validity_lanes)
+            ranges = []
+            range_start = sorted_lanes[0]
+            range_end = sorted_lanes[0]
+
+            for lane_id in sorted_lanes[1:]:
+                if lane_id == range_end + 1:
+                    range_end = lane_id
+                else:
+                    ranges.append((range_start, range_end))
+                    range_start = lane_id
+                    range_end = lane_id
+            ranges.append((range_start, range_end))
+
+            for from_lane, to_lane in ranges:
+                validity = etree.SubElement(signal_elem, 'validity')
+                validity.set('fromLane', str(from_lane))
+                validity.set('toLane', str(to_lane))
 
         return signal_elem
 

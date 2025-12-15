@@ -5,7 +5,7 @@ Represents traffic signals placed on the map with position, type, and properties
 """
 
 from enum import Enum, auto
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 import uuid
 
 from orbit.utils.enum_formatting import format_enum_name
@@ -128,6 +128,7 @@ class Signal:
         sign_id: Sign ID within library (e.g., "B1", "C31-50") for LIBRARY_SIGN type
         custom_type: Custom OpenDRIVE type code for CUSTOM type
         custom_subtype: Custom OpenDRIVE subtype code for CUSTOM type
+        validity_lanes: List of lane IDs this signal applies to (None = all lanes)
     """
 
     def __init__(
@@ -168,6 +169,8 @@ class Signal:
         # Custom OpenDRIVE codes (for CUSTOM type)
         self.custom_type: Optional[str] = None
         self.custom_subtype: Optional[str] = None
+        # Lane validity - list of lane IDs this signal applies to (None = all lanes)
+        self.validity_lanes: Optional[List[int]] = None
 
     def to_dict(self) -> dict:
         """Serialize signal to dictionary for JSON storage."""
@@ -206,6 +209,9 @@ class Signal:
             data['custom_type'] = self.custom_type
         if self.custom_subtype:
             data['custom_subtype'] = self.custom_subtype
+        # Lane validity
+        if self.validity_lanes is not None:
+            data['validity_lanes'] = self.validity_lanes
         return data
 
     @classmethod
@@ -296,6 +302,8 @@ class Signal:
         # Custom OpenDRIVE codes
         signal.custom_type = data.get('custom_type')
         signal.custom_subtype = data.get('custom_subtype')
+        # Lane validity
+        signal.validity_lanes = data.get('validity_lanes')
         return signal
 
     def get_display_name(self) -> str:

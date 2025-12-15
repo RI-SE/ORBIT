@@ -1149,6 +1149,8 @@ class OpenDriveImporter:
         signal.dynamic = odr_signal.dynamic
         signal.subtype = odr_signal.subtype
         signal.country = odr_signal.country
+        # Lane validity (which lanes this signal applies to)
+        signal.validity_lanes = odr_signal.validity_lanes
 
         self.project.signals.append(signal)
         return True

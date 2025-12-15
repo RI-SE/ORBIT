@@ -99,6 +99,9 @@ class Lane:
     direction: Optional[str] = None  # "standard", "reversed", "both"
     advisory: Optional[str] = None  # "none", "inner", "outer", "both"
     level: bool = False  # Keep lane level (don't apply superelevation)
+    # Turn directions (from OSM turn:lanes tag)
+    # Format: list of turn directions like ["left", "through", "right"]
+    turn_directions: Optional[List[str]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -149,6 +152,9 @@ class Lane:
             data['advisory'] = self.advisory
         if self.level:
             data['level'] = self.level
+        # Turn directions (from OSM)
+        if self.turn_directions is not None:
+            data['turn_directions'] = self.turn_directions
         return data
 
     @classmethod
@@ -176,7 +182,8 @@ class Lane:
             successor_id=data.get('successor_id'),
             direction=data.get('direction'),
             advisory=data.get('advisory'),
-            level=data.get('level', False)
+            level=data.get('level', False),
+            turn_directions=data.get('turn_directions')
         )
 
     def get_display_name(self) -> str:

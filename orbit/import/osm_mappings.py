@@ -434,6 +434,99 @@ def get_path_type_and_lane_type(tags: dict) -> tuple[str, LaneType] | None:
     return None
 
 
+def parse_turn_lanes(turn_lanes_str: str) -> list[list[str]]:
+    """
+    Parse OSM turn:lanes tag into list of turn directions per lane.
+
+    The turn:lanes tag uses '|' to separate lanes and ';' to separate
+    multiple directions for the same lane.
+
+    Args:
+        turn_lanes_str: Value of turn:lanes tag (e.g., "left|through;left|through|right")
+
+    Returns:
+        List of lists, where each inner list contains turn directions for that lane.
+        Index 0 is the leftmost lane. Empty strings indicate no turn restriction.
+
+    Examples:
+        "left|through|right" -> [["left"], ["through"], ["right"]]
+        "left|through;left|through|right" -> [["left"], ["through", "left"], ["through"], ["right"]]
+        "none|through|through;right" -> [["none"], ["through"], ["through", "right"]]
+    """
+    if not turn_lanes_str:
+        return []
+
+    result = []
+    lanes = turn_lanes_str.split('|')
+    for lane_str in lanes:
+        # Split by semicolon for multiple directions
+        directions = [d.strip().lower() for d in lane_str.split(';') if d.strip()]
+        # Normalize direction names
+        normalized = []
+        for d in directions:
+            # Map various OSM turn values to standard names
+            if d in ('left', 'sharp_left', 'slight_left'):
+                normalized.append('left')
+            elif d in ('right', 'sharp_right', 'slight_right'):
+                normalized.append('right')
+            elif d in ('through', 'straight'):
+                normalized.append('through')
+            elif d == 'reverse':
+                normalized.append('reverse')
+            elif d == 'merge_to_left':
+                normalized.append('merge_left')
+            elif d == 'merge_to_right':
+                normalized.append('merge_right')
+            elif d in ('none', ''):
+                normalized.append('none')
+            else:
+                # Keep unknown values as-is
+                normalized.append(d)
+        result.append(normalized if normalized else ['none'])
+
+    return result
+
+
+# OSM surface values to OpenDrive material properties
+# Maps to (friction, roughness, surface_name)
+OSM_SURFACE_TO_MATERIAL = {
+    'asphalt': (0.9, 0.01, 'asphalt'),
+    'concrete': (0.8, 0.02, 'concrete'),
+    'paved': (0.85, 0.015, 'asphalt'),  # Generic paved
+    'unpaved': (0.5, 0.05, 'gravel'),
+    'gravel': (0.5, 0.05, 'gravel'),
+    'fine_gravel': (0.55, 0.04, 'gravel'),
+    'compacted': (0.6, 0.03, 'gravel'),
+    'cobblestone': (0.7, 0.04, 'cobblestone'),
+    'sett': (0.7, 0.035, 'cobblestone'),
+    'paving_stones': (0.75, 0.025, 'cobblestone'),
+    'dirt': (0.4, 0.06, 'dirt'),
+    'earth': (0.4, 0.06, 'dirt'),
+    'ground': (0.4, 0.06, 'dirt'),
+    'grass': (0.35, 0.08, 'grass'),
+    'sand': (0.3, 0.07, 'sand'),
+    'wood': (0.6, 0.02, 'wood'),
+    'metal': (0.7, 0.01, 'metal'),
+}
+
+
+def get_surface_material(surface_tag: str) -> tuple[float, float, str] | None:
+    """
+    Get OpenDrive material properties from OSM surface tag.
+
+    Args:
+        surface_tag: Value of OSM surface tag
+
+    Returns:
+        Tuple of (friction, roughness, surface_name) or None if unknown
+    """
+    if not surface_tag:
+        return None
+
+    surface_tag = surface_tag.strip().lower()
+    return OSM_SURFACE_TO_MATERIAL.get(surface_tag)
+
+
 def get_path_width_from_osm(tags: dict, lane_type: LaneType) -> float:
     """
     Get path width in meters from OSM tags or defaults.

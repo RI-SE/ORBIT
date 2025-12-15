@@ -85,7 +85,7 @@ class OverpassAPIClient:
         bbox_str = f"{min_lat},{min_lon},{max_lat},{max_lon}"
 
         if detail_level == 'moderate':
-            # Roads, paths, traffic signals, and common regulatory signs
+            # Roads, paths, traffic signals, common regulatory signs, and turn restrictions
             query = f"""
 [out:json][timeout:{self.timeout}];
 (
@@ -99,13 +99,14 @@ class OverpassAPIClient:
   node["highway"="stop"]({bbox_str});
   node["traffic_sign"~"maxspeed|274|C3[123]"]({bbox_str});
   node["maxspeed"]({bbox_str});
+  relation["type"="restriction"]({bbox_str});
 );
 out body;
 >;
 out skel qt;
 """
         elif detail_level == 'full':
-            # Everything: roads, paths, signals, signs, furniture, buildings, vegetation
+            # Everything: roads, paths, signals, signs, furniture, buildings, vegetation, restrictions
             query = f"""
 [out:json][timeout:{self.timeout}];
 (
@@ -127,6 +128,7 @@ out skel qt;
   node["natural"="tree"]({bbox_str});
   node["natural"="scrub"]({bbox_str});
   node["natural"="bush"]({bbox_str});
+  relation["type"="restriction"]({bbox_str});
 );
 out body;
 >;

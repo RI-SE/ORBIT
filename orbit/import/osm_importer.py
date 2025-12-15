@@ -630,6 +630,19 @@ class OSMImporter:
 
         # Import junction_analyzer to access analysis functions
         import importlib
+
+        # Process OSM turn restriction relations
+        if junctions:
+            osm_to_orbit = importlib.import_module('orbit.import.osm_to_orbit')
+            process_turn_restrictions = osm_to_orbit.process_turn_restrictions
+            restrictions_count = process_turn_restrictions(
+                osm_data,
+                junctions,
+                self.road_to_osm_way,
+                verbose=options.verbose
+            )
+            if options.verbose:
+                print(f"DEBUG: Processed {restrictions_count} turn restrictions from OSM relations")
         junction_analyzer_module = importlib.import_module('orbit.import.junction_analyzer')
         analyze_junction_geometry = junction_analyzer_module.analyze_junction_geometry
         detect_connection_patterns = junction_analyzer_module.detect_connection_patterns

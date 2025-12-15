@@ -33,6 +33,8 @@ from .osm_mappings import (
     get_object_type_from_osm,
     get_path_type_and_lane_type,
     get_path_width_from_osm,
+    parse_turn_lanes,
+    get_surface_material,
 )
 
 
@@ -1347,6 +1349,22 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
                 speed_value = int(speed_value * 1.60934)
             road.speed_limit = float(speed_value)
 
+    # Parse turn:lanes tags for turn direction information
+    turn_lanes_forward = None
+    turn_lanes_backward = None
+    if 'turn:lanes:forward' in osm_way.tags:
+        turn_lanes_forward = parse_turn_lanes(osm_way.tags['turn:lanes:forward'])
+    elif 'turn:lanes' in osm_way.tags and oneway:
+        # For oneway roads, turn:lanes applies to all lanes
+        turn_lanes_forward = parse_turn_lanes(osm_way.tags['turn:lanes'])
+    if 'turn:lanes:backward' in osm_way.tags:
+        turn_lanes_backward = parse_turn_lanes(osm_way.tags['turn:lanes:backward'])
+
+    # Parse surface tag for road material
+    surface_material = None
+    if 'surface' in osm_way.tags:
+        surface_material = get_surface_material(osm_way.tags['surface'])
+
     # Create single lane section spanning entire road
     section = LaneSection(
         section_number=1,
@@ -1364,6 +1382,12 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
     )
     section.lanes.append(center_lane)
 
+    # Helper to apply surface material to a lane
+    def apply_surface_to_lane(lane: Lane, surface_mat):
+        if surface_mat:
+            friction, roughness, surface_name = surface_mat
+            lane.materials = [(0.0, friction, roughness, surface_name)]
+
     # For oneway roads, only create lanes on one side
     if oneway:
         if reverse_oneway:
@@ -1375,6 +1399,10 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
                     road_mark_type=RoadMarkType.BROKEN,
                     width=lane_width
                 )
+                # Apply turn directions (turn:lanes index 0 = leftmost lane)
+                if turn_lanes_forward and i <= len(turn_lanes_forward):
+                    lane.turn_directions = turn_lanes_forward[i - 1]
+                apply_surface_to_lane(lane, surface_material)
                 section.lanes.append(lane)
         else:
             # Lanes on right side (negative IDs)
@@ -1385,11 +1413,16 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
                     road_mark_type=RoadMarkType.BROKEN,
                     width=lane_width
                 )
+                # Apply turn directions (turn:lanes index 0 = leftmost = innermost right lane)
+                # For right-side lanes, index maps as: lane -1 gets first, -2 gets second, etc.
+                if turn_lanes_forward and i <= len(turn_lanes_forward):
+                    lane.turn_directions = turn_lanes_forward[i - 1]
+                apply_surface_to_lane(lane, surface_material)
                 section.lanes.append(lane)
     else:
         # Two-way road: create lanes on both sides
 
-        # Right lanes (negative IDs)
+        # Right lanes (negative IDs) - forward direction in OpenDrive convention
         for i in range(1, right_lanes + 1):
             lane = Lane(
                 id=-i,
@@ -1397,9 +1430,14 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
                 road_mark_type=RoadMarkType.BROKEN if i < right_lanes else RoadMarkType.SOLID,
                 width=lane_width
             )
+            # Apply forward turn directions to right lanes
+            # turn:lanes:forward index 0 = centermost lane = lane -1
+            if turn_lanes_forward and i <= len(turn_lanes_forward):
+                lane.turn_directions = turn_lanes_forward[i - 1]
+            apply_surface_to_lane(lane, surface_material)
             section.lanes.append(lane)
 
-        # Left lanes (positive IDs)
+        # Left lanes (positive IDs) - backward direction in OpenDrive convention
         for i in range(1, left_lanes + 1):
             lane = Lane(
                 id=i,
@@ -1407,11 +1445,137 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
                 road_mark_type=RoadMarkType.BROKEN if i < left_lanes else RoadMarkType.SOLID,
                 width=lane_width
             )
+            # Apply backward turn directions to left lanes
+            # turn:lanes:backward index 0 = centermost lane = lane 1
+            if turn_lanes_backward and i <= len(turn_lanes_backward):
+                lane.turn_directions = turn_lanes_backward[i - 1]
+            apply_surface_to_lane(lane, surface_material)
             section.lanes.append(lane)
 
     road.lane_sections.append(section)
 
     return (road, centerline)
+
+
+def process_turn_restrictions(
+    osm_data: 'OSMData',
+    junctions: List[Junction],
+    road_osm_way_map: Dict[str, int],
+    verbose: bool = False
+) -> int:
+    """
+    Process OSM turn restriction relations and apply them to junctions.
+
+    Turn restrictions in OSM are relations with type=restriction that define
+    forbidden or mandatory turns at junctions. This function parses these
+    relations and stores the restrictions on the relevant junction.
+
+    Args:
+        osm_data: Parsed OSM data containing relations
+        junctions: List of Junction objects to update
+        road_osm_way_map: Mapping from ORBIT road ID to OSM way ID
+        verbose: Print debug information
+
+    Returns:
+        Number of restrictions processed
+    """
+    # Build reverse mapping: OSM way ID -> list of ORBIT road IDs
+    osm_way_to_roads: Dict[int, List[str]] = defaultdict(list)
+    for road_id, way_id in road_osm_way_map.items():
+        osm_way_to_roads[way_id].append(road_id)
+
+    # Build mapping: OSM node ID -> Junction
+    node_to_junction: Dict[int, Junction] = {}
+    # We need to find which junction corresponds to which OSM node
+    # This requires looking at the via node in restrictions
+
+    restrictions_processed = 0
+
+    for relation in osm_data.relations.values():
+        # Only process turn restrictions
+        if relation.tags.get('type') != 'restriction':
+            continue
+
+        # Get restriction type
+        restriction_type = relation.tags.get('restriction', '')
+        if not restriction_type:
+            continue
+
+        # Parse members
+        from_way_id = None
+        to_way_id = None
+        via_node_id = None
+        via_way_id = None
+
+        for member in relation.members:
+            role = member.get('role', '')
+            ref = member.get('ref')
+            member_type = member.get('type')
+
+            if role == 'from' and member_type == 'way':
+                from_way_id = ref
+            elif role == 'to' and member_type == 'way':
+                to_way_id = ref
+            elif role == 'via':
+                if member_type == 'node':
+                    via_node_id = ref
+                elif member_type == 'way':
+                    via_way_id = ref
+
+        if not (from_way_id and to_way_id and (via_node_id or via_way_id)):
+            continue  # Incomplete restriction
+
+        # Find the junction at the via node/way
+        target_junction = None
+        for junction in junctions:
+            # Check if any connected road matches the from or to way
+            from_roads = osm_way_to_roads.get(from_way_id, [])
+            to_roads = osm_way_to_roads.get(to_way_id, [])
+
+            has_from = any(rid in junction.connected_road_ids for rid in from_roads)
+            has_to = any(rid in junction.connected_road_ids for rid in to_roads)
+
+            if has_from and has_to:
+                target_junction = junction
+                break
+
+        if not target_junction:
+            if verbose:
+                print(f"  Restriction {relation.id}: Could not find junction for "
+                      f"from_way={from_way_id}, to_way={to_way_id}")
+            continue
+
+        # Create turn restriction entry
+        # Initialize turn_restrictions dict if needed
+        if not hasattr(target_junction, 'turn_restrictions') or target_junction.turn_restrictions is None:
+            target_junction.turn_restrictions = []
+
+        # Store the restriction
+        restriction_entry = {
+            'type': restriction_type,
+            'from_osm_way': from_way_id,
+            'to_osm_way': to_way_id,
+            'via_node': via_node_id,
+            'via_way': via_way_id,
+        }
+
+        # Map restriction type to action
+        # no_* restrictions: forbidden turns
+        # only_* restrictions: only this turn is allowed
+        if restriction_type.startswith('no_'):
+            restriction_entry['action'] = 'prohibit'
+        elif restriction_type.startswith('only_'):
+            restriction_entry['action'] = 'require'
+        else:
+            restriction_entry['action'] = 'unknown'
+
+        target_junction.turn_restrictions.append(restriction_entry)
+        restrictions_processed += 1
+
+        if verbose:
+            print(f"  Added restriction '{restriction_type}' to junction '{target_junction.name}'")
+
+    return restrictions_processed
 
 
 def create_signal_from_osm(osm_node: OSMNode, transformer: CoordinateTransformer,

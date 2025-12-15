@@ -266,6 +266,7 @@ class ODRSignal:
     height: float = 0.0
     width: float = 0.0
     name: str = ""
+    validity_lanes: Optional[List[int]] = None  # Lane IDs this signal applies to
 
 
 @dataclass
@@ -860,6 +861,22 @@ class OpenDriveParser:
         if not signal_id:
             return None
 
+        # Parse validity elements (which lanes this signal applies to)
+        validity_lanes = None
+        validity_elems = signal_elem.findall('validity')
+        if validity_elems:
+            validity_lanes = []
+            for validity in validity_elems:
+                from_lane = int(validity.get('fromLane', '0'))
+                to_lane = int(validity.get('toLane', '0'))
+                # Add all lanes in range (inclusive)
+                if from_lane <= to_lane:
+                    validity_lanes.extend(range(from_lane, to_lane + 1))
+                else:
+                    validity_lanes.extend(range(to_lane, from_lane + 1))
+            # Remove duplicates and sort
+            validity_lanes = sorted(set(validity_lanes))
+
         return ODRSignal(
             id=signal_id,
             s=float(signal_elem.get('s', '0')),
@@ -874,7 +891,8 @@ class OpenDriveParser:
             unit=signal_elem.get('unit', ''),
             height=float(signal_elem.get('height', '0')),
             width=float(signal_elem.get('width', '0')),
-            name=signal_elem.get('name', '')
+            name=signal_elem.get('name', ''),
+            validity_lanes=validity_lanes
         )
 
     def _parse_object(self, object_elem: etree.Element) -> Optional[ODRObject]:

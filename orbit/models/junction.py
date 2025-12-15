@@ -289,6 +289,9 @@ class Junction:
     roundabout_clockwise: bool = False
     entry_roads: List[str] = field(default_factory=list)
     exit_roads: List[str] = field(default_factory=list)
+    # Turn restrictions from OSM (list of restriction dicts)
+    # Each dict has: type, from_osm_way, to_osm_way, via_node/via_way, action
+    turn_restrictions: List[Dict[str, Any]] = field(default_factory=list)
 
     def add_road(self, road_id: str) -> None:
         """Add a road to this junction."""
@@ -586,6 +589,8 @@ class Junction:
             data['boundary'] = self.boundary.to_dict()
         if self.elevation_grid is not None:
             data['elevation_grid'] = self.elevation_grid.to_dict()
+        if self.turn_restrictions:
+            data['turn_restrictions'] = self.turn_restrictions
 
         return data
 
@@ -654,7 +659,8 @@ class Junction:
             roundabout_lane_count=data.get('roundabout_lane_count', 1),
             roundabout_clockwise=data.get('roundabout_clockwise', False),
             entry_roads=data.get('entry_roads', []),
-            exit_roads=data.get('exit_roads', [])
+            exit_roads=data.get('exit_roads', []),
+            turn_restrictions=data.get('turn_restrictions', [])
         )
 
     def __repr__(self) -> str:
