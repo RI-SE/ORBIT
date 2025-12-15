@@ -15,12 +15,18 @@ class SignalType(Enum):
     """
     Type of traffic signal.
 
-    To add a new signal type:
-    1. Add the enum value here (e.g., STOP = "stop")
-    2. Add it to the appropriate category in get_category()
-    3. If it's a new category, add default dimensions in get_default_dimensions()
-    4. Update SignalSelectionDialog to include the new type in the UI
+    LIBRARY_SIGN and CUSTOM are the primary types for new signals.
+    Legacy types (GIVE_WAY, SPEED_LIMIT, etc.) are kept for backward
+    compatibility when loading old projects - they are automatically
+    migrated to LIBRARY_SIGN when loaded.
+
+    To add new signs, add them to a sign library instead of this enum.
     """
+    # Primary types for new signals
+    LIBRARY_SIGN = "library_sign"  # Sign from a loaded library
+    CUSTOM = "custom"  # Custom OpenDRIVE type/subtype codes
+
+    # Legacy types (kept for backward compatibility with old projects)
     GIVE_WAY = "give_way"
     SPEED_LIMIT = "speed_limit"
     STOP = "stop"
@@ -29,9 +35,16 @@ class SignalType(Enum):
     END_OF_SPEED_LIMIT = "end_of_speed_limit"
     TRAFFIC_SIGNALS = "traffic_signals"
 
+    def is_legacy_type(self) -> bool:
+        """Check if this is a legacy type that should be migrated."""
+        return self not in (SignalType.LIBRARY_SIGN, SignalType.CUSTOM)
+
     def get_category(self) -> str:
         """
         Get the category this signal type belongs to.
+
+        For LIBRARY_SIGN and CUSTOM types, returns "other" - actual category
+        comes from the library definition.
 
         Categories group signal types with similar characteristics and defaults.
         Current categories:
@@ -43,6 +56,8 @@ class SignalType(Enum):
         Returns:
             Category name as string
         """
+        if self in (SignalType.LIBRARY_SIGN, SignalType.CUSTOM):
+            return "other"
         if self in (SignalType.GIVE_WAY, SignalType.STOP, SignalType.NO_ENTRY,
                     SignalType.PRIORITY_ROAD):
             return "regulatory"
@@ -93,7 +108,7 @@ class Signal:
     Attributes:
         id: Unique identifier
         position: (x, y) pixel coordinates on the map
-        type: SignalType enum value
+        type: SignalType enum value (LIBRARY_SIGN, CUSTOM, or legacy types)
         value: Speed value for speed limits (30-120), None for other types
         speed_unit: Unit for speed value (km/h or mph)
         road_id: ID of the road this signal is assigned to
@@ -109,16 +124,22 @@ class Signal:
         dynamic: OpenDRIVE dynamic flag ("yes" for traffic lights, "no" for static signs)
         subtype: OpenDRIVE subtype code (preserved for round-trip)
         country: Country code (e.g., "SE" for Sweden)
+        library_id: Sign library ID (e.g., "se") for LIBRARY_SIGN type
+        sign_id: Sign ID within library (e.g., "B1", "C31-50") for LIBRARY_SIGN type
+        custom_type: Custom OpenDRIVE type code for CUSTOM type
+        custom_subtype: Custom OpenDRIVE subtype code for CUSTOM type
     """
 
     def __init__(
         self,
         signal_id: Optional[str] = None,
         position: Tuple[float, float] = (0.0, 0.0),
-        signal_type: SignalType = SignalType.GIVE_WAY,
+        signal_type: SignalType = SignalType.LIBRARY_SIGN,
         value: Optional[int] = None,
         speed_unit: SpeedUnit = SpeedUnit.KMH,
-        road_id: Optional[str] = None
+        road_id: Optional[str] = None,
+        library_id: Optional[str] = None,
+        sign_id: Optional[str] = None
     ):
         self.id = signal_id or str(uuid.uuid4())
         self.position = position
@@ -141,6 +162,12 @@ class Signal:
         self.dynamic = "no"  # "yes" for traffic lights, "no" for static signs
         self.subtype = ""  # OpenDRIVE subtype code
         self.country = ""  # Country code (e.g., "SE")
+        # Library-based sign fields
+        self.library_id = library_id  # Sign library ID (e.g., "se")
+        self.sign_id = sign_id  # Sign ID within library (e.g., "B1", "C31-50")
+        # Custom OpenDRIVE codes (for CUSTOM type)
+        self.custom_type: Optional[str] = None
+        self.custom_subtype: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Serialize signal to dictionary for JSON storage."""
@@ -169,18 +196,53 @@ class Signal:
             data['subtype'] = self.subtype
         if self.country:
             data['country'] = self.country
+        # Library-based sign fields
+        if self.library_id:
+            data['library_id'] = self.library_id
+        if self.sign_id:
+            data['sign_id'] = self.sign_id
+        # Custom OpenDRIVE codes
+        if self.custom_type:
+            data['custom_type'] = self.custom_type
+        if self.custom_subtype:
+            data['custom_subtype'] = self.custom_subtype
         return data
 
     @classmethod
     def from_dict(cls, data: dict) -> 'Signal':
-        """Deserialize signal from dictionary."""
+        """
+        Deserialize signal from dictionary.
+
+        Handles backward compatibility and auto-migration of legacy signal types
+        to LIBRARY_SIGN type.
+        """
+        # Parse the signal type
+        signal_type = SignalType(data['type'])
+        library_id = data.get('library_id')
+        sign_id = data.get('sign_id')
+        value = data.get('value')
+
+        # Auto-migrate legacy types to LIBRARY_SIGN
+        if signal_type.is_legacy_type() and not library_id:
+            # Import here to avoid circular import
+            from .sign_library_manager import get_legacy_library_mapping
+            migrated_lib_id, migrated_sign_id = get_legacy_library_mapping(
+                signal_type.value, value
+            )
+            if migrated_lib_id and migrated_sign_id:
+                library_id = migrated_lib_id
+                sign_id = migrated_sign_id
+                signal_type = SignalType.LIBRARY_SIGN
+
         signal = cls(
             signal_id=data['id'],
             position=tuple(data['position']),
-            signal_type=SignalType(data['type']),
-            value=data.get('value'),
+            signal_type=signal_type,
+            value=value,
             speed_unit=SpeedUnit(data.get('speed_unit', 'km/h')),
-            road_id=data.get('road_id')
+            road_id=data.get('road_id'),
+            library_id=library_id,
+            sign_id=sign_id
         )
         signal.name = data.get('name', '')
 
@@ -231,12 +293,27 @@ class Signal:
         signal.dynamic = data.get('dynamic', 'no')
         signal.subtype = data.get('subtype', '')
         signal.country = data.get('country', '')
+        # Custom OpenDRIVE codes
+        signal.custom_type = data.get('custom_type')
+        signal.custom_subtype = data.get('custom_subtype')
         return signal
 
     def get_display_name(self) -> str:
         """Get display name for UI."""
         if self.name:
             return self.name
+        if self.type == SignalType.LIBRARY_SIGN and self.library_id and self.sign_id:
+            # Try to get name from library
+            from .sign_library_manager import SignLibraryManager
+            manager = SignLibraryManager.instance()
+            sign_def = manager.get_sign_definition(self.library_id, self.sign_id)
+            if sign_def:
+                return sign_def.get_display_name()
+            return self.sign_id
+        if self.type == SignalType.CUSTOM:
+            if self.custom_type:
+                return f"Custom ({self.custom_type})"
+            return "Custom Signal"
         if self.type == SignalType.SPEED_LIMIT and self.value:
             return f"Speed {self.value} {self.speed_unit.value}"
         return format_enum_name(self.type)

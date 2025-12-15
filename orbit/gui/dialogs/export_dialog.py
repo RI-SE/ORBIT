@@ -113,6 +113,16 @@ class ExportDialog(BaseDialog):
         )
         options_layout.addRow("Projection:", self.use_tmerc_checkbox)
 
+        # German codes checkbox
+        self.use_german_codes_checkbox = QCheckBox("Use German (DE) equivalent codes for signals")
+        self.use_german_codes_checkbox.setChecked(False)
+        self.use_german_codes_checkbox.setToolTip(
+            "If checked, signals will use German VzKat codes (opendrive_de) when available,\n"
+            "with country='DE' on the signal element.\n"
+            "If unchecked (default), signals use the country-specific codes from the sign library."
+        )
+        options_layout.addRow("Signal Codes:", self.use_german_codes_checkbox)
+
         # Output file selection
         output_layout = QHBoxLayout()
         self.output_path_edit = QLineEdit()
@@ -295,7 +305,8 @@ class ExportDialog(BaseDialog):
                 preserve_geometry=self.preserve_geometry_checkbox.isChecked(),
                 right_hand_traffic=self.project.right_hand_traffic,
                 country_code=country_code,
-                use_tmerc=self.use_tmerc_checkbox.isChecked()
+                use_tmerc=self.use_tmerc_checkbox.isChecked(),
+                use_german_codes=self.use_german_codes_checkbox.isChecked()
             )
 
             if success:

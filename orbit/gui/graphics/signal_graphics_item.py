@@ -3,9 +3,10 @@ Graphics item for displaying traffic signals on the map.
 """
 
 from PyQt6.QtWidgets import QGraphicsItemGroup, QGraphicsPixmapItem, QGraphicsPathItem
-from PyQt6.QtGui import QPen, QColor, QPainter
+from PyQt6.QtGui import QPen, QColor, QPainter, QPixmap
 from PyQt6.QtCore import Qt, pyqtSignal, QObject, QPointF
-from orbit.models.signal import Signal
+from orbit.models.signal import Signal, SignalType
+from orbit.models.sign_library_manager import SignLibraryManager
 from .signal_graphics import create_signal_pixmap, create_orientation_indicator
 
 
@@ -31,7 +32,7 @@ class SignalGraphicsItem(QGraphicsItemGroup):
 
         # Create icon
         self.icon_item = QGraphicsPixmapItem()
-        pixmap = create_signal_pixmap(signal.type, signal.value, size=32)
+        pixmap = self._get_signal_pixmap()
         self.icon_item.setPixmap(pixmap)
         # Center the pixmap at the signal position
         self.icon_item.setOffset(-pixmap.width() / 2, -pixmap.height() / 2)
@@ -72,10 +73,43 @@ class SignalGraphicsItem(QGraphicsItemGroup):
         import math
         return 90.0 + math.degrees(self.signal.h_offset)
 
+    def _get_signal_pixmap(self, size: int = 32) -> QPixmap:
+        """
+        Get the appropriate pixmap for this signal.
+
+        For LIBRARY_SIGN type, loads from the sign library.
+        For other types, generates a placeholder.
+        """
+        if self.signal.type == SignalType.LIBRARY_SIGN:
+            # Try to load from library
+            if self.signal.library_id and self.signal.sign_id:
+                manager = SignLibraryManager.instance()
+                library = manager.get_library(self.signal.library_id)
+                if library:
+                    sign_def = library.get_sign(self.signal.sign_id)
+                    if sign_def:
+                        image_path = library.get_sign_image_path(sign_def)
+                        if image_path and image_path.exists():
+                            pixmap = QPixmap(str(image_path))
+                            return pixmap.scaled(
+                                size, size,
+                                Qt.AspectRatioMode.KeepAspectRatio,
+                                Qt.TransformationMode.SmoothTransformation
+                            )
+            # Fallback for library sign without valid library
+            return create_signal_pixmap(SignalType.GIVE_WAY, size=size)
+
+        if self.signal.type == SignalType.CUSTOM:
+            # Custom sign - use generic placeholder
+            return create_signal_pixmap(SignalType.GIVE_WAY, size=size)
+
+        # Legacy type - use existing placeholder generation
+        return create_signal_pixmap(self.signal.type, self.signal.value, size=size)
+
     def update_graphics(self):
         """Update visual representation based on signal properties."""
         # Update icon if type/value changed
-        pixmap = create_signal_pixmap(self.signal.type, self.signal.value, size=32)
+        pixmap = self._get_signal_pixmap()
         self.icon_item.setPixmap(pixmap)
         self.icon_item.setOffset(-pixmap.width() / 2, -pixmap.height() / 2)
 

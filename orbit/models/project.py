@@ -111,6 +111,7 @@ class Project:
     baseline_uncertainty_m: float = 0.05  # Baseline position uncertainty (meters)
     gcp_suggestion_threshold: float = 0.2  # Threshold for GCP suggestions (meters)
     imported_geo_reference: Optional[str] = None  # Preserved geoReference from OpenDRIVE import
+    enabled_sign_libraries: List[str] = field(default_factory=lambda: ['se'])  # Enabled sign library IDs
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -817,7 +818,8 @@ class Project:
             'mc_sigma_pixels': self.mc_sigma_pixels,
             'baseline_uncertainty_m': self.baseline_uncertainty_m,
             'gcp_suggestion_threshold': self.gcp_suggestion_threshold,
-            'imported_geo_reference': self.imported_geo_reference
+            'imported_geo_reference': self.imported_geo_reference,
+            'enabled_sign_libraries': self.enabled_sign_libraries
         }
 
     @classmethod
@@ -885,6 +887,7 @@ class Project:
             baseline_uncertainty_m=data.get('baseline_uncertainty_m', 0.05),
             gcp_suggestion_threshold=data.get('gcp_suggestion_threshold', 0.2),
             imported_geo_reference=data.get('imported_geo_reference'),
+            enabled_sign_libraries=data.get('enabled_sign_libraries', ['se']),  # Default to Swedish library
             metadata=data.get('metadata', {})
         )
 

@@ -6,10 +6,12 @@ traffic side, and country code.
 """
 
 from PyQt6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QLineEdit
+    QComboBox, QDoubleSpinBox, QLineEdit, QListWidget, QListWidgetItem,
+    QAbstractItemView
 )
+from PyQt6.QtCore import Qt
 
-from orbit.models import Project
+from orbit.models import Project, SignLibraryManager
 from .base_dialog import BaseDialog, InfoIconLabel
 
 
@@ -134,6 +136,29 @@ class PreferencesDialog(BaseDialog):
         )
         junction_layout.addRow(roundabout_approach_label, self.roundabout_approach_offset_spin)
 
+        # Sign libraries section
+        sign_layout = self.add_form_group("Sign Libraries")
+
+        self.library_list = QListWidget()
+        self.library_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        self.library_list.setMaximumHeight(120)
+
+        # Populate with available libraries
+        manager = SignLibraryManager.instance()
+        manager.discover_libraries()
+        for lib_info in manager.get_all_available_libraries_info():
+            item = QListWidgetItem(f"{lib_info['name']} ({lib_info['id']})")
+            item.setData(Qt.ItemDataRole.UserRole, lib_info['id'])
+            self.library_list.addItem(item)
+
+        library_label = InfoIconLabel(
+            "Enabled Libraries:",
+            "Select which sign libraries to use when adding signals. "
+            "Libraries provide country-specific road signs with proper OpenDRIVE mappings.",
+            bold=False
+        )
+        sign_layout.addRow(library_label, self.library_list)
+
         # Create standard OK/Cancel buttons
         self.create_button_box()
 
@@ -164,6 +189,14 @@ class PreferencesDialog(BaseDialog):
         self.roundabout_ring_offset_spin.setValue(self.project.roundabout_ring_offset_distance_meters)
         self.roundabout_approach_offset_spin.setValue(self.project.roundabout_approach_offset_distance_meters)
 
+        # Sign libraries - select enabled ones
+        enabled_libs = set(self.project.enabled_sign_libraries)
+        for i in range(self.library_list.count()):
+            item = self.library_list.item(i)
+            lib_id = item.data(Qt.ItemDataRole.UserRole)
+            if lib_id in enabled_libs:
+                item.setSelected(True)
+
     def accept(self):
         """Save preferences and close dialog."""
         # Save map name
@@ -184,5 +217,16 @@ class PreferencesDialog(BaseDialog):
         # Save roundabout offset distances
         self.project.roundabout_ring_offset_distance_meters = self.roundabout_ring_offset_spin.value()
         self.project.roundabout_approach_offset_distance_meters = self.roundabout_approach_offset_spin.value()
+
+        # Save enabled sign libraries
+        enabled_libs = []
+        for item in self.library_list.selectedItems():
+            lib_id = item.data(Qt.ItemDataRole.UserRole)
+            if lib_id:
+                enabled_libs.append(lib_id)
+        # Ensure at least one library is enabled (default to 'se' if none selected)
+        if not enabled_libs:
+            enabled_libs = ['se']
+        self.project.enabled_sign_libraries = enabled_libs
 
         super().accept()

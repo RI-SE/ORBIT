@@ -1,0 +1,1015 @@
+{
+  "library_id": "se",
+  "name": "Swedish Road Signs",
+  "version": "1.2.0",
+  "country_code": "SE",
+  "description": "Swedish road signs according to Transportstyrelsen standards (TSFS 2019:74)",
+  "license": "CC BY-SA 4.0",
+  "source": "Wikimedia Commons",
+  "categories": [
+    {
+      "id": "A",
+      "name": "Warning Signs",
+      "description": "Varningsmärken"
+    },
+    {
+      "id": "B",
+      "name": "Yield and Priority Signs",
+      "description": "Väjningspliktsmärken"
+    },
+    {
+      "id": "C",
+      "name": "Prohibition Signs",
+      "description": "Förbudsmärken"
+    },
+    {
+      "id": "D",
+      "name": "Mandatory Signs",
+      "description": "Påbudsmärken"
+    },
+    {
+      "id": "E",
+      "name": "Information Signs",
+      "description": "Anvisningsmärken"
+    }
+  ],
+  "signs": [
+    {
+      "id": "A1-1",
+      "name": "Dangerous Curve Left",
+      "name_sv": "Varning för farlig kurva (vänster)",
+      "category": "A",
+      "image": "A1-1_curve_left.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A1", "subtype": "1"},
+        "opendrive_de": {"type": "103", "subtype": "10"},
+        "country": "A1-1",
+        "osm": "SE:A1-1"
+      }
+    },
+    {
+      "id": "A1-2",
+      "name": "Dangerous Curve Right",
+      "name_sv": "Varning för farlig kurva (höger)",
+      "category": "A",
+      "image": "A1-2_curve_right.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A1", "subtype": "2"},
+        "opendrive_de": {"type": "103", "subtype": "20"},
+        "country": "A1-2",
+        "osm": "SE:A1-2"
+      }
+    },
+    {
+      "id": "A2-1",
+      "name": "Multiple Curves (First Left)",
+      "name_sv": "Varning för flera farliga kurvor (första vänster)",
+      "category": "A",
+      "image": "A2-1_curves_left.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A2", "subtype": "1"},
+        "opendrive_de": {"type": "105", "subtype": "10"},
+        "country": "A2-1",
+        "osm": "SE:A2-1"
+      }
+    },
+    {
+      "id": "A2-2",
+      "name": "Multiple Curves (First Right)",
+      "name_sv": "Varning för flera farliga kurvor (första höger)",
+      "category": "A",
+      "image": "A2-2_curves_right.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A2", "subtype": "2"},
+        "opendrive_de": {"type": "105", "subtype": "20"},
+        "country": "A2-2",
+        "osm": "SE:A2-2"
+      }
+    },
+    {
+      "id": "A3",
+      "name": "Steep Descent",
+      "name_sv": "Varning för nedförslutning",
+      "category": "A",
+      "image": "A3-1_steep_descent.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A3", "subtype": "-1"},
+        "opendrive_de": {"type": "108", "subtype": "-1"},
+        "country": "A3",
+        "osm": "SE:A3"
+      }
+    },
+    {
+      "id": "A4",
+      "name": "Steep Incline",
+      "name_sv": "Varning för stigning",
+      "category": "A",
+      "image": "A4-1_steep_incline.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A4", "subtype": "-1"},
+        "opendrive_de": {"type": "110", "subtype": "-1"},
+        "country": "A4",
+        "osm": "SE:A4"
+      }
+    },
+    {
+      "id": "A5",
+      "name": "Road Narrows",
+      "name_sv": "Varning för avsmalnande väg",
+      "category": "A",
+      "image": "A5-1_road_narrows.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A5", "subtype": "-1"},
+        "opendrive_de": {"type": "120", "subtype": "-1"},
+        "country": "A5",
+        "osm": "SE:A5"
+      }
+    },
+    {
+      "id": "A6",
+      "name": "Bridge",
+      "name_sv": "Varning för bro",
+      "category": "A",
+      "image": "A6-1_bridge.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A6", "subtype": "-1"},
+        "country": "A6",
+        "osm": "SE:A6"
+      }
+    },
+    {
+      "id": "A8",
+      "name": "Uneven Road",
+      "name_sv": "Varning för ojämn väg",
+      "category": "A",
+      "image": "A8-1_uneven_road.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A8", "subtype": "-1"},
+        "opendrive_de": {"type": "112", "subtype": "-1"},
+        "country": "A8",
+        "osm": "SE:A8"
+      }
+    },
+    {
+      "id": "A9",
+      "name": "Speed Bump",
+      "name_sv": "Varning för farthinder",
+      "category": "A",
+      "image": "A9-1_speed_bump.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A9", "subtype": "-1"},
+        "opendrive_de": {"type": "112", "subtype": "-1"},
+        "country": "A9",
+        "osm": "SE:A9"
+      }
+    },
+    {
+      "id": "A10",
+      "name": "Slippery Road",
+      "name_sv": "Varning för slirig väg",
+      "category": "A",
+      "image": "A10_slippery_road.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A10", "subtype": "-1"},
+        "opendrive_de": {"type": "114", "subtype": "-1"},
+        "country": "A10",
+        "osm": "SE:A10"
+      }
+    },
+    {
+      "id": "A11",
+      "name": "Loose Gravel",
+      "name_sv": "Varning för stenskott",
+      "category": "A",
+      "image": "A11-1_loose_gravel.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A11", "subtype": "-1"},
+        "opendrive_de": {"type": "115", "subtype": "-1"},
+        "country": "A11",
+        "osm": "SE:A11"
+      }
+    },
+    {
+      "id": "A13",
+      "name": "Pedestrian Crossing Ahead",
+      "name_sv": "Varning för övergångsställe",
+      "category": "A",
+      "image": "A13-1_pedestrian_crossing.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A13", "subtype": "-1"},
+        "opendrive_de": {"type": "133", "subtype": "10"},
+        "country": "A13",
+        "osm": "SE:A13"
+      }
+    },
+    {
+      "id": "A14",
+      "name": "Pedestrians",
+      "name_sv": "Varning för gående",
+      "category": "A",
+      "image": "A14_pedestrians.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A14", "subtype": "-1"},
+        "opendrive_de": {"type": "133", "subtype": "10"},
+        "country": "A14",
+        "osm": "SE:A14"
+      }
+    },
+    {
+      "id": "A15",
+      "name": "Children",
+      "name_sv": "Varning för barn",
+      "category": "A",
+      "image": "A15-1_children.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A15", "subtype": "-1"},
+        "opendrive_de": {"type": "136", "subtype": "10"},
+        "country": "A15",
+        "osm": "SE:A15"
+      }
+    },
+    {
+      "id": "A16",
+      "name": "Cyclists and Mopeds",
+      "name_sv": "Varning för cyklande och mopedförare",
+      "category": "A",
+      "image": "A16-1_cyclists.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A16", "subtype": "-1"},
+        "opendrive_de": {"type": "138", "subtype": "10"},
+        "country": "A16",
+        "osm": "SE:A16"
+      }
+    },
+    {
+      "id": "A19",
+      "name": "Animals",
+      "name_sv": "Varning för djur",
+      "category": "A",
+      "image": "A19-1_animals.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A19", "subtype": "-1"},
+        "opendrive_de": {"type": "142", "subtype": "10"},
+        "country": "A19",
+        "osm": "SE:A19"
+      }
+    },
+    {
+      "id": "A20",
+      "name": "Road Work",
+      "name_sv": "Varning för vägarbete",
+      "category": "A",
+      "image": "A20-1_road_work.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A20", "subtype": "-1"},
+        "opendrive_de": {"type": "123", "subtype": "-1"},
+        "country": "A20",
+        "osm": "SE:A20"
+      }
+    },
+    {
+      "id": "A22",
+      "name": "Traffic Signals Ahead",
+      "name_sv": "Varning för flerfärgssignal",
+      "category": "A",
+      "image": "A22-1_traffic_signals.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A22", "subtype": "-1"},
+        "opendrive_de": {"type": "131", "subtype": "-1"},
+        "country": "A22",
+        "osm": "SE:A22"
+      }
+    },
+    {
+      "id": "A24",
+      "name": "Crosswind",
+      "name_sv": "Varning för sidvind",
+      "category": "A",
+      "image": "A24-1_crosswind.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A24", "subtype": "-1"},
+        "opendrive_de": {"type": "117", "subtype": "10"},
+        "country": "A24",
+        "osm": "SE:A24"
+      }
+    },
+    {
+      "id": "A28",
+      "name": "Intersection",
+      "name_sv": "Varning för vägkorsning",
+      "category": "A",
+      "image": "A28-1_intersection.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A28", "subtype": "-1"},
+        "opendrive_de": {"type": "102", "subtype": "-1"},
+        "country": "A28",
+        "osm": "SE:A28"
+      }
+    },
+    {
+      "id": "A30",
+      "name": "Roundabout Ahead",
+      "name_sv": "Varning för cirkulationsplats",
+      "category": "A",
+      "image": "A30-1_roundabout.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A30", "subtype": "-1"},
+        "country": "A30",
+        "osm": "SE:A30"
+      }
+    },
+    {
+      "id": "A35",
+      "name": "Level Crossing with Barriers",
+      "name_sv": "Varning för järnvägskorsning med bommar",
+      "category": "A",
+      "image": "A35-1_level_crossing_barriers.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A35", "subtype": "-1"},
+        "opendrive_de": {"type": "151", "subtype": "-1"},
+        "country": "A35",
+        "osm": "SE:A35"
+      }
+    },
+    {
+      "id": "A36",
+      "name": "Level Crossing without Barriers",
+      "name_sv": "Varning för järnvägskorsning utan bommar",
+      "category": "A",
+      "image": "A36-1_level_crossing_no_barriers.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A36", "subtype": "-1"},
+        "opendrive_de": {"type": "151", "subtype": "-1"},
+        "country": "A36",
+        "osm": "SE:A36"
+      }
+    },
+    {
+      "id": "A40",
+      "name": "Other Danger",
+      "name_sv": "Varning för annan fara",
+      "category": "A",
+      "image": "A40-1_other_danger.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "A40", "subtype": "-1"},
+        "opendrive_de": {"type": "101", "subtype": "-1"},
+        "country": "A40",
+        "osm": "SE:A40"
+      }
+    },
+    {
+      "id": "B1",
+      "name": "Yield",
+      "name_sv": "Väjningsplikt",
+      "category": "B",
+      "image": "B1_yield.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "B", "subtype": "1"},
+        "opendrive_de": {"type": "205", "subtype": "-1"},
+        "country": "B1",
+        "osm": "SE:B1"
+      }
+    },
+    {
+      "id": "B2",
+      "name": "Stop",
+      "name_sv": "Stopplikt",
+      "category": "B",
+      "image": "B2_stop.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "B", "subtype": "2"},
+        "opendrive_de": {"type": "206", "subtype": "-1"},
+        "country": "B2",
+        "osm": "SE:B2"
+      }
+    },
+    {
+      "id": "B3",
+      "name": "Pedestrian Crossing",
+      "name_sv": "Övergångsställe",
+      "category": "B",
+      "image": "B3_pedestrian_crossing.png",
+      "default_width": 0.6,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "B", "subtype": "3"},
+        "opendrive_de": {"type": "293", "subtype": "-1"},
+        "country": "B3",
+        "osm": "SE:B3"
+      }
+    },
+    {
+      "id": "B4",
+      "name": "Priority Road",
+      "name_sv": "Huvudled",
+      "category": "B",
+      "image": "B4_priority_road.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "B", "subtype": "4"},
+        "opendrive_de": {"type": "306", "subtype": "-1"},
+        "country": "B4",
+        "osm": "SE:B4"
+      }
+    },
+    {
+      "id": "B5",
+      "name": "End of Priority Road",
+      "name_sv": "Huvudled upphör",
+      "category": "B",
+      "image": "B5_end_priority_road.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "B", "subtype": "5"},
+        "opendrive_de": {"type": "307", "subtype": "-1"},
+        "country": "B5",
+        "osm": "SE:B5"
+      }
+    },
+    {
+      "id": "B6",
+      "name": "Yield to Oncoming Traffic",
+      "name_sv": "Väjningsplikt mot mötande trafik",
+      "category": "B",
+      "image": "B6-1_yield_oncoming.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "B", "subtype": "6"},
+        "opendrive_de": {"type": "208", "subtype": "-1"},
+        "country": "B6",
+        "osm": "SE:B6"
+      }
+    },
+    {
+      "id": "B7",
+      "name": "Priority over Oncoming Traffic",
+      "name_sv": "Mötande trafik har väjningsplikt",
+      "category": "B",
+      "image": "B7-1_priority_oncoming.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "B", "subtype": "7"},
+        "opendrive_de": {"type": "308", "subtype": "-1"},
+        "country": "B7",
+        "osm": "SE:B7"
+      }
+    },
+    {
+      "id": "B8",
+      "name": "Cycle Crossing",
+      "name_sv": "Cykelöverfart",
+      "category": "B",
+      "image": "B8-1_cycle_crossing.png",
+      "default_width": 0.6,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "B", "subtype": "8"},
+        "country": "B8",
+        "osm": "SE:B8"
+      }
+    },
+    {
+      "id": "C1",
+      "name": "No Entry",
+      "name_sv": "Förbud mot infart med fordon",
+      "category": "C",
+      "image": "C1_no_entry.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C", "subtype": "1"},
+        "opendrive_de": {"type": "267", "subtype": "-1"},
+        "country": "C1",
+        "osm": "SE:C1"
+      }
+    },
+    {
+      "id": "C2",
+      "name": "No Vehicles",
+      "name_sv": "Förbud mot trafik med fordon",
+      "category": "C",
+      "image": "C2_no_vehicles.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C", "subtype": "2"},
+        "opendrive_de": {"type": "250", "subtype": "-1"},
+        "country": "C2",
+        "osm": "SE:C2"
+      }
+    },
+    {
+      "id": "C3",
+      "name": "No Motor Vehicles",
+      "name_sv": "Förbud mot trafik med annat motordrivet fordon än moped klass II",
+      "category": "C",
+      "image": "C3_no_motor_vehicles.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C", "subtype": "3"},
+        "opendrive_de": {"type": "260", "subtype": "-1"},
+        "country": "C3",
+        "osm": "SE:C3"
+      }
+    },
+    {
+      "id": "C7",
+      "name": "No Heavy Trucks",
+      "name_sv": "Förbud mot trafik med tung lastbil",
+      "category": "C",
+      "image": "C7-1_no_trucks.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C", "subtype": "7"},
+        "opendrive_de": {"type": "253", "subtype": "-1"},
+        "country": "C7",
+        "osm": "SE:C7"
+      }
+    },
+    {
+      "id": "C10",
+      "name": "No Bicycles",
+      "name_sv": "Förbud mot trafik med cykel och moped klass II",
+      "category": "C",
+      "image": "C10-1_no_bicycles.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C", "subtype": "10"},
+        "opendrive_de": {"type": "254", "subtype": "-1"},
+        "country": "C10",
+        "osm": "SE:C10"
+      }
+    },
+    {
+      "id": "C15",
+      "name": "No Pedestrians",
+      "name_sv": "Förbud mot gångtrafik",
+      "category": "C",
+      "image": "C15-1_no_pedestrians.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C", "subtype": "15"},
+        "opendrive_de": {"type": "259", "subtype": "-1"},
+        "country": "C15",
+        "osm": "SE:C15"
+      }
+    },
+    {
+      "id": "C25-1",
+      "name": "No Left Turn",
+      "name_sv": "Förbud mot sväng i korsning (vänster)",
+      "category": "C",
+      "image": "C25-1_no_left_turn.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C25", "subtype": "1"},
+        "country": "C25-1",
+        "osm": "SE:C25-1"
+      }
+    },
+    {
+      "id": "C25-2",
+      "name": "No Right Turn",
+      "name_sv": "Förbud mot sväng i korsning (höger)",
+      "category": "C",
+      "image": "C25-2_no_right_turn.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C25", "subtype": "2"},
+        "country": "C25-2",
+        "osm": "SE:C25-2"
+      }
+    },
+    {
+      "id": "C26",
+      "name": "No U-Turn",
+      "name_sv": "Förbud mot U-sväng",
+      "category": "C",
+      "image": "C26-1_no_u_turn.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C", "subtype": "26"},
+        "opendrive_de": {"type": "272", "subtype": "-1"},
+        "country": "C26",
+        "osm": "SE:C26"
+      }
+    },
+    {
+      "id": "C27",
+      "name": "No Overtaking",
+      "name_sv": "Förbud mot omkörning",
+      "category": "C",
+      "image": "C27-1_no_overtaking.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C", "subtype": "27"},
+        "opendrive_de": {"type": "276", "subtype": "-1"},
+        "country": "C27",
+        "osm": "SE:C27"
+      }
+    },
+    {
+      "id": "C28",
+      "name": "End of No Overtaking",
+      "name_sv": "Slut på förbud mot omkörning",
+      "category": "C",
+      "image": "C28_end_no_overtaking.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C", "subtype": "28"},
+        "opendrive_de": {"type": "280", "subtype": "-1"},
+        "country": "C28",
+        "osm": "SE:C28"
+      }
+    },
+    {
+      "id": "C31",
+      "name": "Speed Limit",
+      "name_sv": "Hastighetsbegränsning",
+      "category": "C",
+      "image_template": "C31_speed_{value}.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C31", "subtype": "{value}"},
+        "opendrive_de": {"type": "274", "subtype": "{value}"},
+        "country": "C31-{value}",
+        "osm": "SE:C31-{value}"
+      },
+      "is_template": true,
+      "template_values": [30, 40, 50, 60, 70, 80, 90, 100, 110, 120],
+      "value_unit": "km/h"
+    },
+    {
+      "id": "C32",
+      "name": "End of Speed Limit",
+      "name_sv": "Tillfällig hastighetsbegränsning upphör",
+      "category": "C",
+      "image_template": "C32_end_speed_{value}.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C32", "subtype": "{value}"},
+        "opendrive_de": {"type": "278", "subtype": "{value}"},
+        "country": "C32-{value}",
+        "osm": "SE:C32-{value}"
+      },
+      "is_template": true,
+      "template_values": [20, 30, 40, 50, 60, 70, 80, 90, 100, 110],
+      "value_unit": "km/h"
+    },
+    {
+      "id": "C35",
+      "name": "No Parking",
+      "name_sv": "Förbud mot att parkera fordon",
+      "category": "C",
+      "image": "C35-1_no_parking.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C", "subtype": "35"},
+        "opendrive_de": {"type": "286", "subtype": "-1"},
+        "country": "C35",
+        "osm": "SE:C35"
+      }
+    },
+    {
+      "id": "C39",
+      "name": "No Stopping",
+      "name_sv": "Förbud mot att stanna och parkera fordon",
+      "category": "C",
+      "image": "C39_no_stopping.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "C", "subtype": "39"},
+        "opendrive_de": {"type": "283", "subtype": "-1"},
+        "country": "C39",
+        "osm": "SE:C39"
+      }
+    },
+    {
+      "id": "D1-1",
+      "name": "Turn Left Only",
+      "name_sv": "Påbjuden körriktning (vänster)",
+      "category": "D",
+      "image": "D1-1_turn_left.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "D1", "subtype": "1"},
+        "opendrive_de": {"type": "209", "subtype": "10"},
+        "country": "D1-1",
+        "osm": "SE:D1-1"
+      }
+    },
+    {
+      "id": "D1-2",
+      "name": "Turn Right Only",
+      "name_sv": "Påbjuden körriktning (höger)",
+      "category": "D",
+      "image": "D1-2_turn_right.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "D1", "subtype": "2"},
+        "opendrive_de": {"type": "209", "subtype": "20"},
+        "country": "D1-2",
+        "osm": "SE:D1-2"
+      }
+    },
+    {
+      "id": "D1-3",
+      "name": "Straight Ahead Only",
+      "name_sv": "Påbjuden körriktning (rakt fram)",
+      "category": "D",
+      "image": "D1-3_straight.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "D1", "subtype": "3"},
+        "opendrive_de": {"type": "209", "subtype": "30"},
+        "country": "D1-3",
+        "osm": "SE:D1-3"
+      }
+    },
+    {
+      "id": "D2-1",
+      "name": "Pass Right",
+      "name_sv": "Påbjuden körriktning (passera höger)",
+      "category": "D",
+      "image": "D2-1_pass_right.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "D2", "subtype": "1"},
+        "opendrive_de": {"type": "222", "subtype": "-1"},
+        "country": "D2-1",
+        "osm": "SE:D2-1"
+      }
+    },
+    {
+      "id": "D2-2",
+      "name": "Pass Left",
+      "name_sv": "Påbjuden körriktning (passera vänster)",
+      "category": "D",
+      "image": "D2-2_pass_left.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "D2", "subtype": "2"},
+        "opendrive_de": {"type": "222", "subtype": "10"},
+        "country": "D2-2",
+        "osm": "SE:D2-2"
+      }
+    },
+
+    {
+      "id": "D3",
+      "name": "Roundabout",
+      "name_sv": "Cirkulationsplats",
+      "category": "D",
+      "image": "D3-1_roundabout.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "D", "subtype": "3"},
+        "opendrive_de": {"type": "215", "subtype": "-1"},
+        "country": "D3",
+        "osm": "SE:D3"
+      }
+    },
+    {
+      "id": "D4",
+      "name": "Cycle Path",
+      "name_sv": "Påbjuden cykelbana",
+      "category": "D",
+      "image": "D4_cycle_path.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "D", "subtype": "4"},
+        "opendrive_de": {"type": "237", "subtype": "-1"},
+        "country": "D4",
+        "osm": "SE:D4"
+      }
+    },
+    {
+      "id": "D5",
+      "name": "Footpath",
+      "name_sv": "Påbjuden gångbana",
+      "category": "D",
+      "image": "D5-1_footpath.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "D", "subtype": "5"},
+        "opendrive_de": {"type": "239", "subtype": "-1"},
+        "country": "D5",
+        "osm": "SE:D5"
+      }
+    },
+    {
+      "id": "D6",
+      "name": "Shared Foot and Cycle Path",
+      "name_sv": "Påbjuden gång- och cykelbana",
+      "category": "D",
+      "image": "D6-1_shared_path.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "D", "subtype": "6"},
+        "opendrive_de": {"type": "240", "subtype": "-1"},
+        "country": "D6",
+        "osm": "SE:D6"
+      }
+    },
+    {
+      "id": "E1",
+      "name": "Motorway",
+      "name_sv": "Motorväg",
+      "category": "E",
+      "image": "E1_motorway.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "E", "subtype": "1"},
+        "opendrive_de": {"type": "330.1", "subtype": "-1"},
+        "country": "E1",
+        "osm": "SE:E1"
+      }
+    },
+    {
+      "id": "E2",
+      "name": "End of Motorway",
+      "name_sv": "Motorväg upphör",
+      "category": "E",
+      "image": "E2_end_motorway.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "E", "subtype": "2"},
+        "opendrive_de": {"type": "330.2", "subtype": "-1"},
+        "country": "E2",
+        "osm": "SE:E2"
+      }
+    },
+    {
+      "id": "E3",
+      "name": "Expressway",
+      "name_sv": "Motortrafikled",
+      "category": "E",
+      "image": "E3_expressway.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "E", "subtype": "3"},
+        "opendrive_de": {"type": "331.1", "subtype": "-1"},
+        "country": "E3",
+        "osm": "SE:E3"
+      }
+    },
+    {
+      "id": "E4",
+      "name": "End of Expressway",
+      "name_sv": "Motortrafikled upphör",
+      "category": "E",
+      "image": "E4_end_expressway.png",
+      "default_width": 0.9,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "E", "subtype": "4"},
+        "opendrive_de": {"type": "331.2", "subtype": "-1"},
+        "country": "E4",
+        "osm": "SE:E4"
+      }
+    },
+    {
+      "id": "E16",
+      "name": "One-Way Traffic",
+      "name_sv": "Enkelriktad trafik",
+      "category": "E",
+      "image": "E16_one_way.png",
+      "default_width": 0.6,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "E", "subtype": "16"},
+        "opendrive_de": {"type": "220", "subtype": "10"},
+        "country": "E16",
+        "osm": "SE:E16"
+      }
+    },
+    {
+      "id": "E17",
+      "name": "Dead End",
+      "name_sv": "Återvändsväg",
+      "category": "E",
+      "image": "E17_dead_end.png",
+      "default_width": 0.6,
+      "default_height": 0.9,
+      "identifiers": {
+        "opendrive": {"type": "E", "subtype": "17"},
+        "opendrive_de": {"type": "357", "subtype": "-1"},
+        "country": "E17",
+        "osm": "SE:E17"
+      }
+    },
+    {
+      "id": "E19",
+      "name": "Parking",
+      "name_sv": "Parkering",
+      "category": "E",
+      "image": "E19_parking.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "E", "subtype": "19"},
+        "opendrive_de": {"type": "314", "subtype": "-1"},
+        "country": "E19",
+        "osm": "SE:E19"
+      }
+    },
+    {
+      "id": "E22",
+      "name": "Bus Stop",
+      "name_sv": "Busshållplats",
+      "category": "E",
+      "image": "E22_bus_stop.png",
+      "default_width": 0.6,
+      "default_height": 0.6,
+      "identifiers": {
+        "opendrive": {"type": "E", "subtype": "22"},
+        "opendrive_de": {"type": "224", "subtype": "-1"},
+        "country": "E22",
+        "osm": "SE:E22"
+      }
+    }
+  ]
+}

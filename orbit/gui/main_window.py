@@ -1805,20 +1805,36 @@ class MainWindow(QMainWindow):
     def on_signal_placement_requested(self, x: float, y: float):
         """Handle signal placement request - show selection dialog."""
         from .dialogs.signal_selection_dialog import SignalSelectionDialog
-        from orbit.models.signal import Signal
+        from orbit.models.signal import Signal, SignalType
 
-        # Show dialog to select signal type
-        dialog = SignalSelectionDialog(self)
+        # Show dialog to select signal type with enabled libraries from project
+        enabled_libs = self.project.enabled_sign_libraries if self.project else ['se']
+        dialog = SignalSelectionDialog(enabled_libraries=enabled_libs, parent=self)
         if dialog.exec():
-            signal_type, value, speed_unit = dialog.get_selection()
+            (signal_type, library_id, sign_id, value,
+             speed_unit, custom_type, custom_subtype) = dialog.get_selection()
             if signal_type:
                 # Create signal at clicked position
                 signal = Signal(
                     position=(x, y),
                     signal_type=signal_type,
                     value=value,
-                    speed_unit=speed_unit
+                    speed_unit=speed_unit,
+                    library_id=library_id,
+                    sign_id=sign_id
                 )
+                # Set custom type/subtype if applicable
+                if signal_type == SignalType.CUSTOM:
+                    signal.custom_type = custom_type
+                    signal.custom_subtype = custom_subtype
+                # Set dimensions from library if available
+                if signal_type == SignalType.LIBRARY_SIGN and library_id and sign_id:
+                    from orbit.models.sign_library_manager import SignLibraryManager
+                    manager = SignLibraryManager.instance()
+                    sign_def = manager.get_sign_definition(library_id, sign_id)
+                    if sign_def:
+                        signal.sign_width = sign_def.default_width
+                        signal.sign_height = sign_def.default_height
 
                 # Find closest road and assign
                 closest_road_id = self.project.find_closest_road((x, y))

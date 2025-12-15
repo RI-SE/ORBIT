@@ -9,21 +9,24 @@ from lxml import etree
 
 from orbit.models import Road, Signal
 from orbit.models.signal import SignalType, SpeedUnit
+from orbit.models.sign_library_manager import SignLibraryManager
 
 
 class SignalBuilder:
     """Builds signal XML elements for OpenDRIVE export."""
 
-    def __init__(self, scale_x: float = 1.0, country_code: str = "se"):
+    def __init__(self, scale_x: float = 1.0, country_code: str = "se", use_german_codes: bool = False):
         """
         Initialize signal builder.
 
         Args:
             scale_x: Scale factor in meters per pixel
             country_code: Two-letter ISO 3166-1 country code
+            use_german_codes: If True, use German VzKat codes (opendrive_de) when available
         """
         self.scale_x = scale_x
         self.country_code = country_code.upper()  # Schema requires uppercase [A-Z]{2}
+        self.use_german_codes = use_german_codes
 
     def create_signals(
         self,
@@ -116,13 +119,42 @@ class SignalBuilder:
     def _set_signal_type_attributes(self, signal_elem: etree.Element, signal: Signal) -> None:
         """Set type and subtype attributes based on signal type.
 
+        For LIBRARY_SIGN, looks up type/subtype from the sign library.
+        If use_german_codes is True and opendrive_de codes exist, uses those instead.
+        For CUSTOM, uses the custom type/subtype codes.
+        For legacy types, derives type/subtype from ORBIT signal type.
         If signal has stored subtype from import, use that for round-trip.
-        Otherwise, derive type/subtype from ORBIT signal type.
         """
         # If signal has stored subtype from OpenDRIVE import, prefer that for round-trip
         stored_subtype = signal.subtype if signal.subtype else None
 
-        # Using German sign codes (DE:) as OpenDRIVE standard
+        # Handle library-based signs
+        if signal.type == SignalType.LIBRARY_SIGN:
+            if signal.library_id and signal.sign_id:
+                manager = SignLibraryManager.instance()
+                sign_def = manager.get_sign_definition(signal.library_id, signal.sign_id)
+                if sign_def:
+                    # Check if we should use German codes
+                    if self.use_german_codes and sign_def.opendrive_de_type:
+                        signal_elem.set('type', sign_def.opendrive_de_type)
+                        signal_elem.set('subtype', stored_subtype or sign_def.opendrive_de_subtype or '-1')
+                        signal_elem.set('country', 'DE')
+                    else:
+                        signal_elem.set('type', sign_def.opendrive_type)
+                        signal_elem.set('subtype', stored_subtype or sign_def.opendrive_subtype)
+                    return
+            # Fallback if library/sign not found
+            signal_elem.set('type', '-1')
+            signal_elem.set('subtype', stored_subtype or '-1')
+            return
+
+        # Handle custom OpenDRIVE codes
+        if signal.type == SignalType.CUSTOM:
+            signal_elem.set('type', signal.custom_type or '-1')
+            signal_elem.set('subtype', stored_subtype or signal.custom_subtype or '-1')
+            return
+
+        # Legacy types - using German sign codes (DE:) as OpenDRIVE standard
         if signal.type == SignalType.STOP:
             signal_elem.set('type', '205')
             signal_elem.set('subtype', stored_subtype or '-1')

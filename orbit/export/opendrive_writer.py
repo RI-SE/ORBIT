@@ -35,7 +35,8 @@ class OpenDriveWriter:
         curve_fitter: Optional[CurveFitter] = None,
         right_hand_traffic: bool = True,
         country_code: str = "se",
-        use_tmerc: bool = False
+        use_tmerc: bool = False,
+        use_german_codes: bool = False
     ):
         """
         Initialize OpenDrive writer.
@@ -48,6 +49,7 @@ class OpenDriveWriter:
             country_code: Two-letter ISO 3166-1 country code (default: "se")
             use_tmerc: If True, use Transverse Mercator projection; if False (default),
                        use UTM projection or preserved geoReference from import
+            use_german_codes: If True, use German VzKat codes (opendrive_de) for signals
         """
         self.project = project
         self.transformer = transformer
@@ -79,7 +81,11 @@ class OpenDriveWriter:
 
         # Initialize builders
         self.lane_builder = LaneBuilder(scale_x=self.scale_x)
-        self.signal_builder = SignalBuilder(scale_x=self.scale_x, country_code=country_code)
+        self.signal_builder = SignalBuilder(
+            scale_x=self.scale_x,
+            country_code=country_code,
+            use_german_codes=use_german_codes
+        )
         self.object_builder = ObjectBuilder(
             scale_x=self.scale_x,
             transformer=transformer,
@@ -1005,7 +1011,8 @@ def export_to_opendrive(
     preserve_geometry: bool = True,
     right_hand_traffic: bool = True,
     country_code: str = "se",
-    use_tmerc: bool = False
+    use_tmerc: bool = False,
+    use_german_codes: bool = False
 ) -> bool:
     """
     Export project to OpenDrive format.
@@ -1021,12 +1028,16 @@ def export_to_opendrive(
         country_code: Two-letter ISO 3166-1 country code (default: "se")
         use_tmerc: If True, use Transverse Mercator projection; if False (default),
                    use UTM projection or preserved geoReference
+        use_german_codes: If True, use German VzKat codes (opendrive_de) for signals
 
     Returns:
         True if successful
     """
     curve_fitter = CurveFitter(line_tolerance, arc_tolerance, preserve_geometry)
-    writer = OpenDriveWriter(project, transformer, curve_fitter, right_hand_traffic, country_code, use_tmerc)
+    writer = OpenDriveWriter(
+        project, transformer, curve_fitter, right_hand_traffic,
+        country_code, use_tmerc, use_german_codes
+    )
     return writer.write(output_path)
 
 

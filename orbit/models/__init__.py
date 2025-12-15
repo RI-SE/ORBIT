@@ -18,6 +18,8 @@ from .lane import Lane, LaneType
 from .lane_section import LaneSection
 from .signal import Signal, SignalType, SpeedUnit
 from .object import RoadObject, ObjectType
+from .sign_library import SignDefinition, SignCategory, SignLibrary
+from .sign_library_manager import SignLibraryManager
 from .types import (
     Point2D, PointList, PixelCoordinate, GeoCoordinate,
     JsonDict, EntityID, BBox, ScaleFactor,
@@ -50,6 +52,10 @@ __all__ = [
     'SpeedUnit',
     'RoadObject',
     'ObjectType',
+    'SignDefinition',
+    'SignCategory',
+    'SignLibrary',
+    'SignLibraryManager',
     # Type aliases
     'Point2D',
     'PointList',
