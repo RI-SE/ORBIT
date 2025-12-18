@@ -97,6 +97,7 @@ class MainWindow(QMainWindow):
         self.image_view.object_selected.connect(self.on_object_selected_in_view)
         self.image_view.object_placement_requested.connect(self.on_object_placement_requested)
         self.image_view.parking_placement_requested.connect(self.on_parking_placement_requested)
+        self.image_view.parking_polygon_completed.connect(self.on_parking_polygon_completed)
         self.image_view.section_split_requested.connect(self.on_section_split_requested)
         self.image_view.road_split_requested.connect(self.on_road_split_requested)
         self.image_view.section_modified.connect(self.on_section_modified)
@@ -458,6 +459,9 @@ class MainWindow(QMainWindow):
         self.elements_tree.object_selected.connect(self.on_object_selected_in_tree)
         self.elements_tree.object_modified.connect(self.on_object_modified_in_tree)
         self.elements_tree.object_deleted.connect(self.on_object_deleted_in_tree)
+        self.elements_tree.parking_selected.connect(self.on_parking_selected_in_tree)
+        self.elements_tree.parking_modified.connect(self.on_parking_modified)
+        self.elements_tree.parking_deleted.connect(self.on_parking_deleted)
         self.elements_tree.connecting_road_selected.connect(self.on_connecting_road_selected)
         self.elements_tree.connecting_road_modified.connect(self.on_connecting_road_modified)
         self.elements_tree.connecting_road_lane_selected.connect(self.on_connecting_road_lane_selected)
@@ -1173,15 +1177,18 @@ class MainWindow(QMainWindow):
         # Show parking selection dialog
         dialog = ParkingSelectionDialog(self)
         if dialog.exec():
-            parking_type, access_type = dialog.get_selection()
+            parking_type, access_type, is_polygon_mode = dialog.get_selection()
             if parking_type:
                 # Activate parking placement mode
                 self.parking_mode_active = True
                 self.parking_type_to_place = parking_type
                 self.parking_access_to_place = access_type
-                self.image_view.set_parking_mode(True, parking_type, access_type)
+                self.image_view.set_parking_mode(True, parking_type, access_type, is_polygon_mode)
                 self.add_parking_action.setChecked(True)
-                self.statusBar().showMessage("Click on the map to place parking space")
+                if is_polygon_mode:
+                    self.statusBar().showMessage("Click to add polygon points. Double-click or press Enter to finish. Escape to cancel.")
+                else:
+                    self.statusBar().showMessage("Click on the map to place parking space")
         else:
             # Dialog cancelled, deactivate mode
             if hasattr(self, 'parking_mode_active') and self.parking_mode_active:
@@ -2264,6 +2271,29 @@ class MainWindow(QMainWindow):
         self.update_elements_tree()
         self.update_window_title()
 
+    def on_parking_selected_in_tree(self, parking_id: str):
+        """Handle parking selected in elements tree."""
+        # Highlight parking in view
+        if parking_id in self.image_view.parking_items:
+            item = self.image_view.parking_items[parking_id]
+            item.setSelected(True)
+            # Center view on parking
+            self.image_view.centerOn(item)
+
+    def on_parking_modified(self, parking_id: str):
+        """Handle parking modified from elements tree (after properties dialog)."""
+        self.modified = True
+        self.image_view.refresh_parking_graphics(parking_id)
+        self.update_window_title()
+
+    def on_parking_deleted(self, parking_id: str):
+        """Handle parking deleted from elements tree."""
+        self.project.remove_parking(parking_id)
+        self.image_view.remove_parking_graphics(parking_id)
+        self.modified = True
+        self.update_elements_tree()
+        self.update_window_title()
+
     def edit_signal_properties(self, signal_id: str):
         """Edit properties of a signal."""
         from .dialogs.signal_properties_dialog import SignalPropertiesDialog
@@ -2364,6 +2394,63 @@ class MainWindow(QMainWindow):
         self.update_elements_tree()
         self.update_window_title()
         self.statusBar().showMessage(f"Added parking: {parking.get_display_name()}. Click to add another or toggle off to finish.")
+
+    def on_parking_polygon_completed(self, points: list, parking_type, access_type):
+        """Handle parking polygon completion from ImageView."""
+        from orbit.models.parking import ParkingSpace
+
+        if len(points) < 3:
+            self.statusBar().showMessage("Polygon needs at least 3 points")
+            return
+
+        # Calculate centroid for position
+        centroid_x = sum(p[0] for p in points) / len(points)
+        centroid_y = sum(p[1] for p in points) / len(points)
+
+        # Create parking with polygon points
+        parking = ParkingSpace(
+            position=(centroid_x, centroid_y),
+            parking_type=parking_type,
+            access=access_type
+        )
+        parking.points = list(points)  # Store polygon points
+
+        # Find closest road and assign
+        closest_road_id = self.project.find_closest_road((centroid_x, centroid_y))
+        if closest_road_id:
+            parking.road_id = closest_road_id
+            road = self.project.get_road(closest_road_id)
+            if road and road.centerline_id:
+                centerline = self.project.get_polyline(road.centerline_id)
+                if centerline:
+                    s, t = parking.calculate_s_t_position(centerline.points)
+                    parking.s_position = s
+                    parking.t_offset = t
+
+        # Convert pixel coords to geo coords if transformer available
+        if self._cached_transformer:
+            lon, lat = self._cached_transformer.pixel_to_geo(centroid_x, centroid_y)
+            parking.geo_position = (lon, lat)
+            # Also convert polygon points
+            geo_points = []
+            for px, py in points:
+                lon, lat = self._cached_transformer.pixel_to_geo(px, py)
+                geo_points.append((lon, lat))
+            parking.geo_points = geo_points
+
+        # Get scale factor for graphics
+        scale_factor = 0.0
+        if hasattr(self, '_cached_transformer') and self._cached_transformer:
+            scale_x, scale_y = self._cached_transformer.get_scale_factor()
+            scale_factor = scale_x if scale_x else 0.0
+
+        # Add to project and view
+        self.project.add_parking(parking)
+        self.image_view.add_parking_graphics(parking, scale_factor)
+        self.modified = True
+        self.update_elements_tree()
+        self.update_window_title()
+        self.statusBar().showMessage(f"Added parking area: {parking.get_display_name()}. Draw another or toggle off to finish.")
 
     def on_object_added(self, obj):
         """Handle object added signal (for guardrails)."""

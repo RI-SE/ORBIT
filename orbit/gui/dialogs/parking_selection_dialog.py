@@ -4,7 +4,7 @@ Dialog for selecting parking type when placing a new parking space.
 
 from typing import Optional, Tuple
 
-from PyQt6.QtWidgets import QComboBox, QLabel
+from PyQt6.QtWidgets import QComboBox, QLabel, QRadioButton, QButtonGroup
 from PyQt6.QtCore import Qt
 from orbit.models.parking import ParkingType, ParkingAccess
 from .base_dialog import BaseDialog
@@ -14,28 +14,46 @@ class ParkingSelectionDialog(BaseDialog):
     """
     Dialog for selecting the type and access of a parking space before placement.
 
-    Provides dropdown selection for:
+    Provides:
+    - Drawing mode selection (single space vs parking area polygon)
     - Parking type (surface, underground, multi-storey, etc.)
     - Access type (standard, handicapped, private, etc.)
     """
 
     def __init__(self, parent=None):
-        super().__init__("Select Parking Type", parent, min_width=350)
+        super().__init__("Select Parking Type", parent, min_width=380)
         self.selected_type: Optional[ParkingType] = None
         self.selected_access: Optional[ParkingAccess] = None
+        self.is_polygon_mode: bool = False
 
         self.setup_ui()
         self.load_properties()
 
     def setup_ui(self):
         """Create the dialog UI."""
-        # Instructions
-        instructions = QLabel(
-            "Select the parking type and access restrictions.\n"
-            "Click on the map to place the parking space."
-        )
-        instructions.setWordWrap(True)
-        self.get_main_layout().addWidget(instructions)
+        # Drawing mode selection
+        mode_layout = self.add_form_group("Drawing Mode")
+
+        self.mode_group = QButtonGroup(self)
+
+        self.single_space_radio = QRadioButton("Single parking space")
+        self.single_space_radio.setChecked(True)
+        self.mode_group.addButton(self.single_space_radio, 0)
+        mode_layout.addRow(self.single_space_radio)
+
+        single_desc = QLabel("Click to place a rectangular parking space.\nResize and rotate after placement.")
+        single_desc.setStyleSheet("color: #666; font-size: 10px; margin-left: 20px;")
+        single_desc.setWordWrap(True)
+        mode_layout.addRow(single_desc)
+
+        self.polygon_radio = QRadioButton("Parking area (polygon)")
+        self.mode_group.addButton(self.polygon_radio, 1)
+        mode_layout.addRow(self.polygon_radio)
+
+        polygon_desc = QLabel("Click to draw polygon corners.\nDouble-click or press Enter to finish.")
+        polygon_desc.setStyleSheet("color: #666; font-size: 10px; margin-left: 20px;")
+        polygon_desc.setWordWrap(True)
+        mode_layout.addRow(polygon_desc)
 
         # Parking Type
         type_layout = self.add_form_group("Parking Type")
@@ -46,7 +64,6 @@ class ParkingSelectionDialog(BaseDialog):
             self.type_combo.addItem(display_name, ptype)
         type_layout.addRow("Type:", self.type_combo)
 
-        # Type description
         self.type_desc = QLabel()
         self.type_desc.setStyleSheet("color: #666; font-size: 10px;")
         self.type_desc.setWordWrap(True)
@@ -62,7 +79,6 @@ class ParkingSelectionDialog(BaseDialog):
             self.access_combo.addItem(display_name, access)
         access_layout.addRow("Access:", self.access_combo)
 
-        # Access description
         self.access_desc = QLabel()
         self.access_desc.setStyleSheet("color: #666; font-size: 10px;")
         self.access_desc.setWordWrap(True)
@@ -78,7 +94,6 @@ class ParkingSelectionDialog(BaseDialog):
 
     def load_properties(self):
         """Set default values."""
-        # Default to surface parking with standard access
         type_idx = self.type_combo.findData(ParkingType.SURFACE)
         if type_idx >= 0:
             self.type_combo.setCurrentIndex(type_idx)
@@ -121,13 +136,14 @@ class ParkingSelectionDialog(BaseDialog):
         """Save selections and close dialog."""
         self.selected_type = self.type_combo.currentData()
         self.selected_access = self.access_combo.currentData()
+        self.is_polygon_mode = self.polygon_radio.isChecked()
         super().accept()
 
-    def get_selection(self) -> Tuple[Optional[ParkingType], Optional[ParkingAccess]]:
+    def get_selection(self) -> Tuple[Optional[ParkingType], Optional[ParkingAccess], bool]:
         """
-        Get the selected parking type and access.
+        Get the selected parking type, access, and drawing mode.
 
         Returns:
-            Tuple of (ParkingType, ParkingAccess) or (None, None) if cancelled
+            Tuple of (ParkingType, ParkingAccess, is_polygon_mode)
         """
-        return (self.selected_type, self.selected_access)
+        return (self.selected_type, self.selected_access, self.is_polygon_mode)

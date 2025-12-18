@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Tuple
 import cv2
 import numpy as np
 
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsItem, QMenu, QMessageBox, QGraphicsPolygonItem
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsItem, QMenu, QMessageBox, QGraphicsPolygonItem, QGraphicsPathItem
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF
 from PyQt6.QtGui import (
     QPixmap, QImage, QPen, QColor, QBrush, QPainter,
@@ -61,6 +61,7 @@ class ImageView(QGraphicsView):
     object_selected = pyqtSignal(str)  # Emits object ID when selected in view
     object_placement_requested = pyqtSignal(float, float, object)  # Emits x, y coordinates and ObjectType
     parking_placement_requested = pyqtSignal(float, float, object, object)  # Emits x, y, ParkingType, ParkingAccess
+    parking_polygon_completed = pyqtSignal(list, object, object)  # Emits points list, ParkingType, ParkingAccess
     section_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index
     road_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index for splitting road
     section_modified = pyqtSignal(str)  # Emits road ID
@@ -131,8 +132,11 @@ class ImageView(QGraphicsView):
         self.signal_mode = False
         self.object_mode = False
         self.parking_mode = False
+        self.parking_polygon_mode = False  # True for polygon drawing, False for point placement
         self.parking_type_to_place = None  # ParkingType to place
         self.parking_access_to_place = None  # ParkingAccess to place
+        self.parking_polygon_points: List[Tuple[float, float]] = []  # Points for current polygon
+        self.parking_polygon_preview: Optional[QGraphicsPathItem] = None  # Preview item
         self.adjustment_mode = False  # Transform adjustment mode for aligning imported data
         self.current_adjustment: Optional[TransformAdjustment] = None  # Current adjustment values
         self.object_type_to_place: Optional[ObjectType] = None  # Type of object to place
@@ -410,6 +414,62 @@ class ImageView(QGraphicsView):
             if not parking.is_polygon():
                 item.setPos(parking.position[0], parking.position[1])
             item.update_graphics()
+
+    def _add_parking_polygon_point(self, x: float, y: float):
+        """Add a point to the current parking polygon being drawn."""
+        from PyQt6.QtGui import QPainterPath
+
+        self.parking_polygon_points.append((x, y))
+
+        # Update or create preview
+        if self.parking_polygon_preview is None:
+            self.parking_polygon_preview = QGraphicsPathItem()
+            self.parking_polygon_preview.setPen(QPen(QColor(100, 100, 255, 200), 2, Qt.PenStyle.DashLine))
+            self.parking_polygon_preview.setBrush(QBrush(QColor(100, 100, 255, 80)))
+            self.scene.addItem(self.parking_polygon_preview)
+
+        # Draw polygon preview
+        path = QPainterPath()
+        if self.parking_polygon_points:
+            path.moveTo(self.parking_polygon_points[0][0], self.parking_polygon_points[0][1])
+            for px, py in self.parking_polygon_points[1:]:
+                path.lineTo(px, py)
+            # Close if more than 2 points
+            if len(self.parking_polygon_points) > 2:
+                path.closeSubpath()
+
+        self.parking_polygon_preview.setPath(path)
+
+    def _finish_parking_polygon(self):
+        """Finish drawing the parking polygon and create the parking space."""
+        if len(self.parking_polygon_points) < 3:
+            # Need at least 3 points for a polygon
+            self._cancel_parking_polygon()
+            return
+
+        # Emit the polygon completion signal
+        self.parking_polygon_completed.emit(
+            list(self.parking_polygon_points),
+            self.parking_type_to_place,
+            self.parking_access_to_place
+        )
+
+        # Clean up preview
+        self._clear_parking_polygon_preview()
+
+        # Reset points but stay in polygon mode for next polygon
+        self.parking_polygon_points.clear()
+
+    def _cancel_parking_polygon(self):
+        """Cancel the current parking polygon drawing."""
+        self.parking_polygon_points.clear()
+        self._clear_parking_polygon_preview()
+
+    def _clear_parking_polygon_preview(self):
+        """Remove the polygon preview from the scene."""
+        if self.parking_polygon_preview:
+            self.safe_remove_item(self.parking_polygon_preview)
+            self.parking_polygon_preview = None
 
     def update_all_from_geo_coords(self, transformer):
         """
@@ -1218,15 +1278,18 @@ class ImageView(QGraphicsView):
                 self.drawing_guardrail = False
                 self.guardrail_points.clear()
 
-    def set_parking_mode(self, enabled: bool, parking_type=None, access_type=None):
+    def set_parking_mode(self, enabled: bool, parking_type=None, access_type=None, polygon_mode: bool = False):
         """Enable or disable parking placement mode."""
         self.parking_mode = enabled
+        self.parking_polygon_mode = polygon_mode
         self.parking_type_to_place = parking_type
         self.parking_access_to_place = access_type
         if enabled:
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
         else:
             self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+            # Clean up any partial polygon
+            self._cancel_parking_polygon()
 
     def set_pick_point_mode(self, enabled: bool):
         """Enable or disable point picking mode for georeferencing."""
@@ -2437,12 +2500,16 @@ class ImageView(QGraphicsView):
                     self.object_placement_requested.emit(scene_pos.x(), scene_pos.y(), self.object_type_to_place)
 
             elif self.parking_mode:
-                # Parking placement - emit request with type and access
-                self.parking_placement_requested.emit(
-                    scene_pos.x(), scene_pos.y(),
-                    self.parking_type_to_place,
-                    self.parking_access_to_place
-                )
+                if self.parking_polygon_mode:
+                    # Polygon mode - add point to polygon
+                    self._add_parking_polygon_point(scene_pos.x(), scene_pos.y())
+                else:
+                    # Point mode - emit request with type and access
+                    self.parking_placement_requested.emit(
+                        scene_pos.x(), scene_pos.y(),
+                        self.parking_type_to_place,
+                        self.parking_access_to_place
+                    )
 
             elif self.pick_point_mode:
                 # Emit picked point coordinates
@@ -2908,9 +2975,12 @@ class ImageView(QGraphicsView):
             super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
-        """Handle double-click to finish polyline, edit polyline, or edit junction."""
+        """Handle double-click to finish polyline/polygon, edit polyline, or edit junction."""
         if self.drawing_mode and event.button() == Qt.MouseButton.LeftButton:
             self.finish_current_polyline()
+        elif self.parking_mode and self.parking_polygon_mode and event.button() == Qt.MouseButton.LeftButton:
+            # Finish parking polygon on double-click
+            self._finish_parking_polygon()
         elif event.button() == Qt.MouseButton.LeftButton:
             scene_pos = self.mapToScene(event.pos())
 
@@ -2968,6 +3038,13 @@ class ImageView(QGraphicsView):
                 if len(self.measure_points) == 1:
                     # Remove the first dot if user pressed Escape after first click
                     self._clear_measurements()
+        elif self.parking_mode and self.parking_polygon_mode:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                # Finish polygon
+                self._finish_parking_polygon()
+            elif event.key() == Qt.Key.Key_Escape:
+                # Cancel polygon
+                self._cancel_parking_polygon()
         else:
             if event.key() == Qt.Key.Key_Delete:
                 # Delete selected polyline
