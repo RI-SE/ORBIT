@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 
-from orbit.models import Project, Junction, Signal
+from orbit.models import Project, Junction, Signal, ParkingSpace
 from orbit.utils.enum_formatting import format_snake_case
 from ..utils.message_helpers import ask_yes_no
 
@@ -29,6 +29,9 @@ class ElementsTreeWidget(QWidget):
     signal_modified = pyqtSignal(str)  # Emits signal ID
     signal_deleted = pyqtSignal(str)  # Emits signal ID
     object_selected = pyqtSignal(str)  # Emits object ID
+    parking_selected = pyqtSignal(str)  # Emits parking ID
+    parking_modified = pyqtSignal(str)  # Emits parking ID
+    parking_deleted = pyqtSignal(str)  # Emits parking ID
     object_modified = pyqtSignal(str)  # Emits object ID
     object_deleted = pyqtSignal(str)  # Emits object ID
     connecting_road_selected = pyqtSignal(str)  # Emits connecting road ID
@@ -97,6 +100,17 @@ class ElementsTreeWidget(QWidget):
             objects_item.addChild(object_item)
 
         objects_item.setExpanded(True)
+
+        # Add Parking category
+        parking_item = QTreeWidgetItem(["Parking"])
+        parking_item.setData(0, Qt.ItemDataRole.UserRole, "category_parking")
+        self.tree.addTopLevelItem(parking_item)
+
+        for parking in self.project.parking_spaces:
+            parking_space_item = self.create_parking_item(parking)
+            parking_item.addChild(parking_space_item)
+
+        parking_item.setExpanded(True)
 
     def create_junction_item(self, junction: Junction) -> QTreeWidgetItem:
         """Create a tree item for a junction with connecting roads as children."""
@@ -251,6 +265,26 @@ class ElementsTreeWidget(QWidget):
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "object", "id": obj.id})
         return item
 
+    def create_parking_item(self, parking: ParkingSpace) -> QTreeWidgetItem:
+        """Create a tree item for a parking space."""
+        # Build display text
+        display_name = parking.get_display_name()
+
+        # Add access and road info
+        access_type = parking.access.value.replace('_', ' ').title()
+        road_info = ""
+        if parking.road_id and self.project:
+            road = self.project.get_road(parking.road_id)
+            if road:
+                road_name = road.name or f"Road {road.id[:8]}"
+                road_info = f" → {road_name}"
+
+        text = f"{display_name} ({access_type}){road_info}"
+
+        item = QTreeWidgetItem([text])
+        item.setData(0, Qt.ItemDataRole.UserRole, {"type": "parking", "id": parking.id})
+        return item
+
     def show_context_menu(self, position):
         """Show context menu for tree items."""
         item = self.tree.itemAt(position)
@@ -297,6 +331,16 @@ class ElementsTreeWidget(QWidget):
 
             delete_action = QAction("Delete Object", self)
             delete_action.triggered.connect(lambda: self.delete_object(data["id"]))
+            menu.addAction(delete_action)
+
+        elif data["type"] == "parking":
+            # Parking context menu
+            edit_action = QAction("Edit Properties", self)
+            edit_action.triggered.connect(lambda: self.edit_parking(data["id"]))
+            menu.addAction(edit_action)
+
+            delete_action = QAction("Delete Parking", self)
+            delete_action.triggered.connect(lambda: self.delete_parking(data["id"]))
             menu.addAction(delete_action)
 
         elif data["type"] == "connecting_road":
@@ -385,6 +429,24 @@ class ElementsTreeWidget(QWidget):
             self.object_deleted.emit(object_id)
             self.refresh_tree()
 
+    def edit_parking(self, parking_id: str):
+        """Edit a parking space's properties."""
+        from ..dialogs.parking_properties_dialog import ParkingPropertiesDialog
+
+        parking = self.project.get_parking(parking_id)
+        if parking:
+            dialog = ParkingPropertiesDialog(parking, self.project, self)
+            if dialog.exec():
+                self.parking_modified.emit(parking_id)
+                self.refresh_tree()
+
+    def delete_parking(self, parking_id: str):
+        """Delete a parking space."""
+        if ask_yes_no(self, "Are you sure you want to delete this parking space?", "Delete Parking"):
+            self.project.remove_parking(parking_id)
+            self.parking_deleted.emit(parking_id)
+            self.refresh_tree()
+
     def edit_connecting_road(self, connecting_road_id: str):
         """Edit a connecting road's properties."""
         from ..dialogs.connecting_road_dialog import ConnectingRoadDialog
@@ -451,6 +513,8 @@ class ElementsTreeWidget(QWidget):
                 self.edit_signal(data["id"])
             elif data["type"] == "object":
                 self.edit_object(data["id"])
+            elif data["type"] == "parking":
+                self.edit_parking(data["id"])
             elif data["type"] == "connecting_road":
                 self.edit_connecting_road(data["id"])
             elif data["type"] == "connecting_road_lane":
@@ -471,6 +535,8 @@ class ElementsTreeWidget(QWidget):
                     self.signal_selected.emit(data["id"])
                 elif data["type"] == "object":
                     self.object_selected.emit(data["id"])
+                elif data["type"] == "parking":
+                    self.parking_selected.emit(data["id"])
                 elif data["type"] == "connecting_road":
                     self.connecting_road_selected.emit(data["id"])
                 elif data["type"] == "connecting_road_lane":

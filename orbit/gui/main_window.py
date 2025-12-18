@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
         self.image_view.object_edit_requested.connect(self.edit_object_properties)
         self.image_view.object_selected.connect(self.on_object_selected_in_view)
         self.image_view.object_placement_requested.connect(self.on_object_placement_requested)
+        self.image_view.parking_placement_requested.connect(self.on_parking_placement_requested)
         self.image_view.section_split_requested.connect(self.on_section_split_requested)
         self.image_view.road_split_requested.connect(self.on_road_split_requested)
         self.image_view.section_modified.connect(self.on_section_modified)
@@ -313,6 +314,12 @@ class MainWindow(QMainWindow):
         self.add_object_action.setCheckable(True)
         self.add_object_action.triggered.connect(self.add_object)
 
+        self.add_parking_action = QAction("Add &Parking", self)
+        self.add_parking_action.setShortcut(QKeySequence("Ctrl+Shift+P"))
+        self.add_parking_action.setStatusTip("Add a parking space by clicking on the map")
+        self.add_parking_action.setCheckable(True)
+        self.add_parking_action.triggered.connect(self.add_parking)
+
         self.georef_action = QAction("&Georeferencing...", self)
         self.georef_action.setStatusTip("Configure georeferencing control points")
         self.georef_action.triggered.connect(self.open_georeferencing)
@@ -392,6 +399,7 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.create_roundabout_action)
         tools_menu.addAction(self.add_signal_action)
         tools_menu.addAction(self.add_object_action)
+        tools_menu.addAction(self.add_parking_action)
         tools_menu.addAction(self.measure_action)
         tools_menu.addAction(self.show_scale_action)
         tools_menu.addSeparator()
@@ -419,6 +427,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.add_junction_action)
         toolbar.addAction(self.add_signal_action)
         toolbar.addAction(self.add_object_action)
+        toolbar.addAction(self.add_parking_action)
         toolbar.addAction(self.measure_action)
         toolbar.addAction(self.show_scale_action)
         toolbar.addSeparator()
@@ -1147,6 +1156,38 @@ class MainWindow(QMainWindow):
                 self.object_mode_active = False
                 self.image_view.set_object_mode(False)
                 self.add_object_action.setChecked(False)
+                self.statusBar().showMessage("Ready")
+
+    def add_parking(self):
+        """Add a parking space by selecting type and clicking on the map."""
+        from .dialogs.parking_selection_dialog import ParkingSelectionDialog
+
+        # Check if parking mode is already active - if so, toggle it off
+        if hasattr(self, 'parking_mode_active') and self.parking_mode_active:
+            self.parking_mode_active = False
+            self.image_view.set_parking_mode(False)
+            self.add_parking_action.setChecked(False)
+            self.statusBar().showMessage("Ready")
+            return
+
+        # Show parking selection dialog
+        dialog = ParkingSelectionDialog(self)
+        if dialog.exec():
+            parking_type, access_type = dialog.get_selection()
+            if parking_type:
+                # Activate parking placement mode
+                self.parking_mode_active = True
+                self.parking_type_to_place = parking_type
+                self.parking_access_to_place = access_type
+                self.image_view.set_parking_mode(True, parking_type, access_type)
+                self.add_parking_action.setChecked(True)
+                self.statusBar().showMessage("Click on the map to place parking space")
+        else:
+            # Dialog cancelled, deactivate mode
+            if hasattr(self, 'parking_mode_active') and self.parking_mode_active:
+                self.parking_mode_active = False
+                self.image_view.set_parking_mode(False)
+                self.add_parking_action.setChecked(False)
                 self.statusBar().showMessage("Ready")
 
     def toggle_measure_mode(self):
@@ -2281,6 +2322,48 @@ class MainWindow(QMainWindow):
         self.update_elements_tree()
         self.update_window_title()
         self.statusBar().showMessage(f"Added object: {obj.get_display_name()}. Click to add another or toggle off to finish.")
+
+    def on_parking_placement_requested(self, x: float, y: float, parking_type, access_type):
+        """Handle parking placement request from ImageView."""
+        from orbit.models.parking import ParkingSpace
+
+        # Create parking at clicked position
+        parking = ParkingSpace(
+            position=(x, y),
+            parking_type=parking_type,
+            access=access_type
+        )
+
+        # Find closest road and assign
+        closest_road_id = self.project.find_closest_road((x, y))
+        if closest_road_id:
+            parking.road_id = closest_road_id
+            road = self.project.get_road(closest_road_id)
+            if road and road.centerline_id:
+                centerline = self.project.get_polyline(road.centerline_id)
+                if centerline:
+                    s, t = parking.calculate_s_t_position(centerline.points)
+                    parking.s_position = s
+                    parking.t_offset = t
+
+        # Convert pixel position to geo coords if transformer available
+        if self._cached_transformer:
+            lon, lat = self._cached_transformer.pixel_to_geo(x, y)
+            parking.geo_position = (lon, lat)
+
+        # Get scale factor for graphics
+        scale_factor = 0.0
+        if hasattr(self, '_cached_transformer') and self._cached_transformer:
+            scale_x, scale_y = self._cached_transformer.get_scale_factor()
+            scale_factor = scale_x if scale_x else 0.0
+
+        # Add to project and view
+        self.project.add_parking(parking)
+        self.image_view.add_parking_graphics(parking, scale_factor)
+        self.modified = True
+        self.update_elements_tree()
+        self.update_window_title()
+        self.statusBar().showMessage(f"Added parking: {parking.get_display_name()}. Click to add another or toggle off to finish.")
 
     def on_object_added(self, obj):
         """Handle object added signal (for guardrails)."""

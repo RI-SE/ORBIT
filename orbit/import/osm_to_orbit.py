@@ -16,7 +16,7 @@ from orbit.utils.geometry import (
     calculate_path_length,
     shorten_geo_points
 )
-from orbit.models import ControlPoint, Road, Junction, Signal, RoadObject
+from orbit.models import ControlPoint, Road, Junction, Signal, RoadObject, ParkingSpace
 from orbit.models.polyline import Polyline, LineType, RoadMarkType
 from orbit.models.road import RoadType
 from orbit.models.lane import Lane, LaneType
@@ -39,6 +39,8 @@ from .osm_mappings import (
     get_path_width_from_osm,
     parse_turn_lanes,
     get_surface_material,
+    get_parking_type_from_osm,
+    get_parking_access_from_osm,
 )
 
 
@@ -1789,5 +1791,106 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
             }
 
             return obj
+
+    return None
+
+
+def create_parking_from_osm(osm_element, transformer: CoordinateTransformer,
+                            existing_osm_ids: Set[int] = None) -> Optional[ParkingSpace]:
+    """
+    Create ORBIT ParkingSpace from OSM node or way.
+
+    Args:
+        osm_element: OSM node or way object with amenity=parking
+        transformer: Coordinate transformer
+        existing_osm_ids: Set of already-imported OSM IDs
+
+    Returns:
+        ParkingSpace or None
+    """
+    # Check if already imported
+    if existing_osm_ids is not None and osm_element.id in existing_osm_ids:
+        return None
+
+    # Determine parking type
+    parking_type = get_parking_type_from_osm(osm_element.tags)
+    if not parking_type:
+        return None
+
+    # Determine access type
+    access_type = get_parking_access_from_osm(osm_element.tags)
+
+    # Handle nodes (point parking facilities)
+    if isinstance(osm_element, OSMNode):
+        px, py = transformer.geo_to_pixel(osm_element.lon, osm_element.lat)
+        geo_position = (osm_element.lon, osm_element.lat)
+
+        parking = ParkingSpace(
+            position=(px, py),
+            access=access_type,
+            parking_type=parking_type,
+            geo_position=geo_position,
+        )
+        parking.name = osm_element.tags.get('name', f"Parking {osm_element.id}")
+
+        # Extract capacity if available
+        if 'capacity' in osm_element.tags:
+            try:
+                parking.capacity = int(osm_element.tags['capacity'])
+            except ValueError:
+                pass
+
+        return parking
+
+    # Handle ways (polygon parking facilities)
+    elif isinstance(osm_element, OSMWay):
+        # Convert coordinates and store geo coords
+        pixel_points = []
+        geo_points = []
+        for lat, lon in osm_element.resolved_coords:
+            px, py = transformer.geo_to_pixel(lon, lat)
+            pixel_points.append((px, py))
+            geo_points.append((lon, lat))
+
+        if len(pixel_points) < 3:
+            return None  # Need at least 3 points for polygon
+
+        # Calculate centroid for position
+        avg_x = sum(p[0] for p in pixel_points) / len(pixel_points)
+        avg_y = sum(p[1] for p in pixel_points) / len(pixel_points)
+        avg_lon = sum(p[0] for p in geo_points) / len(geo_points)
+        avg_lat = sum(p[1] for p in geo_points) / len(geo_points)
+
+        parking = ParkingSpace(
+            position=(avg_x, avg_y),
+            access=access_type,
+            parking_type=parking_type,
+            geo_position=(avg_lon, avg_lat),
+        )
+        parking.name = osm_element.tags.get('name', f"Parking {osm_element.id}")
+
+        # Store polygon points
+        parking.points = pixel_points
+        parking.geo_points = geo_points
+
+        # Extract capacity if available
+        if 'capacity' in osm_element.tags:
+            try:
+                parking.capacity = int(osm_element.tags['capacity'])
+            except ValueError:
+                pass
+
+        # Calculate dimensions from bounding box
+        xs = [p[0] for p in pixel_points]
+        ys = [p[1] for p in pixel_points]
+        width_pixels = max(xs) - min(xs)
+        length_pixels = max(ys) - min(ys)
+
+        # Convert from pixels to meters using transformer scale
+        scale_x, scale_y = transformer.get_scale_factor()
+        parking.width = width_pixels * scale_x
+        parking.length = length_pixels * scale_y
+
+        return parking
 
     return None

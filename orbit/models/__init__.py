@@ -18,6 +18,7 @@ from .lane import Lane, LaneType
 from .lane_section import LaneSection
 from .signal import Signal, SignalType, SpeedUnit
 from .object import RoadObject, ObjectType
+from .parking import ParkingSpace, ParkingAccess, ParkingType
 from .sign_library import SignDefinition, SignCategory, SignLibrary
 from .sign_library_manager import SignLibraryManager
 from .types import (
@@ -52,6 +53,9 @@ __all__ = [
     'SpeedUnit',
     'RoadObject',
     'ObjectType',
+    'ParkingSpace',
+    'ParkingAccess',
+    'ParkingType',
     'SignDefinition',
     'SignCategory',
     'SignLibrary',

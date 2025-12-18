@@ -17,6 +17,7 @@ from .road import Road
 from .junction import Junction, JunctionGroup
 from .signal import Signal
 from .object import RoadObject
+from .parking import ParkingSpace
 
 logger = get_logger(__name__)
 
@@ -93,6 +94,7 @@ class Project:
     junction_groups: List[JunctionGroup] = field(default_factory=list)
     signals: List[Signal] = field(default_factory=list)
     objects: List[RoadObject] = field(default_factory=list)
+    parking_spaces: List[ParkingSpace] = field(default_factory=list)
     control_points: List[ControlPoint] = field(default_factory=list)
     right_hand_traffic: bool = True  # Default to right-hand traffic
     transform_method: str = 'homography'  # Default to homography for drone images
@@ -692,6 +694,22 @@ class Project:
                 return obj
         return None
 
+    # Parking management
+    def add_parking(self, parking: ParkingSpace) -> None:
+        """Add a parking space to the project."""
+        self.parking_spaces.append(parking)
+
+    def remove_parking(self, parking_id: str) -> None:
+        """Remove a parking space from the project."""
+        self.parking_spaces = [p for p in self.parking_spaces if p.id != parking_id]
+
+    def get_parking(self, parking_id: str) -> Optional[ParkingSpace]:
+        """Get a parking space by ID."""
+        for parking in self.parking_spaces:
+            if parking.id == parking_id:
+                return parking
+        return None
+
     def find_closest_road(self, position: Tuple[float, float]) -> Optional[str]:
         """
         Find the road closest to a given position.
@@ -801,6 +819,7 @@ class Project:
             'junction_groups': [jg.to_dict() for jg in self.junction_groups],
             'signals': [s.to_dict() for s in self.signals],
             'objects': [o.to_dict() for o in self.objects],
+            'parking_spaces': [p.to_dict() for p in self.parking_spaces],
             'control_points': [cp.to_dict() for cp in self.control_points],
             'right_hand_traffic': bool(self.right_hand_traffic),
             'transform_method': self.transform_method,
@@ -858,6 +877,7 @@ class Project:
         junction_groups = [JunctionGroup.from_dict(jg) for jg in data.get('junction_groups', [])]
         signals = [Signal.from_dict(s) for s in data.get('signals', [])]
         objects = [RoadObject.from_dict(o) for o in data.get('objects', [])]
+        parking_spaces = [ParkingSpace.from_dict(p) for p in data.get('parking_spaces', [])]
         control_points = [ControlPoint.from_dict(cp) for cp in data.get('control_points', [])]
 
         return cls(
@@ -868,6 +888,7 @@ class Project:
             junction_groups=junction_groups,
             signals=signals,
             objects=objects,
+            parking_spaces=parking_spaces,
             control_points=control_points,
             right_hand_traffic=data.get('right_hand_traffic', True),
             transform_method=data.get('transform_method', 'affine'),  # Default to affine for old projects
@@ -918,6 +939,7 @@ class Project:
         self.junctions.clear()
         self.signals.clear()
         self.objects.clear()
+        self.parking_spaces.clear()
         self.control_points.clear()
         self.image_path = None
         self.metadata = {

@@ -10,7 +10,7 @@ from enum import Enum
 import uuid
 import math
 
-from orbit.models import Project, Road, Junction, Signal, RoadObject, Polyline, ControlPoint
+from orbit.models import Project, Road, Junction, Signal, RoadObject, Polyline, ControlPoint, ParkingSpace
 from orbit.models.polyline import LineType, RoadMarkType
 from orbit.models.road import RoadType, LaneInfo
 from orbit.models.lane import Lane, LaneType as ORBITLaneType
@@ -23,6 +23,7 @@ from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.lane_connection import LaneConnection
 from orbit.models.signal import SignalType, SpeedUnit
 from orbit.models.object import ObjectType
+from orbit.models.parking import ParkingAccess, ParkingType
 
 from .opendrive_parser import OpenDriveParser, OpenDriveData, ODRRoad, ODRLane, ODRSignal, ODRObject
 from .opendrive_geometry import GeometryConverter, calculate_s_offsets, sample_elevation_profile
@@ -56,6 +57,7 @@ class ImportResult:
     junctions_imported: int = 0
     signals_imported: int = 0
     objects_imported: int = 0
+    parking_imported: int = 0
     polylines_imported: int = 0
     control_points_created: int = 0
 
@@ -283,11 +285,17 @@ class OpenDriveImporter:
                 except Exception as e:
                     result.warnings.append(f"Failed to import signal {odr_signal.id}: {e}")
 
-            # Import objects
+            # Import objects (separating parking spaces from regular objects)
             for odr_object in odr_road.objects:
                 try:
-                    if self._import_object(odr_object, road_id, odr_road, options):
-                        result.objects_imported += 1
+                    if odr_object.is_parking:
+                        # Import as parking space
+                        if self._import_parking(odr_object, road_id, odr_road, options):
+                            result.parking_imported += 1
+                    else:
+                        # Import as regular object
+                        if self._import_object(odr_object, road_id, odr_road, options):
+                            result.objects_imported += 1
                 except Exception as e:
                     result.warnings.append(f"Failed to import object {odr_object.id}: {e}")
 
@@ -1235,6 +1243,63 @@ class OpenDriveImporter:
         obj.roll = odr_object.roll
 
         self.project.objects.append(obj)
+        return True
+
+    def _import_parking(self, odr_object: ODRObject, road_id: str, odr_road: ODRRoad, options: ImportOptions) -> bool:
+        """Import parking space from OpenDrive object with parkingSpace child."""
+        # Calculate pixel position from s,t coordinates
+        position_pixel = self._calculate_position_from_st(
+            odr_object.s,
+            odr_object.t,
+            odr_road
+        )
+
+        if not position_pixel:
+            return False
+
+        # Convert pixel position to geo coords for storage as source of truth
+        geo_position = None
+        if self.orbit_transformer:
+            lon, lat = self.orbit_transformer.pixel_to_geo(position_pixel[0], position_pixel[1])
+            geo_position = (lon, lat)
+
+        # Map parking access string to enum
+        access_map = {
+            'standard': ParkingAccess.STANDARD,
+            'women': ParkingAccess.WOMEN,
+            'handicapped': ParkingAccess.HANDICAPPED,
+            'disabled': ParkingAccess.DISABLED,
+            'reserved': ParkingAccess.RESERVED,
+            'company': ParkingAccess.COMPANY,
+            'permit': ParkingAccess.PERMIT,
+            'private': ParkingAccess.PRIVATE,
+            'customers': ParkingAccess.CUSTOMERS,
+            'residents': ParkingAccess.RESIDENTS,
+        }
+        access = access_map.get(odr_object.parking_access.lower(), ParkingAccess.STANDARD)
+
+        # Create parking space
+        parking = ParkingSpace(
+            position=position_pixel,
+            access=access,
+            parking_type=ParkingType.SURFACE,  # Default to surface
+            road_id=road_id,
+            geo_position=geo_position,
+        )
+
+        parking.name = odr_object.name
+        parking.z_offset = odr_object.z_offset
+        parking.orientation = math.degrees(odr_object.hdg)  # Convert radians to degrees
+        parking.restrictions = odr_object.parking_restrictions
+        parking.opendrive_id = odr_object.id
+
+        # Set dimensions from object
+        if odr_object.width > 0:
+            parking.width = odr_object.width
+        if odr_object.length > 0:
+            parking.length = odr_object.length
+
+        self.project.add_parking(parking)
         return True
 
     def _calculate_position_from_st(

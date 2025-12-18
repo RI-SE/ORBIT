@@ -21,6 +21,7 @@ from orbit.utils.geometry import create_lane_polygon, calculate_directional_scal
 from orbit.utils.coordinate_transform import TransformAdjustment
 from .graphics.signal_graphics_item import SignalGraphicsItem
 from .graphics.object_graphics_item import ObjectGraphicsItem
+from .graphics.parking_item import ParkingGraphicsItem
 from .utils.message_helpers import show_warning, ask_yes_no
 from orbit.gui.graphics import (
     PolylineGraphicsItem,
@@ -59,6 +60,7 @@ class ImageView(QGraphicsView):
     object_edit_requested = pyqtSignal(str)  # Emits object ID for editing
     object_selected = pyqtSignal(str)  # Emits object ID when selected in view
     object_placement_requested = pyqtSignal(float, float, object)  # Emits x, y coordinates and ObjectType
+    parking_placement_requested = pyqtSignal(float, float, object, object)  # Emits x, y, ParkingType, ParkingAccess
     section_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index
     road_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index for splitting road
     section_modified = pyqtSignal(str)  # Emits road ID
@@ -102,6 +104,10 @@ class ImageView(QGraphicsView):
         self.object_items: Dict[str, ObjectGraphicsItem] = {}
         self.selected_object_id: Optional[str] = None
 
+        # Parking spaces
+        self.parking_items: Dict[str, ParkingGraphicsItem] = {}
+        self.selected_parking_id: Optional[str] = None
+
         # Control points (for georeferencing visualization)
         self.control_point_items: List = []
 
@@ -124,6 +130,9 @@ class ImageView(QGraphicsView):
         self.junction_mode = False
         self.signal_mode = False
         self.object_mode = False
+        self.parking_mode = False
+        self.parking_type_to_place = None  # ParkingType to place
+        self.parking_access_to_place = None  # ParkingAccess to place
         self.adjustment_mode = False  # Transform adjustment mode for aligning imported data
         self.current_adjustment: Optional[TransformAdjustment] = None  # Current adjustment values
         self.object_type_to_place: Optional[ObjectType] = None  # Type of object to place
@@ -229,6 +238,7 @@ class ImageView(QGraphicsView):
         self.junction_items.clear()
         self.signal_items.clear()
         self.object_items.clear()
+        self.parking_items.clear()
         self.control_point_items.clear()
         self.road_lanes_items.clear()
         self.connecting_road_centerline_items.clear()
@@ -254,6 +264,10 @@ class ImageView(QGraphicsView):
         scale_factor = scale_factors[0] if scale_factors else 0.0
         for obj in project.objects:
             self.add_object_graphics(obj, scale_factor)
+
+        # Add parking spaces from project
+        for parking in project.parking_spaces:
+            self.add_parking_graphics(parking, scale_factor)
 
         # Add control points from project
         for cp in project.control_points:
@@ -367,6 +381,36 @@ class ImageView(QGraphicsView):
             # For polyline objects (guardrails), redraw the path
             item.update_graphics()
 
+    def add_parking_graphics(self, parking, scale_factor: float = 0.0):
+        """Add a parking space to the graphics scene."""
+        from orbit.models.parking import ParkingSpace
+        item = ParkingGraphicsItem(parking, scale_factor)
+        item.parking_changed = lambda p: self._on_parking_changed(p)
+        self.parking_items[parking.id] = item
+        self.scene.addItem(item)
+
+    def _on_parking_changed(self, parking):
+        """Handle parking space position change."""
+        # Mark project as modified (MainWindow will handle this via signal)
+        pass
+
+    def remove_parking_graphics(self, parking_id: str):
+        """Remove a parking space from the scene."""
+        if parking_id in self.parking_items:
+            item = self.parking_items[parking_id]
+            self.safe_remove_item(item)
+            del self.parking_items[parking_id]
+
+    def refresh_parking_graphics(self, parking_id: str):
+        """Refresh parking graphics after modification."""
+        if parking_id in self.parking_items:
+            item = self.parking_items[parking_id]
+            parking = item.parking
+            # Update position for point parking (non-polygon)
+            if not parking.is_polygon():
+                item.setPos(parking.position[0], parking.position[1])
+            item.update_graphics()
+
     def update_all_from_geo_coords(self, transformer):
         """
         Update all geometry items from their geo coordinates using the transformer.
@@ -423,6 +467,13 @@ class ImageView(QGraphicsView):
         for road in self.project.roads:
             if road.id in self.road_lanes_items:
                 self.road_lanes_items[road.id].update_graphics()
+
+        # Update parking spaces that have geo coords
+        for parking in self.project.parking_spaces:
+            if parking.has_geo_coords():
+                parking.update_pixel_coords_from_geo(transformer)
+                if parking.id in self.parking_items:
+                    self.refresh_parking_graphics(parking.id)
 
         # Force scene update to ensure all changes are rendered
         self.scene.update()
@@ -1166,6 +1217,16 @@ class ImageView(QGraphicsView):
             if self.drawing_guardrail:
                 self.drawing_guardrail = False
                 self.guardrail_points.clear()
+
+    def set_parking_mode(self, enabled: bool, parking_type=None, access_type=None):
+        """Enable or disable parking placement mode."""
+        self.parking_mode = enabled
+        self.parking_type_to_place = parking_type
+        self.parking_access_to_place = access_type
+        if enabled:
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        else:
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
 
     def set_pick_point_mode(self, enabled: bool):
         """Enable or disable point picking mode for georeferencing."""
@@ -2374,6 +2435,14 @@ class ImageView(QGraphicsView):
                 else:
                     # Point object - emit request to open dialog (MainWindow will create object)
                     self.object_placement_requested.emit(scene_pos.x(), scene_pos.y(), self.object_type_to_place)
+
+            elif self.parking_mode:
+                # Parking placement - emit request with type and access
+                self.parking_placement_requested.emit(
+                    scene_pos.x(), scene_pos.y(),
+                    self.parking_type_to_place,
+                    self.parking_access_to_place
+                )
 
             elif self.pick_point_mode:
                 # Emit picked point coordinates

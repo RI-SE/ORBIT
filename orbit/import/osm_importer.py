@@ -10,7 +10,7 @@ from enum import Enum
 import importlib
 
 from orbit.utils import CoordinateTransformer
-from orbit.models import Project, Road, Junction, Signal, RoadObject
+from orbit.models import Project, Road, Junction, Signal, RoadObject, ParkingSpace
 from orbit.models.polyline import Polyline
 
 from .osm_query import OverpassAPIClient, OverpassAPIError
@@ -25,6 +25,7 @@ from .osm_to_orbit import (
     create_road_from_osm,
     create_signal_from_osm,
     create_object_from_osm,
+    create_parking_from_osm,
     offset_road_endpoints_from_junctions,
 )
 from .junction_analyzer import generate_junction_connections, create_connecting_roads_from_patterns
@@ -72,9 +73,11 @@ class ImportResult:
     junctions_imported: int = 0
     signals_imported: int = 0
     objects_imported: int = 0
+    parking_imported: int = 0
     roads_skipped_duplicate: int = 0
     signals_skipped_duplicate: int = 0
     objects_skipped_duplicate: int = 0
+    parking_skipped_duplicate: int = 0
     partial_import: bool = False  # True if API timed out but kept partial data
 
 
@@ -248,6 +251,10 @@ class OSMImporter:
         if options.detail_level == DetailLevel.FULL:
             self._attach_objects_to_roads(options)
 
+        # Step 9b: Import parking facilities (full only)
+        if options.detail_level == DetailLevel.FULL:
+            self._import_parking(osm_data, options, result)
+
         # Step 10: Clear stale cross-junction road links
         # Roads in junctions should not have predecessor/successor pointing to each other
         self.project.clear_cross_junction_road_links()
@@ -256,7 +263,8 @@ class OSMImporter:
         result.success = (
             result.roads_imported > 0 or
             result.signals_imported > 0 or
-            result.objects_imported > 0
+            result.objects_imported > 0 or
+            result.parking_imported > 0
         )
 
         return result
@@ -344,6 +352,10 @@ class OSMImporter:
         if options.detail_level == DetailLevel.FULL:
             self._attach_objects_to_roads(options)
 
+        # Step 6b: Import parking facilities (full only)
+        if options.detail_level == DetailLevel.FULL:
+            self._import_parking(osm_data, options, result)
+
         # Step 7: Clear stale cross-junction road links
         # Roads in junctions should not have predecessor/successor pointing to each other
         self.project.clear_cross_junction_road_links()
@@ -352,7 +364,8 @@ class OSMImporter:
         result.success = (
             result.roads_imported > 0 or
             result.signals_imported > 0 or
-            result.objects_imported > 0
+            result.objects_imported > 0 or
+            result.parking_imported > 0
         )
 
         return result
@@ -1018,3 +1031,56 @@ class OSMImporter:
             self.project.add_object(obj)
             self.imported_way_ids.add(osm_way.id)
             result.objects_imported += 1
+
+    def _import_parking(self, osm_data: OSMData, options: ImportOptions,
+                        result: ImportResult) -> None:
+        """Import parking facilities (full mode only)."""
+        # Parking ways (polygon facilities)
+        parking_ways = OSMParser.get_parking_ways(osm_data)
+
+        if options.verbose:
+            print(f"DEBUG: Found {len(parking_ways)} parking ways in OSM data")
+
+        for osm_way in parking_ways:
+            parking = create_parking_from_osm(
+                osm_way,
+                self.transformer,
+                self.imported_way_ids
+            )
+
+            if parking is None:
+                if osm_way.id in self.imported_way_ids:
+                    result.parking_skipped_duplicate += 1
+                continue
+
+            self.project.add_parking(parking)
+            self.imported_way_ids.add(osm_way.id)
+            result.parking_imported += 1
+
+            if options.verbose:
+                print(f"DEBUG: Imported parking '{parking.name}' ({parking.parking_type.value})")
+
+        # Parking nodes (point facilities)
+        parking_nodes = OSMParser.get_parking_nodes(osm_data)
+
+        if options.verbose:
+            print(f"DEBUG: Found {len(parking_nodes)} parking nodes in OSM data")
+
+        for osm_node in parking_nodes:
+            parking = create_parking_from_osm(
+                osm_node,
+                self.transformer,
+                self.imported_node_ids
+            )
+
+            if parking is None:
+                if osm_node.id in self.imported_node_ids:
+                    result.parking_skipped_duplicate += 1
+                continue
+
+            self.project.add_parking(parking)
+            self.imported_node_ids.add(osm_node.id)
+            result.parking_imported += 1
+
+            if options.verbose:
+                print(f"DEBUG: Imported parking '{parking.name}' ({parking.parking_type.value})")

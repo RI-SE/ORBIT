@@ -2,9 +2,12 @@
 Mappings between OpenStreetMap tags and ORBIT/OpenDrive constructs.
 """
 
+from typing import Optional
+
 from orbit.models.signal import SignalType
 from orbit.models.object import ObjectType
 from orbit.models.lane import LaneType
+from orbit.models.parking import ParkingType, ParkingAccess
 
 
 # OSM highway types to OpenDrive road types
@@ -564,3 +567,74 @@ def get_path_width_from_osm(tags: dict, lane_type: LaneType) -> float:
 
     # Fallback
     return 1.5
+
+
+# OSM parking type to ORBIT ParkingType
+OSM_PARKING_TYPE_MAP = {
+    'surface': ParkingType.SURFACE,
+    'underground': ParkingType.UNDERGROUND,
+    'multi-storey': ParkingType.MULTI_STOREY,
+    'rooftop': ParkingType.ROOFTOP,
+    'street_side': ParkingType.STREET,
+    'on_street': ParkingType.STREET,
+    'carports': ParkingType.CARPORTS,
+}
+
+# OSM access tag to ORBIT ParkingAccess
+OSM_PARKING_ACCESS_MAP = {
+    'yes': ParkingAccess.STANDARD,
+    'public': ParkingAccess.STANDARD,
+    'customers': ParkingAccess.CUSTOMERS,
+    'private': ParkingAccess.PRIVATE,
+    'permit': ParkingAccess.PERMIT,
+    'residents': ParkingAccess.RESIDENTS,
+    'disabled': ParkingAccess.DISABLED,
+    'no': ParkingAccess.PRIVATE,  # No access = private
+}
+
+
+def get_parking_type_from_osm(tags: dict) -> Optional[ParkingType]:
+    """
+    Determine parking type from OSM tags.
+
+    Args:
+        tags: OSM element tags dictionary
+
+    Returns:
+        ParkingType or None if not a parking facility
+    """
+    # Check for amenity=parking
+    if tags.get('amenity') != 'parking':
+        return None
+
+    # Get parking type from 'parking' tag
+    parking_type = tags.get('parking', 'surface')
+    return OSM_PARKING_TYPE_MAP.get(parking_type, ParkingType.SURFACE)
+
+
+def get_parking_access_from_osm(tags: dict) -> ParkingAccess:
+    """
+    Determine parking access type from OSM tags.
+
+    Args:
+        tags: OSM element tags dictionary
+
+    Returns:
+        ParkingAccess type
+    """
+    # Check for specific access tags
+    access = tags.get('access', 'yes')
+
+    # Check for fee-based parking
+    if tags.get('fee') == 'yes':
+        # Fee-based but public
+        return ParkingAccess.STANDARD
+
+    # Check for specific user restrictions
+    if tags.get('parking:women') == 'yes' or 'women' in access.lower():
+        return ParkingAccess.WOMEN
+
+    if tags.get('disabled') == 'yes' or tags.get('wheelchair') == 'designated':
+        return ParkingAccess.DISABLED
+
+    return OSM_PARKING_ACCESS_MAP.get(access.lower(), ParkingAccess.STANDARD)

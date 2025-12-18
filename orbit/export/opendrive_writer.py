@@ -21,6 +21,7 @@ from .lane_analyzer import LaneAnalyzer
 from .lane_builder import LaneBuilder
 from .signal_builder import SignalBuilder
 from .object_builder import ObjectBuilder
+from .parking_builder import ParkingBuilder
 
 logger = get_logger(__name__)
 
@@ -87,6 +88,12 @@ class OpenDriveWriter:
             use_german_codes=use_german_codes
         )
         self.object_builder = ObjectBuilder(
+            scale_x=self.scale_x,
+            transformer=transformer,
+            curve_fitter=self.curve_fitter,
+            polyline_map=self.polyline_map
+        )
+        self.parking_builder = ParkingBuilder(
             scale_x=self.scale_x,
             transformer=transformer,
             curve_fitter=self.curve_fitter,
@@ -497,9 +504,20 @@ class OpenDriveWriter:
         if signals is not None:
             road_elem.append(signals)
 
-        # Add objects for this road
+        # Add objects for this road (including parking spaces)
         objects = self.object_builder.create_objects(road, self.project.objects, centerline_points_pixel)
-        if objects is not None:
+
+        # Create parking objects for this road
+        parking_objects = self.parking_builder.create_parking_objects(
+            road, self.project.parking_spaces, centerline_points_pixel
+        )
+
+        # Combine objects and parking into single objects element
+        if objects is not None or parking_objects:
+            if objects is None:
+                objects = etree.Element('objects')
+            for parking_elem in parking_objects:
+                objects.append(parking_elem)
             road_elem.append(objects)
 
         # Add surface CRG references if present

@@ -363,6 +363,40 @@ class OSMParser:
         """
         return len(way.nodes) > 2 and way.nodes[0] == way.nodes[-1]
 
+    @staticmethod
+    def get_parking_ways(data: OSMData) -> List[OSMWay]:
+        """
+        Extract ways representing parking facilities.
+
+        Args:
+            data: Parsed OSM data
+
+        Returns:
+            List of parking ways (amenity=parking)
+        """
+        return [
+            way for way in data.ways.values()
+            if way.tags.get('amenity') == 'parking'
+        ]
+
+    @staticmethod
+    def get_parking_nodes(data: OSMData) -> List[OSMNode]:
+        """
+        Extract nodes representing parking facilities.
+
+        Some parking facilities are mapped as nodes rather than ways.
+
+        Args:
+            data: Parsed OSM data
+
+        Returns:
+            List of parking nodes (amenity=parking)
+        """
+        return [
+            node for node in data.nodes.values()
+            if node.tags.get('amenity') == 'parking'
+        ]
+
 
 def parse_osm_data(osm_json: dict) -> OSMData:
     """

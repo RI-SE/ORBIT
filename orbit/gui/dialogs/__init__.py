@@ -16,6 +16,8 @@ from .object_properties_dialog import ObjectPropertiesDialog
 from .connecting_road_dialog import ConnectingRoadDialog
 from .signal_selection_dialog import SignalSelectionDialog
 from .object_selection_dialog import ObjectSelectionDialog
+from .parking_selection_dialog import ParkingSelectionDialog
+from .parking_properties_dialog import ParkingPropertiesDialog
 from .csv_import_dialog import CSVImportDialog
 from .osm_import_dialog import OSMImportDialog
 from .opendrive_import_dialog import OpenDriveImportDialog
@@ -38,6 +40,8 @@ __all__ = [
     'ConnectingRoadDialog',
     'SignalSelectionDialog',
     'ObjectSelectionDialog',
+    'ParkingSelectionDialog',
+    'ParkingPropertiesDialog',
     'CSVImportDialog',
     'OSMImportDialog',
     'OpenDriveImportDialog',

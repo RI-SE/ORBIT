@@ -290,6 +290,9 @@ class ODRObject:
         pitch: Pitch angle (radians)
         roll: Roll angle (radians)
         validity_length: Validity length along road (meters, for objects spanning distance)
+        is_parking: True if this object is a parking space
+        parking_access: Parking access type (if is_parking is True)
+        parking_restrictions: Parking restrictions text (if is_parking is True)
     """
     id: str
     s: float
@@ -306,6 +309,10 @@ class ODRObject:
     pitch: float = 0.0
     roll: float = 0.0
     validity_length: Optional[float] = None
+    # Parking-specific attributes
+    is_parking: bool = False
+    parking_access: str = "standard"
+    parking_restrictions: str = ""
 
 
 @dataclass
@@ -901,6 +908,16 @@ class OpenDriveParser:
         if not object_id:
             return None
 
+        # Check for parkingSpace child element
+        parking_space_elem = object_elem.find('parkingSpace')
+        is_parking = parking_space_elem is not None
+        parking_access = "standard"
+        parking_restrictions = ""
+
+        if parking_space_elem is not None:
+            parking_access = parking_space_elem.get('access', 'standard')
+            parking_restrictions = parking_space_elem.get('restrictions', '')
+
         return ODRObject(
             id=object_id,
             s=float(object_elem.get('s', '0')),
@@ -916,7 +933,10 @@ class OpenDriveParser:
             hdg=float(object_elem.get('hdg', '0')),
             pitch=float(object_elem.get('pitch', '0')),
             roll=float(object_elem.get('roll', '0')),
-            validity_length=float(object_elem.get('validLength')) if object_elem.get('validLength') else None
+            validity_length=float(object_elem.get('validLength')) if object_elem.get('validLength') else None,
+            is_parking=is_parking,
+            parking_access=parking_access,
+            parking_restrictions=parking_restrictions
         )
 
     def _parse_junction(self, junction_elem: etree.Element) -> Optional[ODRJunction]:
