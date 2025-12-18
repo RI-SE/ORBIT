@@ -94,7 +94,14 @@ class ObjectBuilder:
         if not centerline:
             return 0.0
 
-        all_points_meters = self.transformer.pixels_to_meters_batch(centerline.points)
+        # Use geo coords directly if available (more precise)
+        if centerline.geo_points:
+            all_points_meters = [
+                self.transformer.latlon_to_meters(lat, lon)
+                for lon, lat in centerline.geo_points
+            ]
+        else:
+            all_points_meters = self.transformer.pixels_to_meters_batch(centerline.points)
         geometry_elements = self.curve_fitter.fit_polyline(all_points_meters)
         return sum(elem.length for elem in geometry_elements)
 

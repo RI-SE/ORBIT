@@ -116,10 +116,19 @@ class RoadObject:
     """
     Represents a roadside object (lamppost, building, tree, etc.).
 
+    Coordinates can be stored as:
+    - pixel coordinates (position/points fields) - used for display and manual placement
+    - geographic coordinates (geo_position/geo_points fields) - source of truth for imported data
+
+    When geo coords are set, pixel coords can be recomputed via get_pixel_position()/get_pixel_points()
+    using a transformer. This enables adjustment of georeferencing alignment.
+
     Attributes:
         id: Unique identifier
         position: (x, y) pixel coordinates on the map (for point objects)
+        geo_position: (lon, lat) geographic coordinates (source of truth for point objects)
         points: List of (x, y) coordinates for polyline objects (guardrails)
+        geo_points: List of (lon, lat) geographic coordinates (source of truth for polyline objects)
         type: ObjectType enum value
         name: Custom label for the object
         orientation: Angle in degrees (0 = right, 90 = up) - only for building/lamppost
@@ -139,11 +148,14 @@ class RoadObject:
         object_id: Optional[str] = None,
         position: Tuple[float, float] = (0.0, 0.0),
         object_type: ObjectType = ObjectType.BUILDING,
-        road_id: Optional[str] = None
+        road_id: Optional[str] = None,
+        geo_position: Optional[Tuple[float, float]] = None
     ):
         self.id = object_id or str(uuid.uuid4())
         self.position = position
+        self.geo_position = geo_position  # (lon, lat) - source of truth for point objects
         self.points: List[Tuple[float, float]] = []  # For guardrails
+        self.geo_points: Optional[List[Tuple[float, float]]] = None  # (lon, lat) pairs for polyline objects
         self.type = object_type
         self.name = ""
         self.orientation = 0.0  # Degrees (only for building/lamppost)
@@ -161,6 +173,63 @@ class RoadObject:
         self.pitch: float = 0.0  # Pitch angle in radians
         self.roll: float = 0.0  # Roll angle in radians
 
+    def has_geo_coords(self) -> bool:
+        """Check if this object has geographic coordinates stored."""
+        if self.type.get_shape_type() == "polyline":
+            return self.geo_points is not None and len(self.geo_points) > 0
+        return self.geo_position is not None
+
+    def get_pixel_position(self, transformer=None) -> Tuple[float, float]:
+        """
+        Get position in pixel coordinates (for point objects).
+
+        If geo_position is available and a transformer is provided,
+        computes pixel coordinates from geo coordinates.
+        Otherwise returns the stored pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+
+        Returns:
+            (x, y) pixel coordinates
+        """
+        if self.geo_position and transformer:
+            return transformer.geo_to_pixel(self.geo_position[0], self.geo_position[1])
+        return self.position
+
+    def get_pixel_points(self, transformer=None) -> List[Tuple[float, float]]:
+        """
+        Get points in pixel coordinates (for polyline objects like guardrails).
+
+        If geo_points are available and a transformer is provided,
+        computes pixel coordinates from geo coordinates.
+        Otherwise returns the stored pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+
+        Returns:
+            List of (x, y) pixel coordinates
+        """
+        if self.geo_points and transformer:
+            return [transformer.geo_to_pixel(lon, lat) for lon, lat in self.geo_points]
+        return self.points
+
+    def update_pixel_coords_from_geo(self, transformer) -> None:
+        """
+        Update stored pixel coords from geo coordinates using transformer.
+
+        Call this after changing the transformer (e.g., adjustment) to
+        update the cached pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+        """
+        if self.geo_position and transformer:
+            self.position = transformer.geo_to_pixel(self.geo_position[0], self.geo_position[1])
+        if self.geo_points and transformer:
+            self.points = [transformer.geo_to_pixel(lon, lat) for lon, lat in self.geo_points]
+
     def to_dict(self) -> dict:
         """Serialize object to dictionary for JSON storage."""
         data = {
@@ -177,6 +246,11 @@ class RoadObject:
             't_offset': self.t_offset,
             'validity_length': self.validity_length
         }
+        # Include geo coords if set
+        if self.geo_position is not None:
+            data['geo_position'] = list(self.geo_position)
+        if self.geo_points is not None:
+            data['geo_points'] = [list(p) for p in self.geo_points]
         # Only include optional fields if set (backward compatibility)
         if self.opendrive_id is not None:
             data['opendrive_id'] = self.opendrive_id
@@ -189,16 +263,25 @@ class RoadObject:
     @classmethod
     def from_dict(cls, data: dict) -> 'RoadObject':
         """Deserialize object from dictionary."""
+        # Handle geo_position - convert list to tuple if present
+        geo_position_raw = data.get('geo_position')
+        geo_position = tuple(geo_position_raw) if geo_position_raw else None
+
         obj = cls(
             object_id=data['id'],
             position=tuple(data.get('position', [0.0, 0.0])),
             object_type=ObjectType(data['type']),
-            road_id=data.get('road_id')
+            road_id=data.get('road_id'),
+            geo_position=geo_position
         )
 
         # Load points for polyline objects
         if 'points' in data and data['points']:
             obj.points = [tuple(p) for p in data['points']]
+
+        # Load geo_points - convert lists to tuples if present
+        geo_points_raw = data.get('geo_points')
+        obj.geo_points = [tuple(p) for p in geo_points_raw] if geo_points_raw else None
 
         obj.name = data.get('name', '')
         obj.orientation = data.get('orientation', 0.0)

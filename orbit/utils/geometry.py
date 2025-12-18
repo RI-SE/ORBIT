@@ -6,7 +6,10 @@ perpendicular vectors, polygon construction, and junction path generation.
 """
 
 import math
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from orbit.utils.coordinate_transform import CoordinateTransformer
 
 
 def calculate_perpendicular(p1: Tuple[float, float], p2: Tuple[float, float]) -> Tuple[float, float]:
@@ -396,6 +399,131 @@ def generate_simple_connection_path(from_pos: Tuple[float, float],
         )
 
     return (sampled_points, coeffs)
+
+
+def compute_heading_in_metric_space(
+    pos_geo: Tuple[float, float],
+    direction_geo: Tuple[float, float],
+    transformer: 'CoordinateTransformer'
+) -> float:
+    """
+    Compute heading in metric space from two geo points.
+
+    Args:
+        pos_geo: Position (lon, lat)
+        direction_geo: A point in the direction of travel (lon, lat)
+        transformer: CoordinateTransformer for geo<->meters conversion
+
+    Returns:
+        Heading in radians in metric space (0 = east, π/2 = north)
+    """
+    # Convert both points to metric
+    pos_m = transformer.latlon_to_meters(pos_geo[1], pos_geo[0])
+    dir_m = transformer.latlon_to_meters(direction_geo[1], direction_geo[0])
+
+    # Calculate heading
+    dx = dir_m[0] - pos_m[0]
+    dy = dir_m[1] - pos_m[1]
+    return math.atan2(dy, dx)
+
+
+def generate_connection_path_geo(
+    from_pos_geo: Tuple[float, float],
+    from_heading: float,
+    to_pos_geo: Tuple[float, float],
+    to_heading: float,
+    transformer: 'CoordinateTransformer',
+    num_points: int = 20,
+    tangent_scale: float = 1.0,
+    is_uturn: bool = False,
+    from_direction_geo: Optional[Tuple[float, float]] = None,
+    to_direction_geo: Optional[Tuple[float, float]] = None
+) -> Tuple[List[Tuple[float, float]], Tuple[float, ...]]:
+    """
+    Generate a ParamPoly3D connection path in geographic coordinates.
+
+    Converts geo coords to local metric space, generates the path using
+    existing Hermite/Bezier logic, then converts back to geo.
+
+    Args:
+        from_pos_geo: Starting position (lon, lat)
+        from_heading: Starting heading in radians (pixel space) - used as fallback
+        to_pos_geo: Ending position (lon, lat)
+        to_heading: Ending heading in radians (pixel space) - used as fallback
+        transformer: CoordinateTransformer for geo<->meters conversion
+        num_points: Number of points to sample
+        tangent_scale: Scale factor for tangent lengths
+        is_uturn: Whether this is a U-turn connection
+        from_direction_geo: Optional geo point in direction of travel at start (lon, lat)
+        to_direction_geo: Optional geo point in direction of travel at end (lon, lat)
+
+    Returns:
+        Tuple of (geo_path, parampoly3_coefficients) where:
+        - geo_path: List of (lon, lat) points sampled from the curve
+        - parampoly3_coefficients: Tuple of (aU, bU, cU, dU, aV, bV, cV, dV)
+    """
+    # Convert geo positions to local metric coordinates
+    from_lon, from_lat = from_pos_geo
+    to_lon, to_lat = to_pos_geo
+
+    from_mx, from_my = transformer.latlon_to_meters(from_lat, from_lon)
+    to_mx, to_my = transformer.latlon_to_meters(to_lat, to_lon)
+
+    # Compute headings in metric space
+    # from_heading: Direction CR leaves the start point (into junction from source road)
+    #   Compute from direction_geo TO from_pos_geo = direction toward junction
+    # to_heading: Direction CR arrives at end point (onto destination road)
+    #   Compute from to_pos_geo TO to_direction_geo = direction along destination road
+    if from_direction_geo:
+        from_heading_metric = compute_heading_in_metric_space(
+            from_direction_geo, from_pos_geo, transformer
+        )
+    else:
+        # Fallback: create a direction point from pixel heading
+        # This is approximate and may not work well with skewed transformations
+        offset = 0.0001  # Small offset in degrees
+        dir_lon = from_lon + offset * math.cos(from_heading)
+        dir_lat = from_lat - offset * math.sin(from_heading)  # Negative because pixel Y is down
+        from_heading_metric = compute_heading_in_metric_space(
+            from_pos_geo, (dir_lon, dir_lat), transformer
+        )
+
+    if to_direction_geo:
+        # For to_heading, we want direction AWAY from junction along destination road
+        # direction_geo is on the road, so compute from pos_geo TO direction_geo
+        to_heading_metric = compute_heading_in_metric_space(
+            to_pos_geo, to_direction_geo, transformer
+        )
+    else:
+        # Fallback: create a direction point from pixel heading
+        offset = 0.0001
+        dir_lon = to_lon + offset * math.cos(to_heading)
+        dir_lat = to_lat - offset * math.sin(to_heading)
+        to_heading_metric = compute_heading_in_metric_space(
+            to_pos_geo, (dir_lon, dir_lat), transformer
+        )
+
+    # Generate path in metric space
+    from_pos_m = (from_mx, from_my)
+    to_pos_m = (to_mx, to_my)
+
+    metric_points, coeffs = generate_simple_connection_path(
+        from_pos_m,
+        from_heading_metric,
+        to_pos_m,
+        to_heading_metric,
+        num_points,
+        tangent_scale,
+        is_uturn
+    )
+
+    # Convert sampled points back to geo coordinates
+    geo_path = []
+    for mx, my in metric_points:
+        lat, lon = transformer.meters_to_latlon(mx, my)
+        geo_path.append((lon, lat))
+
+    return (geo_path, coeffs)
 
 
 def calculate_path_length(points: List[Tuple[float, float]]) -> float:
@@ -1556,3 +1684,150 @@ def sample_bezier(
         points.append((x, y))
 
     return points
+
+
+def find_geo_point_at_distance_along_path(
+    geo_points: List[Tuple[float, float]],
+    distance_meters: float,
+    from_start: bool = True
+) -> Optional[Tuple[Tuple[float, float], int]]:
+    """
+    Find point at specified distance (in meters) along a geographic path.
+
+    Similar to find_point_at_distance_along_path but works with geographic
+    coordinates (lon, lat) and uses Haversine distance calculations.
+
+    Args:
+        geo_points: List of (lon, lat) points in geographic coordinates
+        distance_meters: Distance to travel along the path in meters
+        from_start: If True, measure from start; if False, measure from end
+
+    Returns:
+        Tuple of (geo_point, segment_index) or None if:
+        - geo_point: (lon, lat) coordinates at the target distance
+        - segment_index: Index of the segment where point was found
+
+        Returns None if distance exceeds path length or points list is invalid.
+    """
+    if len(geo_points) < 2:
+        return None
+
+    # If measuring from end, reverse the point list
+    if not from_start:
+        geo_points = list(reversed(geo_points))
+
+    accumulated_distance = 0.0
+    target_distance = abs(distance_meters)
+
+    for i in range(len(geo_points) - 1):
+        lon1, lat1 = geo_points[i]
+        lon2, lat2 = geo_points[i + 1]
+
+        # Calculate segment length using Haversine formula
+        segment_length = haversine_distance(lat1, lon1, lat2, lon2)
+
+        if segment_length < 1e-10:
+            # Zero-length segment, skip it
+            continue
+
+        # Check if target distance is reached in this segment
+        if accumulated_distance + segment_length >= target_distance:
+            remaining = target_distance - accumulated_distance
+
+            # Check if we land exactly on start of segment
+            if remaining < 1e-10:
+                return ((lon1, lat1), i)
+
+            # Check if we land exactly on end of segment
+            if abs(remaining - segment_length) < 1e-10:
+                return ((lon2, lat2), i + 1)
+
+            # Interpolate within the segment
+            t = remaining / segment_length  # Parameter in [0, 1]
+
+            # Linear interpolation in geographic space (good approximation for short segments)
+            interpolated_lon = lon1 + t * (lon2 - lon1)
+            interpolated_lat = lat1 + t * (lat2 - lat1)
+
+            return ((interpolated_lon, interpolated_lat), i)
+
+        accumulated_distance += segment_length
+
+    # Target distance exceeds path length
+    return None
+
+
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Calculate distance between two lat/lon points using Haversine formula.
+
+    Args:
+        lat1, lon1: First point latitude and longitude in degrees
+        lat2, lon2: Second point latitude and longitude in degrees
+
+    Returns:
+        Distance in meters
+    """
+    # Earth's radius in meters
+    R = 6371000.0
+
+    # Convert to radians
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lon = math.radians(lon2 - lon1)
+
+    # Haversine formula
+    a = (math.sin(delta_lat / 2) ** 2 +
+         math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon / 2) ** 2)
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return R * c
+
+
+def shorten_geo_points(
+    geo_points: List[Tuple[float, float]],
+    offset_start_meters: float,
+    offset_end_meters: float
+) -> List[Tuple[float, float]]:
+    """
+    Shorten a geo path by specified distances at start and end.
+
+    This function removes intermediate points that are passed when walking
+    the specified distance from each end, similar to how pixel paths are
+    shortened at junction endpoints.
+
+    Args:
+        geo_points: List of (lon, lat) points in geographic coordinates
+        offset_start_meters: Distance in meters to remove from start
+        offset_end_meters: Distance in meters to remove from end
+
+    Returns:
+        New list of (lon, lat) points with shortened path
+    """
+    if len(geo_points) < 2:
+        return list(geo_points)
+
+    result = list(geo_points)
+
+    # Shorten from start
+    if offset_start_meters > 0:
+        start_result = find_geo_point_at_distance_along_path(
+            result, offset_start_meters, from_start=True
+        )
+        if start_result:
+            new_start, segment_idx = start_result
+            # Remove passed points and insert new start point
+            result = [new_start] + result[segment_idx + 1:]
+
+    # Shorten from end
+    if offset_end_meters > 0 and len(result) >= 2:
+        end_result = find_geo_point_at_distance_along_path(
+            result, offset_end_meters, from_start=False
+        )
+        if end_result:
+            new_end, segment_idx = end_result
+            # Remove passed points from end and insert new end point
+            result = result[:-(segment_idx + 1)] + [new_end]
+
+    return result

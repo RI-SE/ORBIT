@@ -342,8 +342,14 @@ class OpenDriveWriter:
 
         # Collect all polyline points and convert to meters
         for polyline in self.project.polylines:
-            points_meters = self.transformer.pixels_to_meters_batch(polyline.points)
-            all_points_meters.extend(points_meters)
+            # Use geo coords directly if available (more precise)
+            if polyline.geo_points:
+                for lon, lat in polyline.geo_points:
+                    x_m, y_m = self.transformer.latlon_to_meters(lat, lon)
+                    all_points_meters.append((x_m, y_m))
+            else:
+                points_meters = self.transformer.pixels_to_meters_batch(polyline.points)
+                all_points_meters.extend(points_meters)
 
         if not all_points_meters:
             return {'north': 0.0, 'south': 0.0, 'east': 0.0, 'west': 0.0}
@@ -370,8 +376,15 @@ class OpenDriveWriter:
             return None
 
         # Transform centerline points to metric coordinates (meters)
-        centerline_points_pixel = centerline.points
-        all_points_meters = self.transformer.pixels_to_meters_batch(centerline_points_pixel)
+        # Use geo coords directly if available (more precise, avoids double conversion)
+        if centerline.geo_points:
+            all_points_meters = [
+                self.transformer.latlon_to_meters(lat, lon)
+                for lon, lat in centerline.geo_points
+            ]
+        else:
+            centerline_points_pixel = centerline.points
+            all_points_meters = self.transformer.pixels_to_meters_batch(centerline_points_pixel)
 
         # Fit curves to metric coordinates
         geometry_elements = self.curve_fitter.fit_polyline(all_points_meters)
@@ -541,7 +554,14 @@ class OpenDriveWriter:
             connecting_road.road_id = road_id  # Store for future reference
 
         # Transform path points from pixels to meters
-        path_meters = self.transformer.pixels_to_meters_batch(connecting_road.path)
+        # Use geo coords directly if available (more precise, avoids double conversion)
+        if connecting_road.geo_path:
+            path_meters = [
+                self.transformer.latlon_to_meters(lat, lon)
+                for lon, lat in connecting_road.geo_path
+            ]
+        else:
+            path_meters = self.transformer.pixels_to_meters_batch(connecting_road.path)
 
         # Check if connecting road has ParamPoly3D geometry
         if connecting_road.geometry_type == "parampoly3":

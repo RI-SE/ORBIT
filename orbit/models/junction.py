@@ -249,10 +249,18 @@ class Junction:
     """
     Represents a junction/intersection in the road network.
 
+    Coordinates can be stored as:
+    - pixel coordinates (center_point, roundabout_center) - used for display
+    - geographic coordinates (geo_center_point, geo_roundabout_center) - source of truth for imports
+
+    When geo coords are set, pixel coords can be recomputed via get_pixel_center_point()
+    using a transformer. This enables adjustment of georeferencing alignment.
+
     Attributes:
         id: Unique identifier for this junction
         name: Human-readable name for the junction
         center_point: Approximate center point (x, y) in pixels
+        geo_center_point: Geographic center point (lon, lat) - source of truth for imports
         connected_road_ids: List of road IDs that connect at this junction
         connections: List of specific connections between roads (DEPRECATED, use lane_connections)
         junction_type: Type of junction (e.g., 'default', 'virtual')
@@ -263,6 +271,7 @@ class Junction:
         lane_connections: List of LaneConnection objects for lane-level mappings
         is_roundabout: Whether this junction is a roundabout
         roundabout_center: Center point for roundabout (x, y) in pixels
+        geo_roundabout_center: Geographic roundabout center (lon, lat) - source of truth for imports
         roundabout_radius: Radius of roundabout in pixels
         roundabout_lane_count: Number of lanes in circular road
         roundabout_clockwise: True for left-hand traffic, False for right-hand
@@ -272,6 +281,7 @@ class Junction:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = "Unnamed Junction"
     center_point: Optional[Tuple[float, float]] = None
+    geo_center_point: Optional[Tuple[float, float]] = None  # (lon, lat) - source of truth for imports
     connected_road_ids: List[str] = field(default_factory=list)
     connections: List[JunctionConnection] = field(default_factory=list)  # DEPRECATED
     junction_type: str = "default"  # OpenDrive junction type
@@ -284,6 +294,7 @@ class Junction:
     elevation_grid: Optional[JunctionElevationGrid] = None  # V1.8 elevation grid
     is_roundabout: bool = False
     roundabout_center: Optional[Tuple[float, float]] = None
+    geo_roundabout_center: Optional[Tuple[float, float]] = None  # (lon, lat) - source of truth for imports
     roundabout_radius: Optional[float] = None
     roundabout_lane_count: int = 1
     roundabout_clockwise: bool = False
@@ -292,6 +303,61 @@ class Junction:
     # Turn restrictions from OSM (list of restriction dicts)
     # Each dict has: type, from_osm_way, to_osm_way, via_node/via_way, action
     turn_restrictions: List[Dict[str, Any]] = field(default_factory=list)
+
+    def has_geo_coords(self) -> bool:
+        """Check if this junction has geographic coordinates stored."""
+        return self.geo_center_point is not None
+
+    def get_pixel_center_point(self, transformer=None) -> Optional[Tuple[float, float]]:
+        """
+        Get center point in pixel coordinates.
+
+        If geo_center_point is available and a transformer is provided,
+        computes pixel coordinates from geo coordinates.
+        Otherwise returns the stored pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+
+        Returns:
+            (x, y) pixel coordinates or None
+        """
+        if self.geo_center_point and transformer:
+            return transformer.geo_to_pixel(self.geo_center_point[0], self.geo_center_point[1])
+        return self.center_point
+
+    def get_pixel_roundabout_center(self, transformer=None) -> Optional[Tuple[float, float]]:
+        """
+        Get roundabout center in pixel coordinates.
+
+        If geo_roundabout_center is available and a transformer is provided,
+        computes pixel coordinates from geo coordinates.
+        Otherwise returns the stored pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+
+        Returns:
+            (x, y) pixel coordinates or None
+        """
+        if self.geo_roundabout_center and transformer:
+            return transformer.geo_to_pixel(self.geo_roundabout_center[0], self.geo_roundabout_center[1])
+        return self.roundabout_center
+
+    def update_pixel_coords_from_geo(self, transformer) -> None:
+        """
+        Update stored pixel coords from geo coordinates using transformer.
+
+        Call this after changing the transformer (e.g., adjustment) to
+        update the cached pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+        """
+        if self.geo_center_point and transformer:
+            self.center_point = transformer.geo_to_pixel(self.geo_center_point[0], self.geo_center_point[1])
+        if self.geo_roundabout_center and transformer:
+            self.roundabout_center = transformer.geo_to_pixel(self.geo_roundabout_center[0], self.geo_roundabout_center[1])
 
     def add_road(self, road_id: str) -> None:
         """Add a road to this junction."""
@@ -591,6 +657,11 @@ class Junction:
             data['elevation_grid'] = self.elevation_grid.to_dict()
         if self.turn_restrictions:
             data['turn_restrictions'] = self.turn_restrictions
+        # Include geo coords if set
+        if self.geo_center_point is not None:
+            data['geo_center_point'] = list(self.geo_center_point)
+        if self.geo_roundabout_center is not None:
+            data['geo_roundabout_center'] = list(self.geo_roundabout_center)
 
         return data
 
@@ -628,6 +699,13 @@ class Junction:
         if roundabout_center is not None:
             roundabout_center = tuple(roundabout_center)
 
+        # Handle geo coords - convert lists to tuples if present
+        geo_center_point_raw = data.get('geo_center_point')
+        geo_center_point = tuple(geo_center_point_raw) if geo_center_point_raw else None
+
+        geo_roundabout_center_raw = data.get('geo_roundabout_center')
+        geo_roundabout_center = tuple(geo_roundabout_center_raw) if geo_roundabout_center_raw else None
+
         # Handle boundary (V1.8)
         boundary = None
         boundary_data = data.get('boundary')
@@ -644,6 +722,7 @@ class Junction:
             id=data.get('id', str(uuid.uuid4())),
             name=data.get('name', 'Unnamed Junction'),
             center_point=center_point,
+            geo_center_point=geo_center_point,
             connected_road_ids=data.get('connected_road_ids', []),
             connections=connections,
             junction_type=data.get('junction_type', 'default'),
@@ -655,6 +734,7 @@ class Junction:
             elevation_grid=elevation_grid,
             is_roundabout=data.get('is_roundabout', False),
             roundabout_center=roundabout_center,
+            geo_roundabout_center=geo_roundabout_center,
             roundabout_radius=data.get('roundabout_radius'),
             roundabout_lane_count=data.get('roundabout_lane_count', 1),
             roundabout_clockwise=data.get('roundabout_clockwise', False),

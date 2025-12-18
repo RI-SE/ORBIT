@@ -23,9 +23,17 @@ class ConnectingRoad:
     Connecting roads define the actual paths vehicles take when moving through
     a junction, including the geometry and lane configuration.
 
+    Coordinates can be stored as:
+    - pixel coordinates (path field) - used for display
+    - geographic coordinates (geo_path field) - source of truth for imported data
+
+    When geo_path is set, pixel coords can be recomputed via get_pixel_path()
+    using a transformer. This enables adjustment of georeferencing alignment.
+
     Attributes:
         id: Unique identifier for this connecting road (UUID string)
         path: List of (x, y) points in pixel coordinates defining the path (sampled from curve)
+        geo_path: List of (lon, lat) points in geographic coords (source of truth for imports)
         lane_count_left: Number of lanes on left side (positive IDs: 1, 2, 3...)
         lane_count_right: Number of lanes on right side (negative IDs: -1, -2, -3...)
         lane_width: Average lane width in meters (for backward compatibility)
@@ -45,6 +53,7 @@ class ConnectingRoad:
     """
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     path: List[Tuple[float, float]] = field(default_factory=list)
+    geo_path: Optional[List[Tuple[float, float]]] = None  # (lon, lat) pairs - source of truth
 
     # Lane configuration
     lane_count_left: int = 0
@@ -81,6 +90,55 @@ class ConnectingRoad:
     # These are the exact headings at adjacent road endpoints, avoiding approximation error
     stored_start_heading: Optional[float] = None  # Heading at start in radians
     stored_end_heading: Optional[float] = None    # Heading at end in radians
+
+    def has_geo_coords(self) -> bool:
+        """Check if this connecting road has geographic coordinates stored."""
+        return self.geo_path is not None and len(self.geo_path) > 0
+
+    def get_pixel_path(self, transformer=None) -> List[Tuple[float, float]]:
+        """
+        Get path in pixel coordinates.
+
+        If geo_path is available and a transformer is provided,
+        computes pixel coordinates from geo coordinates.
+        Otherwise returns the stored pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+
+        Returns:
+            List of (x, y) pixel coordinates
+        """
+        if self.geo_path and transformer:
+            return [transformer.geo_to_pixel(lon, lat) for lon, lat in self.geo_path]
+        return self.path
+
+    def update_pixel_path_from_geo(self, transformer) -> None:
+        """
+        Update stored pixel path from geo coordinates using transformer.
+
+        Call this after changing the transformer (e.g., adjustment) to
+        update the cached pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+        """
+        if self.geo_path and transformer:
+            self.path = [transformer.geo_to_pixel(lon, lat) for lon, lat in self.geo_path]
+
+    def initialize_geo_path_from_pixels(self, transformer) -> None:
+        """
+        Initialize geo_path from pixel path using transformer.
+
+        Call this when loading an older project that has pixel coordinates
+        but no geo coordinates stored. This ensures the connecting road
+        will correctly update during adjustment operations.
+
+        Args:
+            transformer: CoordinateTransformer for pixel→geo conversion
+        """
+        if self.path and transformer and not self.geo_path:
+            self.geo_path = [transformer.pixel_to_geo(x, y) for x, y in self.path]
 
     def get_length_pixels(self) -> float:
         """
@@ -381,6 +439,10 @@ class ConnectingRoad:
             'tangent_scale': self.tangent_scale
         }
 
+        # Include geo_path if set
+        if self.geo_path is not None:
+            data['geo_path'] = [[lon, lat] for lon, lat in self.geo_path]
+
         # Only include road_id if it's set
         if self.road_id is not None:
             data['road_id'] = self.road_id
@@ -410,6 +472,10 @@ class ConnectingRoad:
         # Convert path from list of lists to list of tuples
         path_data = data.get('path', [])
         cr.path = [tuple(pt) for pt in path_data]
+
+        # Load geo_path if present - convert lists to tuples
+        geo_path_data = data.get('geo_path')
+        cr.geo_path = [tuple(pt) for pt in geo_path_data] if geo_path_data else None
 
         cr.lane_count_left = data.get('lane_count_left', 0)
         cr.lane_count_right = data.get('lane_count_right', 1)

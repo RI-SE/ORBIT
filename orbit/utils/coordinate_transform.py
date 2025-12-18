@@ -21,6 +21,7 @@ import numpy as np
 import math
 from typing import List, Tuple, Optional, Dict
 from enum import Enum, auto
+from dataclasses import dataclass, field
 
 from .logging_config import get_logger
 
@@ -31,6 +32,139 @@ class TransformMethod(Enum):
     """Transformation method for georeferencing."""
     AFFINE = auto()
     HOMOGRAPHY = auto()
+
+
+@dataclass
+class TransformAdjustment:
+    """
+    Stores incremental adjustments to apply to coordinate transformation.
+
+    Used for interactive fine-tuning of georeferencing when OSM roads
+    don't perfectly align with the aerial image.
+    """
+    translation_x: float = 0.0  # Pixel offset in X direction
+    translation_y: float = 0.0  # Pixel offset in Y direction
+    rotation: float = 0.0       # Rotation in degrees (positive = counter-clockwise)
+    scale_x: float = 1.0        # Scale factor in X direction
+    scale_y: float = 1.0        # Scale factor in Y direction
+    pivot_x: float = 0.0        # Pivot point X for rotation/scale (pixels)
+    pivot_y: float = 0.0        # Pivot point Y for rotation/scale (pixels)
+
+    def is_identity(self) -> bool:
+        """Check if adjustment is effectively no change."""
+        return (
+            abs(self.translation_x) < 1e-6 and
+            abs(self.translation_y) < 1e-6 and
+            abs(self.rotation) < 1e-6 and
+            abs(self.scale_x - 1.0) < 1e-6 and
+            abs(self.scale_y - 1.0) < 1e-6
+        )
+
+    def get_adjustment_matrix(self) -> np.ndarray:
+        """
+        Build 3x3 transformation matrix for this adjustment.
+
+        The adjustment is applied in this order:
+        1. Translate to pivot point
+        2. Scale
+        3. Rotate
+        4. Translate back from pivot
+        5. Apply translation offset
+
+        Returns:
+            3x3 homogeneous transformation matrix
+        """
+        # Translation to pivot
+        T_to_pivot = np.array([
+            [1, 0, -self.pivot_x],
+            [0, 1, -self.pivot_y],
+            [0, 0, 1]
+        ], dtype=np.float64)
+
+        # Scale matrix
+        S = np.array([
+            [self.scale_x, 0, 0],
+            [0, self.scale_y, 0],
+            [0, 0, 1]
+        ], dtype=np.float64)
+
+        # Rotation matrix (positive = counter-clockwise)
+        theta = math.radians(self.rotation)
+        cos_t, sin_t = math.cos(theta), math.sin(theta)
+        R = np.array([
+            [cos_t, -sin_t, 0],
+            [sin_t, cos_t, 0],
+            [0, 0, 1]
+        ], dtype=np.float64)
+
+        # Translation back from pivot
+        T_from_pivot = np.array([
+            [1, 0, self.pivot_x],
+            [0, 1, self.pivot_y],
+            [0, 0, 1]
+        ], dtype=np.float64)
+
+        # Translation offset
+        T_offset = np.array([
+            [1, 0, self.translation_x],
+            [0, 1, self.translation_y],
+            [0, 0, 1]
+        ], dtype=np.float64)
+
+        # Compose: offset * from_pivot * R * S * to_pivot
+        return T_offset @ T_from_pivot @ R @ S @ T_to_pivot
+
+    def apply_to_point(self, x: float, y: float) -> Tuple[float, float]:
+        """
+        Apply adjustment to a single point.
+
+        Args:
+            x, y: Input coordinates (pixels)
+
+        Returns:
+            Adjusted (x, y) coordinates
+        """
+        M = self.get_adjustment_matrix()
+        point = np.array([x, y, 1.0])
+        result = M @ point
+        return result[0], result[1]
+
+    def apply_inverse_to_point(self, x: float, y: float) -> Tuple[float, float]:
+        """
+        Apply inverse adjustment to a single point.
+
+        Args:
+            x, y: Adjusted coordinates (pixels)
+
+        Returns:
+            Original (x, y) coordinates before adjustment
+        """
+        M = self.get_adjustment_matrix()
+        M_inv = np.linalg.inv(M)
+        point = np.array([x, y, 1.0])
+        result = M_inv @ point
+        return result[0], result[1]
+
+    def copy(self) -> 'TransformAdjustment':
+        """Create a copy of this adjustment."""
+        return TransformAdjustment(
+            translation_x=self.translation_x,
+            translation_y=self.translation_y,
+            rotation=self.rotation,
+            scale_x=self.scale_x,
+            scale_y=self.scale_y,
+            pivot_x=self.pivot_x,
+            pivot_y=self.pivot_y
+        )
+
+    def reset(self):
+        """Reset all adjustments to identity."""
+        self.translation_x = 0.0
+        self.translation_y = 0.0
+        self.rotation = 0.0
+        self.scale_x = 1.0
+        self.scale_y = 1.0
+        # Keep pivot point
 
 
 class CoordinateTransformer:
@@ -74,6 +208,29 @@ class CoordinateTransformer:
         # Reference point for metric conversion
         self.reference_lat: Optional[float] = None
         self.reference_lon: Optional[float] = None
+
+        # Interactive adjustment for fine-tuning alignment
+        self.adjustment: Optional[TransformAdjustment] = None
+
+    def set_adjustment(self, adjustment: TransformAdjustment):
+        """
+        Set adjustment to apply to all transformations.
+
+        The adjustment modifies the geo→pixel direction, effectively
+        moving where geographic coordinates appear on the image.
+
+        Args:
+            adjustment: TransformAdjustment to apply
+        """
+        self.adjustment = adjustment
+
+    def clear_adjustment(self):
+        """Remove any adjustment, restoring original transformation."""
+        self.adjustment = None
+
+    def has_adjustment(self) -> bool:
+        """Check if an adjustment is currently applied."""
+        return self.adjustment is not None and not self.adjustment.is_identity()
 
     def _set_reference_point(self):
         """Set reference point as mean of all control points."""
@@ -184,6 +341,23 @@ class CoordinateTransformer:
 
         return x_m, y_m
 
+    def meters_to_pixel(self, x_meters: float, y_meters: float) -> Tuple[float, float]:
+        """
+        Convert local metric coordinates (meters) to pixel coordinates.
+
+        Args:
+            x_meters: X coordinate in meters (east)
+            y_meters: Y coordinate in meters (north)
+
+        Returns:
+            Tuple of (pixel_x, pixel_y)
+        """
+        # Convert meters to lat/lon
+        lat, lon = self.meters_to_latlon(x_meters, y_meters)
+
+        # Convert lat/lon to pixels
+        return self.geo_to_pixel(lon, lat)
+
     def pixels_to_geo_batch(self, pixels: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """Convert multiple pixel coordinates to geographic coordinates."""
         return [self.pixel_to_geo(x, y) for x, y in pixels]
@@ -191,6 +365,10 @@ class CoordinateTransformer:
     def pixels_to_meters_batch(self, pixels: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
         """Convert multiple pixel coordinates to local metric coordinates."""
         return [self.pixel_to_meters(x, y) for x, y in pixels]
+
+    def meters_to_pixels_batch(self, meters: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+        """Convert multiple local metric coordinates to pixel coordinates."""
+        return [self.meters_to_pixel(x, y) for x, y in meters]
 
     def transform_heading(self, pixel_x: float, pixel_y: float, heading_pixels: float) -> float:
         """
@@ -525,7 +703,25 @@ class AffineTransformer(CoordinateTransformer):
         return result[0], result[1]  # lon, lat
 
     def geo_to_pixel(self, longitude: float, latitude: float) -> Tuple[float, float]:
-        """Convert geographic coordinates to pixel coordinates."""
+        """Convert geographic coordinates to pixel coordinates.
+
+        If an adjustment is set, applies it after the base transformation.
+        """
+        if self.inverse_matrix is None:
+            raise RuntimeError("Transformation not initialized")
+
+        point = np.array([longitude, latitude, 1.0])
+        result = self.inverse_matrix @ point
+        pixel_x, pixel_y = result[0], result[1]
+
+        # Apply adjustment if set
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_to_point(pixel_x, pixel_y)
+
+        return pixel_x, pixel_y
+
+    def geo_to_pixel_unadjusted(self, longitude: float, latitude: float) -> Tuple[float, float]:
+        """Convert geographic coordinates to pixel coordinates without adjustment."""
         if self.inverse_matrix is None:
             raise RuntimeError("Transformation not initialized")
 
@@ -664,7 +860,32 @@ class HomographyTransformer(CoordinateTransformer):
         return lon, lat
 
     def geo_to_pixel(self, longitude: float, latitude: float) -> Tuple[float, float]:
-        """Convert geographic coordinates to pixel coordinates."""
+        """Convert geographic coordinates to pixel coordinates.
+
+        If an adjustment is set, applies it after the base transformation.
+        """
+        if self.inverse_matrix is None:
+            raise RuntimeError("Transformation not initialized")
+
+        # Convert lat/lon to meters
+        east, north = self.latlon_to_meters(latitude, longitude)
+
+        # Apply inverse homography
+        ground_homo = np.array([east, north, 1.0])
+        pixel_homo = self.inverse_matrix @ ground_homo
+
+        # Normalize by w component
+        pixel_x = pixel_homo[0] / pixel_homo[2]
+        pixel_y = pixel_homo[1] / pixel_homo[2]
+
+        # Apply adjustment if set
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_to_point(pixel_x, pixel_y)
+
+        return pixel_x, pixel_y
+
+    def geo_to_pixel_unadjusted(self, longitude: float, latitude: float) -> Tuple[float, float]:
+        """Convert geographic coordinates to pixel coordinates without adjustment."""
         if self.inverse_matrix is None:
             raise RuntimeError("Transformation not initialized")
 

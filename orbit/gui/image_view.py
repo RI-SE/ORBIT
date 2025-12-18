@@ -18,6 +18,7 @@ from PyQt6.QtGui import (
 
 from orbit.models import Polyline, Project, Junction, LineType, RoadMarkType, Road, Signal, RoadObject, ObjectType
 from orbit.utils.geometry import create_lane_polygon, calculate_directional_scale
+from orbit.utils.coordinate_transform import TransformAdjustment
 from .graphics.signal_graphics_item import SignalGraphicsItem
 from .graphics.object_graphics_item import ObjectGraphicsItem
 from .utils.message_helpers import show_warning, ask_yes_no
@@ -67,6 +68,7 @@ class ImageView(QGraphicsView):
     connecting_road_lane_edit_requested = pyqtSignal(str, int)  # Emits connecting_road_id, lane_id (for double-click)
     point_picked = pyqtSignal(float, float)  # Emits x, y coordinates
     mouse_moved = pyqtSignal(float, float)  # Emits x, y mouse position in scene coordinates
+    adjustment_changed = pyqtSignal(object)  # Emits TransformAdjustment when user adjusts alignment
 
     def __init__(self, parent=None, verbose: bool = False):
         super().__init__(parent)
@@ -122,6 +124,8 @@ class ImageView(QGraphicsView):
         self.junction_mode = False
         self.signal_mode = False
         self.object_mode = False
+        self.adjustment_mode = False  # Transform adjustment mode for aligning imported data
+        self.current_adjustment: Optional[TransformAdjustment] = None  # Current adjustment values
         self.object_type_to_place: Optional[ObjectType] = None  # Type of object to place
         self.drawing_guardrail = False  # True when dragging to create guardrail
         self.guardrail_points: List[Tuple[float, float]] = []  # Points for current guardrail
@@ -357,11 +361,72 @@ class ImageView(QGraphicsView):
             obj = item.obj
 
             # Update position for point objects (non-polyline)
-            if obj.type.get_shape_type() != "polyline":
+            shape_type = obj.type.get_shape_type()
+            if shape_type in ("circle", "rectangle"):
                 item.setPos(obj.position[0], obj.position[1])
-
-            # Update graphics (shape, color, dimensions, orientation)
+            # For polyline objects (guardrails), redraw the path
             item.update_graphics()
+
+    def update_all_from_geo_coords(self, transformer):
+        """
+        Update all geometry items from their geo coordinates using the transformer.
+
+        This method is called when the transformer changes (e.g., during adjustment)
+        to recompute pixel positions from stored geographic coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+        """
+        if not transformer or not self.project:
+            return
+
+        # Update polylines that have geo_points
+        for polyline in self.project.polylines:
+            if polyline.has_geo_coords():
+                polyline.update_pixel_points_from_geo(transformer)
+                # Refresh graphics if it exists
+                if polyline.id in self.polyline_items:
+                    self.polyline_items[polyline.id].update_graphics()
+
+        # Update signals that have geo_position
+        for signal in self.project.signals:
+            if signal.has_geo_coords():
+                signal.update_pixel_position_from_geo(transformer)
+                if signal.id in self.signal_items:
+                    self.signal_items[signal.id].update_graphics()
+
+        # Update objects that have geo coords
+        for obj in self.project.objects:
+            if obj.has_geo_coords():
+                obj.update_pixel_coords_from_geo(transformer)
+                if obj.id in self.object_items:
+                    self.object_items[obj.id].update_graphics()
+
+        # Update junctions that have geo coords
+        for junction in self.project.junctions:
+            if junction.has_geo_coords():
+                junction.update_pixel_coords_from_geo(transformer)
+                if junction.id in self.junction_items:
+                    self.junction_items[junction.id].update_graphics()
+
+            # Update connecting roads within junctions
+            for connecting_road in junction.connecting_roads:
+                if connecting_road.has_geo_coords():
+                    connecting_road.update_pixel_path_from_geo(transformer)
+                    # Update both centerline and lanes graphics
+                    if connecting_road.id in self.connecting_road_centerline_items:
+                        self.connecting_road_centerline_items[connecting_road.id].update_graphics()
+                    if connecting_road.id in self.connecting_road_lanes_items:
+                        self.connecting_road_lanes_items[connecting_road.id].update_graphics()
+
+        # Update road lanes graphics (they use polyline positions)
+        for road in self.project.roads:
+            if road.id in self.road_lanes_items:
+                self.road_lanes_items[road.id].update_graphics()
+
+        # Force scene update to ensure all changes are rendered
+        self.scene.update()
+        self.viewport().update()
 
     def update_object_scale_factors(self, scale_factor: float):
         """Update scale factors for all objects when georeferencing changes."""
@@ -1138,6 +1203,108 @@ class ImageView(QGraphicsView):
         for item in self.scale_items:
             self.scene.removeItem(item)
         self.scale_items.clear()
+
+    def set_adjustment_mode(self, enabled: bool, pivot_x: float = 0.0, pivot_y: float = 0.0):
+        """
+        Enable or disable transform adjustment mode.
+
+        When enabled, arrow keys and other shortcuts adjust the georeferencing
+        transformation to align imported OSM data with the aerial image.
+
+        Args:
+            enabled: Whether to enable adjustment mode
+            pivot_x, pivot_y: Pivot point for rotation/scale (defaults to image center)
+        """
+        self.adjustment_mode = enabled
+        if enabled:
+            # Initialize adjustment if not already set
+            if self.current_adjustment is None:
+                self.current_adjustment = TransformAdjustment()
+            self.current_adjustment.pivot_x = pivot_x
+            self.current_adjustment.pivot_y = pivot_y
+            # Change cursor to indicate adjustment mode
+            self.setCursor(Qt.CursorShape.SizeAllCursor)
+            # Disable drag mode so arrow keys work
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        else:
+            # Restore normal cursor and drag mode
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+
+    def reset_adjustment(self):
+        """Reset all adjustment values to identity."""
+        if self.current_adjustment is not None:
+            self.current_adjustment.reset()
+            self.adjustment_changed.emit(self.current_adjustment)
+
+    def get_adjustment(self) -> Optional[TransformAdjustment]:
+        """Get current adjustment or None if not set."""
+        return self.current_adjustment
+
+    def _handle_adjustment_key(self, event: QKeyEvent) -> bool:
+        """
+        Handle keyboard input for adjustment mode.
+
+        Returns:
+            True if key was handled, False otherwise
+        """
+        if self.current_adjustment is None:
+            self.current_adjustment = TransformAdjustment()
+
+        # Determine step multiplier based on modifiers
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            step_mult = 10.0  # Coarse adjustment
+        elif event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            step_mult = 0.1   # Fine adjustment
+        else:
+            step_mult = 1.0   # Normal adjustment
+
+        key = event.key()
+        handled = True
+
+        # Translation: Arrow keys
+        if key == Qt.Key.Key_Left:
+            self.current_adjustment.translation_x -= step_mult
+        elif key == Qt.Key.Key_Right:
+            self.current_adjustment.translation_x += step_mult
+        elif key == Qt.Key.Key_Up:
+            self.current_adjustment.translation_y -= step_mult
+        elif key == Qt.Key.Key_Down:
+            self.current_adjustment.translation_y += step_mult
+
+        # Rotation: [ and ] keys
+        elif key == Qt.Key.Key_BracketLeft:
+            self.current_adjustment.rotation -= 0.1 * step_mult
+        elif key == Qt.Key.Key_BracketRight:
+            self.current_adjustment.rotation += 0.1 * step_mult
+
+        # Scale: + and - keys
+        elif key == Qt.Key.Key_Plus or key == Qt.Key.Key_Equal:
+            scale_factor = 1 + 0.001 * step_mult
+            self.current_adjustment.scale_x *= scale_factor
+            self.current_adjustment.scale_y *= scale_factor
+        elif key == Qt.Key.Key_Minus:
+            scale_factor = 1 + 0.001 * step_mult
+            self.current_adjustment.scale_x /= scale_factor
+            self.current_adjustment.scale_y /= scale_factor
+
+        # X-only scale: Shift+< and Shift+>
+        elif key == Qt.Key.Key_Less:
+            self.current_adjustment.scale_x /= (1 + 0.001 * step_mult)
+        elif key == Qt.Key.Key_Greater:
+            self.current_adjustment.scale_x *= (1 + 0.001 * step_mult)
+
+        # Reset: Escape
+        elif key == Qt.Key.Key_Escape:
+            self.current_adjustment.reset()
+
+        else:
+            handled = False
+
+        if handled:
+            self.adjustment_changed.emit(self.current_adjustment)
+
+        return handled
 
     def set_uncertainty_overlay(self, overlay):
         """
@@ -2708,6 +2875,11 @@ class ImageView(QGraphicsView):
 
     def keyPressEvent(self, event: QKeyEvent):
         """Handle key press events."""
+        if self.adjustment_mode:
+            # Handle adjustment keys first
+            if self._handle_adjustment_key(event):
+                return
+            # Fall through to other handlers if not handled
         if self.drawing_mode:
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 # Finish polyline and start a new one

@@ -105,9 +105,17 @@ class Signal:
     """
     Represents a traffic signal (sign) placed on the map.
 
+    Coordinates can be stored as:
+    - pixel coordinates (position field) - used for display and manual placement
+    - geographic coordinates (geo_position field) - source of truth for imported data
+
+    When geo_position is set, pixel coords can be recomputed via get_pixel_position()
+    using a transformer. This enables adjustment of georeferencing alignment.
+
     Attributes:
         id: Unique identifier
         position: (x, y) pixel coordinates on the map
+        geo_position: (lon, lat) geographic coordinates (source of truth for imports)
         type: SignalType enum value (LIBRARY_SIGN, CUSTOM, or legacy types)
         value: Speed value for speed limits (30-120), None for other types
         speed_unit: Unit for speed value (km/h or mph)
@@ -140,10 +148,12 @@ class Signal:
         speed_unit: SpeedUnit = SpeedUnit.KMH,
         road_id: Optional[str] = None,
         library_id: Optional[str] = None,
-        sign_id: Optional[str] = None
+        sign_id: Optional[str] = None,
+        geo_position: Optional[Tuple[float, float]] = None
     ):
         self.id = signal_id or str(uuid.uuid4())
         self.position = position
+        self.geo_position = geo_position  # (lon, lat) - source of truth for imports
         self.type = signal_type
         self.value = value  # Speed value if speed limit
         self.speed_unit = speed_unit
@@ -172,6 +182,41 @@ class Signal:
         # Lane validity - list of lane IDs this signal applies to (None = all lanes)
         self.validity_lanes: Optional[List[int]] = None
 
+    def has_geo_coords(self) -> bool:
+        """Check if this signal has geographic coordinates stored."""
+        return self.geo_position is not None
+
+    def get_pixel_position(self, transformer=None) -> Tuple[float, float]:
+        """
+        Get position in pixel coordinates.
+
+        If geo_position is available and a transformer is provided,
+        computes pixel coordinates from geo coordinates.
+        Otherwise returns the stored pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+
+        Returns:
+            (x, y) pixel coordinates
+        """
+        if self.geo_position and transformer:
+            return transformer.geo_to_pixel(self.geo_position[0], self.geo_position[1])
+        return self.position
+
+    def update_pixel_position_from_geo(self, transformer) -> None:
+        """
+        Update stored pixel position from geo coordinates using transformer.
+
+        Call this after changing the transformer (e.g., adjustment) to
+        update the cached pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+        """
+        if self.geo_position and transformer:
+            self.position = transformer.geo_to_pixel(self.geo_position[0], self.geo_position[1])
+
     def to_dict(self) -> dict:
         """Serialize signal to dictionary for JSON storage."""
         data = {
@@ -190,6 +235,9 @@ class Signal:
             's_position': self.s_position,
             'validity_range': list(self.validity_range) if self.validity_range else None
         }
+        # Include geo_position if set
+        if self.geo_position is not None:
+            data['geo_position'] = list(self.geo_position)
         # Only include optional fields if set (backward compatibility)
         if self.opendrive_id is not None:
             data['opendrive_id'] = self.opendrive_id
@@ -240,6 +288,10 @@ class Signal:
                 sign_id = migrated_sign_id
                 signal_type = SignalType.LIBRARY_SIGN
 
+        # Handle geo_position - convert list to tuple if present
+        geo_position_raw = data.get('geo_position')
+        geo_position = tuple(geo_position_raw) if geo_position_raw else None
+
         signal = cls(
             signal_id=data['id'],
             position=tuple(data['position']),
@@ -248,7 +300,8 @@ class Signal:
             speed_unit=SpeedUnit(data.get('speed_unit', 'km/h')),
             road_id=data.get('road_id'),
             library_id=library_id,
-            sign_id=sign_id
+            sign_id=sign_id,
+            geo_position=geo_position
         )
         signal.name = data.get('name', '')
 

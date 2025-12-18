@@ -705,7 +705,8 @@ class OSMImporter:
 
             # Generate connecting roads using patterns from BEFORE offset but positions from AFTER offset
             # This uses the shared function which includes pair detection for bidirectional roads
-            create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup)
+            # Pass transformer for geo-first path generation when geo coords are available
+            create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup, self.transformer)
 
             if options.verbose:
                 summary = junction.get_connection_summary()

@@ -21,6 +21,8 @@ from .image_view import ImageView
 
 from .widgets.road_tree import RoadTreeWidget
 from .widgets.elements_tree import ElementsTreeWidget
+from .widgets.adjustment_panel import AdjustmentPanel
+from orbit.utils.coordinate_transform import TransformAdjustment
 from .utils.message_helpers import show_error, show_warning, show_info, ask_yes_no
 from .utils.scale_utils import get_transformer
 
@@ -249,6 +251,14 @@ class MainWindow(QMainWindow):
         self.toggle_junction_debug_action.setChecked(False)  # Hidden by default
         self.toggle_junction_debug_action.triggered.connect(self.toggle_junction_debug_visibility)
 
+        # Adjustment mode action
+        self.toggle_adjustment_action = QAction("&Adjust Alignment", self)
+        self.toggle_adjustment_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
+        self.toggle_adjustment_action.setStatusTip("Adjust georeferencing alignment with keyboard controls")
+        self.toggle_adjustment_action.setCheckable(True)
+        self.toggle_adjustment_action.setChecked(False)
+        self.toggle_adjustment_action.triggered.connect(self.toggle_adjustment_mode)
+
         # Uncertainty overlay actions
         self.uncertainty_none_action = QAction("None", self)
         self.uncertainty_none_action.setStatusTip("Hide uncertainty overlay")
@@ -366,6 +376,8 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.toggle_soffsets_action)
         view_menu.addAction(self.toggle_junction_debug_action)
         view_menu.addSeparator()
+        view_menu.addAction(self.toggle_adjustment_action)
+        view_menu.addSeparator()
 
         # Uncertainty overlay submenu
         uncertainty_menu = view_menu.addMenu("Uncertainty Overlay")
@@ -461,6 +473,25 @@ class MainWindow(QMainWindow):
         self.road_tree.lane_selected.connect(self.on_lane_selected_in_tree)
         self.road_tree.roads_merge_requested.connect(self.on_roads_merge_requested)
 
+        # Adjustment dock for transform adjustment
+        self.adjustment_dock = QDockWidget("Alignment Adjustment", self)
+        self.adjustment_dock.setObjectName("adjustmentDock")
+        self.adjustment_dock.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
+        )
+
+        self.adjustment_panel = AdjustmentPanel()
+        self.adjustment_dock.setWidget(self.adjustment_panel)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.adjustment_dock)
+        self.adjustment_dock.setVisible(False)  # Hidden by default
+
+        # Connect adjustment panel signals
+        self.adjustment_panel.apply_requested.connect(self.apply_adjustment_to_control_points)
+        self.adjustment_panel.reset_requested.connect(self.reset_adjustment)
+
+        # Connect image view adjustment signal
+        self.image_view.adjustment_changed.connect(self.on_adjustment_changed)
+
     # Project management
     def new_project(self):
         """Create a new project."""
@@ -469,6 +500,15 @@ class MainWindow(QMainWindow):
             self.current_project_file = None
             self.modified = False
             self._cached_transformer = None  # Invalidate transformer cache
+
+            # Reset adjustment mode and panel
+            self.image_view.reset_adjustment()
+            self.image_view.set_adjustment_mode(False)
+            self.adjustment_dock.setVisible(False)
+            self.adjustment_panel.update_display(None)
+            if hasattr(self, 'toggle_adjustment_action'):
+                self.toggle_adjustment_action.setChecked(False)
+
             self.image_view.clear()
             self.update_elements_tree()
             self.road_tree.refresh_tree()
@@ -495,12 +535,24 @@ class MainWindow(QMainWindow):
                 self.modified = False
                 self._cached_transformer = None  # Invalidate transformer cache
 
+                # Reset adjustment mode and panel
+                self.image_view.reset_adjustment()
+                self.image_view.set_adjustment_mode(False)
+                self.adjustment_dock.setVisible(False)
+                self.adjustment_panel.update_display(None)
+                if hasattr(self, 'toggle_adjustment_action'):
+                    self.toggle_adjustment_action.setChecked(False)
+
                 # Load image if specified in project
                 if self.project.image_path:
                     self.load_image(self.project.image_path)
 
                 # Calculate scale BEFORE loading project (so lanes use correct scale)
                 scale_factors = self.get_current_scale()
+
+                # Initialize missing geo coordinates and refresh pixel coords from geo
+                # This ensures pixel coords match the current transformer state
+                self._initialize_and_refresh_geo_coords()
 
                 # Update UI
                 self.image_view.load_project(self.project, scale_factors)
@@ -1336,6 +1388,15 @@ class MainWindow(QMainWindow):
     # Signal handlers
     def on_polyline_added(self, polyline):
         """Handle polyline added signal."""
+        # If transformer is available, convert pixel coords to geo coords
+        # This ensures manually drawn polylines can be adjusted like imported ones
+        if self._cached_transformer and not polyline.has_geo_coords():
+            geo_points = []
+            for px, py in polyline.points:
+                lon, lat = self._cached_transformer.pixel_to_geo(px, py)
+                geo_points.append((lon, lat))
+            polyline.geo_points = geo_points
+
         self.project.add_polyline(polyline)
         self.modified = True
         self.update_elements_tree()
@@ -1344,6 +1405,18 @@ class MainWindow(QMainWindow):
 
     def on_polyline_modified(self, polyline_id=None):
         """Handle polyline modified signal."""
+        # If a specific polyline was modified and transformer is available,
+        # update its geo_points from the new pixel positions
+        if polyline_id and self._cached_transformer:
+            polyline = self.project.get_polyline(polyline_id)
+            if polyline:
+                # Update geo_points from current pixel positions
+                geo_points = []
+                for px, py in polyline.points:
+                    lon, lat = self._cached_transformer.pixel_to_geo(px, py)
+                    geo_points.append((lon, lat))
+                polyline.geo_points = geo_points
+
         self.modified = True
         self.update_elements_tree()
         self.road_tree.refresh_tree()  # Also refresh road tree to update point counts
@@ -1423,6 +1496,128 @@ class MainWindow(QMainWindow):
         self.image_view.set_junction_debug_visible(visible)
         status = "shown" if visible else "hidden"
         self.statusBar().showMessage(f"Junction debug visualization {status}")
+
+    def toggle_adjustment_mode(self):
+        """Toggle alignment adjustment mode for fine-tuning georeferencing."""
+        enabled = self.toggle_adjustment_action.isChecked()
+
+        if enabled:
+            # Check if georeferencing exists
+            if not self.project.control_points or len(self.project.control_points) < 3:
+                show_warning(
+                    self,
+                    "Add at least 3 control points before adjusting alignment.",
+                    "No Georeferencing"
+                )
+                self.toggle_adjustment_action.setChecked(False)
+                return
+
+            # Check if image is loaded
+            if not self.image_view.image_item:
+                show_warning(self, "Load an image first.", "No Image")
+                self.toggle_adjustment_action.setChecked(False)
+                return
+
+            # Get image center as pivot point
+            rect = self.image_view.image_item.boundingRect()
+            pivot_x = rect.width() / 2
+            pivot_y = rect.height() / 2
+
+            # Enable adjustment mode
+            self.image_view.set_adjustment_mode(True, pivot_x, pivot_y)
+            self.adjustment_dock.setVisible(True)
+            self.adjustment_panel.set_enabled(True)
+            self.statusBar().showMessage(
+                "Adjustment mode ON - Use arrow keys to move, [ ] to rotate, +/- to scale"
+            )
+        else:
+            # Disable adjustment mode
+            self.image_view.set_adjustment_mode(False)
+            self.adjustment_dock.setVisible(False)
+            self.statusBar().showMessage("Adjustment mode OFF")
+
+    def on_adjustment_changed(self, adjustment: TransformAdjustment):
+        """Handle adjustment changes from ImageView."""
+        # Update the panel display
+        self.adjustment_panel.update_display(adjustment)
+
+        # Apply adjustment to transformer and update all geometry from geo coords
+        if self._cached_transformer is not None:
+            self._cached_transformer.set_adjustment(adjustment)
+            # Update all graphics by recomputing pixel positions from geo coords
+            self.image_view.update_all_from_geo_coords(self._cached_transformer)
+
+    def reset_adjustment(self):
+        """Reset all adjustment values."""
+        self.image_view.reset_adjustment()
+        if self._cached_transformer is not None:
+            self._cached_transformer.clear_adjustment()
+            self.refresh_imported_geometry()
+        self.statusBar().showMessage("Adjustment reset")
+
+    def apply_adjustment_to_control_points(self):
+        """
+        Apply current adjustment to control points.
+
+        This "bakes" the adjustment into the control point positions,
+        then recomputes the transformation with the new positions.
+        """
+        adjustment = self.image_view.get_adjustment()
+        if adjustment is None or adjustment.is_identity():
+            self.statusBar().showMessage("No adjustment to apply")
+            return
+
+        if not self.project.control_points:
+            self.statusBar().showMessage("No control points to adjust")
+            return
+
+        # Confirm with user
+        if not ask_yes_no(
+            self,
+            "This will modify the pixel positions of all control points "
+            "to incorporate the current adjustment.\n\n"
+            "The transformation will be recomputed with the new positions.\n\n"
+            "Continue?",
+            "Apply Adjustment"
+        ):
+            return
+
+        # Apply adjustment to each control point
+        for cp in self.project.control_points:
+            new_x, new_y = adjustment.apply_to_point(cp.pixel_x, cp.pixel_y)
+            cp.pixel_x = new_x
+            cp.pixel_y = new_y
+
+        # Clear the adjustment
+        self.image_view.reset_adjustment()
+
+        # Invalidate and rebuild transformer
+        self._cached_transformer = None
+        self._cached_transformer = get_transformer(self.project)
+
+        # Refresh geometry with new transformation
+        self.refresh_imported_geometry()
+
+        # Mark project as modified
+        self.modified = True
+        self.update_window_title()
+
+        self.statusBar().showMessage("Adjustment applied to control points")
+
+    def refresh_imported_geometry(self):
+        """
+        Refresh all imported geometry after adjustment change.
+
+        Re-positions any geometry that was placed using geo→pixel conversion.
+        This method recomputes pixel positions from stored geo coordinates
+        using the current transformer.
+        """
+        if self._cached_transformer is not None:
+            # Update all geometry from geo coordinates
+            self.image_view.update_all_from_geo_coords(self._cached_transformer)
+
+        # Refresh control points visualization (if shown)
+        self.update_scale_display()
 
     def set_uncertainty_overlay(self, mode: str):
         """
@@ -1529,6 +1724,101 @@ class MainWindow(QMainWindow):
             pass
 
         return None
+
+    def _initialize_and_refresh_geo_coords(self):
+        """
+        Refresh pixel coordinates from geo coordinates for all georeferenced elements.
+
+        This is needed when loading a project because saved pixel coords may be from
+        a different transformer state (e.g., before adjustment was applied).
+        Geographic coordinates are the source of truth; pixel coords are derived.
+
+        For legacy projects with connecting roads that lack geo_path, initializes
+        geo_path from pixel path for backward compatibility.
+        """
+        if not self.project.has_georeferencing():
+            return
+
+        # Get or create transformer
+        from orbit.export import create_transformer, TransformMethod
+        try:
+            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
+            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            if not transformer:
+                return
+        except Exception:
+            return
+
+        # Initialize geo_path for connecting roads that don't have it (legacy support)
+        for junction in self.project.junctions:
+            for conn_road in junction.connecting_roads:
+                if conn_road.path and not conn_road.has_geo_coords():
+                    conn_road.initialize_geo_path_from_pixels(transformer)
+
+        # Refresh pixel coordinates from geo coordinates for ALL elements
+        for polyline in self.project.polylines:
+            if polyline.has_geo_coords():
+                polyline.update_pixel_points_from_geo(transformer)
+
+        for junction in self.project.junctions:
+            if junction.has_geo_coords():
+                junction.update_pixel_coords_from_geo(transformer)
+            for conn_road in junction.connecting_roads:
+                if conn_road.has_geo_coords():
+                    conn_road.update_pixel_path_from_geo(transformer)
+
+        for signal in self.project.signals:
+            if signal.has_geo_coords():
+                signal.update_pixel_position_from_geo(transformer)
+
+        for obj in self.project.objects:
+            if obj.has_geo_coords():
+                obj.update_pixel_coords_from_geo(transformer)
+
+        # Snap connecting road endpoints to match road endpoints exactly
+        # This prevents gaps due to transformer precision issues
+        self._snap_connecting_road_endpoints()
+
+    def _snap_connecting_road_endpoints(self):
+        """
+        Snap connecting road pixel endpoints to match road endpoints exactly.
+
+        When converting geo coordinates to pixel coordinates, small precision
+        differences can cause gaps between connecting roads and their connected
+        roads. This method ensures the first and last points of each connecting
+        road path exactly match the stored pixel coordinates of the connected
+        road endpoints.
+        """
+        for junction in self.project.junctions:
+            for conn_road in junction.connecting_roads:
+                if not conn_road.path or len(conn_road.path) < 2:
+                    continue
+
+                # Get predecessor and successor roads
+                pred_road = self.project.get_road(conn_road.predecessor_road_id)
+                succ_road = self.project.get_road(conn_road.successor_road_id)
+
+                if not pred_road or not succ_road:
+                    continue
+
+                # Get centerline polylines
+                pred_polyline = self.project.get_polyline(pred_road.centerline_id)
+                succ_polyline = self.project.get_polyline(succ_road.centerline_id)
+
+                if not pred_polyline or not succ_polyline:
+                    continue
+
+                # Snap start point to predecessor road endpoint
+                if conn_road.contact_point_start == 'end':
+                    conn_road.path[0] = pred_polyline.points[-1]
+                else:  # 'start'
+                    conn_road.path[0] = pred_polyline.points[0]
+
+                # Snap end point to successor road endpoint
+                if conn_road.contact_point_end == 'end':
+                    conn_road.path[-1] = succ_polyline.points[-1]
+                else:  # 'start'
+                    conn_road.path[-1] = succ_polyline.points[0]
 
     def update_affected_road_lanes(self):
         """Update lane graphics for all roads with centerlines."""
@@ -1691,6 +1981,11 @@ class MainWindow(QMainWindow):
         # Open dialog to configure the junction
         result = JunctionDialog.create_junction(self.project, junction.center_point, self)
         if result:
+            # Convert pixel center to geo coords if transformer available
+            if self._cached_transformer and result.center_point:
+                lon, lat = self._cached_transformer.pixel_to_geo(result.center_point[0], result.center_point[1])
+                result.geo_center_point = (lon, lat)
+
             self.project.add_junction(result)
             self.image_view.add_junction_graphics(result)
             self.modified = True
@@ -1848,6 +2143,11 @@ class MainWindow(QMainWindow):
                             # Note: Orientation defaults to '+' (forward) and can be adjusted in properties dialog
                             signal.s_position = signal.calculate_s_position(centerline_polyline.points)
 
+                # Convert pixel position to geo coords if transformer available
+                if self._cached_transformer:
+                    lon, lat = self._cached_transformer.pixel_to_geo(x, y)
+                    signal.geo_position = (lon, lat)
+
                 # Add to project and view
                 self.project.add_signal(signal)
                 self.image_view.add_signal_graphics(signal)
@@ -1963,6 +2263,11 @@ class MainWindow(QMainWindow):
                     obj.s_position = s
                     obj.t_offset = t
 
+        # Convert pixel position to geo coords if transformer available
+        if self._cached_transformer:
+            lon, lat = self._cached_transformer.pixel_to_geo(x, y)
+            obj.geo_position = (lon, lat)
+
         # Get scale factor for graphics
         scale_factor = 0.0
         if hasattr(self, '_cached_transformer') and self._cached_transformer:
@@ -1992,6 +2297,19 @@ class MainWindow(QMainWindow):
                     s, t = obj.calculate_s_t_position(centerline_polyline.points)
                     obj.s_position = s
                     obj.t_offset = t
+
+        # Convert pixel coords to geo coords if transformer available
+        if self._cached_transformer:
+            # Convert position
+            lon, lat = self._cached_transformer.pixel_to_geo(obj.position[0], obj.position[1])
+            obj.geo_position = (lon, lat)
+            # Convert points (for polyline objects like guardrails)
+            if obj.points:
+                geo_points = []
+                for px, py in obj.points:
+                    lon, lat = self._cached_transformer.pixel_to_geo(px, py)
+                    geo_points.append((lon, lat))
+                obj.geo_points = geo_points
 
         # Get scale factor
         scale_factor = 0.0
@@ -2364,6 +2682,11 @@ class MainWindow(QMainWindow):
         state = self.settings.value("mainwindow/state")
         if state:
             self.restoreState(state)
+
+        # Always ensure adjustment dock is hidden on startup
+        # (it should only be visible when adjustment mode is active)
+        self.adjustment_dock.setVisible(False)
+        self.image_view.set_adjustment_mode(False)
 
     def closeEvent(self, event):
         """Handle window close event."""

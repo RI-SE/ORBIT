@@ -11,7 +11,11 @@ import uuid
 import math
 
 from orbit.utils import CoordinateTransformer
-from orbit.utils.geometry import find_point_at_distance_along_path, calculate_path_length
+from orbit.utils.geometry import (
+    find_point_at_distance_along_path,
+    calculate_path_length,
+    shorten_geo_points
+)
 from orbit.models import ControlPoint, Road, Junction, Signal, RoadObject
 from orbit.models.polyline import Polyline, LineType, RoadMarkType
 from orbit.models.road import RoadType
@@ -416,8 +420,9 @@ def detect_junctions_from_osm(osm_data, road_osm_way_map: Dict[str, int],
         if not osm_node:
             continue
 
-        # Convert to pixel coordinates
+        # Convert to pixel coordinates and store geo position
         px, py = transformer.geo_to_pixel(osm_node.lon, osm_node.lat)
+        geo_center_point = (osm_node.lon, osm_node.lat)  # Store as source of truth
 
         # Extract unique road IDs (only from vehicular roads)
         connected_road_ids = list(set(road_id for road_id, _, _ in vehicular_roads))
@@ -454,10 +459,11 @@ def detect_junctions_from_osm(osm_data, road_osm_way_map: Dict[str, int],
 
             connected_road_ids = filtered_road_ids
 
-        # Create junction
+        # Create junction with geo coords
         junction = Junction(
             name=f"Junction {len(junctions) + 1}",
             center_point=(px, py),
+            geo_center_point=geo_center_point,  # Store geo coords as source of truth
             connected_road_ids=connected_road_ids
         )
         junctions.append(junction)
@@ -523,8 +529,9 @@ def detect_path_crossings_from_osm(osm_data, road_osm_way_map: Dict[str, int],
         if not osm_node:
             continue
 
-        # Convert to pixel coordinates
+        # Convert to pixel coordinates and store geo position
         px, py = transformer.geo_to_pixel(osm_node.lon, osm_node.lat)
+        geo_center_point = (osm_node.lon, osm_node.lat)  # Store as source of truth
 
         # Extract unique road IDs
         connected_road_ids = list(set(road_id for road_id, _, _, _ in way_list))
@@ -535,10 +542,11 @@ def detect_path_crossings_from_osm(osm_data, road_osm_way_map: Dict[str, int],
         if crossing_type == 'crossing':
             name_suffix = " (Crossing)"
 
-        # Create virtual junction for this path crossing
+        # Create virtual junction for this path crossing with geo coords
         junction = Junction(
             name=f"Path Crossing {len(junctions) + 1}{name_suffix}",
             center_point=(px, py),
+            geo_center_point=geo_center_point,  # Store geo coords as source of truth
             connected_road_ids=connected_road_ids,
             junction_type="virtual"  # Virtual junction for path crossings
         )
@@ -888,8 +896,14 @@ def split_roads_at_junction_nodes(
             segment_points = centerline.points[start_idx:end_idx + 1]
             segment_node_ids = centerline.osm_node_ids[start_idx:end_idx + 1]
 
+            # Also extract geo_points segment if available
+            segment_geo_points = None
+            if centerline.geo_points:
+                segment_geo_points = centerline.geo_points[start_idx:end_idx + 1]
+
             new_polyline = Polyline(
                 points=segment_points,
+                geo_points=segment_geo_points,  # Preserve geo coords
                 line_type=LineType.CENTERLINE,
                 road_mark_type=centerline.road_mark_type,
                 osm_node_ids=segment_node_ids,
@@ -1036,6 +1050,10 @@ def offset_road_endpoints_from_junctions(
             points = list(centerline.points)  # Make a copy to modify
             modified = False
 
+            # Track actual offsets applied (in meters) for geo_points shortening
+            start_offset_meters_applied = 0.0
+            end_offset_meters_applied = 0.0
+
             # Check start point
             start_dx = points[0][0] - jx
             start_dy = points[0][1] - jy
@@ -1088,9 +1106,11 @@ def offset_road_endpoints_from_junctions(
                             print(f"  ERROR: Offsetting start of road '{road.name}' would leave < 2 points, skipping")
                     else:
                         modified = True
+                        # Record the actual offset applied in meters
+                        start_offset_meters_applied = actual_offset * avg_scale
                         if verbose:
                             print(f"  Offset road '{road.name}' start: moved {actual_offset:.1f}px "
-                                  f"({(actual_offset / offset_distance_pixels) * offset_distance_meters:.1f}m), "
+                                  f"({start_offset_meters_applied:.1f}m), "
                                   f"removed {points_removed} point(s)")
 
             # Check end point
@@ -1148,14 +1168,28 @@ def offset_road_endpoints_from_junctions(
                             print(f"  ERROR: Offsetting end of road '{road.name}' would leave < 2 points, skipping")
                     else:
                         modified = True
+                        # Record the actual offset applied in meters
+                        end_offset_meters_applied = actual_offset * avg_scale
                         if verbose:
                             print(f"  Offset road '{road.name}' end: moved {actual_offset:.1f}px "
-                                  f"({(actual_offset / offset_distance_pixels) * offset_distance_meters:.1f}m), "
+                                  f"({end_offset_meters_applied:.1f}m), "
                                   f"removed {points_removed} point(s)")
 
             if modified:
                 # Update the polyline with modified points
                 centerline.points = points
+
+                # Also shorten geo_points to keep them in sync
+                if centerline.geo_points and len(centerline.geo_points) >= 2:
+                    centerline.geo_points = shorten_geo_points(
+                        centerline.geo_points,
+                        start_offset_meters_applied,
+                        end_offset_meters_applied
+                    )
+                    if verbose:
+                        print(f"    Also shortened geo_points: start={start_offset_meters_applied:.1f}m, "
+                              f"end={end_offset_meters_applied:.1f}m -> {len(centerline.geo_points)} geo points")
+
                 modified_count += 1
 
     if verbose and modified_count > 0:
@@ -1186,11 +1220,13 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
     if not should_import_highway(highway):
         return None
 
-    # Convert coordinates to pixels
+    # Convert coordinates to pixels and store geo coords
     pixel_points = []
+    geo_points = []  # Store (lon, lat) pairs as source of truth
     for lat, lon in osm_way.resolved_coords:
         px, py = transformer.geo_to_pixel(lon, lat)
         pixel_points.append((px, py))
+        geo_points.append((lon, lat))  # lon, lat order
 
     if len(pixel_points) < 2:
         return None
@@ -1198,9 +1234,10 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
     # Preserve OSM node IDs for junction splitting
     osm_node_ids = list(osm_way.nodes) if osm_way.nodes else None
 
-    # Create centerline polyline
+    # Create centerline polyline with both pixel and geo coords
     centerline = Polyline(
         points=pixel_points,
+        geo_points=geo_points,  # Store geo coords as source of truth
         line_type=LineType.CENTERLINE,
         road_mark_type=RoadMarkType.NONE,
         osm_node_ids=osm_node_ids
@@ -1600,8 +1637,9 @@ def create_signal_from_osm(osm_node: OSMNode, transformer: CoordinateTransformer
     if not signal_type:
         return None
 
-    # Convert coordinates
+    # Convert coordinates and store geo position
     px, py = transformer.geo_to_pixel(osm_node.lon, osm_node.lat)
+    geo_position = (osm_node.lon, osm_node.lat)  # Store as source of truth
 
     # Extract speed value if speed limit sign
     speed_value = None
@@ -1629,6 +1667,7 @@ def create_signal_from_osm(osm_node: OSMNode, transformer: CoordinateTransformer
         position=(px, py),
         signal_type=signal_type,
         value=speed_value,
+        geo_position=geo_position,  # Store geo coords as source of truth
     )
     signal.name = signal_name
 
@@ -1676,21 +1715,25 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
     # Handle nodes (point objects)
     if isinstance(osm_element, OSMNode):
         px, py = transformer.geo_to_pixel(osm_element.lon, osm_element.lat)
+        geo_position = (osm_element.lon, osm_element.lat)  # Store as source of truth
 
         obj = RoadObject(
             position=(px, py),
-            object_type=object_type
+            object_type=object_type,
+            geo_position=geo_position,  # Store geo coords as source of truth
         )
         obj.name = osm_element.tags.get('name', f"OSM Object {osm_element.id}")
         return obj
 
     # Handle ways (polyline objects like guardrails or buildings)
     elif isinstance(osm_element, OSMWay):
-        # Convert coordinates
+        # Convert coordinates and store geo coords
         pixel_points = []
+        geo_points = []  # Store (lon, lat) pairs as source of truth
         for lat, lon in osm_element.resolved_coords:
             px, py = transformer.geo_to_pixel(lon, lat)
             pixel_points.append((px, py))
+            geo_points.append((lon, lat))
 
         if len(pixel_points) < 2:
             return None
@@ -1700,9 +1743,11 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
             # Use first point as position, store full polyline
             obj = RoadObject(
                 position=pixel_points[0],
-                object_type=object_type
+                object_type=object_type,
+                geo_position=geo_points[0],  # Store geo position of first point
             )
             obj.points = pixel_points
+            obj.geo_points = geo_points  # Store geo coords as source of truth
             obj.name = osm_element.tags.get('name', f"OSM Guardrail {osm_element.id}")
             return obj
 
@@ -1711,15 +1756,20 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
             # Calculate centroid
             avg_x = sum(p[0] for p in pixel_points) / len(pixel_points)
             avg_y = sum(p[1] for p in pixel_points) / len(pixel_points)
+            # Calculate geo centroid
+            avg_lon = sum(p[0] for p in geo_points) / len(geo_points)
+            avg_lat = sum(p[1] for p in geo_points) / len(geo_points)
 
             obj = RoadObject(
                 position=(avg_x, avg_y),
-                object_type=object_type
+                object_type=object_type,
+                geo_position=(avg_lon, avg_lat),  # Store geo centroid
             )
             obj.name = osm_element.tags.get('name', f"OSM Building {osm_element.id}")
 
             # Store polygon points for visualization
             obj.points = pixel_points
+            obj.geo_points = geo_points  # Store geo coords as source of truth
 
             # Calculate building dimensions from bounding box
             xs = [p[0] for p in pixel_points]

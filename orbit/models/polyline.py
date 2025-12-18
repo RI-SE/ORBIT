@@ -35,11 +35,19 @@ class RoadMarkType(Enum):
 @dataclass
 class Polyline:
     """
-    Represents a polyline with multiple points in pixel coordinates.
+    Represents a polyline with multiple points.
+
+    Coordinates can be stored as:
+    - pixel coordinates (points field) - used for display and manual drawing
+    - geographic coordinates (geo_points field) - source of truth for imported data
+
+    When geo_points is set, pixel coords can be recomputed via get_pixel_points()
+    using a transformer. This enables adjustment of georeferencing alignment.
 
     Attributes:
         id: Unique identifier for this polyline
-        points: List of (x, y) coordinates in pixels
+        points: List of (x, y) coordinates in pixels (for display/manual drawing)
+        geo_points: List of (lon, lat) geographic coordinates (source of truth for imports)
         color: RGB color tuple for visualization (r, g, b)
         closed: Whether the polyline forms a closed loop
         line_type: Type of line (centerline or lane_boundary)
@@ -51,6 +59,7 @@ class Polyline:
     """
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     points: List[Tuple[float, float]] = field(default_factory=list)
+    geo_points: Optional[List[Tuple[float, float]]] = None  # (lon, lat) pairs - source of truth
     color: Tuple[int, int, int] = (0, 255, 255)  # Default cyan for lane boundaries
     closed: bool = False
     line_type: LineType = LineType.LANE_BOUNDARY  # Default to lane boundary
@@ -98,6 +107,44 @@ class Polyline:
         This is useful for correcting the direction of centerlines.
         """
         self.points.reverse()
+        # Also reverse geo_points if present
+        if self.geo_points:
+            self.geo_points.reverse()
+
+    def has_geo_coords(self) -> bool:
+        """Check if this polyline has geographic coordinates stored."""
+        return self.geo_points is not None and len(self.geo_points) > 0
+
+    def get_pixel_points(self, transformer=None) -> List[Tuple[float, float]]:
+        """
+        Get points in pixel coordinates.
+
+        If geo_points are available and a transformer is provided,
+        computes pixel coordinates from geo coordinates.
+        Otherwise returns the stored pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+
+        Returns:
+            List of (x, y) pixel coordinates
+        """
+        if self.geo_points and transformer:
+            return [transformer.geo_to_pixel(lon, lat) for lon, lat in self.geo_points]
+        return self.points
+
+    def update_pixel_points_from_geo(self, transformer) -> None:
+        """
+        Update stored pixel points from geo coordinates using transformer.
+
+        Call this after changing the transformer (e.g., adjustment) to
+        update the cached pixel coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo→pixel conversion
+        """
+        if self.geo_points and transformer:
+            self.points = [transformer.geo_to_pixel(lon, lat) for lon, lat in self.geo_points]
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert polyline to dictionary for JSON serialization."""
@@ -110,6 +157,8 @@ class Polyline:
             'road_mark_type': self.road_mark_type.value
         }
         # Only include optional fields if they are set
+        if self.geo_points is not None:
+            data['geo_points'] = self.geo_points
         if self.elevations is not None:
             data['elevations'] = self.elevations
         if self.s_offsets is not None:
@@ -137,9 +186,14 @@ class Polyline:
         except ValueError:
             road_mark_type = RoadMarkType.SOLID
 
+        # Handle geo_points - convert lists to tuples
+        geo_points_raw = data.get('geo_points')
+        geo_points = [tuple(p) for p in geo_points_raw] if geo_points_raw else None
+
         return cls(
             id=data.get('id', str(uuid.uuid4())),
             points=[tuple(p) for p in data.get('points', [])],
+            geo_points=geo_points,
             color=tuple(data.get('color', (0, 255, 255))),
             closed=data.get('closed', False),
             line_type=line_type,

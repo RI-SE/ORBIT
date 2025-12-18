@@ -9,7 +9,12 @@ from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 
 from orbit.models import Junction, Road, Polyline, ConnectingRoad, LaneConnection
-from orbit.utils.geometry import generate_simple_connection_path
+from orbit.utils.geometry import generate_simple_connection_path, generate_connection_path_geo
+
+# Type hint for circular import avoidance
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from orbit.utils.coordinate_transform import CoordinateTransformer
 
 
 @dataclass
@@ -26,6 +31,8 @@ class RoadEndpointInfo:
     right_lane_count: int
     lane_width: float  # Meters
     relative_angle: float = 0.0  # Angle relative to reference direction (set later)
+    position_geo: Optional[Tuple[float, float]] = None  # (lon, lat) - geographic position
+    direction_geo: Optional[Tuple[float, float]] = None  # (lon, lat) - point in direction of travel
 
     def get_right_lane_center_position(self, scale: float, flip_heading: bool = False) -> Tuple[float, float]:
         """
@@ -70,6 +77,50 @@ class RoadEndpointInfo:
         offset_y = self.position[1] + offset_distance * math.sin(right_perpendicular)
 
         return (offset_x, offset_y)
+
+    def get_right_lane_center_position_geo(
+        self,
+        transformer: 'CoordinateTransformer',
+        flip_heading: bool = False
+    ) -> Optional[Tuple[float, float]]:
+        """
+        Calculate the geo position of the right lane center for right-hand traffic.
+
+        Works in metric space then converts back to geo coordinates.
+
+        Args:
+            transformer: CoordinateTransformer for geo<->meters conversion
+            flip_heading: If True, flip the heading by 180° before calculating offset.
+
+        Returns:
+            (lon, lat) position of the right lane center, or None if geo coords not available
+        """
+        if not self.position_geo:
+            return None
+
+        # Use flipped heading if requested
+        effective_heading = self.heading + math.pi if flip_heading else self.heading
+
+        # Convert heading from pixel space to metric space
+        # Pixel space: Y increases downward, Metric space: Y increases upward
+        effective_heading_metric = -effective_heading
+
+        # For right-hand traffic, right side is -90° from heading (clockwise)
+        right_perpendicular = effective_heading_metric - math.pi / 2
+
+        # Distance to right lane center in meters
+        if self.right_lane_count > 0:
+            offset_meters = (self.right_lane_count / 2.0) * self.lane_width
+        else:
+            offset_meters = 0.0
+
+        # Convert geo position to meters, apply offset, convert back
+        lon, lat = self.position_geo
+        mx, my = transformer.latlon_to_meters(lat, lon)
+        offset_mx = mx + offset_meters * math.cos(right_perpendicular)
+        offset_my = my + offset_meters * math.sin(right_perpendicular)
+        lat_out, lon_out = transformer.meters_to_latlon(offset_mx, offset_my)
+        return (lon_out, lat_out)
 
 
 @dataclass
@@ -214,11 +265,33 @@ def analyze_junction_geometry(junction: Junction,
             junction_point = centerline.points[0]
             heading = get_road_endpoint_heading(road, centerline, "start")
             closest_dist = start_dist
+            # Get geo position and direction point if available
+            if centerline.geo_points and len(centerline.geo_points) > 0:
+                junction_point_geo = centerline.geo_points[0]
+                # Direction is from first to second point (away from junction)
+                if len(centerline.geo_points) >= 2:
+                    direction_geo = centerline.geo_points[1]
+                else:
+                    direction_geo = None
+            else:
+                junction_point_geo = None
+                direction_geo = None
         else:
             at_junction = "end"
             junction_point = centerline.points[-1]
             heading = get_road_endpoint_heading(road, centerline, "end")
             closest_dist = end_dist
+            # Get geo position and direction point if available
+            if centerline.geo_points and len(centerline.geo_points) > 0:
+                junction_point_geo = centerline.geo_points[-1]
+                # Direction is from second-to-last to last point (toward junction)
+                if len(centerline.geo_points) >= 2:
+                    direction_geo = centerline.geo_points[-2]
+                else:
+                    direction_geo = None
+            else:
+                junction_point_geo = None
+                direction_geo = None
 
         # Assume roads are bidirectional (two-way) unless we have explicit oneway information
         # This allows traffic to flow in both directions through the junction
@@ -266,7 +339,9 @@ def analyze_junction_geometry(junction: Junction,
             is_outgoing=is_outgoing,
             left_lane_count=left_count,
             right_lane_count=right_count,
-            lane_width=lane_width
+            lane_width=lane_width,
+            position_geo=junction_point_geo,
+            direction_geo=direction_geo
         )
         endpoints.append(endpoint_info)
 
@@ -454,7 +529,8 @@ def generate_lane_links_for_connection(from_endpoint: RoadEndpointInfo,
 def create_connecting_roads_from_patterns(
     junction: Junction,
     patterns: List[ConnectionPattern],
-    endpoint_lookup: Dict[str, 'RoadEndpointInfo']
+    endpoint_lookup: Dict[str, 'RoadEndpointInfo'],
+    transformer: Optional['CoordinateTransformer'] = None
 ) -> None:
     """
     Create connecting roads and lane connections from pre-detected patterns.
@@ -464,10 +540,16 @@ def create_connecting_roads_from_patterns(
     - Step 5: Create bidirectional connecting roads for straight pairs
     - Step 6: Create unidirectional roads for turns and unpaired straights
 
+    When a transformer is provided and endpoints have geo coordinates,
+    paths are generated in geographic space first (geo-first), then pixel
+    coordinates are derived. This ensures geo coordinates are the source
+    of truth for adjustment operations.
+
     Args:
         junction: Junction object to populate with connections
         patterns: List of ConnectionPattern objects (pre-detected)
         endpoint_lookup: Dict mapping road_id -> RoadEndpointInfo with current positions
+        transformer: Optional CoordinateTransformer for geo-first path generation
     """
     if not patterns:
         return
@@ -514,19 +596,43 @@ def create_connecting_roads_from_patterns(
             # Keep average for backward compatibility
             avg_lane_width = (lane_width_start + lane_width_end) / 2
 
-            # Use centerline positions for the path (no lane offset)
-            from_pos = from_endpoint.position
-            to_pos = to_endpoint.position
-
-            # Generate path using ParamPoly3D for smooth curves
-            path, coeffs = generate_simple_connection_path(
-                from_pos=from_pos,
-                from_heading=from_endpoint.heading,
-                to_pos=to_pos,
-                to_heading=to_endpoint.heading,
-                num_points=20,
-                tangent_scale=1.0
-            )
+            # Generate path - use geo-first when transformer and geo coords available
+            geo_path = None
+            if transformer and from_endpoint.position_geo and to_endpoint.position_geo:
+                # Geo-first: generate path in geographic space
+                geo_path, coeffs = generate_connection_path_geo(
+                    from_pos_geo=from_endpoint.position_geo,
+                    from_heading=from_endpoint.heading,
+                    to_pos_geo=to_endpoint.position_geo,
+                    to_heading=to_endpoint.heading,
+                    transformer=transformer,
+                    num_points=20,
+                    tangent_scale=1.0,
+                    from_direction_geo=from_endpoint.direction_geo,
+                    to_direction_geo=to_endpoint.direction_geo
+                )
+                if geo_path:
+                    # Derive pixel path from geo path
+                    path = [transformer.geo_to_pixel(lon, lat) for lon, lat in geo_path]
+                    # Snap endpoints to match stored road pixel coordinates exactly
+                    # This prevents gaps due to transformer precision issues
+                    if path:
+                        path[0] = from_endpoint.position
+                        path[-1] = to_endpoint.position
+                else:
+                    path = None
+            else:
+                # Pixel-first fallback
+                from_pos = from_endpoint.position
+                to_pos = to_endpoint.position
+                path, coeffs = generate_simple_connection_path(
+                    from_pos=from_pos,
+                    from_heading=from_endpoint.heading,
+                    to_pos=to_pos,
+                    to_heading=to_endpoint.heading,
+                    num_points=20,
+                    tangent_scale=1.0
+                )
 
             if not path:
                 continue
@@ -541,6 +647,7 @@ def create_connecting_roads_from_patterns(
             # Create the bidirectional connecting road
             connecting_road = ConnectingRoad(
                 path=path,
+                geo_path=geo_path,  # Set geo_path if generated
                 lane_count_left=conn_lane_count_left,
                 lane_count_right=conn_lane_count_right,
                 lane_width=avg_lane_width,
@@ -645,8 +752,12 @@ def create_connecting_roads_from_patterns(
             # This makes the path go in the same direction as the "normal" traffic flow
             from_pos = to_endpoint.position
             to_pos = from_endpoint.position
+            from_pos_geo = to_endpoint.position_geo
+            to_pos_geo = from_endpoint.position_geo
             from_heading = to_endpoint.heading
             to_heading = from_endpoint.heading
+            from_direction_geo = to_endpoint.direction_geo
+            to_direction_geo = from_endpoint.direction_geo
             # Swap road connections (predecessor/successor indicate geometric connection)
             pred_road_id = pattern.to_road_id
             succ_road_id = pattern.from_road_id
@@ -659,6 +770,10 @@ def create_connecting_roads_from_patterns(
             # Normal case: path goes from_endpoint to to_endpoint
             from_pos = from_endpoint.position
             to_pos = to_endpoint.position
+            from_pos_geo = from_endpoint.position_geo
+            to_pos_geo = to_endpoint.position_geo
+            from_direction_geo = from_endpoint.direction_geo
+            to_direction_geo = to_endpoint.direction_geo
             from_heading = from_endpoint.heading
             to_heading = to_endpoint.heading
             pred_road_id = pattern.from_road_id
@@ -669,16 +784,43 @@ def create_connecting_roads_from_patterns(
             lane_width_start = width_from
             lane_width_end = width_to
 
-        # Generate geometric path using ParamPoly3D
-        path, coeffs = generate_simple_connection_path(
-            from_pos=from_pos,
-            from_heading=from_heading,
-            to_pos=to_pos,
-            to_heading=to_heading,
-            num_points=20,
-            tangent_scale=1.0,
-            is_uturn=is_uturn
-        )
+        # Generate path - use geo-first when transformer and geo coords available
+        geo_path = None
+        if transformer and from_pos_geo and to_pos_geo:
+            # Geo-first: generate path in geographic space
+            geo_path, coeffs = generate_connection_path_geo(
+                from_pos_geo=from_pos_geo,
+                from_heading=from_heading,
+                to_pos_geo=to_pos_geo,
+                to_heading=to_heading,
+                transformer=transformer,
+                num_points=20,
+                tangent_scale=1.0,
+                is_uturn=is_uturn,
+                from_direction_geo=from_direction_geo,
+                to_direction_geo=to_direction_geo
+            )
+            if geo_path:
+                # Derive pixel path from geo path
+                path = [transformer.geo_to_pixel(lon, lat) for lon, lat in geo_path]
+                # Snap endpoints to match stored road pixel coordinates exactly
+                # This prevents gaps due to transformer precision issues
+                if path:
+                    path[0] = from_pos
+                    path[-1] = to_pos
+            else:
+                path = None
+        else:
+            # Pixel-first fallback
+            path, coeffs = generate_simple_connection_path(
+                from_pos=from_pos,
+                from_heading=from_heading,
+                to_pos=to_pos,
+                to_heading=to_heading,
+                num_points=20,
+                tangent_scale=1.0,
+                is_uturn=is_uturn
+            )
 
         if not path:
             continue
@@ -689,6 +831,7 @@ def create_connecting_roads_from_patterns(
         # Create connecting road
         connecting_road = ConnectingRoad(
             path=path,
+            geo_path=geo_path,  # Set geo_path if generated
             lane_count_left=conn_lane_count_left,
             lane_count_right=conn_lane_count_right,
             lane_width=avg_lane_width,
@@ -766,7 +909,8 @@ def clear_cross_junction_links(junction: Junction, roads_dict: Dict[str, Road]) 
 def generate_junction_connections(junction: Junction,
                                  roads_dict: Dict[str, Road],
                                  polylines_dict: Dict[str, Polyline],
-                                 scale: float = 1.0) -> None:
+                                 scale: float = 1.0,
+                                 transformer: Optional['CoordinateTransformer'] = None) -> None:
     """
     Generate connecting roads and lane connections for a junction.
 
@@ -779,11 +923,16 @@ def generate_junction_connections(junction: Junction,
     Virtual junctions (path crossings) are skipped - they represent visual crossings
     where roads don't actually connect (e.g., pedestrian path crossing over a road).
 
+    When a transformer is provided and road endpoints have geo coordinates,
+    paths are generated in geographic space first (geo-first), then pixel
+    coordinates are derived.
+
     Args:
         junction: Junction object to populate with connections
         roads_dict: Dictionary of road_id -> Road object
         polylines_dict: Dictionary of polyline_id -> Polyline object
         scale: Meters per pixel scale factor (used for lane offset calculations)
+        transformer: Optional CoordinateTransformer for geo-first path generation
     """
     # Skip virtual junctions - these are path crossings, not real connections
     if junction.junction_type == "virtual":
@@ -806,7 +955,7 @@ def generate_junction_connections(junction: Junction,
     endpoint_lookup = {ep.road_id: ep for ep in geometry_info['endpoints']}
 
     # Steps 4-6: Create connecting roads using the shared function
-    create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup)
+    create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup, transformer)
 
     # Step 7: Clear any stale road-to-road predecessor/successor links
     # In OpenDRIVE, roads connecting through a junction should link to the junction,

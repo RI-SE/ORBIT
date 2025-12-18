@@ -374,11 +374,21 @@ class OpenDriveImporter:
         # Calculate s-offsets in pixel space (for ORBIT internal use)
         s_offsets_pixel = calculate_s_offsets(points_pixel)
 
+        # Convert metric points to geo coords for storage as source of truth
+        geo_points = None
+        if self.orbit_transformer:
+            # Use orbit transformer to convert from meters to lat/lon
+            geo_points = []
+            for x_m, y_m in points_metric:
+                lat, lon = self.orbit_transformer.meters_to_latlon(x_m, y_m)
+                geo_points.append((lon, lat))  # Store as (lon, lat)
+
         # Create centerline polyline
         centerline_id = str(uuid.uuid4())
         centerline = Polyline(
             id=centerline_id,
             points=points_pixel,
+            geo_points=geo_points,  # Store geo coords as source of truth
             color=(255, 0, 0),  # Red for centerline
             line_type=LineType.CENTERLINE,
             elevations=elevations,
@@ -481,12 +491,21 @@ class OpenDriveImporter:
         points_metric, _ = self.geom_converter.convert_geometry_to_polyline(odr_road.geometry)
         points_pixel = batch_metric_to_pixel(points_metric, self.coord_transform) if points_metric else []
 
+        # Convert metric points to geo coords for storage as source of truth
+        geo_points = None
+        if self.orbit_transformer and points_metric:
+            geo_points = []
+            for x_m, y_m in points_metric:
+                lat, lon = self.orbit_transformer.meters_to_latlon(x_m, y_m)
+                geo_points.append((lon, lat))  # Store as (lon, lat)
+
         # Store for later processing
         self.pending_connecting_roads.append({
             'odr_road': odr_road,
             'junction_id': odr_road.junction_id,
             'param_poly3': param_poly3_data,
             'points_pixel': points_pixel,
+            'geo_points': geo_points,  # Store geo coords for later
             'options': options
         })
 
@@ -511,6 +530,7 @@ class OpenDriveImporter:
         junction_odr_id = pending['junction_id']
         param_poly3 = pending['param_poly3']
         points_pixel = pending['points_pixel']
+        geo_points = pending.get('geo_points')  # May be None if no transformer
 
         if not points_pixel or len(points_pixel) < 2:
             result.warnings.append(
@@ -576,6 +596,7 @@ class OpenDriveImporter:
         connecting_road = ConnectingRoad(
             id=str(uuid.uuid4()),
             path=points_pixel,
+            geo_path=geo_points,  # Store geo coords as source of truth
             lane_count_left=lane_count_left,
             lane_count_right=lane_count_right,
             lane_width=lane_width,
@@ -1131,12 +1152,19 @@ class OpenDriveImporter:
         if not position_pixel:
             return False
 
+        # Convert pixel position to geo coords for storage as source of truth
+        geo_position = None
+        if self.orbit_transformer:
+            lon, lat = self.orbit_transformer.pixel_to_geo(position_pixel[0], position_pixel[1])
+            geo_position = (lon, lat)
+
         # Create signal
         signal = Signal(
             position=position_pixel,
             signal_type=signal_type,
             value=value,
-            road_id=road_id
+            road_id=road_id,
+            geo_position=geo_position,  # Store geo coords as source of truth
         )
 
         signal.name = odr_signal.name
@@ -1173,11 +1201,18 @@ class OpenDriveImporter:
         if not position_pixel:
             return False
 
+        # Convert pixel position to geo coords for storage as source of truth
+        geo_position = None
+        if self.orbit_transformer:
+            lon, lat = self.orbit_transformer.pixel_to_geo(position_pixel[0], position_pixel[1])
+            geo_position = (lon, lat)
+
         # Create object
         obj = RoadObject(
             position=position_pixel,
             object_type=object_type,
-            road_id=road_id
+            road_id=road_id,
+            geo_position=geo_position,  # Store geo coords as source of truth
         )
 
         obj.name = odr_object.name
