@@ -42,6 +42,17 @@ class LaneType(Enum):
     OBSTACLE = "obstacle"
 
 
+class BoundaryMode(Enum):
+    """
+    How lane boundaries are defined.
+
+    OFFSET: Boundaries generated from centerline + width polynomial (default).
+    EXPLICIT: Boundaries defined by explicit polylines (manual drawing).
+    """
+    OFFSET = "offset"
+    EXPLICIT = "explicit"
+
+
 @dataclass
 class Lane:
     """
@@ -102,6 +113,8 @@ class Lane:
     # Turn directions (from OSM turn:lanes tag)
     # Format: list of turn directions like ["left", "through", "right"]
     turn_directions: Optional[List[str]] = None
+    # How boundary is defined: OFFSET (generated from width) or EXPLICIT (drawn polyline)
+    boundary_mode: BoundaryMode = BoundaryMode.OFFSET
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -155,11 +168,21 @@ class Lane:
         # Turn directions (from OSM)
         if self.turn_directions is not None:
             data['turn_directions'] = self.turn_directions
+        # Boundary mode (only if not default OFFSET)
+        if self.boundary_mode != BoundaryMode.OFFSET:
+            data['boundary_mode'] = self.boundary_mode.value
         return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Lane':
         """Create from dictionary."""
+        # Parse boundary_mode with fallback to OFFSET
+        boundary_mode_str = data.get('boundary_mode', 'offset')
+        try:
+            boundary_mode = BoundaryMode(boundary_mode_str)
+        except ValueError:
+            boundary_mode = BoundaryMode.OFFSET
+
         return cls(
             id=data['id'],
             lane_type=LaneType(data['lane_type']),
@@ -183,7 +206,8 @@ class Lane:
             direction=data.get('direction'),
             advisory=data.get('advisory'),
             level=data.get('level', False),
-            turn_directions=data.get('turn_directions')
+            turn_directions=data.get('turn_directions'),
+            boundary_mode=boundary_mode
         )
 
     def get_display_name(self) -> str:

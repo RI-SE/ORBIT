@@ -262,7 +262,7 @@ class Junction:
         center_point: Approximate center point (x, y) in pixels
         geo_center_point: Geographic center point (lon, lat) - source of truth for imports
         connected_road_ids: List of road IDs that connect at this junction
-        connections: List of specific connections between roads (DEPRECATED, use lane_connections)
+        connections: List of road-level connections (imported from OpenDRIVE)
         junction_type: Type of junction (e.g., 'default', 'virtual')
         opendrive_id: Optional OpenDrive junction ID (for round-trip consistency)
 
@@ -283,7 +283,7 @@ class Junction:
     center_point: Optional[Tuple[float, float]] = None
     geo_center_point: Optional[Tuple[float, float]] = None  # (lon, lat) - source of truth for imports
     connected_road_ids: List[str] = field(default_factory=list)
-    connections: List[JunctionConnection] = field(default_factory=list)  # DEPRECATED
+    connections: List[JunctionConnection] = field(default_factory=list)  # Road-level connections from OpenDRIVE
     junction_type: str = "default"  # OpenDrive junction type
     opendrive_id: Optional[str] = None  # OpenDrive ID for round-trip import/export
 

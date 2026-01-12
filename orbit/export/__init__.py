@@ -27,6 +27,7 @@ from .lane_builder import LaneBuilder, convert_road_mark_type
 from .signal_builder import SignalBuilder
 from .object_builder import ObjectBuilder
 from .parking_builder import ParkingBuilder
+from .georef_export import export_georeferencing, build_georef_data
 
 __all__ = [
     'CoordinateTransformer',
@@ -44,4 +45,6 @@ __all__ = [
     'SignalBuilder',
     'ObjectBuilder',
     'ParkingBuilder',
+    'export_georeferencing',
+    'build_georef_data',
 ]

@@ -10,6 +10,7 @@ import math
 import numpy as np
 from scipy import integrate
 from .opendrive_parser import GeometryElement, GeometryType
+from orbit.models import GeometrySegment
 
 
 class GeometryConverter:
@@ -26,37 +27,117 @@ class GeometryConverter:
 
     def convert_geometry_to_polyline(
         self,
-        geometry: List[GeometryElement]
-    ) -> Tuple[List[Tuple[float, float]], List[str]]:
+        geometry: List[GeometryElement],
+        preserve_geometry: bool = True
+    ) -> Tuple[List[Tuple[float, float]], List[str], Optional[List[GeometrySegment]]]:
         """
         Convert list of geometry elements to polyline points.
 
         Args:
             geometry: List of geometry elements from OpenDrive
+            preserve_geometry: If True, also return GeometrySegment metadata for round-trip
 
         Returns:
-            Tuple of (points, conversions) where:
+            Tuple of (points, conversions, geometry_segments) where:
             - points: List of (x, y) coordinates in meters
             - conversions: List of strings describing geometry conversions
+            - geometry_segments: List of GeometrySegment objects (if preserve_geometry=True)
         """
         points = []
         conversions = []
+        segments = [] if preserve_geometry else None
 
         for geom in geometry:
+            start_index = len(points)
             geom_points, conversion_msg = self._convert_single_geometry(geom)
 
             # Add points, avoiding duplicates at boundaries
+            skip_first = False
             if points and geom_points:
                 # Skip first point of new geometry if it matches last point
                 if self._points_match(points[-1], geom_points[0]):
                     geom_points = geom_points[1:]
+                    skip_first = True
+                    # Adjust start_index since we're reusing the last point
+                    start_index = len(points) - 1
 
             points.extend(geom_points)
+            end_index = len(points) - 1
 
             if conversion_msg:
                 conversions.append(conversion_msg)
 
-        return points, conversions
+            # Create geometry segment for round-trip preservation
+            if preserve_geometry and end_index > start_index:
+                segment = self._create_geometry_segment(geom, start_index, end_index)
+                if segment:
+                    segments.append(segment)
+
+        return points, conversions, segments
+
+    def _create_geometry_segment(
+        self,
+        geom: GeometryElement,
+        start_index: int,
+        end_index: int
+    ) -> Optional[GeometrySegment]:
+        """Create a GeometrySegment from an OpenDrive geometry element."""
+        geom_type_map = {
+            GeometryType.LINE: "line",
+            GeometryType.ARC: "arc",
+            GeometryType.SPIRAL: "spiral",
+            GeometryType.POLY3: "poly3",
+            GeometryType.PARAM_POLY3: "paramPoly3",
+        }
+
+        geom_type = geom_type_map.get(geom.geometry_type)
+        if not geom_type:
+            return None
+
+        # Build poly_params for non-line/arc types
+        poly_params = None
+        curvature = None
+        curvature_end = None
+
+        if geom.geometry_type == GeometryType.ARC:
+            curvature = geom.params.get('curvature', 0.0)
+
+        elif geom.geometry_type == GeometryType.SPIRAL:
+            curvature = geom.params.get('curvStart', 0.0)
+            curvature_end = geom.params.get('curvEnd', 0.0)
+
+        elif geom.geometry_type == GeometryType.POLY3:
+            poly_params = {
+                'a': geom.params.get('a', 0.0),
+                'b': geom.params.get('b', 0.0),
+                'c': geom.params.get('c', 0.0),
+                'd': geom.params.get('d', 0.0),
+            }
+
+        elif geom.geometry_type == GeometryType.PARAM_POLY3:
+            poly_params = {
+                'aU': geom.params.get('aU', 0.0),
+                'bU': geom.params.get('bU', 0.0),
+                'cU': geom.params.get('cU', 0.0),
+                'dU': geom.params.get('dU', 0.0),
+                'aV': geom.params.get('aV', 0.0),
+                'bV': geom.params.get('bV', 0.0),
+                'cV': geom.params.get('cV', 0.0),
+                'dV': geom.params.get('dV', 0.0),
+                'pRange': geom.params.get('pRange', 'normalized'),
+            }
+
+        return GeometrySegment(
+            geom_type=geom_type,
+            start_index=start_index,
+            end_index=end_index,
+            s_start=geom.s,
+            length=geom.length,
+            heading=geom.hdg,
+            curvature=curvature,
+            curvature_end=curvature_end,
+            poly_params=poly_params,
+        )
 
     def _convert_single_geometry(
         self,

@@ -361,7 +361,10 @@ class OpenDriveImporter:
             }
 
         # Convert geometry to polyline points (metric)
-        points_metric, conversions = self.geom_converter.convert_geometry_to_polyline(odr_road.geometry)
+        # Also get geometry_segments for round-trip fidelity
+        points_metric, conversions, geometry_segments = self.geom_converter.convert_geometry_to_polyline(
+            odr_road.geometry, preserve_geometry=True
+        )
 
         if not points_metric or len(points_metric) < 2:
             return None
@@ -401,7 +404,8 @@ class OpenDriveImporter:
             line_type=LineType.CENTERLINE,
             elevations=elevations,
             s_offsets=s_offsets_pixel,
-            opendrive_id=odr_road.id
+            opendrive_id=odr_road.id,
+            geometry_segments=geometry_segments  # Preserve original geometry for round-trip
         )
         self.project.polylines.append(centerline)
 
@@ -496,7 +500,10 @@ class OpenDriveImporter:
                 }
 
         # Convert geometry to polyline points for visualization
-        points_metric, _ = self.geom_converter.convert_geometry_to_polyline(odr_road.geometry)
+        # ConnectingRoads store their own geometry, so no need to preserve segments here
+        points_metric, _, _ = self.geom_converter.convert_geometry_to_polyline(
+            odr_road.geometry, preserve_geometry=False
+        )
         points_pixel = batch_metric_to_pixel(points_metric, self.coord_transform) if points_metric else []
 
         # Convert metric points to geo coords for storage as source of truth

@@ -5,7 +5,7 @@ This module contains all data structures for polylines, roads, junctions,
 and project management.
 """
 
-from .polyline import Polyline, LineType, RoadMarkType
+from .polyline import Polyline, LineType, RoadMarkType, GeometrySegment
 from .road import Road, RoadType, LaneInfo
 from .junction import (
     Junction, JunctionConnection, JunctionGroup, JunctionBoundary, JunctionBoundarySegment,
@@ -14,7 +14,7 @@ from .junction import (
 from .connecting_road import ConnectingRoad
 from .lane_connection import LaneConnection
 from .project import Project, ControlPoint
-from .lane import Lane, LaneType
+from .lane import Lane, LaneType, BoundaryMode
 from .lane_section import LaneSection
 from .signal import Signal, SignalType, SpeedUnit
 from .object import RoadObject, ObjectType
@@ -31,11 +31,13 @@ __all__ = [
     'Polyline',
     'LineType',
     'RoadMarkType',
+    'GeometrySegment',
     'Road',
     'RoadType',
     'LaneInfo',
     'Lane',
     'LaneType',
+    'BoundaryMode',
     'LaneSection',
     'Junction',
     'JunctionConnection',

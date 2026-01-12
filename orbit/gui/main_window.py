@@ -174,6 +174,10 @@ class MainWindow(QMainWindow):
         self.export_action.setStatusTip("Export to OpenDrive format")
         self.export_action.triggered.connect(self.export_to_opendrive)
 
+        self.export_georef_action = QAction("Export &Georeferencing...", self)
+        self.export_georef_action.setStatusTip("Export georeferencing parameters to JSON")
+        self.export_georef_action.triggered.connect(self.export_georeferencing)
+
         self.import_osm_action = QAction("Import &OpenStreetMap Data...", self)
         self.import_osm_action.setShortcut(QKeySequence("Ctrl+Shift+I"))
         self.import_osm_action.setStatusTip("Import road network from OpenStreetMap (API or file)")
@@ -357,6 +361,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.load_image_action)
         file_menu.addSeparator()
         file_menu.addAction(self.export_action)
+        file_menu.addAction(self.export_georef_action)
         file_menu.addAction(self.import_osm_action)
         file_menu.addAction(self.import_opendrive_action)
         file_menu.addSeparator()
@@ -697,6 +702,75 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Export completed successfully")
         else:
             self.statusBar().showMessage("Export cancelled")
+
+    def export_georeferencing(self):
+        """Export georeferencing parameters to JSON file."""
+        from orbit.export import export_georeferencing, create_transformer, TransformMethod
+
+        # Check if we have enough control points
+        if len(self.project.control_points) < 3:
+            show_warning(
+                self,
+                "Cannot export: At least 3 control points are required.\n"
+                "Use Tools → Georeferencing to add control points.",
+                "Insufficient Control Points"
+            )
+            return
+
+        # Create transformer
+        method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
+        min_points = 4 if method == TransformMethod.HOMOGRAPHY else 3
+        training_points = [cp for cp in self.project.control_points if not cp.is_validation]
+
+        if len(training_points) < min_points:
+            show_warning(
+                self,
+                f"Cannot export: {method.name.lower()} transformation requires "
+                f"at least {min_points} training (non-validation) control points.\n"
+                f"Current: {len(training_points)} training points.",
+                "Insufficient Control Points"
+            )
+            return
+
+        transformer = create_transformer(self.project.control_points, method, use_validation=True)
+        if not transformer:
+            show_error(self, "Failed to create coordinate transformer.\n"
+                "Please check your control points.", "Transformation Error")
+            return
+
+        # Get image size
+        if self.image_view.image_item:
+            image_size = (
+                int(self.image_view.image_item.pixmap().width()),
+                int(self.image_view.image_item.pixmap().height())
+            )
+        else:
+            show_warning(self, "No image loaded. Image size will be unknown.", "No Image")
+            image_size = (0, 0)
+
+        # Show save dialog
+        from PyQt6.QtWidgets import QFileDialog
+        default_name = ""
+        if self.project.image_path:
+            default_name = self.project.image_path.stem + "_georef.json"
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Georeferencing Parameters",
+            default_name,
+            "JSON files (*.json);;All files (*.*)"
+        )
+
+        if not file_path:
+            self.statusBar().showMessage("Export cancelled")
+            return
+
+        # Export
+        from pathlib import Path
+        if export_georeferencing(self.project, Path(file_path), transformer, image_size, self.current_project_file):
+            self.statusBar().showMessage(f"Georeferencing exported to {file_path}")
+        else:
+            show_error(self, "Failed to export georeferencing parameters.", "Export Error")
 
     def import_osm_data(self):
         """Import road network data from OpenStreetMap (API or file)."""

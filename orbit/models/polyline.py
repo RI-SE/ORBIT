@@ -33,6 +33,70 @@ class RoadMarkType(Enum):
 
 
 @dataclass
+class GeometrySegment:
+    """
+    Preserved OpenDRIVE geometry metadata for a polyline segment.
+
+    Stores the original geometry parameters from OpenDRIVE import so they
+    can be reused on export if the polyline points haven't been modified.
+    This enables round-trip fidelity for arcs, spirals, and parametric curves.
+
+    Attributes:
+        geom_type: Geometry type ("line", "arc", "spiral", "poly3", "paramPoly3")
+        start_index: Starting point index in the polyline
+        end_index: Ending point index in the polyline
+        s_start: S-coordinate at start (meters in original OpenDRIVE)
+        length: Length of segment (meters)
+        heading: Starting heading (radians)
+        curvature: Curvature for arcs (1/radius), start curvature for spirals
+        curvature_end: End curvature for spirals (None for arcs/lines)
+        poly_params: Dictionary of polynomial coefficients for poly3/paramPoly3
+    """
+    geom_type: str  # "line", "arc", "spiral", "poly3", "paramPoly3"
+    start_index: int
+    end_index: int
+    s_start: float = 0.0
+    length: float = 0.0
+    heading: float = 0.0
+    curvature: Optional[float] = None
+    curvature_end: Optional[float] = None
+    poly_params: Optional[Dict[str, float]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        data = {
+            'geom_type': self.geom_type,
+            'start_index': self.start_index,
+            'end_index': self.end_index,
+            's_start': self.s_start,
+            'length': self.length,
+            'heading': self.heading,
+        }
+        if self.curvature is not None:
+            data['curvature'] = self.curvature
+        if self.curvature_end is not None:
+            data['curvature_end'] = self.curvature_end
+        if self.poly_params is not None:
+            data['poly_params'] = self.poly_params
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'GeometrySegment':
+        """Create from dictionary."""
+        return cls(
+            geom_type=data['geom_type'],
+            start_index=data['start_index'],
+            end_index=data['end_index'],
+            s_start=data.get('s_start', 0.0),
+            length=data.get('length', 0.0),
+            heading=data.get('heading', 0.0),
+            curvature=data.get('curvature'),
+            curvature_end=data.get('curvature_end'),
+            poly_params=data.get('poly_params'),
+        )
+
+
+@dataclass
 class Polyline:
     """
     Represents a polyline with multiple points.
@@ -56,6 +120,7 @@ class Polyline:
         s_offsets: Optional s-coordinate values along polyline for each point (for display)
         opendrive_id: Optional OpenDrive road/element ID (for round-trip consistency)
         osm_node_ids: Optional OSM node IDs for each point (from OSM import, enables road splitting)
+        geometry_segments: Preserved OpenDRIVE geometry metadata for round-trip fidelity
     """
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     points: List[Tuple[float, float]] = field(default_factory=list)
@@ -68,6 +133,7 @@ class Polyline:
     s_offsets: Optional[List[float]] = None  # S-coordinate for each point (if available)
     opendrive_id: Optional[str] = None  # OpenDrive ID for round-trip import/export
     osm_node_ids: Optional[List[Optional[int]]] = None  # OSM node IDs for each point (from OSM import)
+    geometry_segments: Optional[List[GeometrySegment]] = None  # Preserved geometry from OpenDRIVE import
 
     def add_point(self, x: float, y: float) -> None:
         """Add a point to the end of the polyline."""
@@ -167,6 +233,8 @@ class Polyline:
             data['opendrive_id'] = self.opendrive_id
         if self.osm_node_ids is not None:
             data['osm_node_ids'] = self.osm_node_ids
+        if self.geometry_segments is not None:
+            data['geometry_segments'] = [seg.to_dict() for seg in self.geometry_segments]
         return data
 
     @classmethod
@@ -190,6 +258,12 @@ class Polyline:
         geo_points_raw = data.get('geo_points')
         geo_points = [tuple(p) for p in geo_points_raw] if geo_points_raw else None
 
+        # Handle geometry_segments
+        geometry_segments_raw = data.get('geometry_segments')
+        geometry_segments = None
+        if geometry_segments_raw:
+            geometry_segments = [GeometrySegment.from_dict(seg) for seg in geometry_segments_raw]
+
         return cls(
             id=data.get('id', str(uuid.uuid4())),
             points=[tuple(p) for p in data.get('points', [])],
@@ -201,7 +275,8 @@ class Polyline:
             elevations=data.get('elevations'),
             s_offsets=data.get('s_offsets'),
             opendrive_id=data.get('opendrive_id'),
-            osm_node_ids=data.get('osm_node_ids')
+            osm_node_ids=data.get('osm_node_ids'),
+            geometry_segments=geometry_segments
         )
 
     def __repr__(self) -> str:

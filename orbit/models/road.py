@@ -79,7 +79,6 @@ class Road:
     road_type: RoadType = RoadType.UNKNOWN
     lane_info: LaneInfo = field(default_factory=LaneInfo)
     lane_sections: List[LaneSection] = field(default_factory=list)
-    lanes: List[Lane] = field(default_factory=list)  # DEPRECATED: Not used. Kept for dataclass signature only.
     speed_limit: Optional[float] = None  # km/h
     junction_id: Optional[str] = None
     predecessor_id: Optional[str] = None
