@@ -180,6 +180,21 @@ class GeoreferenceDialog(BaseDialog):
         self.validation_text.setFont(font)
         status_layout.addWidget(self.validation_text)
 
+        # GCP Analysis button
+        gcp_analysis_layout = QHBoxLayout()
+        self.analyze_gcp_btn = QPushButton("Analyze GCPs")
+        self.analyze_gcp_btn.setToolTip(
+            "Detailed analysis of control point quality:\n"
+            "• Outlier detection (z-score)\n"
+            "• Spatial error patterns (X, Y, radial correlation)\n"
+            "• Leave-one-out testing to identify problematic points"
+        )
+        self.analyze_gcp_btn.clicked.connect(self.show_gcp_analysis)
+        self.analyze_gcp_btn.setEnabled(False)  # Enable when enough points
+        gcp_analysis_layout.addWidget(self.analyze_gcp_btn)
+        gcp_analysis_layout.addStretch()
+        status_layout.addLayout(gcp_analysis_layout)
+
         status_group.setLayout(status_layout)
         self.get_main_layout().addWidget(status_group)
 
@@ -516,7 +531,11 @@ class GeoreferenceDialog(BaseDialog):
         if len(training_points) < min_required:
             self.validation_text.setText("Insufficient training points for validation.")
             self.project.georef_validation = {}
+            self.analyze_gcp_btn.setEnabled(False)
             return
+
+        # Enable GCP analysis button when we have enough training points
+        self.analyze_gcp_btn.setEnabled(len(training_points) >= 4)
 
         # Create transformer
         method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
@@ -572,6 +591,38 @@ class GeoreferenceDialog(BaseDialog):
         scale_x, scale_y = transformer.get_scale_factor()
         report.append(f"SCALE FACTORS:")
         report.append(f"  X: {scale_x * 100:.2f} cm/px  |  Y: {scale_y * 100:.2f} cm/px")
+        report.append("")
+
+        # GCP quality analysis summary
+        if len(training_points) >= 4:
+            from orbit.utils.gcp_analyzer import analyze_control_points
+            analysis = analyze_control_points(transformer)
+            if analysis:
+                report.append("GCP QUALITY ANALYSIS:")
+                if analysis.outlier_count > 0:
+                    report.append(f"  ⚠ OUTLIERS: {analysis.outlier_count} point(s) detected")
+                    for name in analysis.outlier_names[:3]:  # Show first 3
+                        report.append(f"     - {name}")
+                    if len(analysis.outlier_names) > 3:
+                        report.append(f"     ... and {len(analysis.outlier_names) - 3} more")
+                else:
+                    report.append("  No statistical outliers detected")
+
+                if analysis.has_x_pattern or analysis.has_y_pattern or analysis.has_radial_pattern:
+                    report.append("  Spatial patterns detected:")
+                    if analysis.has_x_pattern:
+                        report.append(f"     X-correlation: {analysis.x_correlation:.2f}")
+                    if analysis.has_y_pattern:
+                        report.append(f"     Y-correlation: {analysis.y_correlation:.2f}")
+                    if analysis.has_radial_pattern:
+                        report.append(f"     Radial: {analysis.radial_correlation:.2f}")
+
+                # Show top recommendation
+                if analysis.recommendations:
+                    report.append("")
+                    report.append("  Tip: " + analysis.recommendations[0][:60] + "...")
+                report.append("")
+                report.append("  → Click 'Analyze GCPs' for detailed analysis")
 
         report.append("=" * 60)
 
@@ -989,6 +1040,34 @@ class GeoreferenceDialog(BaseDialog):
         except Exception as e:
             show_error(self, f"Failed to suggest GCP locations: {str(e)}", "Error")
 
+    def show_gcp_analysis(self):
+        """Show detailed GCP quality analysis dialog."""
+        from orbit.utils import create_transformer, TransformMethod
+        from orbit.utils.gcp_analyzer import analyze_control_points, format_analysis_report
+
+        training_points = [cp for cp in self.project.control_points if not cp.is_validation]
+        if len(training_points) < 4:
+            show_warning(self, "Need at least 4 training points for GCP analysis.", "Insufficient Points")
+            return
+
+        # Create transformer
+        method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
+        transformer = create_transformer(self.project.control_points, method, use_validation=True)
+
+        if not transformer:
+            show_warning(self, "Failed to create transformation for analysis.", "Transform Error")
+            return
+
+        # Run analysis
+        analysis = analyze_control_points(transformer)
+        if not analysis:
+            show_warning(self, "Analysis failed - need at least 4 training points.", "Analysis Failed")
+            return
+
+        # Show detailed dialog
+        dialog = GCPAnalysisDialog(analysis, self)
+        dialog.exec()
+
     def accept(self):
         """Handle dialog acceptance."""
         # Check minimum training points
@@ -1007,3 +1086,131 @@ class GeoreferenceDialog(BaseDialog):
                 return
 
         super().accept()
+
+
+class GCPAnalysisDialog(BaseDialog):
+    """Dialog showing detailed GCP quality analysis results."""
+
+    def __init__(self, analysis, parent=None):
+        super().__init__("GCP Quality Analysis", parent, min_width=700, min_height=600)
+        self.analysis = analysis
+        self.setup_ui()
+
+    def setup_ui(self):
+        """Setup the dialog UI."""
+        from orbit.utils.gcp_analyzer import GCPAnalysisResult
+
+        # Summary section
+        summary_group = QGroupBox("Summary")
+        summary_layout = QFormLayout()
+
+        summary_layout.addRow("Training Points:", QLabel(str(len(self.analysis.point_analyses))))
+        summary_layout.addRow("RMSE:", QLabel(f"{self.analysis.rmse_meters:.3f} m"))
+        summary_layout.addRow("Mean Error:", QLabel(f"{self.analysis.mean_error_meters:.3f} m"))
+        summary_layout.addRow("Std Dev:", QLabel(f"{self.analysis.std_error_meters:.3f} m"))
+
+        if self.analysis.outlier_count > 0:
+            outlier_label = QLabel(f"{self.analysis.outlier_count} ({', '.join(self.analysis.outlier_names)})")
+            outlier_label.setStyleSheet("color: orange; font-weight: bold;")
+            summary_layout.addRow("Outliers:", outlier_label)
+        else:
+            summary_layout.addRow("Outliers:", QLabel("None"))
+
+        summary_group.setLayout(summary_layout)
+        self.get_main_layout().addWidget(summary_group)
+
+        # Spatial patterns section
+        patterns_group = QGroupBox("Spatial Error Patterns")
+        patterns_layout = QFormLayout()
+
+        x_label = QLabel(f"{self.analysis.x_correlation:.3f}")
+        if self.analysis.has_x_pattern:
+            direction = "right" if self.analysis.x_correlation > 0 else "left"
+            x_label.setText(f"{self.analysis.x_correlation:.3f} (errors increase toward {direction})")
+            x_label.setStyleSheet("color: orange;")
+        patterns_layout.addRow("X Correlation:", x_label)
+
+        y_label = QLabel(f"{self.analysis.y_correlation:.3f}")
+        if self.analysis.has_y_pattern:
+            direction = "bottom" if self.analysis.y_correlation > 0 else "top"
+            y_label.setText(f"{self.analysis.y_correlation:.3f} (errors increase toward {direction})")
+            y_label.setStyleSheet("color: orange;")
+        patterns_layout.addRow("Y Correlation:", y_label)
+
+        radial_label = QLabel(f"{self.analysis.radial_correlation:.3f}")
+        if self.analysis.has_radial_pattern:
+            radial_label.setText(f"{self.analysis.radial_correlation:.3f} (errors increase at edges)")
+            radial_label.setStyleSheet("color: orange;")
+        patterns_layout.addRow("Radial Correlation:", radial_label)
+
+        patterns_group.setLayout(patterns_layout)
+        self.get_main_layout().addWidget(patterns_group)
+
+        # Per-point table
+        points_group = QGroupBox("Per-Point Analysis (sorted by error)")
+        points_layout = QVBoxLayout()
+
+        self.points_table = QTableWidget()
+        self.points_table.setColumnCount(6)
+        self.points_table.setHorizontalHeaderLabels([
+            "Name", "Error (m)", "Error (px)", "Z-score", "LOO Improvement", "Status"
+        ])
+        self.points_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.points_table.setRowCount(len(self.analysis.point_analyses))
+
+        for i, p in enumerate(self.analysis.point_analyses):
+            self.points_table.setItem(i, 0, QTableWidgetItem(p.name))
+            self.points_table.setItem(i, 1, QTableWidgetItem(f"{p.error_meters:.3f}"))
+            self.points_table.setItem(i, 2, QTableWidgetItem(f"{p.error_pixels:.2f}"))
+            self.points_table.setItem(i, 3, QTableWidgetItem(f"{p.z_score:.2f}"))
+
+            # LOO improvement with color
+            loo_item = QTableWidgetItem(f"{p.leave_one_out_improvement:.3f}")
+            if p.leave_one_out_improvement > self.analysis.rmse_meters * 0.2:
+                loo_item.setForeground(Qt.GlobalColor.red)
+            self.points_table.setItem(i, 4, loo_item)
+
+            # Status
+            if p.is_outlier:
+                status_item = QTableWidgetItem("OUTLIER")
+                status_item.setForeground(Qt.GlobalColor.red)
+            elif p.leave_one_out_improvement > self.analysis.rmse_meters * 0.3:
+                status_item = QTableWidgetItem("Check GPS")
+                status_item.setForeground(Qt.GlobalColor.darkYellow)
+            else:
+                status_item = QTableWidgetItem("OK")
+                status_item.setForeground(Qt.GlobalColor.darkGreen)
+            self.points_table.setItem(i, 5, status_item)
+
+        points_layout.addWidget(self.points_table)
+
+        # Legend
+        legend = QLabel(
+            "<small>Z-score: >2.0 = outlier | "
+            "LOO Improvement: RMSE reduction if point removed | "
+            "Status: Check points marked OUTLIER or 'Check GPS'</small>"
+        )
+        legend.setWordWrap(True)
+        points_layout.addWidget(legend)
+
+        points_group.setLayout(points_layout)
+        self.get_main_layout().addWidget(points_group)
+
+        # Recommendations section
+        if self.analysis.recommendations:
+            rec_group = QGroupBox("Recommendations")
+            rec_layout = QVBoxLayout()
+
+            rec_text = QTextEdit()
+            rec_text.setReadOnly(True)
+            rec_text.setMaximumHeight(120)
+            rec_text.setPlainText("\n".join(f"• {r}" for r in self.analysis.recommendations))
+            rec_layout.addWidget(rec_text)
+
+            rec_group.setLayout(rec_layout)
+            self.get_main_layout().addWidget(rec_group)
+
+        # Close button
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        button_box.rejected.connect(self.reject)
+        self.get_main_layout().addWidget(button_box)

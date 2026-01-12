@@ -434,17 +434,11 @@ class CoordinateTransformer:
             error_px = math.sqrt((px_calc - cp.pixel_x)**2 + (py_calc - cp.pixel_y)**2)
             errors_pixels.append(error_px)
 
-            # Geographic error in degrees
-            error_lon = lon_calc - cp.longitude
-            error_lat = lat_calc - cp.latitude
-
-            # Convert to meters
-            meters_per_degree_lat = 111000
-            meters_per_degree_lon = 111000 * math.cos(math.radians(self.reference_lat))
-            error_m = math.sqrt(
-                (error_lon * meters_per_degree_lon)**2 +
-                (error_lat * meters_per_degree_lat)**2
-            )
+            # Calculate error in metric space (more robust than geographic distance)
+            # This correctly measures transformation accuracy
+            pred_mx, pred_my = self.pixel_to_meters(cp.pixel_x, cp.pixel_y)
+            actual_mx, actual_my = self.latlon_to_meters(cp.latitude, cp.longitude)
+            error_m = math.sqrt((pred_mx - actual_mx)**2 + (pred_my - actual_my)**2)
             errors_meters.append(error_m)
 
             per_point_errors.append({
@@ -486,21 +480,13 @@ class CoordinateTransformer:
             # Transform pixel to geo
             lon_calc, lat_calc = self.pixel_to_geo(cp.pixel_x, cp.pixel_y)
 
-            # Calculate geographic error
-            error_lon = lon_calc - cp.longitude
-            error_lat = lat_calc - cp.latitude
-
-            # Convert to meters
-            meters_per_degree_lat = 111000
-            meters_per_degree_lon = 111000 * math.cos(math.radians(self.reference_lat))
-            error_m = math.sqrt(
-                (error_lon * meters_per_degree_lon)**2 +
-                (error_lat * meters_per_degree_lat)**2
-            )
+            # Calculate error in metric space (correctly measures transformation accuracy)
+            pred_mx, pred_my = self.pixel_to_meters(cp.pixel_x, cp.pixel_y)
+            actual_mx, actual_my = self.latlon_to_meters(cp.latitude, cp.longitude)
+            error_m = math.sqrt((pred_mx - actual_mx)**2 + (pred_my - actual_my)**2)
             errors_meters.append(error_m)
 
-            # Convert to pixel error (approximate)
-            # Transform back to pixel to get pixel error
+            # Calculate pixel error by transforming known geo back to pixels
             px_calc, py_calc = self.geo_to_pixel(cp.longitude, cp.latitude)
             error_px = math.sqrt((px_calc - cp.pixel_x)**2 + (py_calc - cp.pixel_y)**2)
             errors_pixels.append(error_px)

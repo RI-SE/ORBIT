@@ -1513,7 +1513,21 @@ class ImageView(QGraphicsView):
         Returns:
             (display_text, background_color)
         """
-        if not self.project or not self.project.has_georeferencing():
+        # Get project from parent main window to ensure we have the current project state
+        # This is more reliable than using self.project which may not be synced
+        project = None
+        parent_widget = self.parent()
+        while parent_widget is not None:
+            if hasattr(parent_widget, 'project'):
+                project = parent_widget.project
+                break
+            parent_widget = parent_widget.parent() if hasattr(parent_widget, 'parent') else None
+
+        # Fallback to self.project if we can't find parent's project
+        if project is None:
+            project = self.project
+
+        if not project or not project.has_georeferencing():
             return ("No georef", QColor(255, 255, 255, 200))
 
         try:
@@ -1521,8 +1535,8 @@ class ImageView(QGraphicsView):
             from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get transform method from project
-            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            method = TransformMethod.HOMOGRAPHY if project.transform_method == 'homography' else TransformMethod.AFFINE
+            transformer = create_transformer(project.control_points, method, use_validation=True)
 
             if not transformer:
                 return ("Transform error", QColor(255, 255, 255, 200))
@@ -1550,12 +1564,12 @@ class ImageView(QGraphicsView):
                     estimator = UncertaintyEstimator(transformer,
                                                      pixmap.width(),
                                                      pixmap.height(),
-                                                     baseline_uncertainty=self.project.baseline_uncertainty_m)
+                                                     baseline_uncertainty=project.baseline_uncertainty_m)
 
                     # Load cached grid if available
-                    if self.project.uncertainty_grid_cache:
+                    if project.uncertainty_grid_cache:
                         import numpy as np
-                        estimator._cached_grid = np.array(self.project.uncertainty_grid_cache)
+                        estimator._cached_grid = np.array(project.uncertainty_grid_cache)
 
                     # Get scale uncertainty
                     unc_x, unc_y = estimator.estimate_scale_uncertainty_at_point(x, y)
