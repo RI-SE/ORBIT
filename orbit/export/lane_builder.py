@@ -107,6 +107,10 @@ class LaneBuilder:
             # OpenDRIVE requires elements in order: left, center, right
             # Only add left/right if there are lanes
 
+            # Calculate section length in meters for width polynomial
+            section_length_px = section.s_end - section.s_start
+            section_length_m = section_length_px * self.scale_x
+
             # Left lanes (positive IDs)
             left_lanes = [lane for lane in section.lanes if lane.id > 0]
             left_lanes.sort(key=lambda l: l.id)  # Sort ascending: 1, 2, 3...
@@ -114,7 +118,7 @@ class LaneBuilder:
                 left = etree.SubElement(lane_section, 'left')
                 for lane_obj in left_lanes:
                     boundary_info = boundary_map.get(lane_obj.id)
-                    lane = self._create_lane(lane_obj, boundary_info)
+                    lane = self._create_lane(lane_obj, boundary_info, section_length_m)
                     left.append(lane)
 
             # Center lane (reference lane, id=0) - required
@@ -134,7 +138,7 @@ class LaneBuilder:
                 right = etree.SubElement(lane_section, 'right')
                 for lane_obj in right_lanes:
                     boundary_info = boundary_map.get(lane_obj.id)
-                    lane = self._create_lane(lane_obj, boundary_info)
+                    lane = self._create_lane(lane_obj, boundary_info, section_length_m)
                     right.append(lane)
 
     def _create_center_lane(self, center_lane_obj) -> etree.Element:
@@ -174,7 +178,8 @@ class LaneBuilder:
     def _create_lane(
         self,
         lane_obj,
-        boundary_info: Optional[BoundaryInfo] = None
+        boundary_info: Optional[BoundaryInfo] = None,
+        section_length_m: float = 0.0
     ) -> etree.Element:
         """Create a single lane element with data-driven road mark."""
         lane = etree.Element('lane')
@@ -197,13 +202,29 @@ class LaneBuilder:
             succ = etree.SubElement(link, 'successor')
             succ.set('id', str(lane_obj.successor_id))
 
-        # Lane width polynomial - use stored coefficients (already in meters)
+        # Lane width polynomial
+        # If width_end is set, calculate width_b for linear transition
+        # OpenDRIVE formula: width(ds) = a + b*ds + c*ds² + d*ds³
+        width_a = lane_obj.width
+        width_b = lane_obj.width_b
+        width_c = lane_obj.width_c
+        width_d = lane_obj.width_d
+
+        # Override with linear transition if width_end is specified
+        if lane_obj.has_variable_width and section_length_m > 0:
+            width_a = lane_obj.width
+            width_b = (lane_obj.width_end - lane_obj.width) / section_length_m
+            # Keep c and d as 0 for linear transition (unless already set)
+            if width_c == 0.0 and width_d == 0.0:
+                width_c = 0.0
+                width_d = 0.0
+
         width_elem = etree.SubElement(lane, 'width')
         width_elem.set('sOffset', '0.0')
-        width_elem.set('a', f'{lane_obj.width:.6g}')
-        width_elem.set('b', f'{lane_obj.width_b:.6g}')
-        width_elem.set('c', f'{lane_obj.width_c:.6g}')
-        width_elem.set('d', f'{lane_obj.width_d:.6g}')
+        width_elem.set('a', f'{width_a:.6g}')
+        width_elem.set('b', f'{width_b:.6g}')
+        width_elem.set('c', f'{width_c:.6g}')
+        width_elem.set('d', f'{width_d:.6g}')
 
         # Road mark (priority: boundary polyline > lane object road_mark_type)
         if boundary_info and boundary_info.polyline:

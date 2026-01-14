@@ -94,6 +94,7 @@ class LanePropertiesDialog(BaseDialog):
         self.width_start_spin = None
         self.width_end_spin = None
         self.width_info_label = None
+        self.variable_width_checkbox = None
 
         is_center_lane = self.lane.id == 0
         is_connecting_road_lane = self.connecting_road is not None
@@ -131,14 +132,36 @@ class LanePropertiesDialog(BaseDialog):
             self.width_start_spin.valueChanged.connect(self.update_width_info)
             self.width_end_spin.valueChanged.connect(self.update_width_info)
         else:
-            # Regular road lane - single width value
+            # Regular road lane - start/end width with variable width toggle
+            # Width at start (was just "Width")
             self.width_spin = QDoubleSpinBox()
             self.width_spin.setRange(0.0, 20.0)
             self.width_spin.setSingleStep(0.1)
             self.width_spin.setValue(3.5)
             self.width_spin.setSuffix(" m")
-            self.width_spin.setToolTip("Lane width in meters (or pixels if not georeferenced)")
-            props_layout.addRow("Width:", self.width_spin)
+            self.width_spin.setToolTip("Lane width at start of section (meters)")
+            props_layout.addRow("Width at Start:", self.width_spin)
+
+            # Variable width checkbox and end width
+            variable_widget = QWidget()
+            variable_layout = QHBoxLayout(variable_widget)
+            variable_layout.setContentsMargins(0, 0, 0, 0)
+
+            self.variable_width_checkbox = QCheckBox("Variable width")
+            self.variable_width_checkbox.setToolTip("Enable to set different width at end (tapering lane)")
+            self.variable_width_checkbox.stateChanged.connect(self._on_variable_width_changed)
+            variable_layout.addWidget(self.variable_width_checkbox)
+
+            self.width_end_spin = QDoubleSpinBox()
+            self.width_end_spin.setRange(0.0, 20.0)
+            self.width_end_spin.setSingleStep(0.1)
+            self.width_end_spin.setValue(3.5)
+            self.width_end_spin.setSuffix(" m")
+            self.width_end_spin.setToolTip("Lane width at end of section (meters)")
+            self.width_end_spin.setEnabled(False)
+            variable_layout.addWidget(self.width_end_spin)
+
+            props_layout.addRow("Width at End:", variable_widget)
 
         # Access restrictions (for path lanes)
         self.access_widget = QWidget()
@@ -541,8 +564,18 @@ class LanePropertiesDialog(BaseDialog):
 
         # Set width based on lane type
         if self.width_spin is not None:
-            # Regular road lane
+            # Regular road lane - load start width
             self.width_spin.setValue(self.lane.width)
+            # Load end width and variable width state
+            if self.variable_width_checkbox is not None and self.width_end_spin is not None:
+                if self.lane.has_variable_width:
+                    self.variable_width_checkbox.setChecked(True)
+                    self.width_end_spin.setValue(self.lane.width_end)
+                    self.width_end_spin.setEnabled(True)
+                else:
+                    self.variable_width_checkbox.setChecked(False)
+                    self.width_end_spin.setValue(self.lane.width)
+                    self.width_end_spin.setEnabled(False)
         elif self.width_start_spin is not None and self.width_end_spin is not None:
             # Connecting road driving lane - load from connecting road
             if self.connecting_road.lane_width_start is not None:
@@ -640,6 +673,16 @@ class LanePropertiesDialog(BaseDialog):
             if self.lane.right_boundary_id:
                 set_combo_by_data(self.right_boundary_combo, self.lane.right_boundary_id)
 
+    def _on_variable_width_changed(self, state: int):
+        """Handle variable width checkbox state change."""
+        enabled = state == Qt.CheckState.Checked.value
+        if hasattr(self, 'width_end_spin') and self.width_end_spin is not None:
+            self.width_end_spin.setEnabled(enabled)
+            if not enabled:
+                # When disabling, sync end width to start width
+                if hasattr(self, 'width_spin') and self.width_spin is not None:
+                    self.width_end_spin.setValue(self.width_spin.value())
+
     def on_lane_type_changed(self):
         """Handle lane type change."""
         self.update_description()
@@ -716,8 +759,14 @@ class LanePropertiesDialog(BaseDialog):
 
         # Update width based on lane type
         if self.width_spin is not None:
-            # Regular road lane
+            # Regular road lane - save start width
             self.lane.width = self.width_spin.value()
+            # Save end width if variable width is enabled
+            if self.variable_width_checkbox is not None and self.width_end_spin is not None:
+                if self.variable_width_checkbox.isChecked():
+                    self.lane.width_end = self.width_end_spin.value()
+                else:
+                    self.lane.width_end = None  # Constant width
         elif self.width_start_spin is not None and self.width_end_spin is not None and self.connecting_road is not None:
             # Connecting road driving lane - save to connecting road
             self.connecting_road.lane_width_start = self.width_start_spin.value()

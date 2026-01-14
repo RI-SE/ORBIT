@@ -11,7 +11,7 @@ from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import QPen, QColor, QBrush, QPolygonF
 
 from orbit.models import Road, Polyline
-from orbit.utils.geometry import create_lane_polygon, calculate_directional_scale
+from orbit.utils.geometry import create_lane_polygon, create_variable_width_lane_polygon, calculate_directional_scale
 from .interactive_lane import InteractiveLanePolygon
 
 if TYPE_CHECKING:
@@ -202,33 +202,65 @@ class RoadLanesGraphicsItem:
                 print(f"    Section {section.section_number}: {len(section_centerline)} points, {len(section.lanes)} lanes")
 
             # Create polygons for each lane in this section
-            for lane in section.lanes:
+            # Sort lanes by absolute ID for correct stacking
+            sorted_lanes = sorted(section.lanes, key=lambda l: abs(l.id))
+
+            for lane in sorted_lanes:
                 if lane.id == 0:
                     continue  # Skip center lane
 
-                # Calculate offsets based on lane position
-                lane_width_m = lane.width
-                lane_width_px = lane_width_m / scale
+                # Calculate cumulative inner offset by summing widths of all inner lanes
+                # This ensures correct stacking when lanes have different/variable widths
+                inner_offset_start = 0.0
+                inner_offset_end = 0.0
+                for inner_lane in sorted_lanes:
+                    if inner_lane.id == 0:
+                        continue
+                    # Only count lanes that are "inner" to current lane (closer to center)
+                    if (lane.id > 0 and inner_lane.id > 0 and inner_lane.id < lane.id) or \
+                       (lane.id < 0 and inner_lane.id < 0 and abs(inner_lane.id) < abs(lane.id)):
+                        inner_offset_start += inner_lane.width / scale
+                        inner_offset_end += inner_lane.get_width_at_end() / scale
 
-                # Determine inner and outer offsets based on lane ID
+                # Calculate outer offset = inner offset + this lane's width
+                lane_width_start_px = lane.width / scale
+                lane_width_end_px = lane.get_width_at_end() / scale
+                outer_offset_start = inner_offset_start + lane_width_start_px
+                outer_offset_end = inner_offset_end + lane_width_end_px
+
+                # Apply sign based on lane side
                 # OpenDRIVE: positive IDs = left lanes, negative IDs = right lanes
                 # Screen coords: positive offset = right side, negative offset = left side
                 if lane.id > 0:
-                    # Left-hand lane (positive ID): negative offset to place on left side
-                    inner_offset = -(lane.id - 1) * lane_width_px
-                    outer_offset = -lane.id * lane_width_px
-                else:
-                    # Right-hand lane (negative ID): positive offset to place on right side
-                    inner_offset = (abs(lane.id) - 1) * lane_width_px
-                    outer_offset = abs(lane.id) * lane_width_px
+                    # Left-hand lane: negative offset
+                    inner_offset_start = -inner_offset_start
+                    outer_offset_start = -outer_offset_start
+                    inner_offset_end = -inner_offset_end
+                    outer_offset_end = -outer_offset_end
+
+                # Check if any lane in the stack has variable width
+                has_variable_width = lane.has_variable_width or \
+                    any(l.has_variable_width for l in sorted_lanes
+                        if l.id != 0 and
+                        ((lane.id > 0 and l.id > 0 and l.id < lane.id) or
+                         (lane.id < 0 and l.id < 0 and abs(l.id) < abs(lane.id))))
 
                 # Create polygon for this lane section
-                polygon_points = create_lane_polygon(
-                    section_centerline,
-                    inner_offset,
-                    outer_offset,
-                    closed=False  # Sections are not closed
-                )
+                if has_variable_width:
+                    polygon_points = create_variable_width_lane_polygon(
+                        section_centerline,
+                        inner_offset_start,
+                        outer_offset_start,
+                        inner_offset_end,
+                        outer_offset_end
+                    )
+                else:
+                    polygon_points = create_lane_polygon(
+                        section_centerline,
+                        inner_offset_start,
+                        outer_offset_start,
+                        closed=False  # Sections are not closed
+                    )
 
                 if polygon_points and len(polygon_points) >= 3:
                     # Create interactive polygon

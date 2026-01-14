@@ -87,7 +87,8 @@ class Lane:
     id: int
     lane_type: LaneType = LaneType.DRIVING
     road_mark_type: RoadMarkType = RoadMarkType.SOLID
-    width: float = 3.5
+    width: float = 3.5  # Width at start (or constant if width_end is None)
+    width_end: Optional[float] = None  # Width at end (None = constant width)
     width_b: float = 0.0
     width_c: float = 0.0
     width_d: float = 0.0
@@ -126,6 +127,9 @@ class Lane:
             'left_boundary_id': self.left_boundary_id,
             'right_boundary_id': self.right_boundary_id
         }
+        # Only include width_end if set (variable width)
+        if self.width_end is not None:
+            data['width_end'] = self.width_end
         # Only include polynomial coefficients if non-zero (backward compatibility)
         if self.width_b != 0.0:
             data['width_b'] = self.width_b
@@ -188,6 +192,7 @@ class Lane:
             lane_type=LaneType(data['lane_type']),
             road_mark_type=RoadMarkType(data['road_mark_type']),
             width=data['width'],
+            width_end=data.get('width_end'),
             width_b=data.get('width_b', 0.0),
             width_c=data.get('width_c', 0.0),
             width_d=data.get('width_d', 0.0),
@@ -227,3 +232,12 @@ class Lane:
             return f"Left {self.id}"
         else:
             return f"Right {abs(self.id)}"
+
+    @property
+    def has_variable_width(self) -> bool:
+        """Check if lane has variable width (tapers along length)."""
+        return self.width_end is not None and self.width_end != self.width
+
+    def get_width_at_end(self) -> float:
+        """Get width at end of lane section (or constant width if not varying)."""
+        return self.width_end if self.width_end is not None else self.width
