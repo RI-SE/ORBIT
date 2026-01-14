@@ -913,6 +913,22 @@ class LanePropertiesDialog(BaseDialog):
                     road.polyline_ids.remove(outer_id)
                 # Remove from project
                 self.project.remove_polyline(outer_id)
+                # Remove graphics from ImageView
+                for widget in QApplication.topLevelWidgets():
+                    if hasattr(widget, 'image_view'):
+                        image_view = widget.image_view
+                        if outer_id in image_view.polyline_items:
+                            image_view.polyline_items[outer_id].remove()
+                            del image_view.polyline_items[outer_id]
+                        # Remove s-offset labels if they exist
+                        if outer_id in image_view.soffset_labels:
+                            for text_item, bg_item in image_view.soffset_labels[outer_id]:
+                                if text_item.scene() == image_view.scene:
+                                    image_view.scene.removeItem(text_item)
+                                if bg_item.scene() == image_view.scene:
+                                    image_view.scene.removeItem(bg_item)
+                            del image_view.soffset_labels[outer_id]
+                        break
 
             # Update quality label
             self.fit_quality_label.setText(quality_msg)
