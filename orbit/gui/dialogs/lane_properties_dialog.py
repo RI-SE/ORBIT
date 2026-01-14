@@ -10,11 +10,12 @@ from PyQt6.QtWidgets import (
     QDialog, QGroupBox, QFormLayout, QSpinBox,
     QComboBox, QLabel, QDoubleSpinBox, QCheckBox, QWidget, QHBoxLayout, QToolButton,
     QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, QHeaderView,
-    QScrollArea, QFrame
+    QScrollArea, QFrame, QMessageBox
 )
 from PyQt6.QtCore import Qt
 
 from orbit.models import Lane, LaneType, RoadMarkType, Project, LineType
+from orbit.utils.lane_fitting import evaluate_fit_quality
 from orbit.utils import format_enum_name
 from .base_dialog import BaseDialog, InfoIconLabel
 from ..utils import set_combo_by_data
@@ -199,22 +200,49 @@ class LanePropertiesDialog(BaseDialog):
         # Boundary polylines (if project available)
         if self.project and self.road_id:
             boundary_layout = self.add_form_group_with_info(
-                "Boundary Polylines",
-                "Assign polylines that define the left and right edges of this lane. "
-                "Leave unassigned if boundaries should be inferred from road mark type."
+                "Boundary Polyline",
+                "Assign a polyline that defines the outer edge of this lane. "
+                "The inner edge is the road centerline (for lane ±1) or adjacent lane boundary."
             )
 
-            # Left boundary selector
-            self.left_boundary_combo = QComboBox()
-            self.left_boundary_combo.addItem("(Not assigned)", None)
-            self._populate_boundary_polylines(self.left_boundary_combo)
-            boundary_layout.addRow("Left Boundary:", self.left_boundary_combo)
+            # Outer boundary selector (inner boundary is implicitly the centerline or adjacent lane)
+            self.outer_boundary_combo = QComboBox()
+            self.outer_boundary_combo.addItem("(Not assigned)", None)
+            self._populate_boundary_polylines(self.outer_boundary_combo)
+            boundary_layout.addRow("Outer Boundary:", self.outer_boundary_combo)
 
-            # Right boundary selector
-            self.right_boundary_combo = QComboBox()
-            self.right_boundary_combo.addItem("(Not assigned)", None)
-            self._populate_boundary_polylines(self.right_boundary_combo)
-            boundary_layout.addRow("Right Boundary:", self.right_boundary_combo)
+            # Info about inner boundary
+            inner_info = QLabel()
+            if self.lane.id == -1 or self.lane.id == 1:
+                inner_info.setText("Inner boundary: Road centerline")
+            else:
+                inner_info.setText(f"Inner boundary: Adjacent lane's outer edge")
+            inner_info.setStyleSheet("QLabel { color: gray; font-style: italic; }")
+            boundary_layout.addRow("", inner_info)
+
+            # Fit Polynomial button
+            fit_widget = QWidget()
+            fit_layout = QHBoxLayout(fit_widget)
+            fit_layout.setContentsMargins(0, 5, 0, 0)
+
+            self.fit_poly_btn = QPushButton("Fit Polynomial")
+            self.fit_poly_btn.setToolTip(
+                "Fit width polynomial from outer boundary polyline.\n"
+                "This ensures visualization matches OpenDRIVE export."
+            )
+            self.fit_poly_btn.clicked.connect(self._on_fit_polynomial)
+            fit_layout.addWidget(self.fit_poly_btn)
+
+            self.fit_quality_label = QLabel()
+            self.fit_quality_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
+            fit_layout.addWidget(self.fit_quality_label)
+            fit_layout.addStretch()
+
+            boundary_layout.addRow("", fit_widget)
+
+            # Connect combo change to update button state
+            self.outer_boundary_combo.currentIndexChanged.connect(self._update_fit_button_state)
+            self._update_fit_button_state()
 
         # Create standard OK/Cancel buttons
         self.create_button_box()
@@ -234,7 +262,17 @@ class LanePropertiesDialog(BaseDialog):
         for polyline_id in road.polyline_ids:
             polyline = self.project.get_polyline(polyline_id)
             if polyline and polyline.line_type == LineType.LANE_BOUNDARY:
-                display_text = f"Polyline ({polyline.point_count()} pts)"
+                # Find polyline number in project (1-based index)
+                polyline_number = None
+                for i, p in enumerate(self.project.polylines):
+                    if p.id == polyline.id:
+                        polyline_number = i + 1
+                        break
+
+                if polyline_number is not None:
+                    display_text = f"Polyline {polyline_number} ({polyline.point_count()} pts)"
+                else:
+                    display_text = f"Polyline ({polyline.point_count()} pts)"
                 combo.addItem(display_text, polyline_id)
 
     def _setup_advanced_section(self):
@@ -568,7 +606,8 @@ class LanePropertiesDialog(BaseDialog):
             self.width_spin.setValue(self.lane.width)
             # Load end width and variable width state
             if self.variable_width_checkbox is not None and self.width_end_spin is not None:
-                if self.lane.has_variable_width:
+                # has_variable_width can be True from polynomial coefficients even if width_end is None
+                if self.lane.width_end is not None and self.lane.width_end != self.lane.width:
                     self.variable_width_checkbox.setChecked(True)
                     self.width_end_spin.setValue(self.lane.width_end)
                     self.width_end_spin.setEnabled(True)
@@ -663,15 +702,13 @@ class LanePropertiesDialog(BaseDialog):
                 self.advanced_toggle.setChecked(True)
                 self._toggle_advanced(True)
 
-        # Set boundary selections (if available)
+        # Set boundary selection (if available)
         if self.project and self.road_id:
-            # Left boundary
-            if self.lane.left_boundary_id:
-                set_combo_by_data(self.left_boundary_combo, self.lane.left_boundary_id)
-
-            # Right boundary
-            if self.lane.right_boundary_id:
-                set_combo_by_data(self.right_boundary_combo, self.lane.right_boundary_id)
+            # Outer boundary - use right_boundary_id for right lanes, left_boundary_id for left lanes
+            outer_boundary_id = (self.lane.right_boundary_id if self.lane.id < 0
+                                 else self.lane.left_boundary_id)
+            if outer_boundary_id:
+                set_combo_by_data(self.outer_boundary_combo, outer_boundary_id)
 
     def _on_variable_width_changed(self, state: int):
         """Handle variable width checkbox state change."""
@@ -715,6 +752,171 @@ class LanePropertiesDialog(BaseDialog):
         is_path_lane = lane_type in (LaneType.BIKING, LaneType.SIDEWALK, LaneType.WALKING)
         self.access_widget.setVisible(is_path_lane)
         self.access_label_widget.setVisible(is_path_lane)
+
+    def _update_fit_button_state(self):
+        """Update Fit Polynomial button enabled state based on boundary selection."""
+        if not hasattr(self, 'fit_poly_btn'):
+            return
+
+        outer_id = self.outer_boundary_combo.currentData()
+
+        # Enable button when outer boundary is assigned
+        self.fit_poly_btn.setEnabled(outer_id is not None)
+
+    def _on_fit_polynomial(self):
+        """Fit polynomial from outer boundary polyline."""
+        if not self.project or not self.road_id:
+            return
+
+        # Get the road and centerline
+        road = self.project.get_road(self.road_id)
+        if not road:
+            QMessageBox.warning(self, "Error", "Road not found.")
+            return
+
+        centerline = self.project.get_polyline(road.centerline_id)
+        if not centerline or len(centerline.points) < 2:
+            QMessageBox.warning(self, "Error", "Road has no valid centerline.")
+            return
+
+        # Get outer boundary polyline
+        outer_id = self.outer_boundary_combo.currentData()
+        if not outer_id:
+            QMessageBox.warning(self, "Error", "Outer boundary must be assigned.")
+            return
+
+        outer_poly = self.project.get_polyline(outer_id)
+        if not outer_poly:
+            QMessageBox.warning(self, "Error", "Could not find boundary polyline.")
+            return
+
+        if len(outer_poly.points) < 2:
+            QMessageBox.warning(self, "Error", "Boundary polyline must have at least 2 points.")
+            return
+
+        # Get scale factor for conversion to meters (m/pixel)
+        scale = 1.0  # Default: assume 1 pixel = 1 meter
+        has_georef = False
+        # Find MainWindow via QApplication
+        from PyQt6.QtWidgets import QApplication
+        for widget in QApplication.topLevelWidgets():
+            if hasattr(widget, '_cached_transformer') and widget._cached_transformer:
+                scale_x, scale_y = widget._cached_transformer.get_scale_factor()
+                scale = (scale_x + scale_y) / 2  # Average of x and y scales
+                has_georef = True
+                break
+
+        if not has_georef:
+            reply = QMessageBox.warning(
+                self,
+                "No Georeferencing",
+                "No georeferencing (control points) found.\n\n"
+                "The fitting will use pixel coordinates directly, which may produce "
+                "incorrect results. Add control points for accurate metric conversion.\n\n"
+                "Continue anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        # Import fitting function
+        from orbit.utils.lane_fitting import fit_single_lane_width
+
+        # Fit the polynomial (measures distance from centerline to outer boundary)
+        try:
+            a, b, c, d, rmse = fit_single_lane_width(
+                centerline_points=centerline.points,
+                boundary_points=outer_poly.points,
+                lane_id=self.lane.id,
+                scale=scale
+            )
+        except ValueError as e:
+            QMessageBox.warning(self, "Fitting Error", str(e))
+            return
+
+        # Evaluate quality
+        quality_level, quality_msg = evaluate_fit_quality(rmse)
+
+        # Show confirmation dialog with quality info and delete option
+        color = {
+            "excellent": "green",
+            "good": "blue",
+            "acceptable": "orange",
+            "poor": "red"
+        }.get(quality_level, "black")
+
+        scale_info = f"Scale: {scale:.6f} m/px" if scale != 1.0 else "Scale: 1.0 (no georeferencing)"
+
+        # Create custom dialog with checkbox
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox
+        confirm_dialog = QDialog(self)
+        confirm_dialog.setWindowTitle("Fit Polynomial")
+        dialog_layout = QVBoxLayout(confirm_dialog)
+
+        # Info label
+        info_label = QLabel(
+            f"<b>Polynomial fitting complete!</b><br><br>"
+            f"<span style='color:{color}'>{quality_msg}</span><br><br>"
+            f"<b>Coefficients:</b><br>"
+            f"• a (width at start): {a:.4f} m<br>"
+            f"• b (linear): {b:.6f} m/m<br>"
+            f"• c (quadratic): {c:.8f} m/m²<br>"
+            f"• d (cubic): {d:.10f} m/m³<br><br>"
+            f"<small>{scale_info}</small>"
+        )
+        dialog_layout.addWidget(info_label)
+
+        # Delete polyline checkbox
+        delete_checkbox = QCheckBox("Delete boundary polyline after fitting")
+        delete_checkbox.setChecked(True)  # Default to delete
+        delete_checkbox.setToolTip("Remove the boundary polyline from the project (recommended to reduce clutter)")
+        dialog_layout.addWidget(delete_checkbox)
+
+        # Buttons
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(confirm_dialog.accept)
+        button_box.rejected.connect(confirm_dialog.reject)
+        dialog_layout.addWidget(button_box)
+
+        if confirm_dialog.exec() == QDialog.DialogCode.Accepted:
+            delete_polyline = delete_checkbox.isChecked()
+            # Update width fields in UI
+            if self.width_spin is not None:
+                self.width_spin.setValue(a)
+            if self.variable_width_checkbox is not None:
+                self.variable_width_checkbox.setChecked(False)
+            if self.width_end_spin is not None:
+                self.width_end_spin.setValue(a)
+                self.width_end_spin.setEnabled(False)
+
+            # Update polynomial coefficients in UI (if advanced section exists)
+            if hasattr(self, 'width_b_spin'):
+                self.width_b_spin.setValue(b)
+                self.width_c_spin.setValue(c)
+                self.width_d_spin.setValue(d)
+
+                # Expand advanced section to show the result
+                if hasattr(self, 'advanced_toggle'):
+                    self.advanced_toggle.setChecked(True)
+                    self._toggle_advanced(True)
+
+            # Clear boundary selection
+            self.outer_boundary_combo.setCurrentIndex(0)
+
+            # Delete the boundary polyline if requested
+            if delete_polyline and outer_id:
+                # Remove from road's polyline list
+                if road and outer_id in road.polyline_ids:
+                    road.polyline_ids.remove(outer_id)
+                # Remove from project
+                self.project.remove_polyline(outer_id)
+
+            # Update quality label
+            self.fit_quality_label.setText(quality_msg)
+            self.fit_quality_label.setStyleSheet(f"QLabel {{ color: {color}; font-style: italic; }}")
 
     def update_description(self):
         """Update the description based on lane type."""
@@ -816,10 +1018,26 @@ class LanePropertiesDialog(BaseDialog):
             self.lane.materials = self._get_materials_from_table()
             self.lane.heights = self._get_heights_from_table()
 
-        # Update boundary selections (if available)
+        # Update boundary selection (if available)
         if self.project and self.road_id:
-            self.lane.left_boundary_id = self.left_boundary_combo.currentData()
-            self.lane.right_boundary_id = self.right_boundary_combo.currentData()
+            outer_boundary_id = self.outer_boundary_combo.currentData()
+
+            # Store in appropriate field based on lane side
+            if self.lane.id < 0:
+                # Right lane - outer boundary is on the right
+                self.lane.right_boundary_id = outer_boundary_id
+                self.lane.left_boundary_id = None  # Inner is centerline or adjacent lane
+            else:
+                # Left lane - outer boundary is on the left
+                self.lane.left_boundary_id = outer_boundary_id
+                self.lane.right_boundary_id = None  # Inner is centerline or adjacent lane
+
+            # Set boundary mode based on whether outer boundary is assigned
+            from orbit.models.lane import BoundaryMode
+            if outer_boundary_id:
+                self.lane.boundary_mode = BoundaryMode.EXPLICIT
+            else:
+                self.lane.boundary_mode = BoundaryMode.OFFSET
 
         super().accept()
 

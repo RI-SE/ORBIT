@@ -250,6 +250,100 @@ def create_variable_width_lane_polygon(
     return polygon
 
 
+def create_polygon_from_boundaries(
+    left_boundary: List[Tuple[float, float]],
+    right_boundary: List[Tuple[float, float]]
+) -> List[Tuple[float, float]]:
+    """
+    Create a polygon from explicit left and right boundary polylines.
+
+    Args:
+        left_boundary: Points defining left edge of lane
+        right_boundary: Points defining right edge of lane
+
+    Returns:
+        List of points forming a closed polygon
+    """
+    if len(left_boundary) < 2 or len(right_boundary) < 2:
+        return []
+
+    # Polygon: left boundary + reversed right boundary
+    return list(left_boundary) + list(reversed(right_boundary))
+
+
+def create_polynomial_width_lane_polygon(
+    centerline_points: List[Tuple[float, float]],
+    lane_id: int,
+    inner_lanes_width_func,  # Callable[[float], float] - returns cumulative inner offset at s
+    lane_width_func,  # Callable[[float], float] - returns this lane's width at s
+    s_values: List[float],  # s-coordinate for each centerline point
+    is_left_lane: bool
+) -> List[Tuple[float, float]]:
+    """
+    Create a polygon for a lane with polynomial (or arbitrary) width variation.
+
+    This function calculates the offset at each centerline point based on
+    the provided width functions, allowing for polynomial or other complex
+    width variations along the lane.
+
+    Args:
+        centerline_points: Points defining the road centerline
+        lane_id: Lane ID (for debugging)
+        inner_lanes_width_func: Function(s) -> cumulative width of all inner lanes at s
+        lane_width_func: Function(s) -> width of this lane at s
+        s_values: S-coordinate for each centerline point (in same units as width functions)
+        is_left_lane: True for left lanes (positive IDs), False for right lanes
+
+    Returns:
+        List of points forming a closed polygon
+    """
+    if len(centerline_points) < 2 or len(s_values) != len(centerline_points):
+        return []
+
+    n_points = len(centerline_points)
+    inner_boundary = []
+    outer_boundary = []
+
+    for i, point in enumerate(centerline_points):
+        s = s_values[i]
+
+        # Get offsets at this s position
+        inner_offset = inner_lanes_width_func(s)
+        outer_offset = inner_offset + lane_width_func(s)
+
+        # Apply sign based on lane side
+        if is_left_lane:
+            inner_offset = -inner_offset
+            outer_offset = -outer_offset
+
+        # Calculate perpendicular at this point
+        if i == 0:
+            perp = calculate_perpendicular(centerline_points[0], centerline_points[1])
+        elif i == n_points - 1:
+            perp = calculate_perpendicular(centerline_points[-2], centerline_points[-1])
+        else:
+            # Average perpendiculars of adjacent segments
+            perp1 = calculate_perpendicular(centerline_points[i - 1], centerline_points[i])
+            perp2 = calculate_perpendicular(centerline_points[i], centerline_points[i + 1])
+            avg_perp_x = (perp1[0] + perp2[0]) / 2
+            avg_perp_y = (perp1[1] + perp2[1]) / 2
+            length = math.sqrt(avg_perp_x**2 + avg_perp_y**2)
+            if length > 0:
+                perp = (avg_perp_x / length, avg_perp_y / length)
+            else:
+                perp = perp1
+
+        # Create offset points
+        inner_point = offset_point(point, perp, inner_offset)
+        outer_point = offset_point(point, perp, outer_offset)
+
+        inner_boundary.append(inner_point)
+        outer_boundary.append(outer_point)
+
+    # Build polygon: inner boundary + reversed outer boundary
+    return inner_boundary + list(reversed(outer_boundary))
+
+
 def normalize_angle(angle: float) -> float:
     """
     Normalize angle to [-π, π] range.

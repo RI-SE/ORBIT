@@ -10,8 +10,12 @@ from PyQt6.QtWidgets import QGraphicsScene
 from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import QPen, QColor, QBrush, QPolygonF
 
-from orbit.models import Road, Polyline
-from orbit.utils.geometry import create_lane_polygon, create_variable_width_lane_polygon, calculate_directional_scale
+from orbit.models import Road, Polyline, BoundaryMode
+from orbit.utils.geometry import (
+    create_lane_polygon, create_variable_width_lane_polygon,
+    create_polygon_from_boundaries, create_polynomial_width_lane_polygon,
+    calculate_directional_scale
+)
 from .interactive_lane import InteractiveLanePolygon
 
 if TYPE_CHECKING:
@@ -91,7 +95,8 @@ class RoadLanesGraphicsItem:
     DEFAULT_SCALE = 0.058  # 5.8 cm/px
 
     def __init__(self, road: Road, centerline: Polyline, scene: QGraphicsScene,
-                 scale_factors: Optional[tuple] = None, verbose: bool = False) -> None:
+                 scale_factors: Optional[tuple] = None, verbose: bool = False,
+                 project=None) -> None:
         """
         Create road lanes graphics.
 
@@ -101,6 +106,7 @@ class RoadLanesGraphicsItem:
             scene: Graphics scene
             scale_factors: Tuple of (scale_x, scale_y) in m/px, or None for default
             verbose: Enable verbose debug output
+            project: Project object (for looking up boundary polylines)
         """
         self.road = road
         self.centerline = centerline
@@ -108,6 +114,7 @@ class RoadLanesGraphicsItem:
         self.scale_factors = scale_factors  # Store as tuple
         self.lane_items: List = []
         self.verbose = verbose
+        self.project = project
 
         self.update_graphics()
 
@@ -201,6 +208,11 @@ class RoadLanesGraphicsItem:
             if self.verbose:
                 print(f"    Section {section.section_number}: {len(section_centerline)} points, {len(section.lanes)} lanes")
 
+            # Calculate section s-coordinates for polynomial width evaluation
+            section_s_values = [s_coords[i] - section.s_start for i in section_point_indices]
+            section_length_px = section.s_end - section.s_start
+            section_length_m = section_length_px * scale  # Convert to meters for polynomial
+
             # Create polygons for each lane in this section
             # Sort lanes by absolute ID for correct stacking
             sorted_lanes = sorted(section.lanes, key=lambda l: abs(l.id))
@@ -209,58 +221,144 @@ class RoadLanesGraphicsItem:
                 if lane.id == 0:
                     continue  # Skip center lane
 
-                # Calculate cumulative inner offset by summing widths of all inner lanes
-                # This ensures correct stacking when lanes have different/variable widths
-                inner_offset_start = 0.0
-                inner_offset_end = 0.0
-                for inner_lane in sorted_lanes:
-                    if inner_lane.id == 0:
-                        continue
-                    # Only count lanes that are "inner" to current lane (closer to center)
-                    if (lane.id > 0 and inner_lane.id > 0 and inner_lane.id < lane.id) or \
-                       (lane.id < 0 and inner_lane.id < 0 and abs(inner_lane.id) < abs(lane.id)):
-                        inner_offset_start += inner_lane.width / scale
-                        inner_offset_end += inner_lane.get_width_at_end() / scale
+                polygon_points = None
 
-                # Calculate outer offset = inner offset + this lane's width
-                lane_width_start_px = lane.width / scale
-                lane_width_end_px = lane.get_width_at_end() / scale
-                outer_offset_start = inner_offset_start + lane_width_start_px
-                outer_offset_end = inner_offset_end + lane_width_end_px
+                # Option 1: Explicit outer boundary polyline
+                # (inner boundary is computed from centerline + inner lane widths)
+                if (lane.boundary_mode == BoundaryMode.EXPLICIT and
+                    self.project is not None):
+                    # Determine which boundary ID to use based on lane side
+                    outer_boundary_id = (lane.right_boundary_id if lane.id < 0
+                                         else lane.left_boundary_id)
 
-                # Apply sign based on lane side
-                # OpenDRIVE: positive IDs = left lanes, negative IDs = right lanes
-                # Screen coords: positive offset = right side, negative offset = left side
-                if lane.id > 0:
-                    # Left-hand lane: negative offset
-                    inner_offset_start = -inner_offset_start
-                    outer_offset_start = -outer_offset_start
-                    inner_offset_end = -inner_offset_end
-                    outer_offset_end = -outer_offset_end
+                    if outer_boundary_id:
+                        outer_polyline = self.project.get_polyline(outer_boundary_id)
+                        if outer_polyline and len(outer_polyline.points) >= 2:
+                            # Calculate inner boundary from centerline + inner lane widths
+                            inner_offset_px = 0.0
+                            for inner_lane in sorted_lanes:
+                                if inner_lane.id == 0:
+                                    continue
+                                if (lane.id > 0 and inner_lane.id > 0 and inner_lane.id < lane.id) or \
+                                   (lane.id < 0 and inner_lane.id < 0 and abs(inner_lane.id) < abs(lane.id)):
+                                    inner_offset_px += inner_lane.width / scale
 
-                # Check if any lane in the stack has variable width
-                has_variable_width = lane.has_variable_width or \
-                    any(l.has_variable_width for l in sorted_lanes
-                        if l.id != 0 and
-                        ((lane.id > 0 and l.id > 0 and l.id < lane.id) or
-                         (lane.id < 0 and l.id < 0 and abs(l.id) < abs(lane.id))))
+                            inner_boundary = calculate_offset_polyline(
+                                section_centerline,
+                                inner_offset_px if lane.id > 0 else -inner_offset_px,
+                                closed=False
+                            )
 
-                # Create polygon for this lane section
-                if has_variable_width:
-                    polygon_points = create_variable_width_lane_polygon(
-                        section_centerline,
-                        inner_offset_start,
-                        outer_offset_start,
-                        inner_offset_end,
-                        outer_offset_end
+                            polygon_points = create_polygon_from_boundaries(
+                                outer_polyline.points if lane.id > 0 else inner_boundary,
+                                inner_boundary if lane.id > 0 else outer_polyline.points
+                            )
+                            if self.verbose:
+                                print(f"      Lane {lane.id}: Using explicit outer boundary")
+
+                # Option 2: Polynomial/variable width
+                if polygon_points is None:
+                    # Check if any lane uses polynomial width (b, c, d coefficients)
+                    uses_polynomial = (
+                        lane.width_b != 0.0 or lane.width_c != 0.0 or lane.width_d != 0.0 or
+                        any((l.width_b != 0.0 or l.width_c != 0.0 or l.width_d != 0.0)
+                            for l in sorted_lanes
+                            if l.id != 0 and
+                            ((lane.id > 0 and l.id > 0 and l.id < lane.id) or
+                             (lane.id < 0 and l.id < 0 and abs(l.id) < abs(lane.id))))
                     )
-                else:
-                    polygon_points = create_lane_polygon(
-                        section_centerline,
-                        inner_offset_start,
-                        outer_offset_start,
-                        closed=False  # Sections are not closed
-                    )
+
+                    # Check if any lane has simple variable width (width_end)
+                    has_variable_width = lane.has_variable_width or \
+                        any(l.has_variable_width for l in sorted_lanes
+                            if l.id != 0 and
+                            ((lane.id > 0 and l.id > 0 and l.id < lane.id) or
+                             (lane.id < 0 and l.id < 0 and abs(l.id) < abs(lane.id))))
+
+                    if uses_polynomial and section_length_m > 0:
+                        # Use polynomial width evaluation at each point
+                        def inner_width_func(s_px):
+                            """Calculate cumulative inner lane width at s position."""
+                            s_m = s_px * scale  # Convert to meters
+                            total = 0.0
+                            for inner_lane in sorted_lanes:
+                                if inner_lane.id == 0:
+                                    continue
+                                if (lane.id > 0 and inner_lane.id > 0 and inner_lane.id < lane.id) or \
+                                   (lane.id < 0 and inner_lane.id < 0 and abs(inner_lane.id) < abs(lane.id)):
+                                    total += inner_lane.get_width_at_s(s_m, section_length_m) / scale
+                            return total
+
+                        def lane_width_func(s_px):
+                            """Calculate this lane's width at s position."""
+                            s_m = s_px * scale
+                            return lane.get_width_at_s(s_m, section_length_m) / scale
+
+                        polygon_points = create_polynomial_width_lane_polygon(
+                            section_centerline,
+                            lane.id,
+                            inner_width_func,
+                            lane_width_func,
+                            section_s_values,
+                            is_left_lane=(lane.id > 0)
+                        )
+                        if self.verbose:
+                            print(f"      Lane {lane.id}: Using polynomial width")
+
+                    elif has_variable_width:
+                        # Use linear interpolation (start/end width)
+                        inner_offset_start = 0.0
+                        inner_offset_end = 0.0
+                        for inner_lane in sorted_lanes:
+                            if inner_lane.id == 0:
+                                continue
+                            if (lane.id > 0 and inner_lane.id > 0 and inner_lane.id < lane.id) or \
+                               (lane.id < 0 and inner_lane.id < 0 and abs(inner_lane.id) < abs(lane.id)):
+                                inner_offset_start += inner_lane.width / scale
+                                inner_offset_end += inner_lane.get_width_at_end() / scale
+
+                        lane_width_start_px = lane.width / scale
+                        lane_width_end_px = lane.get_width_at_end() / scale
+                        outer_offset_start = inner_offset_start + lane_width_start_px
+                        outer_offset_end = inner_offset_end + lane_width_end_px
+
+                        # Apply sign for left lanes
+                        if lane.id > 0:
+                            inner_offset_start = -inner_offset_start
+                            outer_offset_start = -outer_offset_start
+                            inner_offset_end = -inner_offset_end
+                            outer_offset_end = -outer_offset_end
+
+                        polygon_points = create_variable_width_lane_polygon(
+                            section_centerline,
+                            inner_offset_start,
+                            outer_offset_start,
+                            inner_offset_end,
+                            outer_offset_end
+                        )
+                    else:
+                        # Constant width - use simple offset
+                        inner_offset = 0.0
+                        for inner_lane in sorted_lanes:
+                            if inner_lane.id == 0:
+                                continue
+                            if (lane.id > 0 and inner_lane.id > 0 and inner_lane.id < lane.id) or \
+                               (lane.id < 0 and inner_lane.id < 0 and abs(inner_lane.id) < abs(lane.id)):
+                                inner_offset += inner_lane.width / scale
+
+                        outer_offset = inner_offset + lane.width / scale
+
+                        # Apply sign for left lanes
+                        if lane.id > 0:
+                            inner_offset = -inner_offset
+                            outer_offset = -outer_offset
+
+                        polygon_points = create_lane_polygon(
+                            section_centerline,
+                            inner_offset,
+                            outer_offset,
+                            closed=False
+                        )
 
                 if polygon_points and len(polygon_points) >= 3:
                     # Create interactive polygon

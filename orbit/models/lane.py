@@ -236,8 +236,37 @@ class Lane:
     @property
     def has_variable_width(self) -> bool:
         """Check if lane has variable width (tapers along length)."""
-        return self.width_end is not None and self.width_end != self.width
+        if self.width_end is not None and self.width_end != self.width:
+            return True
+        # Also check polynomial coefficients
+        if self.width_b != 0.0 or self.width_c != 0.0 or self.width_d != 0.0:
+            return True
+        return False
 
     def get_width_at_end(self) -> float:
         """Get width at end of lane section (or constant width if not varying)."""
         return self.width_end if self.width_end is not None else self.width
+
+    def get_width_at_s(self, ds: float, section_length: float) -> float:
+        """
+        Calculate lane width at a given s-position using the width polynomial.
+
+        The width polynomial is: width(ds) = a + b*ds + c*ds² + d*ds³
+
+        Args:
+            ds: Distance from start of section (in same units as polynomial coefficients)
+            section_length: Total section length (for width_end linear interpolation)
+
+        Returns:
+            Width at the given position in meters
+        """
+        # If width_end is set, use linear interpolation (overrides polynomial)
+        if self.width_end is not None and section_length > 0:
+            t = ds / section_length
+            return self.width + t * (self.width_end - self.width)
+
+        # Otherwise use polynomial: a + b*ds + c*ds² + d*ds³
+        return (self.width +
+                self.width_b * ds +
+                self.width_c * ds * ds +
+                self.width_d * ds * ds * ds)

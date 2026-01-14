@@ -614,7 +614,7 @@ class ImageView(QGraphicsView):
             self.road_lanes_items[road.id].remove()
 
         # Create new lane graphics (with verbose flag for debugging)
-        lanes_item = RoadLanesGraphicsItem(road, centerline, self.scene, scale_factors, self.verbose)
+        lanes_item = RoadLanesGraphicsItem(road, centerline, self.scene, scale_factors, self.verbose, self.project)
         self.road_lanes_items[road.id] = lanes_item
 
     def update_road_lanes(self, road_id: str, scale_factors: tuple = None):
@@ -2699,16 +2699,16 @@ class ImageView(QGraphicsView):
                 # Update selection
                 if clicked_junction_id:
                     # Select junction
-                    if self.selected_polyline_id:
+                    if self.selected_polyline_id and self.selected_polyline_id in self.polyline_items:
                         self.polyline_items[self.selected_polyline_id].set_selected(False)
-                        self.selected_polyline_id = None
+                    self.selected_polyline_id = None
                     if self.selected_signal_id and self.selected_signal_id in self.signal_items:
                         self.signal_items[self.selected_signal_id].setSelected(False)
-                        self.selected_signal_id = None
+                    self.selected_signal_id = None
                     if self.selected_object_id and self.selected_object_id in self.object_items:
                         self.object_items[self.selected_object_id].set_selected(False)
-                        self.selected_object_id = None
-                    if self.selected_junction_id:
+                    self.selected_object_id = None
+                    if self.selected_junction_id and self.selected_junction_id in self.junction_items:
                         self.junction_items[self.selected_junction_id].set_selected(False)
                     self.selected_junction_id = clicked_junction_id
                     self.junction_items[clicked_junction_id].set_selected(True)
@@ -2716,12 +2716,12 @@ class ImageView(QGraphicsView):
                     self.junction_selected.emit(clicked_junction_id)
                 elif clicked_signal_id:
                     # Select signal
-                    if self.selected_junction_id:
+                    if self.selected_junction_id and self.selected_junction_id in self.junction_items:
                         self.junction_items[self.selected_junction_id].set_selected(False)
-                        self.selected_junction_id = None
-                    if self.selected_polyline_id:
+                    self.selected_junction_id = None
+                    if self.selected_polyline_id and self.selected_polyline_id in self.polyline_items:
                         self.polyline_items[self.selected_polyline_id].set_selected(False)
-                        self.selected_polyline_id = None
+                    self.selected_polyline_id = None
                     if self.selected_object_id and self.selected_object_id in self.object_items:
                         self.object_items[self.selected_object_id].set_selected(False)
                         self.selected_object_id = None
@@ -2733,15 +2733,15 @@ class ImageView(QGraphicsView):
                     self.signal_selected.emit(clicked_signal_id)
                 elif clicked_object_id:
                     # Select object
-                    if self.selected_junction_id:
+                    if self.selected_junction_id and self.selected_junction_id in self.junction_items:
                         self.junction_items[self.selected_junction_id].set_selected(False)
-                        self.selected_junction_id = None
+                    self.selected_junction_id = None
                     if self.selected_signal_id and self.selected_signal_id in self.signal_items:
                         self.signal_items[self.selected_signal_id].setSelected(False)
-                        self.selected_signal_id = None
-                    if self.selected_polyline_id:
+                    self.selected_signal_id = None
+                    if self.selected_polyline_id and self.selected_polyline_id in self.polyline_items:
                         self.polyline_items[self.selected_polyline_id].set_selected(False)
-                        self.selected_polyline_id = None
+                    self.selected_polyline_id = None
                     if self.selected_object_id and self.selected_object_id in self.object_items:
                         self.object_items[self.selected_object_id].set_selected(False)
                     self.selected_object_id = clicked_object_id
@@ -2750,16 +2750,16 @@ class ImageView(QGraphicsView):
                     self.object_selected.emit(clicked_object_id)
                 elif clicked_polyline_id:
                     # Select polyline
-                    if self.selected_junction_id:
+                    if self.selected_junction_id and self.selected_junction_id in self.junction_items:
                         self.junction_items[self.selected_junction_id].set_selected(False)
-                        self.selected_junction_id = None
+                    self.selected_junction_id = None
                     if self.selected_signal_id and self.selected_signal_id in self.signal_items:
                         self.signal_items[self.selected_signal_id].setSelected(False)
-                        self.selected_signal_id = None
+                    self.selected_signal_id = None
                     if self.selected_object_id and self.selected_object_id in self.object_items:
                         self.object_items[self.selected_object_id].set_selected(False)
-                        self.selected_object_id = None
-                    if self.selected_polyline_id:
+                    self.selected_object_id = None
+                    if self.selected_polyline_id and self.selected_polyline_id in self.polyline_items:
                         self.polyline_items[self.selected_polyline_id].set_selected(False)
                     self.selected_polyline_id = clicked_polyline_id
                     self.polyline_items[clicked_polyline_id].set_selected(True)
@@ -2767,12 +2767,12 @@ class ImageView(QGraphicsView):
                     self.polyline_selected.emit(clicked_polyline_id)
                 else:
                     # Deselect all
-                    if self.selected_polyline_id:
+                    if self.selected_polyline_id and self.selected_polyline_id in self.polyline_items:
                         self.polyline_items[self.selected_polyline_id].set_selected(False)
-                        self.selected_polyline_id = None
-                    if self.selected_junction_id:
+                    self.selected_polyline_id = None
+                    if self.selected_junction_id and self.selected_junction_id in self.junction_items:
                         self.junction_items[self.selected_junction_id].set_selected(False)
-                        self.selected_junction_id = None
+                    self.selected_junction_id = None
                     if self.selected_signal_id and self.selected_signal_id in self.signal_items:
                         self.signal_items[self.selected_signal_id].setSelected(False)
                         self.selected_signal_id = None
