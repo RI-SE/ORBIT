@@ -496,6 +496,7 @@ class MainWindow(QMainWindow):
         self.road_tree.road_modified.connect(self.on_road_modified)
         self.road_tree.road_deleted.connect(self.on_road_deleted)
         self.road_tree.road_delete_requested.connect(self.on_road_delete_requested)
+        self.road_tree.road_edit_requested.connect(self.on_road_edit_requested)
         self.road_tree.polyline_selected.connect(self.on_polyline_selected_in_tree)
         self.road_tree.polyline_deleted.connect(self.on_polyline_deleted_in_tree)
         self.road_tree.polyline_delete_requested.connect(self.on_polyline_delete_requested)
@@ -1623,16 +1624,25 @@ class MainWindow(QMainWindow):
     def edit_polyline_properties(self, polyline_id: str):
         """Edit properties of a polyline."""
         from .dialogs.polyline_properties_dialog import PolylinePropertiesDialog
+        from .undo_commands import ModifyPolylinePropertiesCommand
 
         polyline = self.project.get_polyline(polyline_id)
         if not polyline:
             return
 
+        # Capture state before editing
+        old_data = polyline.to_dict()
+
         if PolylinePropertiesDialog.edit_polyline(polyline, self):
+            # Capture state after editing
+            new_data = polyline.to_dict()
+
+            # Push undo command
+            cmd = ModifyPolylinePropertiesCommand(self, polyline_id, old_data, new_data)
+            self.undo_stack.push(cmd)
+
             # Properties were modified, update the view
             self.image_view.update_polyline(polyline_id)
-            self.modified = True
-            self.update_window_title()
             self.statusBar().showMessage("Polyline properties updated")
 
             # Update lane graphics in case this polyline is/was a centerline
@@ -1682,6 +1692,34 @@ class MainWindow(QMainWindow):
         self.update_window_title()
         # Remove lane visualization
         self.image_view.remove_road_lanes(road_id)
+
+    def on_road_edit_requested(self, road_id):
+        """Handle road edit request with undo support."""
+        from .dialogs.properties_dialog import RoadPropertiesDialog
+        from .undo_commands import ModifyRoadCommand
+
+        road = self.project.get_road(road_id)
+        if not road:
+            return
+
+        # Capture state before editing
+        old_data = road.to_dict()
+
+        result = RoadPropertiesDialog.edit_road(road, self.project, self, verbose=self.verbose)
+        if result:
+            # Capture state after editing
+            new_data = road.to_dict()
+
+            # Push undo command
+            cmd = ModifyRoadCommand(self, road_id, old_data, new_data, "Edit Road Properties")
+            self.undo_stack.push(cmd)
+
+            # Update lane visualization with current scale
+            scale_factors = self.get_current_scale()
+            self.image_view.update_road_lanes(road_id, scale_factors)
+
+            self._refresh_trees()
+            self.statusBar().showMessage("Road properties updated")
 
     def toggle_lane_visibility(self):
         """Toggle visibility of lane graphics."""
@@ -2211,6 +2249,7 @@ class MainWindow(QMainWindow):
     def on_junction_added(self, junction):
         """Handle junction added signal."""
         from .dialogs.junction_dialog import JunctionDialog
+        from .undo_commands import AddJunctionCommand
 
         # Open dialog to configure the junction
         result = JunctionDialog.create_junction(self.project, junction.center_point, self)
@@ -2222,13 +2261,16 @@ class MainWindow(QMainWindow):
 
             self.project.add_junction(result)
             self.image_view.add_junction_graphics(result)
-            self.modified = True
+
+            # Push undo command
+            cmd = AddJunctionCommand(self, result)
+            self.undo_stack.push(cmd)
+
             self.update_elements_tree()
-            self.update_window_title()
             self.statusBar().showMessage(f"Added junction: {result.name}. Click to add another or press Escape to finish.")
 
     def on_junction_modified(self, junction_id):
-        """Handle junction modified signal."""
+        """Handle junction modified signal (legacy, for non-undo modifications)."""
         self.modified = True
         self.image_view.refresh_junction_graphics(junction_id)
         self.update_elements_tree()
@@ -2236,11 +2278,18 @@ class MainWindow(QMainWindow):
 
     def on_junction_deleted(self, junction_id):
         """Handle junction deleted signal."""
+        from .undo_commands import DeleteJunctionCommand
+
+        # Create command BEFORE deletion
+        cmd = DeleteJunctionCommand(self, junction_id)
+
         self.project.remove_junction(junction_id)
         self.image_view.remove_junction_graphics(junction_id)
-        self.modified = True
+
+        # Push command
+        self.undo_stack.push(cmd)
+
         self.update_elements_tree()
-        self.update_window_title()
 
     def on_junction_selected_in_tree(self, junction_id: str):
         """Handle junction selection in elements tree."""
@@ -2251,17 +2300,26 @@ class MainWindow(QMainWindow):
     def edit_junction_properties(self, junction_id: str):
         """Edit properties of a junction."""
         from .dialogs.junction_dialog import JunctionDialog
+        from .undo_commands import ModifyJunctionCommand
 
         junction = self.project.get_junction(junction_id)
         if not junction:
             return
 
+        # Capture state before editing
+        old_data = junction.to_dict()
+
         result = JunctionDialog.edit_junction(junction, self.project, self)
         if result:
+            # Capture state after editing
+            new_data = junction.to_dict()
+
+            # Push undo command
+            cmd = ModifyJunctionCommand(self, junction_id, old_data, new_data)
+            self.undo_stack.push(cmd)
+
             # Properties were modified, update the view
             self.image_view.refresh_junction_graphics(junction_id)
-            self.modified = True
-            self.update_window_title()
             self.statusBar().showMessage(f"Junction properties updated: {result.name}")
 
     def on_connecting_road_selected(self, connecting_road_id: str):
@@ -2385,20 +2443,24 @@ class MainWindow(QMainWindow):
                 # Add to project and view
                 self.project.add_signal(signal)
                 self.image_view.add_signal_graphics(signal)
-                self.modified = True
+
+                # Push undo command
+                from .undo_commands import AddSignalCommand
+                cmd = AddSignalCommand(self, signal)
+                self.undo_stack.push(cmd)
+
                 self.update_elements_tree()
-                self.update_window_title()
                 self.statusBar().showMessage(f"Added signal: {signal.get_display_name()}. Click to add another or press Escape to finish.")
 
     def on_signal_added(self, signal):
-        """Handle signal added signal."""
+        """Handle signal added signal (legacy, for non-undo additions)."""
         # This is emitted by signal graphics when dragged
         self.modified = True
         self.update_elements_tree()
         self.update_window_title()
 
     def on_signal_modified(self, signal_id):
-        """Handle signal modified signal."""
+        """Handle signal modified signal (legacy, for non-undo modifications)."""
         self.modified = True
         self.image_view.refresh_signal_graphics(signal_id)
         self.update_elements_tree()
@@ -2406,11 +2468,18 @@ class MainWindow(QMainWindow):
 
     def on_signal_deleted(self, signal_id):
         """Handle signal deleted signal."""
+        from .undo_commands import DeleteSignalCommand
+
+        # Create command BEFORE deletion
+        cmd = DeleteSignalCommand(self, signal_id)
+
         self.project.remove_signal(signal_id)
         self.image_view.remove_signal_graphics(signal_id)
-        self.modified = True
+
+        # Push command
+        self.undo_stack.push(cmd)
+
         self.update_elements_tree()
-        self.update_window_title()
 
     def on_signal_selected_in_tree(self, signal_id: str):
         """Handle signal selected in elements tree."""
@@ -2467,34 +2536,50 @@ class MainWindow(QMainWindow):
             self.image_view.centerOn(item)
 
     def on_parking_modified(self, parking_id: str):
-        """Handle parking modified from elements tree (after properties dialog)."""
+        """Handle parking modified from elements tree (legacy, for non-undo modifications)."""
         self.modified = True
         self.image_view.refresh_parking_graphics(parking_id)
         self.update_window_title()
 
     def on_parking_deleted(self, parking_id: str):
         """Handle parking deleted from elements tree."""
+        from .undo_commands import DeleteParkingCommand
+
+        # Create command BEFORE deletion
+        cmd = DeleteParkingCommand(self, parking_id)
+
         self.project.remove_parking(parking_id)
         self.image_view.remove_parking_graphics(parking_id)
-        self.modified = True
+
+        # Push command
+        self.undo_stack.push(cmd)
+
         self.update_elements_tree()
-        self.update_window_title()
 
     def edit_signal_properties(self, signal_id: str):
         """Edit properties of a signal."""
         from .dialogs.signal_properties_dialog import SignalPropertiesDialog
+        from .undo_commands import ModifySignalCommand
 
         signal = self.project.get_signal(signal_id)
         if not signal:
             return
 
+        # Capture state before editing
+        old_data = signal.to_dict()
+
         dialog = SignalPropertiesDialog(signal, self.project, self)
         if dialog.exec():
+            # Capture state after editing
+            new_data = signal.to_dict()
+
+            # Push undo command
+            cmd = ModifySignalCommand(self, signal_id, old_data, new_data)
+            self.undo_stack.push(cmd)
+
             # Properties were modified, update the view
             self.image_view.refresh_signal_graphics(signal_id)
-            self.modified = True
             self.update_elements_tree()
-            self.update_window_title()
             self.statusBar().showMessage(f"Signal properties updated: {signal.get_display_name()}")
 
     def on_object_placement_requested(self, x: float, y: float, object_type):
@@ -2534,9 +2619,13 @@ class MainWindow(QMainWindow):
         # Add to project and view
         self.project.add_object(obj)
         self.image_view.add_object_graphics(obj, scale_factor)
-        self.modified = True
+
+        # Push undo command
+        from .undo_commands import AddObjectCommand
+        cmd = AddObjectCommand(self, obj)
+        self.undo_stack.push(cmd)
+
         self.update_elements_tree()
-        self.update_window_title()
         self.statusBar().showMessage(f"Added object: {obj.get_display_name()}. Click to add another or toggle off to finish.")
 
     def on_parking_placement_requested(self, x: float, y: float, parking_type, access_type):
@@ -2576,9 +2665,13 @@ class MainWindow(QMainWindow):
         # Add to project and view
         self.project.add_parking(parking)
         self.image_view.add_parking_graphics(parking, scale_factor)
-        self.modified = True
+
+        # Push undo command
+        from .undo_commands import AddParkingCommand
+        cmd = AddParkingCommand(self, parking)
+        self.undo_stack.push(cmd)
+
         self.update_elements_tree()
-        self.update_window_title()
         self.statusBar().showMessage(f"Added parking: {parking.get_display_name()}. Click to add another or toggle off to finish.")
 
     def on_parking_polygon_completed(self, points: list, parking_type, access_type):
@@ -2633,9 +2726,13 @@ class MainWindow(QMainWindow):
         # Add to project and view
         self.project.add_parking(parking)
         self.image_view.add_parking_graphics(parking, scale_factor)
-        self.modified = True
+
+        # Push undo command
+        from .undo_commands import AddParkingCommand
+        cmd = AddParkingCommand(self, parking)
+        self.undo_stack.push(cmd)
+
         self.update_elements_tree()
-        self.update_window_title()
         self.statusBar().showMessage(f"Added parking area: {parking.get_display_name()}. Draw another or toggle off to finish.")
 
     def on_object_added(self, obj):
@@ -2676,13 +2773,17 @@ class MainWindow(QMainWindow):
         # Add to project and view
         self.project.add_object(obj)
         self.image_view.add_object_graphics(obj, scale_factor)
-        self.modified = True
+
+        # Push undo command
+        from .undo_commands import AddObjectCommand
+        cmd = AddObjectCommand(self, obj)
+        self.undo_stack.push(cmd)
+
         self.update_elements_tree()
-        self.update_window_title()
         self.statusBar().showMessage(f"Guardrail added. Click and drag to add another or toggle off to finish.")
 
     def on_object_modified(self, object_id):
-        """Handle object modified signal."""
+        """Handle object modified signal (legacy, for non-undo modifications)."""
         self.modified = True
         self.image_view.refresh_object_graphics(object_id)
         self.update_elements_tree()
@@ -2690,27 +2791,43 @@ class MainWindow(QMainWindow):
 
     def on_object_deleted(self, object_id):
         """Handle object deleted signal."""
+        from .undo_commands import DeleteObjectCommand
+
+        # Create command BEFORE deletion
+        cmd = DeleteObjectCommand(self, object_id)
+
         self.project.remove_object(object_id)
         self.image_view.remove_object_graphics(object_id)
-        self.modified = True
+
+        # Push command
+        self.undo_stack.push(cmd)
+
         self.update_elements_tree()
-        self.update_window_title()
 
     def edit_object_properties(self, object_id: str):
         """Edit properties of an object."""
         from .dialogs.object_properties_dialog import ObjectPropertiesDialog
+        from .undo_commands import ModifyObjectCommand
 
         obj = self.project.get_object(object_id)
         if not obj:
             return
 
+        # Capture state before editing
+        old_data = obj.to_dict()
+
         dialog = ObjectPropertiesDialog(obj, self.project, self)
         if dialog.exec():
+            # Capture state after editing
+            new_data = obj.to_dict()
+
+            # Push undo command
+            cmd = ModifyObjectCommand(self, object_id, old_data, new_data)
+            self.undo_stack.push(cmd)
+
             # Properties were modified, update the view
             self.image_view.refresh_object_graphics(object_id)
-            self.modified = True
             self.update_elements_tree()
-            self.update_window_title()
             self.statusBar().showMessage(f"Object properties updated: {obj.get_display_name()}")
 
     def on_section_split_requested(self, road_id: str, polyline_id: str, point_index: int):
@@ -2722,6 +2839,8 @@ class MainWindow(QMainWindow):
             polyline_id: ID of the centerline polyline
             point_index: Index of the point where to split
         """
+        from .undo_commands import SplitSectionCommand
+
         road = self.project.get_road(road_id)
         if not road:
             return
@@ -2730,13 +2849,21 @@ class MainWindow(QMainWindow):
         if not polyline:
             return
 
+        # Capture state before split
+        old_road_data = road.to_dict()
+
         # Perform the split
         success = road.split_section_at_point(point_index, polyline.points)
 
         if success:
-            self.modified = True
+            # Capture state after split
+            new_road_data = road.to_dict()
+
+            # Push undo command
+            cmd = SplitSectionCommand(self, road_id, old_road_data, new_road_data)
+            self.undo_stack.push(cmd)
+
             self.road_tree.refresh_tree()
-            self.update_window_title()
             self.statusBar().showMessage("Lane section split successfully")
             # Refresh lane graphics to show new section polygons
             self.update_affected_road_lanes()
@@ -2756,6 +2883,17 @@ class MainWindow(QMainWindow):
             polyline_id: ID of the centerline polyline
             point_index: Index of the point where to split
         """
+        from .undo_commands import SplitRoadCommand
+
+        # Capture state before split
+        road = self.project.get_road(road_id)
+        polyline = self.project.get_polyline(polyline_id)
+        if not road or not polyline:
+            return
+
+        original_road_data = road.to_dict()
+        original_polyline_data = polyline.to_dict()
+
         # Remember polylines before split so we can identify new ones
         polylines_before = {p.id for p in self.project.polylines}
 
@@ -2763,10 +2901,23 @@ class MainWindow(QMainWindow):
 
         if result:
             road1, road2 = result
-            self.modified = True
 
             # Find new polylines created by the split
             new_polylines = [p for p in self.project.polylines if p.id not in polylines_before]
+
+            # Capture state after split for undo
+            # The original polyline was modified (shortened), and a new polyline was created
+            # road1 uses the modified original polyline, road2 uses the new polyline
+            poly1 = self.project.get_polyline(road1.centerline_id)
+            poly2 = self.project.get_polyline(road2.centerline_id)
+
+            if poly1 and poly2:
+                cmd = SplitRoadCommand(
+                    self,
+                    original_road_data, road1.to_dict(), road2.to_dict(),
+                    original_polyline_data, poly1.to_dict(), poly2.to_dict()
+                )
+                self.undo_stack.push(cmd)
 
             # Add graphics for new polylines
             for polyline in new_polylines:
@@ -2779,7 +2930,6 @@ class MainWindow(QMainWindow):
             # Refresh trees to show new road and updated polylines
             self.road_tree.refresh_tree()
             self.elements_tree.refresh_tree()
-            self.update_window_title()
 
             # Refresh lane graphics for both roads
             self.update_affected_road_lanes()
@@ -2799,6 +2949,8 @@ class MainWindow(QMainWindow):
             road1_id: ID of the first road (predecessor)
             road2_id: ID of the second road (successor)
         """
+        from .undo_commands import MergeRoadsCommand
+
         road1 = self.project.get_road(road1_id)
         road2 = self.project.get_road(road2_id)
 
@@ -2816,13 +2968,32 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
+        # Capture state before merge
+        road1_data = road1.to_dict()
+        road2_data = road2.to_dict()
+        poly1 = self.project.get_polyline(road1.centerline_id)
+        poly2 = self.project.get_polyline(road2.centerline_id)
+        poly1_data = poly1.to_dict() if poly1 else None
+        poly2_data = poly2.to_dict() if poly2 else None
+
         # Remember polylines that will be deleted
         road2_polylines = set(road2.polyline_ids)
 
         result = self.project.merge_consecutive_roads(road1_id, road2_id)
 
         if result:
-            self.modified = True
+            # Capture merged state for undo
+            merged_road_data = result.to_dict()
+            merged_poly = self.project.get_polyline(result.centerline_id)
+            merged_poly_data = merged_poly.to_dict() if merged_poly else None
+
+            if poly1_data and poly2_data and merged_poly_data:
+                cmd = MergeRoadsCommand(
+                    self,
+                    road1_data, road2_data, merged_road_data,
+                    poly1_data, poly2_data, merged_poly_data
+                )
+                self.undo_stack.push(cmd)
 
             # Remove graphics for deleted polylines (road2's polylines that are no longer in project)
             for pid in road2_polylines:
@@ -2849,7 +3020,6 @@ class MainWindow(QMainWindow):
             # Refresh trees
             self.road_tree.refresh_tree()
             self.elements_tree.refresh_tree()
-            self.update_window_title()
 
             # Refresh lane graphics
             self.update_affected_road_lanes()

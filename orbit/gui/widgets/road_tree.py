@@ -150,6 +150,7 @@ class RoadTreeWidget(QWidget):
     road_modified = pyqtSignal(str)  # Emits road ID
     road_deleted = pyqtSignal(str)  # Emits road ID
     road_delete_requested = pyqtSignal(str)  # Emits road ID - handler should do deletion
+    road_edit_requested = pyqtSignal(str)  # Emits road ID - handler should open dialog with undo
     roads_merge_requested = pyqtSignal(str, str)  # Emits (road1_id, road2_id) for merge
     polyline_selected = pyqtSignal(str)  # Emits polyline ID
     polyline_deleted = pyqtSignal(str)  # Emits polyline ID (legacy)
@@ -604,14 +605,8 @@ class RoadTreeWidget(QWidget):
 
     def edit_road(self, road_id: str):
         """Edit a road's properties."""
-        from ..dialogs.properties_dialog import RoadPropertiesDialog
-
-        road = self.project.get_road(road_id)
-        if road:
-            result = RoadPropertiesDialog.edit_road(road, self.project, self, verbose=self.verbose)
-            if result:
-                self.road_modified.emit(road_id)
-                self.refresh_tree()
+        # Emit signal for main_window to handle with undo support
+        self.road_edit_requested.emit(road_id)
 
     def delete_road(self, road_id: str):
         """Delete a road."""
