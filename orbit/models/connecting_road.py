@@ -219,10 +219,10 @@ class ConnectingRoad:
 
         This method creates polygon representations for each lane in the connecting road,
         similar to how regular Road objects generate lane polygons. The polygons are
-        calculated by offsetting the centerline path based on lane widths.
+        calculated by offsetting the centerline path based on individual lane widths.
 
-        Supports variable width lanes (tapering) when lane_width_start and lane_width_end
-        are set to different values.
+        Supports variable width lanes (tapering) when Lane.width_end differs from Lane.width,
+        and polynomial widths when width_b/c/d coefficients are non-zero.
 
         Args:
             scale: Meters per pixel scale factor (from coordinate transformer)
@@ -241,32 +241,76 @@ class ConnectingRoad:
                 1: [(x1, y1), (x2, y2), ...],    # Left lane 1
             }
         """
-        from orbit.utils.geometry import create_lane_polygon, create_variable_width_lane_polygon
+        from orbit.utils.geometry import (
+            create_lane_polygon, create_variable_width_lane_polygon,
+            create_polynomial_width_lane_polygon
+        )
 
         if len(self.path) < 2:
             return {}
 
-        # Determine if we have variable width
-        width_start = self.lane_width_start if self.lane_width_start is not None else self.lane_width
-        width_end = self.lane_width_end if self.lane_width_end is not None else self.lane_width
+        # Ensure lanes are initialized
+        self.ensure_lanes_initialized()
 
-        # Convert from meters to pixels
-        width_start_px = width_start / scale
-        width_end_px = width_end / scale
+        # Calculate path length in meters for polynomial width evaluation
+        path_length_px = self.get_length_pixels()
+        path_length_m = path_length_px * scale
 
-        # Check if width varies
-        use_variable_width = abs(width_start_px - width_end_px) > 0.1  # Threshold in pixels
+        # Build map of lane_id to Lane object
+        lane_map = {lane.id: lane for lane in self.lanes if lane.id != 0}
+
+        # Calculate s-values along path (distance from start at each point)
+        s_values = [0.0]
+        for i in range(1, len(self.path)):
+            dx = self.path[i][0] - self.path[i-1][0]
+            dy = self.path[i][1] - self.path[i-1][1]
+            s_values.append(s_values[-1] + math.sqrt(dx*dx + dy*dy))
 
         polygons = {}
 
+        # Check if any lane uses polynomial width
+        uses_polynomial = any(
+            lane.width_b != 0.0 or lane.width_c != 0.0 or lane.width_d != 0.0
+            for lane in self.lanes if lane.id != 0
+        )
+
         # Create right-hand lanes (negative IDs in OpenDRIVE: -1, -2, -3, ...)
-        # Use POSITIVE offsets to place on right side (in screen coords: positive = right)
         for lane_num in range(1, self.lane_count_right + 1):
-            if use_variable_width:
-                inner_offset_start = (lane_num - 1) * width_start_px
-                outer_offset_start = lane_num * width_start_px
-                inner_offset_end = (lane_num - 1) * width_end_px
-                outer_offset_end = lane_num * width_end_px
+            lane_id = -lane_num
+            lane = lane_map.get(lane_id)
+            if not lane:
+                continue
+
+            # Get inner lanes (closer to center)
+            inner_lanes = [lane_map.get(-i) for i in range(1, lane_num) if lane_map.get(-i)]
+
+            if uses_polynomial and path_length_m > 0:
+                # Use polynomial width evaluation
+                def inner_width_func(s_px):
+                    s_m = s_px * scale
+                    total = 0.0
+                    for inner_lane in inner_lanes:
+                        total += inner_lane.get_width_at_s(s_m, path_length_m) / scale
+                    return total
+
+                def lane_width_func(s_px):
+                    s_m = s_px * scale
+                    return lane.get_width_at_s(s_m, path_length_m) / scale
+
+                polygon_points = create_polynomial_width_lane_polygon(
+                    self.path,
+                    lane_id,
+                    inner_width_func,
+                    lane_width_func,
+                    s_values,
+                    is_left_lane=False
+                )
+            elif lane.has_variable_width or any(l.has_variable_width for l in inner_lanes):
+                # Use linear interpolation (start/end width)
+                inner_offset_start = sum(l.width / scale for l in inner_lanes)
+                inner_offset_end = sum(l.get_width_at_end() / scale for l in inner_lanes)
+                outer_offset_start = inner_offset_start + lane.width / scale
+                outer_offset_end = inner_offset_end + lane.get_width_at_end() / scale
 
                 polygon_points = create_variable_width_lane_polygon(
                     self.path,
@@ -276,38 +320,9 @@ class ConnectingRoad:
                     outer_offset_end
                 )
             else:
-                inner_offset = (lane_num - 1) * width_start_px
-                outer_offset = lane_num * width_start_px
-
-                polygon_points = create_lane_polygon(
-                    self.path,
-                    inner_offset,
-                    outer_offset,
-                    closed=False  # Connecting roads are never closed
-                )
-
-            if polygon_points and len(polygon_points) >= 3:
-                polygons[-lane_num] = polygon_points  # Negative ID for right lanes
-
-        # Create left-hand lanes (positive IDs in OpenDRIVE: 1, 2, 3, ...)
-        # Use NEGATIVE offsets to place on left side (in screen coords: negative = left)
-        for lane_num in range(1, self.lane_count_left + 1):
-            if use_variable_width:
-                inner_offset_start = -(lane_num - 1) * width_start_px
-                outer_offset_start = -lane_num * width_start_px
-                inner_offset_end = -(lane_num - 1) * width_end_px
-                outer_offset_end = -lane_num * width_end_px
-
-                polygon_points = create_variable_width_lane_polygon(
-                    self.path,
-                    inner_offset_start,
-                    outer_offset_start,
-                    inner_offset_end,
-                    outer_offset_end
-                )
-            else:
-                inner_offset = -(lane_num - 1) * width_start_px
-                outer_offset = -lane_num * width_start_px
+                # Constant width
+                inner_offset = sum(l.width / scale for l in inner_lanes)
+                outer_offset = inner_offset + lane.width / scale
 
                 polygon_points = create_lane_polygon(
                     self.path,
@@ -317,7 +332,67 @@ class ConnectingRoad:
                 )
 
             if polygon_points and len(polygon_points) >= 3:
-                polygons[lane_num] = polygon_points  # Positive ID for left lanes
+                polygons[lane_id] = polygon_points
+
+        # Create left-hand lanes (positive IDs in OpenDRIVE: 1, 2, 3, ...)
+        for lane_num in range(1, self.lane_count_left + 1):
+            lane_id = lane_num
+            lane = lane_map.get(lane_id)
+            if not lane:
+                continue
+
+            # Get inner lanes (closer to center)
+            inner_lanes = [lane_map.get(i) for i in range(1, lane_num) if lane_map.get(i)]
+
+            if uses_polynomial and path_length_m > 0:
+                # Use polynomial width evaluation
+                def inner_width_func(s_px):
+                    s_m = s_px * scale
+                    total = 0.0
+                    for inner_lane in inner_lanes:
+                        total += inner_lane.get_width_at_s(s_m, path_length_m) / scale
+                    return total
+
+                def lane_width_func(s_px):
+                    s_m = s_px * scale
+                    return lane.get_width_at_s(s_m, path_length_m) / scale
+
+                polygon_points = create_polynomial_width_lane_polygon(
+                    self.path,
+                    lane_id,
+                    inner_width_func,
+                    lane_width_func,
+                    s_values,
+                    is_left_lane=True
+                )
+            elif lane.has_variable_width or any(l.has_variable_width for l in inner_lanes):
+                # Use linear interpolation with negative offsets for left lanes
+                inner_offset_start = -sum(l.width / scale for l in inner_lanes)
+                inner_offset_end = -sum(l.get_width_at_end() / scale for l in inner_lanes)
+                outer_offset_start = inner_offset_start - lane.width / scale
+                outer_offset_end = inner_offset_end - lane.get_width_at_end() / scale
+
+                polygon_points = create_variable_width_lane_polygon(
+                    self.path,
+                    inner_offset_start,
+                    outer_offset_start,
+                    inner_offset_end,
+                    outer_offset_end
+                )
+            else:
+                # Constant width with negative offsets for left lanes
+                inner_offset = -sum(l.width / scale for l in inner_lanes)
+                outer_offset = inner_offset - lane.width / scale
+
+                polygon_points = create_lane_polygon(
+                    self.path,
+                    inner_offset,
+                    outer_offset,
+                    closed=False
+                )
+
+            if polygon_points and len(polygon_points) >= 3:
+                polygons[lane_id] = polygon_points
 
         return polygons
 
@@ -348,10 +423,17 @@ class ConnectingRoad:
         This creates Lane objects if they don't exist (for backward compatibility
         with old projects that only stored lane counts). Always includes center
         lane (lane 0) as required by OpenDRIVE.
+
+        For old projects with road-level widths (lane_width, lane_width_start, lane_width_end),
+        these are migrated to lane-level widths on each Lane object.
         """
         if not self.lanes:
             # Create Lane objects based on lane counts
             self.lanes = []
+
+            # Determine width values from road-level settings (for backward compatibility)
+            width_start = self.lane_width_start if self.lane_width_start is not None else self.lane_width
+            width_end = self.lane_width_end if self.lane_width_end is not None else self.lane_width
 
             # Center lane (lane 0) - always required by OpenDRIVE
             center_lane = Lane(
@@ -368,7 +450,8 @@ class ConnectingRoad:
                     id=-i,
                     lane_type=LaneType.DRIVING,
                     road_mark_type=RoadMarkType.SOLID,
-                    width=self.lane_width
+                    width=width_start,
+                    width_end=width_end if width_end != width_start else None
                 )
                 self.lanes.append(lane)
 
@@ -378,7 +461,8 @@ class ConnectingRoad:
                     id=i,
                     lane_type=LaneType.DRIVING,
                     road_mark_type=RoadMarkType.SOLID,
-                    width=self.lane_width
+                    width=width_start,
+                    width_end=width_end if width_end != width_start else None
                 )
                 self.lanes.append(lane)
 
@@ -401,6 +485,43 @@ class ConnectingRoad:
                 return lane
 
         return None
+
+    def migrate_lane_widths(self):
+        """
+        Migrate lane widths from road-level to lane-level for backward compatibility.
+
+        Called after loading from dict to ensure lane widths match road-level widths.
+        This handles the case where an old project has lanes saved but with different
+        widths than the road-level lane_width_start/lane_width_end values.
+        """
+        if not self.lanes:
+            return
+
+        # Determine target widths from road-level settings
+        width_start = self.lane_width_start if self.lane_width_start is not None else self.lane_width
+        width_end = self.lane_width_end if self.lane_width_end is not None else self.lane_width
+
+        # Check if any lane needs migration (has different width than road-level)
+        needs_migration = False
+        for lane in self.lanes:
+            if lane.id != 0:
+                lane_width_end = lane.width_end if lane.width_end is not None else lane.width
+                # Check if lane width differs from road-level (allowing small tolerance)
+                if abs(lane.width - width_start) > 0.01 or abs(lane_width_end - width_end) > 0.01:
+                    # Only migrate if lane still has old-style widths (constant or matching lane_width)
+                    # Don't migrate if the lane has intentionally different widths
+                    if abs(lane.width - self.lane_width) < 0.01 and lane.width_end is None:
+                        needs_migration = True
+                        break
+
+        if needs_migration:
+            for lane in self.lanes:
+                if lane.id != 0:
+                    lane.width = width_start
+                    if abs(width_end - width_start) > 0.001:
+                        lane.width_end = width_end
+                    else:
+                        lane.width_end = None
 
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -512,6 +633,10 @@ class ConnectingRoad:
         else:
             # Old projects without lanes - will be initialized on first access
             cr.lanes = []
+
+        # Migrate lane widths from road-level to lane-level if needed
+        # This handles old projects where lanes existed but used road-level widths
+        cr.migrate_lane_widths()
 
         return cr
 

@@ -759,10 +759,12 @@ class OpenDriveWriter:
     def _create_connecting_road_lanes(self, connecting_road: ConnectingRoad,
                                      road_length: float) -> etree.Element:
         """
-        Create simplified lanes element for a connecting road.
+        Create lanes element for a connecting road using individual Lane objects.
 
-        Supports linear lane width transitions when lane_width_start and lane_width_end
-        are set (OpenDRIVE polynomial: width(s) = a + b*s).
+        Each Lane object's width properties are used directly, supporting:
+        - Constant width (width only)
+        - Linear transition (width + width_end)
+        - Polynomial width (width_b, width_c, width_d coefficients)
 
         Args:
             connecting_road: ConnectingRoad with lane configuration
@@ -771,87 +773,101 @@ class OpenDriveWriter:
         Returns:
             Lanes XML element
         """
+        from .lane_builder import convert_road_mark_type
+
         lanes = etree.Element('lanes')
 
         # Single lane section covering the entire connecting road
         lane_section = etree.SubElement(lanes, 'laneSection')
         lane_section.set('s', '0.0')
 
-        # Calculate lane width polynomial coefficients for linear transition
-        # width(s) = a + b*s + c*s² + d*s³
-        # For linear transition: a = start_width, b = (end_width - start_width) / length
-        width_start = connecting_road.lane_width_start
-        width_end = connecting_road.lane_width_end
+        # Ensure lanes are initialized (migrates road-level widths if needed)
+        connecting_road.ensure_lanes_initialized()
 
-        if width_start is not None and width_end is not None and road_length > 0:
-            # Linear transition from start to end width
-            width_a = width_start
-            width_b = (width_end - width_start) / road_length
-        else:
-            # Constant width (backward compatibility)
-            width_a = connecting_road.lane_width
-            width_b = 0.0
+        # Build lane map for quick lookup
+        lane_map = {lane_obj.id: lane_obj for lane_obj in connecting_road.lanes}
 
         # OpenDRIVE schema requires order: left, center, right
 
         # Left lanes (positive IDs: 1, 2, 3...)
-        if connecting_road.lane_count_left > 0:
+        left_lanes = [lane_obj for lane_obj in connecting_road.lanes if lane_obj.id > 0]
+        left_lanes.sort(key=lambda l: l.id)  # Sort ascending: 1, 2, 3...
+        if left_lanes:
             left = etree.SubElement(lane_section, 'left')
-            for lane_id in range(1, connecting_road.lane_count_left + 1):
-                lane = etree.SubElement(left, 'lane')
-                lane.set('id', str(lane_id))
-                lane.set('type', 'driving')
-                lane.set('level', 'false')
-
-                # Lane width (linear transition)
-                width = etree.SubElement(lane, 'width')
-                width.set('sOffset', '0.0')
-                width.set('a', f'{width_a:.4f}')
-                width.set('b', f'{width_b:.6f}')
-                width.set('c', '0.0')
-                width.set('d', '0.0')
-
-                # Road mark (default: solid white)
-                roadMark = etree.SubElement(lane, 'roadMark')
-                roadMark.set('sOffset', '0.0')
-                roadMark.set('type', 'solid')
-                roadMark.set('weight', 'standard')
-                roadMark.set('color', 'white')
-                roadMark.set('width', '0.12')
+            for lane_obj in left_lanes:
+                lane = self._create_connecting_lane_element(lane_obj, road_length)
+                left.append(lane)
 
         # Center lane (always required)
         center = etree.SubElement(lane_section, 'center')
-        center_lane = etree.SubElement(center, 'lane')
-        center_lane.set('id', '0')
-        center_lane.set('type', 'none')
-        center_lane.set('level', 'false')
+        center_lane_obj = lane_map.get(0)
+        if center_lane_obj:
+            center_lane = etree.SubElement(center, 'lane')
+            center_lane.set('id', '0')
+            center_lane.set('type', center_lane_obj.lane_type.value)
+            center_lane.set('level', 'false')
+        else:
+            center_lane = etree.SubElement(center, 'lane')
+            center_lane.set('id', '0')
+            center_lane.set('type', 'none')
+            center_lane.set('level', 'false')
 
         # Right lanes (negative IDs: -1, -2, -3...)
-        if connecting_road.lane_count_right > 0:
+        right_lanes = [lane_obj for lane_obj in connecting_road.lanes if lane_obj.id < 0]
+        right_lanes.sort(key=lambda l: l.id, reverse=True)  # Sort descending: -1, -2, -3...
+        if right_lanes:
             right = etree.SubElement(lane_section, 'right')
-            for lane_id in range(-1, -(connecting_road.lane_count_right + 1), -1):
-                lane = etree.SubElement(right, 'lane')
-                lane.set('id', str(lane_id))
-                lane.set('type', 'driving')
-                lane.set('level', 'false')
-
-                # Lane width (linear transition)
-                width = etree.SubElement(lane, 'width')
-                width.set('sOffset', '0.0')
-                width.set('a', f'{width_a:.4f}')
-                width.set('b', f'{width_b:.6f}')
-                width.set('c', '0.0')
-                width.set('d', '0.0')
-
-                # Road mark (default: solid white)
-                roadMark = etree.SubElement(lane, 'roadMark')
-                roadMark.set('sOffset', '0.0')
-                roadMark.set('type', 'solid')
-                roadMark.set('weight', 'standard')
-                roadMark.set('color', 'white')
-                roadMark.set('width', '0.12')
+            for lane_obj in right_lanes:
+                lane = self._create_connecting_lane_element(lane_obj, road_length)
+                right.append(lane)
 
         return lanes
+
+    def _create_connecting_lane_element(self, lane_obj, road_length: float) -> etree.Element:
+        """
+        Create a single lane element for a connecting road.
+
+        Args:
+            lane_obj: Lane object with width and road mark properties
+            road_length: Total road length for polynomial width calculation
+
+        Returns:
+            Lane XML element
+        """
+        from .lane_builder import convert_road_mark_type
+
+        lane = etree.Element('lane')
+        lane.set('id', str(lane_obj.id))
+        lane.set('type', lane_obj.lane_type.value)
+        lane.set('level', 'true' if lane_obj.level else 'false')
+
+        # Calculate width polynomial coefficients
+        # OpenDRIVE: width(ds) = a + b*ds + c*ds² + d*ds³
+        width_a = lane_obj.width
+        width_b = lane_obj.width_b
+        width_c = lane_obj.width_c
+        width_d = lane_obj.width_d
+
+        # Handle linear transition via width_end (overrides polynomial b coefficient)
+        if lane_obj.width_end is not None and road_length > 0:
+            width_b = (lane_obj.width_end - lane_obj.width) / road_length
+
+        width = etree.SubElement(lane, 'width')
+        width.set('sOffset', '0.0')
+        width.set('a', f'{width_a:.4f}')
+        width.set('b', f'{width_b:.6f}')
+        width.set('c', f'{width_c:.6f}')
+        width.set('d', f'{width_d:.6f}')
+
+        # Road mark from lane properties
+        roadMark = etree.SubElement(lane, 'roadMark')
+        roadMark.set('sOffset', '0.0')
+        roadMark.set('type', convert_road_mark_type(lane_obj.road_mark_type))
+        roadMark.set('weight', lane_obj.road_mark_weight)
+        roadMark.set('color', lane_obj.road_mark_color)
+        roadMark.set('width', f'{lane_obj.road_mark_width:.2f}')
+
+        return lane
 
     def _create_plan_view(self, geometry_elements: List[GeometryElement]) -> etree.Element:
         """Create planView element with geometry."""
