@@ -265,24 +265,12 @@ class MainWindow(QMainWindow):
         self.toggle_adjustment_action.setChecked(False)
         self.toggle_adjustment_action.triggered.connect(self.toggle_adjustment_mode)
 
-        # Uncertainty overlay actions
-        self.uncertainty_none_action = QAction("None", self)
-        self.uncertainty_none_action.setStatusTip("Hide uncertainty overlay")
-        self.uncertainty_none_action.setCheckable(True)
-        self.uncertainty_none_action.setChecked(True)  # Hidden by default
-        self.uncertainty_none_action.triggered.connect(lambda: self.set_uncertainty_overlay(None))
-
-        self.uncertainty_position_action = QAction("Position Uncertainty", self)
-        self.uncertainty_position_action.setStatusTip("Show position uncertainty heat map")
-        self.uncertainty_position_action.setCheckable(True)
-        self.uncertainty_position_action.setChecked(False)
-        self.uncertainty_position_action.triggered.connect(lambda: self.set_uncertainty_overlay('position'))
-
-        # Create action group for mutual exclusivity
-        from PyQt6.QtGui import QActionGroup
-        self.uncertainty_action_group = QActionGroup(self)
-        self.uncertainty_action_group.addAction(self.uncertainty_none_action)
-        self.uncertainty_action_group.addAction(self.uncertainty_position_action)
+        # Uncertainty overlay action (single toggle)
+        self.toggle_uncertainty_action = QAction("Show &Uncertainty Overlay", self)
+        self.toggle_uncertainty_action.setStatusTip("Show position uncertainty heat map")
+        self.toggle_uncertainty_action.setCheckable(True)
+        self.toggle_uncertainty_action.setChecked(False)
+        self.toggle_uncertainty_action.triggered.connect(self.toggle_uncertainty_overlay)
 
         # Tools actions
         self.new_polyline_action = QAction("New &Polyline", self)
@@ -310,10 +298,6 @@ class MainWindow(QMainWindow):
         self.merge_roads_action = QAction("&Merge Selected Roads", self)
         self.merge_roads_action.setStatusTip("Merge two consecutive roads into one (select two roads in sidebar)")
         self.merge_roads_action.triggered.connect(self.merge_selected_roads)
-
-        self.split_road_action = QAction("&Split Road at Point", self)
-        self.split_road_action.setStatusTip("Split a road at a centerline point (right-click centerline point)")
-        self.split_road_action.triggered.connect(self.show_split_road_instructions)
 
         self.add_signal_action = QAction("Add &Signal", self)
         self.add_signal_action.setShortcut(QKeySequence("Ctrl+T"))
@@ -406,11 +390,7 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.toggle_lanes_action)
         view_menu.addAction(self.toggle_soffsets_action)
         view_menu.addAction(self.toggle_junction_debug_action)
-        view_menu.addSeparator()
-        # Uncertainty overlay submenu
-        uncertainty_menu = view_menu.addMenu("Uncertainty Overlay")
-        uncertainty_menu.addAction(self.uncertainty_none_action)
-        uncertainty_menu.addAction(self.uncertainty_position_action)
+        view_menu.addAction(self.toggle_uncertainty_action)
 
         # Draw menu (drawing/placement tools)
         draw_menu = menubar.addMenu("&Draw")
@@ -427,7 +407,6 @@ class MainWindow(QMainWindow):
         roads_menu.addAction(self.create_roundabout_action)
         roads_menu.addSeparator()
         roads_menu.addAction(self.merge_roads_action)
-        roads_menu.addAction(self.split_road_action)
 
         # Georeferencing menu
         georef_menu = menubar.addMenu("&Georeferencing")
@@ -1770,6 +1749,13 @@ class MainWindow(QMainWindow):
         # Refresh control points visualization (if shown)
         self.update_scale_display()
 
+    def toggle_uncertainty_overlay(self, checked: bool):
+        """Toggle uncertainty overlay on/off."""
+        if checked:
+            self.set_uncertainty_overlay('position')
+        else:
+            self.set_uncertainty_overlay(None)
+
     def set_uncertainty_overlay(self, mode: str):
         """
         Show/hide uncertainty overlay.
@@ -1786,13 +1772,13 @@ class MainWindow(QMainWindow):
         # Validate georeferencing
         if not self.project.control_points or len(self.project.control_points) < 3:
             show_warning(self, "Add at least 3 control points first to show uncertainty overlay.", "No Georeferencing")
-            self.uncertainty_none_action.setChecked(True)
+            self.toggle_uncertainty_action.setChecked(False)
             return
 
         # Check if image is loaded
         if not self.image_view.image_item:
             show_warning(self, "Load an image first to show uncertainty overlay.", "No Image")
-            self.uncertainty_none_action.setChecked(True)
+            self.toggle_uncertainty_action.setChecked(False)
             return
 
         try:
@@ -1806,7 +1792,7 @@ class MainWindow(QMainWindow):
 
             if not transformer:
                 show_warning(self, "Failed to create coordinate transformer.", "Transform Error")
-                self.uncertainty_none_action.setChecked(True)
+                self.toggle_uncertainty_action.setChecked(False)
                 return
 
             # Create estimator
@@ -1832,7 +1818,7 @@ class MainWindow(QMainWindow):
                     "Continue with simple heuristic?",
                     "No Uncertainty Cache"
                 ):
-                    self.uncertainty_none_action.setChecked(True)
+                    self.toggle_uncertainty_action.setChecked(False)
                     return
 
             # Show status message while generating overlay
@@ -1853,7 +1839,7 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             show_error(self, f"Failed to create uncertainty overlay: {str(e)}", "Error")
-            self.uncertainty_none_action.setChecked(True)
+            self.toggle_uncertainty_action.setChecked(False)
 
     def get_current_scale(self):
         """
@@ -2821,18 +2807,6 @@ class MainWindow(QMainWindow):
 
         # Trigger the existing merge handler
         self.on_roads_merge_requested(road1_id, road2_id)
-
-    def show_split_road_instructions(self):
-        """Show instructions for splitting a road at a point."""
-        show_info(
-            self,
-            "To split a road:\n\n"
-            "1. Select a road in the Road Tree sidebar\n"
-            "2. Right-click on a centerline point in the image view\n"
-            "3. Choose 'Split Road Here' from the context menu\n\n"
-            "The road will be split into two roads at that point.",
-            "How to Split a Road"
-        )
 
     def on_section_modified(self, road_id: str):
         """Handle section modified signal."""
