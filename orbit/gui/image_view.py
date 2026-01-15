@@ -40,6 +40,7 @@ class ImageView(QGraphicsView):
     # Signals
     polyline_added = pyqtSignal(object)  # Emits Polyline
     polyline_modified = pyqtSignal(str)  # Emits polyline ID
+    polyline_modified_for_undo = pyqtSignal(str, list, list, object, object)  # For undo: polyline_id, old_points, new_points, old_geo, new_geo
     polyline_deleted = pyqtSignal(str)  # Emits polyline ID
     polyline_edit_requested = pyqtSignal(str)  # Emits polyline ID for editing
     polyline_selected = pyqtSignal(str)  # Emits polyline ID when selected in view
@@ -294,6 +295,21 @@ class ImageView(QGraphicsView):
         # Update s-offset labels if visible and this is a centerline
         if self.soffsets_visible:
             self._update_soffset_labels(polyline.id)
+
+    def remove_polyline_graphics(self, polyline_id: str):
+        """Remove a polyline from the graphics scene."""
+        if polyline_id in self.polyline_items:
+            self.polyline_items[polyline_id].remove()
+            del self.polyline_items[polyline_id]
+
+        # Remove s-offset labels if they exist
+        if polyline_id in self.soffset_labels:
+            for text_item, bg_item in self.soffset_labels[polyline_id]:
+                if text_item.scene() == self.scene:
+                    self.scene.removeItem(text_item)
+                if bg_item.scene() == self.scene:
+                    self.scene.removeItem(bg_item)
+            del self.soffset_labels[polyline_id]
 
     def add_junction_graphics(self, junction: Junction):
         """Add a junction marker to the graphics scene."""
@@ -2663,6 +2679,10 @@ class ImageView(QGraphicsView):
                         self.drag_polyline_id = polyline_id
                         self.drag_point_index = point_index
                         item.set_selected_point(point_index)
+                        # Capture state at drag start for undo
+                        polyline = item.polyline
+                        self._drag_start_points = list(polyline.points)
+                        self._drag_start_geo_points = list(polyline.geo_points) if polyline.geo_points else None
                         return
 
                 # Check if clicking on a connecting road point to drag
@@ -2988,6 +3008,19 @@ class ImageView(QGraphicsView):
                             break
 
                 item.set_selected_point(-1)
+
+                # Emit undo signal with captured state
+                if hasattr(self, '_drag_start_points') and self._drag_start_points is not None:
+                    self.polyline_modified_for_undo.emit(
+                        self.drag_polyline_id,
+                        self._drag_start_points,
+                        list(polyline.points),
+                        self._drag_start_geo_points,
+                        list(polyline.geo_points) if polyline.geo_points else None
+                    )
+                    self._drag_start_points = None
+                    self._drag_start_geo_points = None
+
                 self.polyline_modified.emit(self.drag_polyline_id)
                 # Update s-offset labels after point drag
                 if self.soffsets_visible:

@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QLabel, QDialog
 )
 from PyQt6.QtCore import Qt, QSettings
-from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtGui import QAction, QKeySequence, QUndoStack
 
 from orbit.utils.logging_config import get_logger
 from orbit.models import Project, LineType
@@ -40,6 +40,8 @@ class MainWindow(QMainWindow):
         self.project = Project()
         self.current_project_file: Optional[Path] = None
         self.modified = False
+        self.undo_stack = QUndoStack(self)
+        self.undo_stack.cleanChanged.connect(self._on_undo_clean_changed)
         self.verbose = verbose  # Debug flag
         self.xodr_schema_path = xodr_schema_path  # Path to OpenDRIVE XSD schema for validation
 
@@ -76,6 +78,7 @@ class MainWindow(QMainWindow):
         # Connect signals
         self.image_view.polyline_added.connect(self.on_polyline_added)
         self.image_view.polyline_modified.connect(self.on_polyline_modified)
+        self.image_view.polyline_modified_for_undo.connect(self.on_polyline_modified_for_undo)
         self.image_view.polyline_deleted.connect(self.on_polyline_deleted)
         self.image_view.polyline_edit_requested.connect(self.edit_polyline_properties)
         self.image_view.polyline_selected.connect(self.on_polyline_selected_in_view)
@@ -193,16 +196,14 @@ class MainWindow(QMainWindow):
         self.exit_action.setStatusTip("Exit the application")
         self.exit_action.triggered.connect(self.close)
 
-        # Edit actions
-        self.undo_action = QAction("&Undo", self)
+        # Edit actions - using QUndoStack
+        self.undo_action = self.undo_stack.createUndoAction(self, "&Undo")
         self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
         self.undo_action.setStatusTip("Undo last action")
-        self.undo_action.setEnabled(False)  # TODO: Implement undo/redo
 
-        self.redo_action = QAction("&Redo", self)
+        self.redo_action = self.undo_stack.createRedoAction(self, "&Redo")
         self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         self.redo_action.setStatusTip("Redo last undone action")
-        self.redo_action.setEnabled(False)  # TODO: Implement undo/redo
 
         self.delete_action = QAction("&Delete Selected", self)
         self.delete_action.setShortcut(QKeySequence.StandardKey.Delete)
@@ -494,8 +495,10 @@ class MainWindow(QMainWindow):
         self.road_tree.road_added.connect(self.on_road_added)
         self.road_tree.road_modified.connect(self.on_road_modified)
         self.road_tree.road_deleted.connect(self.on_road_deleted)
+        self.road_tree.road_delete_requested.connect(self.on_road_delete_requested)
         self.road_tree.polyline_selected.connect(self.on_polyline_selected_in_tree)
         self.road_tree.polyline_deleted.connect(self.on_polyline_deleted_in_tree)
+        self.road_tree.polyline_delete_requested.connect(self.on_polyline_delete_requested)
         self.road_tree.lane_selected.connect(self.on_lane_selected_in_tree)
         self.road_tree.roads_merge_requested.connect(self.on_roads_merge_requested)
 
@@ -525,6 +528,7 @@ class MainWindow(QMainWindow):
             self.project.clear()
             self.current_project_file = None
             self.modified = False
+            self.undo_stack.clear()
             self._cached_transformer = None  # Invalidate transformer cache
 
             # Reset adjustment mode and panel
@@ -559,6 +563,7 @@ class MainWindow(QMainWindow):
                 self.project = Project.load(Path(file_path))
                 self.current_project_file = Path(file_path)
                 self.modified = False
+                self.undo_stack.clear()
                 self._cached_transformer = None  # Invalidate transformer cache
 
                 # Reset adjustment mode and panel
@@ -596,6 +601,7 @@ class MainWindow(QMainWindow):
         if self.current_project_file:
             try:
                 self.project.save(self.current_project_file)
+                self.undo_stack.setClean()
                 self.modified = False
                 self.update_window_title()
                 self.statusBar().showMessage(f"Project saved: {self.current_project_file}")
@@ -617,6 +623,7 @@ class MainWindow(QMainWindow):
             try:
                 self.current_project_file = Path(file_path)
                 self.project.save(self.current_project_file)
+                self.undo_stack.setClean()
                 self.modified = False
                 self.update_window_title()
                 self.statusBar().showMessage(f"Project saved: {file_path}")
@@ -1515,9 +1522,21 @@ class MainWindow(QMainWindow):
             title += " *"
         self.setWindowTitle(title)
 
+    def _on_undo_clean_changed(self, clean: bool):
+        """Sync modified flag with undo stack clean state."""
+        self.modified = not clean
+        self.update_window_title()
+
+    def _refresh_trees(self):
+        """Refresh both tree widgets."""
+        self.update_elements_tree()
+        self.road_tree.refresh_tree()
+
     # Signal handlers
     def on_polyline_added(self, polyline):
         """Handle polyline added signal."""
+        from .undo_commands import AddPolylineCommand
+
         # If transformer is available, convert pixel coords to geo coords
         # This ensures manually drawn polylines can be adjusted like imported ones
         if self._cached_transformer and not polyline.has_geo_coords():
@@ -1527,11 +1546,15 @@ class MainWindow(QMainWindow):
                 geo_points.append((lon, lat))
             polyline.geo_points = geo_points
 
+        # Add to project
         self.project.add_polyline(polyline)
-        self.modified = True
-        self.update_elements_tree()
-        self.road_tree.refresh_tree()
-        self.update_window_title()
+
+        # Push undo command (first redo is skipped since we just added it)
+        cmd = AddPolylineCommand(self, polyline)
+        self.undo_stack.push(cmd)
+
+        # Update UI
+        self._refresh_trees()
 
     def on_polyline_modified(self, polyline_id=None):
         """Handle polyline modified signal."""
@@ -1561,11 +1584,41 @@ class MainWindow(QMainWindow):
 
     def on_polyline_deleted(self, polyline_id):
         """Handle polyline deleted signal."""
+        from .undo_commands import DeletePolylineCommand
+
+        # Create command BEFORE deletion (captures state including road associations)
+        cmd = DeletePolylineCommand(self, polyline_id)
+
+        # Remove from project
         self.project.remove_polyline(polyline_id)
-        self.modified = True
-        self.update_elements_tree()
-        self.road_tree.refresh_tree()
-        self.update_window_title()
+
+        # Push command (first redo skipped since we just deleted it)
+        self.undo_stack.push(cmd)
+
+        # Update UI
+        self._refresh_trees()
+
+    def on_polyline_modified_for_undo(self, polyline_id, old_points, new_points, old_geo, new_geo):
+        """Handle polyline modification with state for undo."""
+        from .undo_commands import ModifyPolylineCommand
+
+        # Infer operation type from point counts
+        old_count = len(old_points)
+        new_count = len(new_points)
+        if new_count > old_count:
+            description = "Add Point"
+        elif new_count < old_count:
+            description = "Delete Point"
+        else:
+            description = "Move Point"
+
+        cmd = ModifyPolylineCommand(
+            self, polyline_id,
+            old_points, new_points,
+            old_geo, new_geo,
+            description
+        )
+        self.undo_stack.push(cmd)
 
     def edit_polyline_properties(self, polyline_id: str):
         """Edit properties of a polyline."""
@@ -1587,8 +1640,12 @@ class MainWindow(QMainWindow):
 
     def on_road_added(self, road):
         """Handle road added signal."""
-        self.modified = True
-        self.update_window_title()
+        from .undo_commands import AddRoadCommand
+
+        # Push undo command
+        cmd = AddRoadCommand(self, road)
+        self.undo_stack.push(cmd)
+
         self.statusBar().showMessage(f"Added road: {road.name}")
 
     def on_road_modified(self, road_id):
@@ -1599,8 +1656,28 @@ class MainWindow(QMainWindow):
         scale_factors = self.get_current_scale()
         self.image_view.update_road_lanes(road_id, scale_factors)
 
+    def on_road_delete_requested(self, road_id):
+        """Handle road delete request with undo support."""
+        from .undo_commands import DeleteRoadCommand
+
+        # Create command BEFORE deletion (captures state)
+        cmd = DeleteRoadCommand(self, road_id)
+
+        # Remove lane graphics
+        self.image_view.remove_road_lanes(road_id)
+
+        # Remove from project
+        self.project.remove_road(road_id)
+
+        # Push command (first redo skipped)
+        self.undo_stack.push(cmd)
+
+        # Update UI
+        self._refresh_trees()
+        self.statusBar().showMessage("Road deleted")
+
     def on_road_deleted(self, road_id):
-        """Handle road deleted signal."""
+        """Handle road deleted signal (legacy, for non-undo deletions)."""
         self.modified = True
         self.update_window_title()
         # Remove lane visualization
@@ -2091,8 +2168,28 @@ class MainWindow(QMainWindow):
         # Highlight the polyline in the image view
         self.image_view.highlight_polyline(polyline_id)
 
+    def on_polyline_delete_requested(self, polyline_id):
+        """Handle polyline delete request from tree with undo support."""
+        from .undo_commands import DeletePolylineCommand
+
+        # Create command BEFORE deletion (captures state including road associations)
+        cmd = DeletePolylineCommand(self, polyline_id)
+
+        # Remove polyline graphics from image view
+        self.image_view.remove_polyline_graphics(polyline_id)
+
+        # Remove from project
+        self.project.remove_polyline(polyline_id)
+
+        # Push command (first redo skipped since we just deleted it)
+        self.undo_stack.push(cmd)
+
+        # Update UI
+        self._refresh_trees()
+        self.statusBar().showMessage("Polyline deleted")
+
     def on_polyline_deleted_in_tree(self, polyline_id):
-        """Handle polyline deletion from tree."""
+        """Handle polyline deletion from tree (legacy, for non-undo deletions)."""
         # Remove polyline graphics from image view
         if polyline_id in self.image_view.polyline_items:
             self.image_view.polyline_items[polyline_id].remove()

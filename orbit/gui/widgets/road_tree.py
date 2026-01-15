@@ -149,9 +149,11 @@ class RoadTreeWidget(QWidget):
     road_added = pyqtSignal(object)  # Emits Road
     road_modified = pyqtSignal(str)  # Emits road ID
     road_deleted = pyqtSignal(str)  # Emits road ID
+    road_delete_requested = pyqtSignal(str)  # Emits road ID - handler should do deletion
     roads_merge_requested = pyqtSignal(str, str)  # Emits (road1_id, road2_id) for merge
     polyline_selected = pyqtSignal(str)  # Emits polyline ID
-    polyline_deleted = pyqtSignal(str)  # Emits polyline ID
+    polyline_deleted = pyqtSignal(str)  # Emits polyline ID (legacy)
+    polyline_delete_requested = pyqtSignal(str)  # Emits polyline ID - handler does deletion
     lane_selected = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id
 
     def __init__(self, project: Project, parent=None, verbose: bool = False):
@@ -615,9 +617,8 @@ class RoadTreeWidget(QWidget):
         """Delete a road."""
         if ask_yes_no(self, "Are you sure you want to delete this road?\n"
             "Polylines will be unassigned but not deleted.", "Delete Road"):
-            self.project.remove_road(road_id)
-            self.road_deleted.emit(road_id)
-            self.refresh_tree()
+            # Emit request signal - main_window will handle deletion with undo support
+            self.road_delete_requested.emit(road_id)
 
     def unassign_polyline(self, polyline_id: str):
         """Unassign a polyline from its road."""
@@ -636,9 +637,8 @@ class RoadTreeWidget(QWidget):
 
         if ask_yes_no(self, f"Are you sure you want to delete this polyline?\n"
             f"It has {polyline.point_count()} points and will be permanently removed.", "Delete Polyline"):
-            self.project.remove_polyline(polyline_id)
-            self.polyline_deleted.emit(polyline_id)
-            self.refresh_tree()
+            # Emit request signal - main_window will handle deletion with undo support
+            self.polyline_delete_requested.emit(polyline_id)
 
     def edit_polyline(self, polyline_id: str):
         """Edit a polyline's properties."""
