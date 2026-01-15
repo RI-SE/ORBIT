@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from PyQt6.QtWidgets import QGraphicsScene, QGraphicsTextItem
 from PyQt6.QtCore import QPointF
-from PyQt6.QtGui import QPen, QColor, QBrush, QPolygonF
+from PyQt6.QtGui import QColor
 
 from orbit.models import Junction
 
@@ -40,32 +40,16 @@ class JunctionMarkerItem:
 
         x, y = self.junction.center_point
 
-        # Draw junction marker (diamond shape)
+        # Junction visualization: label only (diamond marker removed)
+        # The junction area is visualized via connecting roads
         color = QColor(255, 0, 255)  # Magenta for junctions
         if self.selected:
             color = QColor(255, 255, 0)  # Yellow when selected
 
-        pen = QPen(color, 3)
-        brush = QBrush(QColor(255, 0, 255, 100))  # Semi-transparent
-        if self.selected:
-            brush = QBrush(QColor(255, 255, 0, 100))
-
-        size = 20
-        # Draw diamond (rotated square)
-        polygon = QPolygonF()
-        polygon.append(QPointF(x, y - size))  # Top
-        polygon.append(QPointF(x + size, y))  # Right
-        polygon.append(QPointF(x, y + size))  # Bottom
-        polygon.append(QPointF(x - size, y))  # Left
-
-        marker = self.scene.addPolygon(polygon, pen, brush)
-        marker.setZValue(3)  # Above polylines
-        self.marker_items.append(marker)
-
-        # Add text label
+        # Add text label at junction center
         self.text_item = QGraphicsTextItem(self.junction.name)
         self.text_item.setDefaultTextColor(color)
-        self.text_item.setPos(x + size + 5, y - 10)
+        self.text_item.setPos(x + 5, y - 10)  # Offset slightly from center
         self.text_item.setZValue(3)
         self.scene.addItem(self.text_item)
 

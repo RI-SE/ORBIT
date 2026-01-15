@@ -545,35 +545,35 @@ class ImageView(QGraphicsView):
             item.update_scale_factor(scale_factor)
 
     def add_control_point_graphics(self, control_point):
-        """Add a control point marker to the graphics scene."""
+        """Add a control point marker to the graphics scene as a crosshair."""
         from orbit.models import ControlPoint
 
-        # Draw a dark blue dot at the control point location
         x, y = control_point.pixel_x, control_point.pixel_y
 
-        # Create outer circle (larger, dark blue)
-        outer_radius = 12
-        outer_pen = QPen(QColor(0, 50, 150), 3)  # Dark blue border
-        outer_brush = QBrush(QColor(100, 150, 255, 180))  # Semi-transparent blue
-        outer_circle = self.scene.addEllipse(
-            x - outer_radius, y - outer_radius,
-            outer_radius * 2, outer_radius * 2,
-            outer_pen, outer_brush
-        )
-        outer_circle.setZValue(10)  # Above everything else
-        self.control_point_items.append(outer_circle)
+        # Crosshair parameters
+        arm_length = 10  # Length of each arm from center
+        gap = 3  # Gap radius at center (so target pixel is visible)
 
-        # Create inner circle (smaller, bright blue)
-        inner_radius = 5
-        inner_pen = QPen(QColor(255, 255, 255), 1)  # White border
-        inner_brush = QBrush(QColor(0, 100, 255))  # Bright blue
-        inner_circle = self.scene.addEllipse(
-            x - inner_radius, y - inner_radius,
-            inner_radius * 2, inner_radius * 2,
-            inner_pen, inner_brush
-        )
-        inner_circle.setZValue(11)  # Above outer circle
-        self.control_point_items.append(inner_circle)
+        # Main crosshair pen (bright blue)
+        pen = QPen(QColor(0, 100, 255), 2)
+
+        # Horizontal arms (left and right of center gap)
+        left_arm = self.scene.addLine(x - arm_length, y, x - gap, y, pen)
+        right_arm = self.scene.addLine(x + gap, y, x + arm_length, y, pen)
+
+        # Vertical arms (top and bottom of center gap)
+        top_arm = self.scene.addLine(x, y - arm_length, x, y - gap, pen)
+        bottom_arm = self.scene.addLine(x, y + gap, x, y + arm_length, pen)
+
+        # Tiny center dot for exact position reference
+        dot_pen = QPen(QColor(0, 100, 255), 1)
+        dot_brush = QBrush(QColor(0, 100, 255))
+        center_dot = self.scene.addEllipse(x - 0.5, y - 0.5, 1, 1, dot_pen, dot_brush)
+
+        # Set z-values and add to tracking list
+        for item in [left_arm, right_arm, top_arm, bottom_arm, center_dot]:
+            item.setZValue(10)
+            self.control_point_items.append(item)
 
         # Add label with CP name
         if control_point.name:

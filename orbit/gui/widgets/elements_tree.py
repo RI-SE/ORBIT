@@ -300,7 +300,7 @@ class ElementsTreeWidget(QWidget):
 
         if data["type"] == "junction":
             # Junction context menu
-            edit_action = QAction("Edit Properties", self)
+            edit_action = QAction("Edit Junction", self)
             edit_action.triggered.connect(lambda: self.edit_junction(data["id"]))
             menu.addAction(edit_action)
 
@@ -316,7 +316,7 @@ class ElementsTreeWidget(QWidget):
 
         elif data["type"] == "signal":
             # Signal context menu
-            edit_action = QAction("Edit Properties", self)
+            edit_action = QAction("Edit Signal", self)
             edit_action.triggered.connect(lambda: self.edit_signal(data["id"]))
             menu.addAction(edit_action)
 
@@ -326,7 +326,7 @@ class ElementsTreeWidget(QWidget):
 
         elif data["type"] == "object":
             # Object context menu
-            edit_action = QAction("Edit Properties", self)
+            edit_action = QAction("Edit Object", self)
             edit_action.triggered.connect(lambda: self.edit_object(data["id"]))
             menu.addAction(edit_action)
 
@@ -336,7 +336,7 @@ class ElementsTreeWidget(QWidget):
 
         elif data["type"] == "parking":
             # Parking context menu
-            edit_action = QAction("Edit Properties", self)
+            edit_action = QAction("Edit Parking", self)
             edit_action.triggered.connect(lambda: self.edit_parking(data["id"]))
             menu.addAction(edit_action)
 
@@ -346,7 +346,7 @@ class ElementsTreeWidget(QWidget):
 
         elif data["type"] == "connecting_road":
             # Connecting road context menu
-            edit_action = QAction("Edit Properties", self)
+            edit_action = QAction("Edit Connecting Road", self)
             edit_action.triggered.connect(lambda: self.edit_connecting_road(data["id"]))
             menu.addAction(edit_action)
 

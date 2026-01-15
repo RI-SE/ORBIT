@@ -35,6 +35,8 @@ class RoadTreeWidget(QWidget):
 
         self.project = project
         self.verbose = verbose
+        self._cached_scale_factor: float | None = None
+        self._scale_factor_computed = False
         self.setup_ui()
         self.refresh_tree()
 
@@ -70,10 +72,40 @@ class RoadTreeWidget(QWidget):
     def set_project(self, project: Project):
         """Update the project reference and refresh the tree."""
         self.project = project
+        self._scale_factor_computed = False  # Invalidate cache
         self.refresh_tree()
+
+    def _get_scale_factor(self) -> float | None:
+        """
+        Get average scale factor (meters per pixel) from project control points.
+
+        Returns:
+            Average scale factor in meters/pixel, or None if not available.
+        """
+        # Use cached value if already computed
+        if self._scale_factor_computed:
+            return self._cached_scale_factor
+
+        self._scale_factor_computed = True
+        self._cached_scale_factor = None
+
+        if len(self.project.control_points) < 3:
+            return None
+
+        try:
+            from orbit.export import create_transformer
+            transformer = create_transformer(self.project.control_points)
+            if transformer is None:
+                return None
+            scale_x, scale_y = transformer.get_scale_factor()
+            self._cached_scale_factor = (scale_x + scale_y) / 2.0
+            return self._cached_scale_factor
+        except Exception:
+            return None
 
     def refresh_tree(self):
         """Refresh the entire tree from project data."""
+        self._scale_factor_computed = False  # Invalidate cache on refresh
         self.tree.clear()
 
         # Add roads as top-level items
@@ -125,16 +157,16 @@ class RoadTreeWidget(QWidget):
                 polyline_number = i + 1
                 break
 
-        # Check if this is the road reference line (centerline)
-        is_reference_line = (road is not None and
-                            road.centerline_id == polyline.id and
-                            polyline.line_type.value == "centerline")
+        # Check if this is the centerline
+        is_centerline = (road is not None and
+                        road.centerline_id == polyline.id and
+                        polyline.line_type.value == "centerline")
 
         # Determine line type display
-        if is_reference_line:
-            line_type_str = "Road Reference Line"
+        if is_centerline:
+            line_type_str = "Centerline"
         else:
-            line_type_str = "Road Reference Line" if polyline.line_type.value == "centerline" else "Boundary"
+            line_type_str = "Centerline" if polyline.line_type.value == "centerline" else "Boundary"
 
         # Format text with number if found
         if polyline_number is not None:
@@ -145,8 +177,8 @@ class RoadTreeWidget(QWidget):
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "polyline", "id": polyline.id})
 
-        # If this is the road reference line, add lane sections as children
-        if is_reference_line and road:
+        # If this is the centerline, add lane sections as children
+        if is_centerline and road:
             for section in road.lane_sections:
                 section_item = self.create_section_item(section, road.id)
                 item.addChild(section_item)
@@ -157,10 +189,20 @@ class RoadTreeWidget(QWidget):
         """Create a tree item for a lane section."""
         from orbit.models import LaneSection
 
-        # Format section display name
-        text = f"Section {section.section_number}"
+        # Format section display name with s-offset range
+        scale = self._get_scale_factor()
+        if scale is not None:
+            # Show in meters
+            s_start_m = section.s_start * scale
+            s_end_m = section.s_end * scale
+            range_str = f"{s_start_m:.0f}m - {s_end_m:.0f}m"
+        else:
+            # Show in pixels
+            range_str = f"{section.s_start:.0f} - {section.s_end:.0f} px"
+
+        text = f"Section {section.section_number} ({range_str})"
         if section.single_side:
-            text += f" ({section.single_side} only)"
+            text += f" [{section.single_side} only]"
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {
@@ -303,7 +345,7 @@ class RoadTreeWidget(QWidget):
 
         if data["type"] == "road":
             # Road context menu
-            edit_action = QAction("Edit Properties", self)
+            edit_action = QAction("Edit Road", self)
             edit_action.triggered.connect(lambda: self.edit_road(data["id"]))
             menu.addAction(edit_action)
 
@@ -313,7 +355,7 @@ class RoadTreeWidget(QWidget):
 
         elif data["type"] == "polyline":
             # Polyline context menu
-            edit_action = QAction("Edit Properties", self)
+            edit_action = QAction("Edit Polyline", self)
             edit_action.triggered.connect(lambda: self.edit_polyline(data["id"]))
             menu.addAction(edit_action)
 
