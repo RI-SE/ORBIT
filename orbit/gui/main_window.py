@@ -307,6 +307,14 @@ class MainWindow(QMainWindow):
         self.create_roundabout_action.setStatusTip("Create a roundabout with wizard")
         self.create_roundabout_action.triggered.connect(self.create_roundabout)
 
+        self.merge_roads_action = QAction("&Merge Selected Roads", self)
+        self.merge_roads_action.setStatusTip("Merge two consecutive roads into one (select two roads in sidebar)")
+        self.merge_roads_action.triggered.connect(self.merge_selected_roads)
+
+        self.split_road_action = QAction("&Split Road at Point", self)
+        self.split_road_action.setStatusTip("Split a road at a centerline point (right-click centerline point)")
+        self.split_road_action.triggered.connect(self.show_split_road_instructions)
+
         self.add_signal_action = QAction("Add &Signal", self)
         self.add_signal_action.setShortcut(QKeySequence("Ctrl+T"))
         self.add_signal_action.setStatusTip("Add a traffic signal/sign")
@@ -417,6 +425,9 @@ class MainWindow(QMainWindow):
         roads_menu.addAction(self.group_to_road_action)
         roads_menu.addAction(self.add_junction_action)
         roads_menu.addAction(self.create_roundabout_action)
+        roads_menu.addSeparator()
+        roads_menu.addAction(self.merge_roads_action)
+        roads_menu.addAction(self.split_road_action)
 
         # Georeferencing menu
         georef_menu = menubar.addMenu("&Georeferencing")
@@ -2767,6 +2778,61 @@ class MainWindow(QMainWindow):
                 "Failed to merge roads. Check the console for details.",
                 "Merge Failed"
             )
+
+    def merge_selected_roads(self):
+        """
+        Merge roads selected in the Road Tree sidebar.
+
+        Validates that exactly two consecutive roads are selected and
+        triggers the merge operation.
+        """
+        # Get selected items from road tree
+        selected_items = self.road_tree.tree.selectedItems()
+
+        # Filter for road items only
+        selected_roads = []
+        for item in selected_items:
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(data, dict) and data.get("type") == "road":
+                selected_roads.append(data.get("id"))
+
+        if len(selected_roads) != 2:
+            show_info(
+                self,
+                "Please select exactly two roads in the Road Tree sidebar to merge.\n\n"
+                "The roads must be consecutive (one must end where the other begins).",
+                "Select Roads to Merge"
+            )
+            return
+
+        # Check if roads can be merged
+        can_merge, road1_id, road2_id = self.road_tree._can_merge_roads(
+            selected_roads[0], selected_roads[1]
+        )
+
+        if not can_merge:
+            show_warning(
+                self,
+                "Cannot merge these roads.\n\n"
+                "Roads must be consecutive (one road's successor must be the other road).",
+                "Cannot Merge"
+            )
+            return
+
+        # Trigger the existing merge handler
+        self.on_roads_merge_requested(road1_id, road2_id)
+
+    def show_split_road_instructions(self):
+        """Show instructions for splitting a road at a point."""
+        show_info(
+            self,
+            "To split a road:\n\n"
+            "1. Select a road in the Road Tree sidebar\n"
+            "2. Right-click on a centerline point in the image view\n"
+            "3. Choose 'Split Road Here' from the context menu\n\n"
+            "The road will be split into two roads at that point.",
+            "How to Split a Road"
+        )
 
     def on_section_modified(self, road_id: str):
         """Handle section modified signal."""

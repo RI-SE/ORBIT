@@ -8,13 +8,137 @@ from typing import Optional, List, Tuple
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QMenu, QMessageBox
+    QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
+    QMenu, QMessageBox, QLineEdit, QAbstractItemView
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QEvent
-from PyQt6.QtGui import QAction, QKeyEvent
+from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QMimeData
+from PyQt6.QtGui import QAction, QKeyEvent, QDrag
 
 from orbit.models import Project, Road, Polyline, LaneType
 from ..utils.message_helpers import show_info, ask_yes_no
+
+
+class DraggableTreeWidget(QTreeWidget):
+    """Tree widget supporting drag-drop for polyline assignment to roads."""
+
+    # Signal emitted when a polyline is dropped on a road
+    polyline_dropped_on_road = pyqtSignal(str, str)  # (polyline_id, road_id)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self._dragged_polyline_id: Optional[str] = None
+
+    def startDrag(self, supportedActions):
+        """Start dragging an unassigned polyline."""
+        item = self.currentItem()
+        if not item:
+            return
+
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not isinstance(data, dict) or data.get("type") != "polyline":
+            return
+
+        # Check if this is an unassigned polyline (parent should be "unassigned")
+        parent = item.parent()
+        if not parent:
+            return
+
+        parent_data = parent.data(0, Qt.ItemDataRole.UserRole)
+        if parent_data != "unassigned":
+            # Already assigned to a road - don't allow dragging
+            return
+
+        # Store the polyline ID being dragged
+        self._dragged_polyline_id = data.get("id")
+
+        # Create drag with custom mime data
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setText(f"polyline:{self._dragged_polyline_id}")
+        drag.setMimeData(mime_data)
+
+        # Execute drag
+        drag.exec(Qt.DropAction.MoveAction)
+        self._dragged_polyline_id = None
+
+    def dragEnterEvent(self, event):
+        """Accept drag if it contains polyline data."""
+        if event.mimeData().hasText():
+            text = event.mimeData().text()
+            if text.startswith("polyline:"):
+                event.acceptProposedAction()
+                return
+        event.ignore()
+
+    def dragMoveEvent(self, event):
+        """Show visual feedback when hovering over valid drop targets."""
+        if not event.mimeData().hasText():
+            event.ignore()
+            return
+
+        text = event.mimeData().text()
+        if not text.startswith("polyline:"):
+            event.ignore()
+            return
+
+        # Check if hovering over a road item
+        item = self.itemAt(event.position().toPoint())
+        if item:
+            road_item = self._find_road_item(item)
+            if road_item:
+                event.acceptProposedAction()
+                return
+
+        event.ignore()
+
+    def dropEvent(self, event):
+        """Handle dropping a polyline on a road."""
+        if not event.mimeData().hasText():
+            event.ignore()
+            return
+
+        text = event.mimeData().text()
+        if not text.startswith("polyline:"):
+            event.ignore()
+            return
+
+        polyline_id = text.replace("polyline:", "")
+
+        # Find the road item at drop position
+        item = self.itemAt(event.position().toPoint())
+        if not item:
+            event.ignore()
+            return
+
+        road_item = self._find_road_item(item)
+        if not road_item:
+            event.ignore()
+            return
+
+        road_data = road_item.data(0, Qt.ItemDataRole.UserRole)
+        if not isinstance(road_data, dict) or road_data.get("type") != "road":
+            event.ignore()
+            return
+
+        road_id = road_data.get("id")
+
+        # Emit signal to handle the assignment
+        self.polyline_dropped_on_road.emit(polyline_id, road_id)
+        event.acceptProposedAction()
+
+    def _find_road_item(self, item: QTreeWidgetItem) -> Optional[QTreeWidgetItem]:
+        """Find the road item that contains this item (or is this item)."""
+        current = item
+        while current:
+            data = current.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(data, dict) and data.get("type") == "road":
+                return current
+            current = current.parent()
+        return None
 
 
 class RoadTreeWidget(QWidget):
@@ -44,8 +168,15 @@ class RoadTreeWidget(QWidget):
         """Setup the widget UI."""
         layout = QVBoxLayout(self)
 
-        # Tree widget
-        self.tree = QTreeWidget()
+        # Filter input
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText("Filter roads...")
+        self.filter_input.setClearButtonEnabled(True)
+        self.filter_input.textChanged.connect(self.apply_filter)
+        layout.addWidget(self.filter_input)
+
+        # Tree widget with drag-drop support
+        self.tree = DraggableTreeWidget()
         self.tree.setHeaderLabel("Roads & Polylines")
         self.tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -53,6 +184,7 @@ class RoadTreeWidget(QWidget):
         self.tree.itemDoubleClicked.connect(self.on_item_double_clicked)
         self.tree.itemSelectionChanged.connect(self.on_selection_changed)
         self.tree.installEventFilter(self)
+        self.tree.polyline_dropped_on_road.connect(self.on_polyline_dropped_on_road)
         layout.addWidget(self.tree)
 
         # Control buttons
@@ -68,6 +200,61 @@ class RoadTreeWidget(QWidget):
         button_layout.addWidget(self.assign_btn)
 
         layout.addLayout(button_layout)
+
+    def apply_filter(self, text: str):
+        """Filter tree items based on search text."""
+        text = text.lower().strip()
+
+        # Show all if empty filter
+        if not text:
+            self._set_all_visible(True)
+            return
+
+        # First hide all items
+        self._set_all_visible(False)
+
+        # Iterate all items and show matching ones
+        iterator = QTreeWidgetItemIterator(self.tree)
+        while iterator.value():
+            item = iterator.value()
+            item_text = item.text(0).lower()
+
+            # Match against item text
+            matches = text in item_text
+
+            # Also check item data (type, id)
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(data, dict):
+                item_type = data.get("type", "").lower()
+                if text in item_type:
+                    matches = True
+                item_id = str(data.get("id", "")).lower()
+                if text in item_id:
+                    matches = True
+
+            if matches:
+                item.setHidden(False)
+                self._ensure_parents_visible(item)
+
+            iterator += 1
+
+    def _ensure_parents_visible(self, item: QTreeWidgetItem):
+        """Make all parent items visible and expanded."""
+        parent = item.parent()
+        while parent:
+            parent.setHidden(False)
+            parent.setExpanded(True)
+            parent = parent.parent()
+        # Also handle top-level items
+        if item.parent() is None:
+            item.setExpanded(True)
+
+    def _set_all_visible(self, visible: bool):
+        """Set visibility on all items."""
+        iterator = QTreeWidgetItemIterator(self.tree)
+        while iterator.value():
+            iterator.value().setHidden(not visible)
+            iterator += 1
 
     def set_project(self, project: Project):
         """Update the project reference and refresh the tree."""
@@ -298,6 +485,26 @@ class RoadTreeWidget(QWidget):
             road.add_polyline(polyline_id)
 
         self.road_modified.emit(selected_road_id)
+        self.refresh_tree()
+
+    def on_polyline_dropped_on_road(self, polyline_id: str, road_id: str):
+        """Handle drag-drop of a polyline onto a road."""
+        road = self.project.get_road(road_id)
+        if not road:
+            return
+
+        # Check if already assigned
+        if polyline_id in road.polyline_ids:
+            return
+
+        # Remove from other roads first (shouldn't happen for unassigned, but be safe)
+        for other_road in self.project.roads:
+            if polyline_id in other_road.polyline_ids:
+                other_road.remove_polyline(polyline_id)
+
+        # Add to target road
+        road.add_polyline(polyline_id)
+        self.road_modified.emit(road_id)
         self.refresh_tree()
 
     def show_context_menu(self, position):

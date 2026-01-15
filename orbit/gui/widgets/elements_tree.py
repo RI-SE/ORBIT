@@ -8,7 +8,8 @@ from typing import Optional
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QMenu, QMessageBox
+    QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
+    QMenu, QMessageBox, QLineEdit
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent
 from PyQt6.QtGui import QAction, QKeyEvent
@@ -49,6 +50,13 @@ class ElementsTreeWidget(QWidget):
         """Setup the widget UI."""
         layout = QVBoxLayout(self)
 
+        # Filter input
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText("Filter elements...")
+        self.filter_input.setClearButtonEnabled(True)
+        self.filter_input.textChanged.connect(self.apply_filter)
+        layout.addWidget(self.filter_input)
+
         # Tree widget
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel("Elements")
@@ -59,6 +67,61 @@ class ElementsTreeWidget(QWidget):
         self.tree.itemSelectionChanged.connect(self.on_selection_changed)
         self.tree.installEventFilter(self)
         layout.addWidget(self.tree)
+
+    def apply_filter(self, text: str):
+        """Filter tree items based on search text."""
+        text = text.lower().strip()
+
+        # Show all if empty filter
+        if not text:
+            self._set_all_visible(True)
+            return
+
+        # First hide all items
+        self._set_all_visible(False)
+
+        # Iterate all items and show matching ones
+        iterator = QTreeWidgetItemIterator(self.tree)
+        while iterator.value():
+            item = iterator.value()
+            item_text = item.text(0).lower()
+
+            # Match against item text
+            matches = text in item_text
+
+            # Also check item data (type, id)
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if isinstance(data, dict):
+                item_type = data.get("type", "").lower()
+                if text in item_type:
+                    matches = True
+                item_id = str(data.get("id", "")).lower()
+                if text in item_id:
+                    matches = True
+
+            if matches:
+                item.setHidden(False)
+                self._ensure_parents_visible(item)
+
+            iterator += 1
+
+    def _ensure_parents_visible(self, item: QTreeWidgetItem):
+        """Make all parent items visible and expanded."""
+        parent = item.parent()
+        while parent:
+            parent.setHidden(False)
+            parent.setExpanded(True)
+            parent = parent.parent()
+        # Also handle top-level items
+        if item.parent() is None:
+            item.setExpanded(True)
+
+    def _set_all_visible(self, visible: bool):
+        """Set visibility on all items."""
+        iterator = QTreeWidgetItemIterator(self.tree)
+        while iterator.value():
+            iterator.value().setHidden(not visible)
+            iterator += 1
 
     def set_project(self, project: Project):
         """Update the project reference and refresh the tree."""
