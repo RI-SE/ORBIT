@@ -12,20 +12,20 @@ import math
 from typing import Tuple, Optional
 
 
-# Color scheme (specified by user)
+# Color scheme (30% opacity = 77 alpha, consistent with lanes/parking)
 COLORS = {
-    ObjectType.BUILDING: QColor(150, 150, 150, 180),       # Gray
-    ObjectType.TREE_BROADLEAF: QColor(34, 139, 34, 180),  # Forest green
-    ObjectType.TREE_CONIFER: QColor(34, 139, 34, 180),    # Forest green
-    ObjectType.BUSH: QColor(34, 139, 34, 180),            # Forest green
-    ObjectType.GUARDRAIL: QColor(25, 25, 112, 180),       # Dark blue
-    ObjectType.LAMPPOST: QColor(255, 255, 255, 220),      # White
+    ObjectType.BUILDING: QColor(150, 150, 150, 77),       # Gray
+    ObjectType.TREE_BROADLEAF: QColor(34, 139, 34, 77),   # Forest green
+    ObjectType.TREE_CONIFER: QColor(34, 139, 34, 77),     # Forest green
+    ObjectType.BUSH: QColor(34, 139, 34, 77),             # Forest green
+    ObjectType.GUARDRAIL: QColor(25, 25, 112, 77),        # Dark blue
+    ObjectType.LAMPPOST: QColor(255, 255, 255, 77),       # White
 }
 
 
 def get_object_color(object_type: ObjectType) -> QColor:
     """Get the display color for an object type."""
-    return COLORS.get(object_type, QColor(128, 128, 128, 180))
+    return COLORS.get(object_type, QColor(128, 128, 128, 77))
 
 
 def create_lamppost_path(scale: float = 1.0) -> QPainterPath:

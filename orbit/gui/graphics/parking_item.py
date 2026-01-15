@@ -16,21 +16,21 @@ from typing import Optional, List, Tuple
 import math
 
 
-# Color mapping by access type
+# Color mapping by access type (30% opacity = 77 alpha, consistent with lanes)
 ACCESS_COLORS = {
-    ParkingAccess.STANDARD: QColor(100, 100, 255, 120),      # Light blue
-    ParkingAccess.DISABLED: QColor(0, 100, 255, 120),        # Blue
-    ParkingAccess.HANDICAPPED: QColor(0, 100, 255, 120),     # Blue
-    ParkingAccess.PRIVATE: QColor(255, 100, 100, 120),       # Light red
-    ParkingAccess.RESERVED: QColor(255, 165, 0, 120),        # Orange
-    ParkingAccess.CUSTOMERS: QColor(100, 255, 100, 120),     # Light green
-    ParkingAccess.COMPANY: QColor(180, 100, 180, 120),       # Purple
-    ParkingAccess.PERMIT: QColor(255, 200, 100, 120),        # Yellow-orange
-    ParkingAccess.WOMEN: QColor(255, 150, 200, 120),         # Pink
-    ParkingAccess.RESIDENTS: QColor(100, 200, 150, 120),     # Teal
+    ParkingAccess.STANDARD: QColor(100, 100, 255, 77),      # Light blue
+    ParkingAccess.DISABLED: QColor(0, 100, 255, 77),        # Blue
+    ParkingAccess.HANDICAPPED: QColor(0, 100, 255, 77),     # Blue
+    ParkingAccess.PRIVATE: QColor(255, 100, 100, 77),       # Light red
+    ParkingAccess.RESERVED: QColor(255, 165, 0, 77),        # Orange
+    ParkingAccess.CUSTOMERS: QColor(100, 255, 100, 77),     # Light green
+    ParkingAccess.COMPANY: QColor(180, 100, 180, 77),       # Purple
+    ParkingAccess.PERMIT: QColor(255, 200, 100, 77),        # Yellow-orange
+    ParkingAccess.WOMEN: QColor(255, 150, 200, 77),         # Pink
+    ParkingAccess.RESIDENTS: QColor(100, 200, 150, 77),     # Teal
 }
 
-DEFAULT_COLOR = QColor(100, 100, 255, 120)
+DEFAULT_COLOR = QColor(100, 100, 255, 77)
 
 # Handle properties
 HANDLE_SIZE = 8

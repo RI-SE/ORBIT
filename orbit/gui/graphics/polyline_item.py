@@ -23,6 +23,7 @@ class PolylineGraphicsItem:
         self.line_items: List = []
         self.point_items: List = []
         self.arrow_items: List = []  # Store arrow graphics for centerline direction
+        self.selection_item = None  # Yellow dashed outline for selection
         self.selected: bool = False
         self.selected_point_index: int = -1
 
@@ -36,6 +37,11 @@ class PolylineGraphicsItem:
         self.line_items.clear()
         self.point_items.clear()
         self.arrow_items.clear()
+
+        # Clear selection highlight
+        if self.selection_item:
+            self.scene.removeItem(self.selection_item)
+            self.selection_item = None
 
         if self.polyline.point_count() < 1:
             return
@@ -87,20 +93,39 @@ class PolylineGraphicsItem:
             if i == self.selected_point_index:
                 point_brush = QBrush(QColor(255, 255, 0) if self.selected else color)
 
+        # Draw selection highlight (yellow dashed bounding rectangle)
+        if self.selected and len(points) >= 1:
+            self._draw_selection_highlight(points)
+
+    def _draw_selection_highlight(self, points: List[Tuple[float, float]]) -> None:
+        """Draw a yellow dashed rectangle around the polyline when selected."""
+        # Calculate bounding box with padding
+        xs = [p[0] for p in points]
+        ys = [p[1] for p in points]
+        padding = 10
+        min_x, max_x = min(xs) - padding, max(xs) + padding
+        min_y, max_y = min(ys) - padding, max(ys) + padding
+
+        # Create dashed yellow pen (consistent with signals/objects/parking)
+        selection_pen = QPen(QColor(255, 200, 0, 200), 2, Qt.PenStyle.DashLine)
+
+        # Draw rectangle
+        self.selection_item = self.scene.addRect(
+            min_x, min_y, max_x - min_x, max_y - min_y,
+            selection_pen
+        )
+        self.selection_item.setZValue(0.5)  # Below lines but above image
+
     def _create_pen_for_polyline(self) -> QPen:
         """Create a pen with appropriate style for the polyline's type and mark type."""
-        # Base color based on line type
+        # Base color based on line type (no longer changes when selected)
         if self.polyline.line_type == LineType.CENTERLINE:
             color = QColor(255, 165, 0)  # Orange for centerline
         else:
             color = QColor(0, 255, 255)  # Cyan for lane boundaries
 
-        # Override with selection color
-        if self.selected:
-            color = QColor(255, 255, 0)  # Yellow when selected
-
-        # Base width
-        width = 3 if self.selected else 2
+        # Base width: 1px default, 2px selected
+        width = 2 if self.selected else 1
 
         # Create pen
         pen = QPen(color, width)
@@ -152,11 +177,8 @@ class PolylineGraphicsItem:
         arrow_size = 15  # Length of arrow head
         arrow_angle = 25  # Angle of arrow head in degrees
 
-        # Color for arrows
-        if self.selected:
-            arrow_color = QColor(255, 255, 0)  # Yellow when selected
-        else:
-            arrow_color = QColor(255, 165, 0)  # Orange for centerline
+        # Color for arrows (always orange - selection shown via dashed outline)
+        arrow_color = QColor(255, 165, 0)  # Orange for centerline
 
         arrow_pen = QPen(arrow_color, 2)
         arrow_brush = QBrush(arrow_color)
@@ -311,3 +333,6 @@ class PolylineGraphicsItem:
         self.line_items.clear()
         self.point_items.clear()
         self.arrow_items.clear()
+        if self.selection_item and self.selection_item.scene() == self.scene:
+            self.scene.removeItem(self.selection_item)
+            self.selection_item = None

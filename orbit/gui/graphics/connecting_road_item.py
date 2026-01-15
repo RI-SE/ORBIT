@@ -52,12 +52,12 @@ class ConnectingRoadGraphicsItem:
         if len(self.connecting_road.path) < 1:
             return
 
-        # Create pen for connecting road (magenta)
-        color = QColor(255, 0, 255)  # Magenta
+        # Create pen for connecting road (purple - distinct from junction labels)
+        color = QColor(150, 0, 150)  # Purple
         if self.selected:
             color = QColor(255, 255, 0)  # Yellow when selected
 
-        width = 3 if self.selected else 2
+        width = 2 if self.selected else 1  # 1px default, 2px selected
         pen = QPen(color, width)
         pen.setStyle(Qt.PenStyle.SolidLine)
 
@@ -97,7 +97,7 @@ class ConnectingRoadGraphicsItem:
 
                 # Reset brush for next point
                 if i == self.selected_point_index:
-                    point_brush = QBrush(QColor(255, 255, 0) if self.selected else color)
+                    point_brush = QBrush(QColor(255, 255, 0) if self.selected else QColor(150, 0, 150))
 
     def _draw_direction_arrows(self, points: List[Tuple[float, float]], pen: QPen) -> None:
         """Draw direction arrows to show the positive direction."""
@@ -109,7 +109,7 @@ class ConnectingRoadGraphicsItem:
         if self.selected:
             arrow_color = QColor(255, 255, 0)  # Yellow when selected
         else:
-            arrow_color = QColor(255, 0, 255)  # Magenta
+            arrow_color = QColor(150, 0, 150)  # Purple
 
         arrow_pen = QPen(arrow_color, 2)
         arrow_brush = QBrush(arrow_color)

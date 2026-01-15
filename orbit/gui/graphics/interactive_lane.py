@@ -84,8 +84,8 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
     def _update_appearance(self) -> None:
         """Update brush and pen based on current state."""
         if self.is_selected:
-            # Selected: dark border and higher opacity
-            pen = QPen(QColor(0, 0, 0, 255), 3)  # Black border, 3px width
+            # Selected: dark border and higher opacity (2px consistent with other elements)
+            pen = QPen(QColor(0, 0, 0, 255), 2)  # Black border, 2px width
             self.setPen(pen)
             self._update_brush(self.SELECTED_ALPHA)
         elif self.is_linked:
