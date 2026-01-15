@@ -432,27 +432,29 @@ class MainWindow(QMainWindow):
         help_menu.addAction(self.shortcuts_action)
 
     def create_toolbar(self):
-        """Create the main toolbar."""
+        """Create the main toolbar with clear visual groups."""
         toolbar = QToolBar("Main Toolbar")
         toolbar.setObjectName("mainToolbar")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
-        toolbar.addAction(self.new_action)
-        toolbar.addAction(self.open_action)
+        # File group (minimal - just Save)
         toolbar.addAction(self.save_action)
         toolbar.addSeparator()
-        toolbar.addAction(self.load_image_action)
-        toolbar.addSeparator()
+
+        # Draw group - tools for adding elements
         toolbar.addAction(self.new_polyline_action)
-        toolbar.addAction(self.group_to_road_action)
-        toolbar.addAction(self.add_junction_action)
         toolbar.addAction(self.add_signal_action)
         toolbar.addAction(self.add_object_action)
         toolbar.addAction(self.add_parking_action)
-        toolbar.addAction(self.measure_action)
-        toolbar.addAction(self.show_scale_action)
         toolbar.addSeparator()
+
+        # Roads group - tools for road structure
+        toolbar.addAction(self.add_junction_action)
+        toolbar.addAction(self.group_to_road_action)
+        toolbar.addSeparator()
+
+        # View group - navigation tools
         toolbar.addAction(self.zoom_in_action)
         toolbar.addAction(self.zoom_out_action)
         toolbar.addAction(self.fit_action)
