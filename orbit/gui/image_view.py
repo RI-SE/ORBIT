@@ -2372,6 +2372,24 @@ class ImageView(QGraphicsView):
             # Emit signal for MainWindow to handle road splitting
             self.road_split_requested.emit(road.id, polyline_id, point_index)
 
+    def _show_boundary_point_menu(self, view_pos, polyline_id: str, point_index: int):
+        """
+        Show context menu for boundary polyline point with Delete option.
+
+        Args:
+            view_pos: Position in view coordinates
+            polyline_id: ID of the polyline
+            point_index: Index of the point clicked
+        """
+        menu = QMenu()
+        delete_action = menu.addAction("Delete Point")
+
+        # Show menu and get selected action
+        action = menu.exec(self.mapToGlobal(view_pos))
+
+        if action == delete_action:
+            self._delete_point(polyline_id, point_index)
+
     def _find_road_by_centerline(self, polyline_id: str) -> Optional[Road]:
         """
         Find the road that has this polyline as its centerline.
@@ -2821,12 +2839,12 @@ class ImageView(QGraphicsView):
                 for polyline_id, item in self.polyline_items.items():
                     point_index = item.get_point_at(scene_pos)
                     if point_index >= 0:
-                        # Check if this is a centerline - if so, show context menu
+                        # Show context menu for the point
                         if item.polyline.line_type == LineType.CENTERLINE:
                             self._show_centerline_point_menu(event.pos(), polyline_id, point_index)
                         else:
-                            # For non-centerline polylines, just delete the point
-                            self._delete_point(polyline_id, point_index)
+                            # For boundary polylines, show simple context menu
+                            self._show_boundary_point_menu(event.pos(), polyline_id, point_index)
                         return
 
                 # Check if right-clicking on a connecting road point to delete

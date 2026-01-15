@@ -10,8 +10,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTreeWidget, QTreeWidgetItem, QMenu, QMessageBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt, pyqtSignal, QEvent
+from PyQt6.QtGui import QAction, QKeyEvent
 
 from orbit.models import Project, Junction, Signal, ParkingSpace
 from orbit.utils.enum_formatting import format_snake_case
@@ -57,6 +57,7 @@ class ElementsTreeWidget(QWidget):
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
         self.tree.itemDoubleClicked.connect(self.on_item_double_clicked)
         self.tree.itemSelectionChanged.connect(self.on_selection_changed)
+        self.tree.installEventFilter(self)
         layout.addWidget(self.tree)
 
     def set_project(self, project: Project):
@@ -544,6 +545,38 @@ class ElementsTreeWidget(QWidget):
                         data["connecting_road_id"],
                         data["lane_id"]
                     )
+
+    def eventFilter(self, obj, event):
+        """Handle keyboard events on the tree widget."""
+        if obj == self.tree and event.type() == QEvent.Type.KeyPress:
+            key_event = event
+            key = key_event.key()
+
+            # Enter/Return: Edit selected item
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                selected_items = self.tree.selectedItems()
+                if selected_items:
+                    self.on_item_double_clicked(selected_items[0], 0)
+                return True
+
+            # Delete: Delete selected item
+            if key == Qt.Key.Key_Delete:
+                selected_items = self.tree.selectedItems()
+                if selected_items:
+                    item = selected_items[0]
+                    data = item.data(0, Qt.ItemDataRole.UserRole)
+                    if isinstance(data, dict):
+                        if data["type"] == "junction":
+                            self.delete_junction(data["id"])
+                        elif data["type"] == "signal":
+                            self.delete_signal(data["id"])
+                        elif data["type"] == "object":
+                            self.delete_object(data["id"])
+                        elif data["type"] == "parking":
+                            self.delete_parking(data["id"])
+                return True
+
+        return super().eventFilter(obj, event)
 
     def select_junction(self, junction_id: str):
         """Programmatically select a junction in the tree."""

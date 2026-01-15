@@ -303,7 +303,7 @@ class MainWindow(QMainWindow):
         self.add_junction_action.triggered.connect(self.add_junction)
 
         self.create_roundabout_action = QAction("Create &Roundabout...", self)
-        self.create_roundabout_action.setShortcut(QKeySequence("Ctrl+R"))
+        self.create_roundabout_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
         self.create_roundabout_action.setStatusTip("Create a roundabout with wizard")
         self.create_roundabout_action.triggered.connect(self.create_roundabout)
 
@@ -314,7 +314,7 @@ class MainWindow(QMainWindow):
         self.add_signal_action.triggered.connect(self.add_signal)
 
         self.add_object_action = QAction("Add &Object", self)
-        self.add_object_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
+        self.add_object_action.setShortcut(QKeySequence("Ctrl+Alt+O"))
         self.add_object_action.setStatusTip("Add a roadside object (lamppost, building, tree, etc.)")
         self.add_object_action.setCheckable(True)
         self.add_object_action.triggered.connect(self.add_object)
@@ -325,7 +325,8 @@ class MainWindow(QMainWindow):
         self.add_parking_action.setCheckable(True)
         self.add_parking_action.triggered.connect(self.add_parking)
 
-        self.georef_action = QAction("&Georeferencing...", self)
+        self.georef_action = QAction("&Control Points...", self)
+        self.georef_action.setShortcut(QKeySequence("Ctrl+Shift+G"))
         self.georef_action.setStatusTip("Configure georeferencing control points")
         self.georef_action.triggered.connect(self.open_georeferencing)
 
@@ -336,7 +337,7 @@ class MainWindow(QMainWindow):
         self.measure_action.triggered.connect(self.toggle_measure_mode)
 
         self.show_scale_action = QAction("Show &Scale Factor", self)
-        self.show_scale_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        self.show_scale_action.setShortcut(QKeySequence("Ctrl+K"))
         self.show_scale_action.setStatusTip("Show scale factor at clicked points")
         self.show_scale_action.setCheckable(True)
         self.show_scale_action.triggered.connect(self.toggle_show_scale_mode)
@@ -346,6 +347,10 @@ class MainWindow(QMainWindow):
         self.about_action.setStatusTip("About this application")
         self.about_action.triggered.connect(self.show_about)
 
+        self.shortcuts_action = QAction("&Keyboard Shortcuts", self)
+        self.shortcuts_action.setStatusTip("Show keyboard shortcuts reference")
+        self.shortcuts_action.triggered.connect(self.show_keyboard_shortcuts)
+
     def create_menus(self):
         """Create the menu bar."""
         menubar = self.menuBar()
@@ -354,16 +359,19 @@ class MainWindow(QMainWindow):
         file_menu = menubar.addMenu("&File")
         file_menu.addAction(self.new_action)
         file_menu.addAction(self.open_action)
-        file_menu.addSeparator()
         file_menu.addAction(self.save_action)
         file_menu.addAction(self.save_as_action)
         file_menu.addSeparator()
         file_menu.addAction(self.load_image_action)
         file_menu.addSeparator()
-        file_menu.addAction(self.export_action)
-        file_menu.addAction(self.export_georef_action)
-        file_menu.addAction(self.import_osm_action)
-        file_menu.addAction(self.import_opendrive_action)
+        # Import submenu
+        import_menu = file_menu.addMenu("&Import")
+        import_menu.addAction(self.import_osm_action)
+        import_menu.addAction(self.import_opendrive_action)
+        # Export submenu
+        export_menu = file_menu.addMenu("&Export")
+        export_menu.addAction(self.export_action)
+        export_menu.addAction(self.export_georef_action)
         file_menu.addSeparator()
         file_menu.addAction(self.exit_action)
 
@@ -380,40 +388,48 @@ class MainWindow(QMainWindow):
 
         # View menu
         view_menu = menubar.addMenu("&View")
-        view_menu.addAction(self.zoom_in_action)
-        view_menu.addAction(self.zoom_out_action)
-        view_menu.addAction(self.fit_action)
-        view_menu.addAction(self.reset_view_action)
+        # Zoom submenu
+        zoom_menu = view_menu.addMenu("&Zoom")
+        zoom_menu.addAction(self.zoom_in_action)
+        zoom_menu.addAction(self.zoom_out_action)
+        zoom_menu.addAction(self.fit_action)
+        zoom_menu.addAction(self.reset_view_action)
         view_menu.addSeparator()
         view_menu.addAction(self.toggle_lanes_action)
         view_menu.addAction(self.toggle_soffsets_action)
         view_menu.addAction(self.toggle_junction_debug_action)
         view_menu.addSeparator()
-        view_menu.addAction(self.toggle_adjustment_action)
-        view_menu.addSeparator()
-
         # Uncertainty overlay submenu
         uncertainty_menu = view_menu.addMenu("Uncertainty Overlay")
         uncertainty_menu.addAction(self.uncertainty_none_action)
         uncertainty_menu.addAction(self.uncertainty_position_action)
 
-        # Tools menu
-        tools_menu = menubar.addMenu("&Tools")
-        tools_menu.addAction(self.new_polyline_action)
-        tools_menu.addAction(self.group_to_road_action)
-        tools_menu.addAction(self.add_junction_action)
-        tools_menu.addAction(self.create_roundabout_action)
-        tools_menu.addAction(self.add_signal_action)
-        tools_menu.addAction(self.add_object_action)
-        tools_menu.addAction(self.add_parking_action)
-        tools_menu.addAction(self.measure_action)
-        tools_menu.addAction(self.show_scale_action)
-        tools_menu.addSeparator()
-        tools_menu.addAction(self.georef_action)
+        # Draw menu (drawing/placement tools)
+        draw_menu = menubar.addMenu("&Draw")
+        draw_menu.addAction(self.new_polyline_action)
+        draw_menu.addSeparator()
+        draw_menu.addAction(self.add_signal_action)
+        draw_menu.addAction(self.add_object_action)
+        draw_menu.addAction(self.add_parking_action)
+
+        # Roads menu (road-specific operations)
+        roads_menu = menubar.addMenu("&Roads")
+        roads_menu.addAction(self.group_to_road_action)
+        roads_menu.addAction(self.add_junction_action)
+        roads_menu.addAction(self.create_roundabout_action)
+
+        # Georeferencing menu
+        georef_menu = menubar.addMenu("&Georeferencing")
+        georef_menu.addAction(self.georef_action)
+        georef_menu.addAction(self.toggle_adjustment_action)
+        georef_menu.addSeparator()
+        georef_menu.addAction(self.measure_action)
+        georef_menu.addAction(self.show_scale_action)
 
         # Help menu
         help_menu = menubar.addMenu("&Help")
         help_menu.addAction(self.about_action)
+        help_menu.addAction(self.shortcuts_action)
 
     def create_toolbar(self):
         """Create the main toolbar."""
@@ -2914,6 +2930,67 @@ class MainWindow(QMainWindow):
             "A tool for annotating roads in drone/aerial/satellite imagery "
             "and exporting to ASAM OpenDrive format."
         )
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.exec()
+
+    def show_keyboard_shortcuts(self):
+        """Show keyboard shortcuts reference dialog."""
+        shortcuts_text = """
+<h3>File</h3>
+<table>
+<tr><td><b>Ctrl+N</b></td><td>New Project</td></tr>
+<tr><td><b>Ctrl+O</b></td><td>Open Project</td></tr>
+<tr><td><b>Ctrl+S</b></td><td>Save</td></tr>
+<tr><td><b>Ctrl+Shift+S</b></td><td>Save As</td></tr>
+<tr><td><b>Ctrl+I</b></td><td>Load Image</td></tr>
+<tr><td><b>Ctrl+Shift+I</b></td><td>Import OpenStreetMap</td></tr>
+<tr><td><b>Ctrl+Shift+O</b></td><td>Import OpenDRIVE</td></tr>
+<tr><td><b>Ctrl+E</b></td><td>Export OpenDRIVE</td></tr>
+</table>
+
+<h3>View</h3>
+<table>
+<tr><td><b>Ctrl++</b></td><td>Zoom In</td></tr>
+<tr><td><b>Ctrl+-</b></td><td>Zoom Out</td></tr>
+<tr><td><b>Ctrl+0</b></td><td>Fit to Window</td></tr>
+<tr><td><b>Ctrl+R</b></td><td>Reset View</td></tr>
+<tr><td><b>Ctrl+L</b></td><td>Toggle Lane Visualization</td></tr>
+</table>
+
+<h3>Draw</h3>
+<table>
+<tr><td><b>Ctrl+P</b></td><td>New Polyline</td></tr>
+<tr><td><b>Ctrl+T</b></td><td>Add Signal</td></tr>
+<tr><td><b>Ctrl+Alt+O</b></td><td>Add Object</td></tr>
+<tr><td><b>Ctrl+Shift+P</b></td><td>Add Parking</td></tr>
+</table>
+
+<h3>Roads</h3>
+<table>
+<tr><td><b>Ctrl+G</b></td><td>Group to Road</td></tr>
+<tr><td><b>Ctrl+J</b></td><td>Add Junction</td></tr>
+<tr><td><b>Ctrl+Shift+R</b></td><td>Create Roundabout</td></tr>
+</table>
+
+<h3>Georeferencing</h3>
+<table>
+<tr><td><b>Ctrl+Shift+G</b></td><td>Control Points</td></tr>
+<tr><td><b>Ctrl+Shift+A</b></td><td>Adjust Alignment</td></tr>
+<tr><td><b>Ctrl+M</b></td><td>Measure Distance</td></tr>
+<tr><td><b>Ctrl+K</b></td><td>Show Scale Factor</td></tr>
+</table>
+
+<h3>Editing</h3>
+<table>
+<tr><td><b>Delete</b></td><td>Delete Selected</td></tr>
+<tr><td><b>Enter/Return</b></td><td>Finish Drawing</td></tr>
+<tr><td><b>Escape</b></td><td>Cancel Operation</td></tr>
+</table>
+"""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Keyboard Shortcuts")
+        msg_box.setText("<h2>Keyboard Shortcuts</h2>")
+        msg_box.setInformativeText(shortcuts_text)
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg_box.exec()
 

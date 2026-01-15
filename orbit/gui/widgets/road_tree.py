@@ -10,8 +10,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTreeWidget, QTreeWidgetItem, QMenu, QMessageBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt, pyqtSignal, QEvent
+from PyQt6.QtGui import QAction, QKeyEvent
 
 from orbit.models import Project, Road, Polyline, LaneType
 from ..utils.message_helpers import show_info, ask_yes_no
@@ -50,6 +50,7 @@ class RoadTreeWidget(QWidget):
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
         self.tree.itemDoubleClicked.connect(self.on_item_double_clicked)
         self.tree.itemSelectionChanged.connect(self.on_selection_changed)
+        self.tree.installEventFilter(self)
         layout.addWidget(self.tree)
 
         # Control buttons
@@ -473,6 +474,42 @@ class RoadTreeWidget(QWidget):
                     self.polyline_selected.emit(data["id"])
                 elif data["type"] == "lane":
                     self.lane_selected.emit(data["road_id"], data["section_number"], data["lane_id"])
+
+    def eventFilter(self, obj, event):
+        """Handle keyboard events on the tree widget."""
+        if obj == self.tree and event.type() == QEvent.Type.KeyPress:
+            key_event = event
+            key = key_event.key()
+
+            # Enter/Return: Edit selected item
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                selected_items = self.tree.selectedItems()
+                if selected_items:
+                    self.on_item_double_clicked(selected_items[0], 0)
+                return True
+
+            # Delete: Delete selected item
+            if key == Qt.Key.Key_Delete:
+                selected_items = self.tree.selectedItems()
+                if selected_items:
+                    item = selected_items[0]
+                    data = item.data(0, Qt.ItemDataRole.UserRole)
+                    if isinstance(data, dict):
+                        if data["type"] == "road":
+                            self.delete_road(data["id"])
+                        elif data["type"] == "polyline":
+                            # Check if it's assigned to a road
+                            is_assigned = any(
+                                data["id"] in road.polyline_ids
+                                for road in self.project.roads
+                            )
+                            if is_assigned:
+                                self.unassign_polyline(data["id"])
+                            else:
+                                self.delete_polyline(data["id"])
+                return True
+
+        return super().eventFilter(obj, event)
 
     def select_road(self, road_id: str):
         """Programmatically select a road in the tree."""
