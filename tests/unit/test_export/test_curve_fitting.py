@@ -425,3 +425,533 @@ class TestTolerances:
         # Tighter tolerance typically results in more elements
         assert len(elements_tight) > 0
         assert len(elements_loose) > 0
+
+
+# ============================================================================
+# Test Spiral/Clothoid Fitting
+# ============================================================================
+
+def create_spiral_points(
+    x0: float, y0: float, theta0: float,
+    kappa_start: float, kappa_end: float,
+    length: float, num_points: int = 30
+) -> List[Tuple[float, float]]:
+    """Create points along a clothoid spiral with linearly varying curvature."""
+    points = []
+    kappa_rate = (kappa_end - kappa_start) / length if length > 0 else 0
+
+    x, y = x0, y0
+    theta = theta0
+
+    for i in range(num_points):
+        points.append((x, y))
+        s = (i / (num_points - 1)) * length
+        ds = length / (num_points - 1)
+
+        # Update position using current heading
+        x += math.cos(theta) * ds
+        y += math.sin(theta) * ds
+
+        # Update heading using curvature at this point
+        kappa = kappa_start + kappa_rate * s
+        theta += kappa * ds
+
+    return points
+
+
+class TestCurveFitterWithSpirals:
+    """Test CurveFitter with spiral fitting enabled."""
+
+    def test_fitter_with_spirals_enabled(self):
+        """Test creating fitter with spirals enabled."""
+        fitter = CurveFitter(
+            preserve_geometry=False,
+            enable_spirals=True,
+            spiral_tolerance=0.5
+        )
+
+        assert fitter.enable_spirals is True
+        assert fitter.spiral_tolerance == 0.5
+
+    def test_fit_polyline_with_spirals_flag(self):
+        """Test that fit_polyline uses spiral fitting when enabled."""
+        points = create_line_points((0, 0), (100, 0), num_points=10)
+        fitter = CurveFitter(preserve_geometry=False, enable_spirals=True)
+
+        elements = fitter.fit_polyline(points)
+
+        # Should still produce valid elements
+        assert len(elements) >= 1
+
+
+class TestEstimateCurvatures:
+    """Test curvature estimation from polyline points."""
+
+    def test_estimate_curvatures_straight_line(self):
+        """Test curvature estimation for straight line."""
+        points = create_line_points((0, 0), (100, 0), num_points=10)
+        fitter = CurveFitter()
+
+        curvatures, s_values = fitter._estimate_curvatures(points)
+
+        # Straight line should have near-zero curvature
+        assert len(curvatures) == len(points) - 2  # Interior points only
+        for k in curvatures:
+            assert abs(k) < 0.01
+
+    def test_estimate_curvatures_arc(self):
+        """Test curvature estimation for circular arc."""
+        radius = 50.0
+        points = create_arc_points((0, 0), radius, 0, math.pi / 2, num_points=20)
+        fitter = CurveFitter()
+
+        curvatures, s_values = fitter._estimate_curvatures(points)
+
+        # Arc should have constant curvature ≈ 1/radius
+        expected_curvature = 1.0 / radius
+        for k in curvatures:
+            assert abs(k) == pytest.approx(expected_curvature, rel=0.2)
+
+    def test_estimate_curvatures_insufficient_points(self):
+        """Test curvature estimation with insufficient points."""
+        fitter = CurveFitter()
+
+        curvatures, s_values = fitter._estimate_curvatures([(0, 0), (10, 0)])
+
+        assert curvatures == []
+        assert s_values == []
+
+    def test_estimate_curvatures_with_s_values(self):
+        """Test that s_values correspond to arc length positions."""
+        points = create_line_points((0, 0), (100, 0), num_points=11)
+        fitter = CurveFitter()
+
+        curvatures, s_values = fitter._estimate_curvatures(points)
+
+        # s_values should be increasing
+        for i in range(1, len(s_values)):
+            assert s_values[i] > s_values[i - 1]
+
+
+class TestEvalClothoid:
+    """Test clothoid evaluation function."""
+
+    def test_eval_clothoid_straight_line(self):
+        """Test clothoid evaluation for straight line (zero curvature)."""
+        fitter = CurveFitter()
+
+        x, y, theta = fitter._eval_clothoid(
+            s=10.0, x0=0.0, y0=0.0, theta0=0.0,
+            kappa0=0.0, kappa_rate=0.0
+        )
+
+        # Should move 10 units east
+        assert x == pytest.approx(10.0, abs=0.01)
+        assert y == pytest.approx(0.0, abs=0.01)
+        assert theta == pytest.approx(0.0, abs=0.01)
+
+    def test_eval_clothoid_circular_arc(self):
+        """Test clothoid evaluation for circular arc (constant curvature)."""
+        fitter = CurveFitter()
+        radius = 50.0
+        curvature = 1.0 / radius
+
+        # Quarter circle: arc length = (π/2) * radius
+        arc_length = (math.pi / 2) * radius
+
+        x, y, theta = fitter._eval_clothoid(
+            s=arc_length, x0=50.0, y0=0.0, theta0=math.pi / 2,
+            kappa0=curvature, kappa_rate=0.0
+        )
+
+        # Final heading should be π (pointing left)
+        assert theta == pytest.approx(math.pi, abs=0.1)
+
+    def test_eval_clothoid_with_curvature_rate(self):
+        """Test clothoid evaluation with varying curvature."""
+        fitter = CurveFitter()
+
+        # Start straight, end curved
+        x, y, theta = fitter._eval_clothoid(
+            s=20.0, x0=0.0, y0=0.0, theta0=0.0,
+            kappa0=0.0, kappa_rate=0.01
+        )
+
+        # Heading should have increased (turned left)
+        assert theta > 0
+
+
+class TestEvalClothoidPoints:
+    """Test clothoid point generation."""
+
+    def test_eval_clothoid_points_straight(self):
+        """Test generating points along straight clothoid."""
+        fitter = CurveFitter()
+
+        points = fitter._eval_clothoid_points(
+            length=100.0, x0=0.0, y0=0.0, theta0=0.0,
+            kappa0=0.0, kappa_end=0.0, n_samples=10
+        )
+
+        # Should have 11 points (n_samples + 1)
+        assert len(points) == 11
+
+        # First point at origin
+        assert points[0] == pytest.approx((0.0, 0.0), abs=0.01)
+
+        # Last point approximately 100 units east
+        assert points[-1][0] == pytest.approx(100.0, abs=1.0)
+
+    def test_eval_clothoid_points_zero_length(self):
+        """Test generating points for zero length clothoid."""
+        fitter = CurveFitter()
+
+        points = fitter._eval_clothoid_points(
+            length=0.0, x0=5.0, y0=10.0, theta0=0.0,
+            kappa0=0.0, kappa_end=0.0
+        )
+
+        # Should return single starting point
+        assert len(points) == 1
+        assert points[0] == (5.0, 10.0)
+
+
+class TestFindSpiralSegment:
+    """Test spiral segment detection."""
+
+    def test_find_spiral_segment_insufficient_points(self):
+        """Test with too few points for spiral detection."""
+        points = [(0, 0), (10, 0), (20, 0)]
+        fitter = CurveFitter(enable_spirals=True)
+
+        end, k_start, k_end = fitter._find_spiral_segment(points, 0)
+
+        # Should return start + 1 (no spiral found)
+        assert end == 1
+        assert k_start == 0.0
+        assert k_end == 0.0
+
+    def test_find_spiral_segment_straight_line(self):
+        """Test spiral detection on straight line."""
+        points = create_line_points((0, 0), (100, 0), num_points=20)
+        fitter = CurveFitter(enable_spirals=True)
+
+        end, k_start, k_end = fitter._find_spiral_segment(points, 0)
+
+        # Straight line is not a spiral (constant zero curvature)
+        # Should return early index
+        assert end <= 2
+
+
+class TestValidateSpiralFit:
+    """Test spiral fit validation."""
+
+    def test_validate_spiral_fit_insufficient_points(self):
+        """Test validation with insufficient points."""
+        fitter = CurveFitter()
+
+        result = fitter._validate_spiral_fit(
+            [(0, 0), (10, 0)], kappa_start=0.0, kappa_end=0.01
+        )
+
+        assert result is False
+
+    def test_validate_spiral_fit_zero_length(self):
+        """Test validation with zero-length path."""
+        fitter = CurveFitter()
+
+        result = fitter._validate_spiral_fit(
+            [(5, 5), (5, 5), (5, 5)], kappa_start=0.0, kappa_end=0.01
+        )
+
+        assert result is False
+
+
+class TestFitSpiral:
+    """Test spiral fitting optimization."""
+
+    def test_fit_spiral_insufficient_points(self):
+        """Test fitting with insufficient points."""
+        fitter = CurveFitter()
+
+        result = fitter._fit_spiral([(0, 0), (10, 0)], 0.0, 0.01)
+
+        assert result is None
+
+    def test_fit_spiral_zero_length(self):
+        """Test fitting zero-length path."""
+        fitter = CurveFitter()
+
+        result = fitter._fit_spiral([(5, 5), (5, 5), (5, 5)], 0.0, 0.01)
+
+        assert result is None
+
+    def test_fit_spiral_returns_valid_parameters(self):
+        """Test fitting returns valid parameters."""
+        # Create approximate spiral points
+        points = []
+        x, y = 0.0, 0.0
+        theta = 0.0
+        kappa = 0.0
+        for i in range(20):
+            points.append((x, y))
+            ds = 5.0
+            x += math.cos(theta) * ds
+            y += math.sin(theta) * ds
+            kappa += 0.001
+            theta += kappa * ds
+
+        fitter = CurveFitter()
+        result = fitter._fit_spiral(points, 0.0, 0.02)
+
+        if result is not None:
+            x0, y0, theta0, length, k0, k1 = result
+            assert length > 0
+
+
+class TestCreateSpiralElement:
+    """Test spiral geometry element creation."""
+
+    def test_create_spiral_element_insufficient_points(self):
+        """Test creating spiral with insufficient points."""
+        fitter = CurveFitter()
+
+        result = fitter._create_spiral_element(
+            [(0, 0), (10, 0)], 0, 2, 0.0, 0.01
+        )
+
+        assert result is None
+
+
+class TestFitPolylineWithSpirals:
+    """Test the full spiral-enabled fitting pipeline."""
+
+    def test_fit_polyline_with_spirals_empty(self):
+        """Test spiral fitting with empty polyline."""
+        fitter = CurveFitter(enable_spirals=True)
+
+        elements = fitter.fit_polyline_with_spirals([])
+
+        assert elements == []
+
+    def test_fit_polyline_with_spirals_single_point(self):
+        """Test spiral fitting with single point."""
+        fitter = CurveFitter(enable_spirals=True)
+
+        elements = fitter.fit_polyline_with_spirals([(0, 0)])
+
+        assert elements == []
+
+    def test_fit_polyline_with_spirals_line(self):
+        """Test spiral fitting recognizes straight lines."""
+        points = create_line_points((0, 0), (100, 0), num_points=15)
+        fitter = CurveFitter(enable_spirals=True)
+
+        elements = fitter.fit_polyline_with_spirals(points)
+
+        # Should produce line elements
+        assert len(elements) >= 1
+        assert any(e.geom_type == GeometryType.LINE for e in elements)
+
+    def test_fit_polyline_with_spirals_arc(self):
+        """Test spiral fitting with arc points."""
+        points = create_arc_points((0, 0), 50.0, 0, math.pi / 2, num_points=25)
+        fitter = CurveFitter(enable_spirals=True, arc_tolerance=2.0)
+
+        elements = fitter.fit_polyline_with_spirals(points)
+
+        # Should produce some elements
+        assert len(elements) >= 1
+
+
+# ============================================================================
+# Test Circle Fitting
+# ============================================================================
+
+class TestCircleFitting:
+    """Test circle fitting for arc detection."""
+
+    def test_fit_circle_perfect_arc(self):
+        """Test fitting circle to perfect arc points."""
+        center = (50.0, 50.0)
+        radius = 30.0
+        points = create_arc_points(center, radius, 0, math.pi, num_points=20)
+
+        fitter = CurveFitter()
+        result = fitter._fit_circle(points)
+
+        assert result is not None
+        fitted_center, fitted_radius = result
+        assert fitted_center[0] == pytest.approx(center[0], abs=1.0)
+        assert fitted_center[1] == pytest.approx(center[1], abs=1.0)
+        assert fitted_radius == pytest.approx(radius, abs=1.0)
+
+    def test_fit_circle_noisy_points(self):
+        """Test fitting circle with slightly noisy points."""
+        import random
+        random.seed(42)
+
+        center = (0.0, 0.0)
+        radius = 50.0
+        points = []
+        for i in range(20):
+            angle = (i / 19) * math.pi
+            x = center[0] + radius * math.cos(angle) + random.uniform(-0.5, 0.5)
+            y = center[1] + radius * math.sin(angle) + random.uniform(-0.5, 0.5)
+            points.append((x, y))
+
+        fitter = CurveFitter()
+        result = fitter._fit_circle(points)
+
+        assert result is not None
+        fitted_center, fitted_radius = result
+        assert fitted_radius == pytest.approx(radius, rel=0.1)
+
+
+# ============================================================================
+# Test Arc Element Creation
+# ============================================================================
+
+class TestArcElementCreation:
+    """Test arc geometry element creation."""
+
+    def test_create_arc_element_quarter_circle(self):
+        """Test creating arc element from quarter circle."""
+        points = create_arc_points((0, 0), 50.0, 0, math.pi / 2, num_points=20)
+        fitter = CurveFitter()
+
+        element = fitter._create_arc_element(points, 0, len(points) - 1)
+
+        assert element is not None
+        assert element.geom_type == GeometryType.ARC
+        assert element.length > 0
+        assert element.curvature != 0
+
+    def test_create_arc_element_invalid_circle(self):
+        """Test creating arc element when circle fitting fails."""
+        # Collinear points - circle fitting should fail
+        points = [(0, 0), (10, 0), (20, 0)]
+        fitter = CurveFitter()
+
+        element = fitter._create_arc_element(points, 0, 2)
+
+        # May return None or fallback
+        # Just ensure no exception is raised
+
+
+# ============================================================================
+# Test Line Segment Detection
+# ============================================================================
+
+class TestLineSegmentDetection:
+    """Test line segment finding logic."""
+
+    def test_find_line_segment_all_collinear(self):
+        """Test finding line segment when all points are collinear."""
+        points = create_line_points((0, 0), (100, 0), num_points=10)
+        fitter = CurveFitter(line_tolerance=0.1)
+
+        end = fitter._find_line_segment(points, 0)
+
+        # Should include all points
+        assert end == len(points)
+
+    def test_find_line_segment_partial(self):
+        """Test finding line segment with non-collinear tail."""
+        # First part straight, then curves
+        line_part = create_line_points((0, 0), (50, 0), num_points=5)
+        curve_part = [(60, 10), (70, 30), (80, 60)]
+        points = line_part + curve_part
+
+        fitter = CurveFitter(line_tolerance=0.1)
+
+        end = fitter._find_line_segment(points, 0)
+
+        # Should stop before curve
+        assert end <= 6
+
+    def test_find_line_segment_at_end(self):
+        """Test finding line segment near end of polyline."""
+        points = [(0, 0), (10, 0), (20, 0)]
+        fitter = CurveFitter()
+
+        end = fitter._find_line_segment(points, 2)
+
+        # At last point, should return start + 1
+        assert end == 3
+
+
+class TestIsLine:
+    """Test line checking logic."""
+
+    def test_is_line_two_points(self):
+        """Test that any two points form a line."""
+        fitter = CurveFitter()
+
+        result = fitter._is_line([(0, 0), (100, 50)])
+
+        assert result == True
+
+    def test_is_line_single_point(self):
+        """Test that single point is a line."""
+        fitter = CurveFitter()
+
+        result = fitter._is_line([(5, 5)])
+
+        assert result == True
+
+    def test_is_line_horizontal(self):
+        """Test horizontal line detection."""
+        points = [(0, 5), (50, 5), (100, 5)]
+        fitter = CurveFitter(line_tolerance=0.1)
+
+        result = fitter._is_line(points)
+
+        assert result == True
+
+    def test_is_line_vertical(self):
+        """Test vertical line detection."""
+        points = [(5, 0), (5, 50), (5, 100)]
+        fitter = CurveFitter(line_tolerance=0.1)
+
+        result = fitter._is_line(points)
+
+        assert result == True
+
+    def test_is_line_with_deviation(self):
+        """Test line detection with point deviation."""
+        # Middle point slightly off line
+        points = [(0, 0), (50, 2), (100, 0)]
+        fitter_strict = CurveFitter(line_tolerance=0.1)
+        fitter_loose = CurveFitter(line_tolerance=5.0)
+
+        assert fitter_strict._is_line(points) == False
+        assert fitter_loose._is_line(points) == True
+
+
+# ============================================================================
+# Test Zero-Length Handling
+# ============================================================================
+
+class TestZeroLengthHandling:
+    """Test handling of zero-length segments."""
+
+    def test_create_line_element_zero_length(self):
+        """Test creating line element with zero length."""
+        fitter = CurveFitter()
+
+        element = fitter._create_line_element([(5, 5), (5, 5)], 0, 1)
+
+        # Should return None for zero-length
+        assert element is None
+
+    def test_preserve_geometry_skips_zero_length(self):
+        """Test that preserve geometry mode skips zero-length segments."""
+        points = [(0, 0), (0, 0), (10, 0)]  # First segment is zero-length
+        fitter = CurveFitter(preserve_geometry=True)
+
+        elements = fitter.fit_polyline(points)
+
+        # Should only create one element (skipping zero-length)
+        assert len(elements) == 1
+        assert elements[0].length > 0

@@ -465,3 +465,244 @@ class TestPointToPolylinePerpendicularDistance:
         )
         # With only one point, no segments to check
         assert dist is None
+
+    def test_degenerate_segment(self):
+        """Test with degenerate (zero-length) segment in polyline."""
+        point = (5.0, 0.0)
+        perp = (0.0, 1.0)
+        # Polyline with a zero-length segment
+        polyline = [(5.0, 3.0), (5.0, 3.0), (10.0, 3.0)]
+
+        dist = _point_to_polyline_perpendicular_distance(
+            point, perp, polyline, lane_id=-1
+        )
+        assert dist is not None
+        assert dist == pytest.approx(3.0)
+
+
+# ============================================================================
+# Test fit_lane_width_polynomial - Success Cases
+# ============================================================================
+
+class TestFitLaneWidthPolynomialSuccess:
+    """Test successful lane width polynomial fitting with both boundaries.
+
+    Note: fit_lane_width_polynomial uses perpendicular ray casting where the
+    perpendicular vector is computed as (-ty, tx) which points LEFT of travel
+    in math coords (Y-up). The function expects:
+    - For right lane: perp direction hits left_boundary, -perp hits right_boundary
+    - This works correctly for vertical roads in screen coords
+    """
+
+    def test_vertical_road(self, vertical_road_geometry):
+        """Test fitting for vertical road orientation."""
+        centerline, left_boundary, right_boundary = vertical_road_geometry
+
+        a, b, c, d, rmse = fit_lane_width_polynomial(
+            centerline, left_boundary, right_boundary, lane_id=-1, scale=1.0
+        )
+
+        # Should fit correctly - total width is 7.0 (3.5 on each side)
+        assert a == pytest.approx(7.0, rel=0.1)
+        assert rmse < 0.2
+
+    def test_vertical_road_left_lane(self, vertical_road_geometry):
+        """Test fitting for left lane on vertical road."""
+        centerline, left_boundary, right_boundary = vertical_road_geometry
+
+        a, b, c, d, rmse = fit_lane_width_polynomial(
+            centerline, left_boundary, right_boundary, lane_id=1, scale=1.0
+        )
+
+        assert a == pytest.approx(7.0, rel=0.1)
+        assert rmse < 0.2
+
+    def test_vertical_road_with_scale(self, vertical_road_geometry):
+        """Test fitting with scale factor on vertical road."""
+        centerline, left_boundary, right_boundary = vertical_road_geometry
+
+        a, b, c, d, rmse = fit_lane_width_polynomial(
+            centerline, left_boundary, right_boundary, lane_id=-1, scale=0.5
+        )
+
+        # Width should be 7.0 * 0.5 = 3.5
+        assert a == pytest.approx(3.5, rel=0.1)
+
+    def test_vertical_tapered_road(self):
+        """Test fitting for tapered vertical road."""
+        # Vertical centerline
+        centerline = [(0.0, float(i * 10)) for i in range(11)]
+
+        # Left boundary that tapers from -1.5 to -2.5
+        left_boundary = []
+        for i in range(11):
+            y = float(i * 10)
+            offset = -(1.5 + (i / 10.0))  # -1.5 to -2.5
+            left_boundary.append((offset, y))
+
+        # Right boundary that tapers from 1.5 to 2.5
+        right_boundary = []
+        for i in range(11):
+            y = float(i * 10)
+            offset = 1.5 + (i / 10.0)  # 1.5 to 2.5
+            right_boundary.append((offset, y))
+
+        a, b, c, d, rmse = fit_lane_width_polynomial(
+            centerline, left_boundary, right_boundary, lane_id=-1, scale=1.0
+        )
+
+        # Width varies from 3.0 to 5.0, starting around 3.0
+        assert a == pytest.approx(3.0, rel=0.2)
+        # b should be positive (widening road)
+        assert b > 0
+        assert rmse < 0.5
+
+
+# ============================================================================
+# Test Polynomial Degree Fallbacks
+# ============================================================================
+
+class TestPolynomialDegreeFallbacks:
+    """Test polynomial degree fallbacks based on available sample points."""
+
+    def test_quadratic_fit_three_points(self):
+        """Test quadratic fit when only 3 sample points available."""
+        # Short centerline with just 3 points
+        centerline = [(0.0, 0.0), (50.0, 0.0), (100.0, 0.0)]
+        # Boundary at constant distance
+        boundary = [(0.0, 3.5), (50.0, 3.5), (100.0, 3.5)]
+
+        a, b, c, d, rmse = fit_single_lane_width(
+            centerline, boundary, lane_id=-1, scale=1.0
+        )
+
+        # Should still produce valid coefficients
+        assert a == pytest.approx(3.5, rel=0.1)
+        # d should be 0 for quadratic fit
+        assert d == pytest.approx(0.0, abs=0.01)
+
+    def test_linear_fit_two_points(self):
+        """Test linear fit when only 2 sample points available."""
+        # Minimal centerline with 2 points
+        centerline = [(0.0, 0.0), (100.0, 0.0)]
+        # Boundary at constant distance
+        boundary = [(0.0, 3.5), (100.0, 3.5)]
+
+        a, b, c, d, rmse = fit_single_lane_width(
+            centerline, boundary, lane_id=-1, scale=1.0
+        )
+
+        # Should produce valid linear fit
+        assert a == pytest.approx(3.5, rel=0.1)
+        # c and d should be 0 for linear fit
+        assert c == pytest.approx(0.0, abs=0.01)
+        assert d == pytest.approx(0.0, abs=0.01)
+
+    def test_linear_fit_varying_width(self):
+        """Test linear fit captures width variation with 2 points."""
+        centerline = [(0.0, 0.0), (100.0, 0.0)]
+        # Boundary that widens from 2 to 4
+        boundary = [(0.0, 2.0), (100.0, 4.0)]
+
+        a, b, c, d, rmse = fit_single_lane_width(
+            centerline, boundary, lane_id=-1, scale=1.0
+        )
+
+        # Should have starting width around 2 and positive slope
+        assert a == pytest.approx(2.0, rel=0.2)
+        assert b > 0  # Positive slope for widening
+
+
+# ============================================================================
+# Test Edge Cases and Error Handling
+# ============================================================================
+
+class TestLaneFittingEdgeCases:
+    """Test edge cases and error conditions."""
+
+    def test_boundary_on_wrong_side_insufficient_samples(self):
+        """Test error when boundary is on wrong side (insufficient valid samples)."""
+        centerline = [(0.0, 0.0), (50.0, 0.0), (100.0, 0.0)]
+        # Boundary on LEFT side but we're fitting RIGHT lane
+        boundary = [(0.0, -3.5), (50.0, -3.5), (100.0, -3.5)]
+
+        with pytest.raises(ValueError, match="Insufficient sample points"):
+            fit_single_lane_width(
+                centerline, boundary, lane_id=-1, scale=1.0
+            )
+
+    def test_diagonal_road_geometry(self):
+        """Test fitting with diagonal road orientation."""
+        # 45-degree diagonal road going down-right
+        centerline = [
+            (0.0, 0.0), (25.0, 25.0), (50.0, 50.0), (75.0, 75.0), (100.0, 100.0)
+        ]
+        # For diagonal (1,1) direction, perpendicular (-ty, tx) = (-1/√2, 1/√2)
+        # This points up-right in screen coords (left of travel direction)
+        # For right lane (lane_id=-1), we need boundary on the RIGHT side
+        # which is the opposite direction: (1/√2, -1/√2) = down-left
+        offset = 3.5 / math.sqrt(2)
+        boundary = [
+            (0.0 - offset, 0.0 + offset),
+            (25.0 - offset, 25.0 + offset),
+            (50.0 - offset, 50.0 + offset),
+            (75.0 - offset, 75.0 + offset),
+            (100.0 - offset, 100.0 + offset),
+        ]
+
+        a, b, c, d, rmse = fit_single_lane_width(
+            centerline, boundary, lane_id=-1, scale=1.0
+        )
+
+        # Should fit approximately 3.5 width
+        assert a == pytest.approx(3.5, rel=0.2)
+        assert rmse < 0.5
+
+    def test_curved_centerline(self):
+        """Test fitting with curved centerline."""
+        # Quarter circle arc from (50, 0) to (0, 50) - counter-clockwise
+        centerline = []
+        for i in range(11):
+            angle = (i / 10.0) * (math.pi / 2)  # 0 to 90 degrees
+            x = 50.0 * math.cos(angle)
+            y = 50.0 * math.sin(angle)
+            centerline.append((x, y))
+
+        # For right lane, boundary should be on the INSIDE of the curve
+        # (smaller radius = 46.5)
+        boundary = []
+        for i in range(11):
+            angle = (i / 10.0) * (math.pi / 2)
+            x = 46.5 * math.cos(angle)
+            y = 46.5 * math.sin(angle)
+            boundary.append((x, y))
+
+        a, b, c, d, rmse = fit_single_lane_width(
+            centerline, boundary, lane_id=-1, scale=1.0
+        )
+
+        # Should fit approximately 3.5 width
+        assert a == pytest.approx(3.5, rel=0.3)
+
+    def test_many_points_cubic_fit(self):
+        """Test full cubic fit with many sample points."""
+        # Long centerline with many points
+        centerline = [(float(i * 5), 0.0) for i in range(21)]  # 21 points
+
+        # Boundary with slight cubic variation
+        boundary = []
+        for i in range(21):
+            x = float(i * 5)
+            # Width varies slightly in a cubic pattern
+            s = i / 20.0
+            offset = 3.5 + 0.1 * s - 0.2 * s**2 + 0.1 * s**3
+            boundary.append((x, offset))
+
+        a, b, c, d, rmse = fit_single_lane_width(
+            centerline, boundary, lane_id=-1, scale=1.0
+        )
+
+        # Should produce a cubic fit
+        assert a > 0
+        # RMSE should be small for this smooth curve
+        assert rmse < 0.2
