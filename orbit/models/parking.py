@@ -120,7 +120,11 @@ class ParkingSpace:
 
     def is_polygon(self) -> bool:
         """Check if this parking is defined as a polygon (lot) vs point (single space)."""
-        return len(self.points) >= 3 or (self.geo_points and len(self.geo_points) >= 3)
+        if len(self.points) >= 3:
+            return True
+        if self.geo_points and len(self.geo_points) >= 3:
+            return True
+        return False
 
     def get_pixel_position(self, transformer=None) -> Tuple[float, float]:
         """

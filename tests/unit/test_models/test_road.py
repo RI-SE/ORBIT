@@ -618,3 +618,352 @@ class TestSectionBoundaryManagement:
         assert road.lane_sections[0].section_number == 1
         assert road.lane_sections[1].section_number == 2
         assert road.lane_sections[2].section_number == 3
+
+
+class TestRoadMissingCoverage:
+    """Additional tests for full coverage."""
+
+    def test_has_centerline_true(self):
+        """Test has_centerline returns True when centerline is set."""
+        road = Road(centerline_id="centerline1")
+        road.add_polyline("centerline1")
+        assert road.has_centerline() is True
+
+    def test_has_centerline_false_no_id(self):
+        """Test has_centerline returns False when no centerline ID."""
+        road = Road()
+        road.add_polyline("poly1")
+        assert road.has_centerline() is False
+
+    def test_has_centerline_false_not_in_polylines(self):
+        """Test has_centerline returns False when centerline not in polylines."""
+        road = Road(centerline_id="centerline1")
+        road.add_polyline("other_poly")
+        assert road.has_centerline() is False
+
+    def test_total_lanes(self):
+        """Test total_lanes calculation."""
+        road = Road()
+        road.lane_info = LaneInfo(left_count=2, right_count=3)
+        assert road.total_lanes() == 5
+
+    def test_total_lanes_default(self):
+        """Test total_lanes with default lane info."""
+        road = Road()
+        assert road.total_lanes() == 2  # 1 left + 1 right
+
+    def test_get_lane_from_specific_section(self):
+        """Test get_lane with specific section number."""
+        from orbit.models import Lane, LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(
+                section_number=1,
+                s_start=0.0,
+                s_end=100.0,
+                lanes=[
+                    Lane(id=0, lane_type=LaneType.NONE, width=0.0),
+                    Lane(id=-1, lane_type=LaneType.DRIVING, width=3.5)
+                ]
+            ),
+            LaneSection(
+                section_number=2,
+                s_start=100.0,
+                s_end=200.0,
+                lanes=[
+                    Lane(id=0, lane_type=LaneType.NONE, width=0.0),
+                    Lane(id=-1, lane_type=LaneType.DRIVING, width=4.0)  # Different width
+                ]
+            )
+        ]
+
+        lane = road.get_lane(-1, section_number=2)
+        assert lane is not None
+        assert lane.width == 4.0
+
+    def test_get_lane_section_not_found(self):
+        """Test get_lane returns None when section not found."""
+        from orbit.models import Lane, LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(
+                section_number=1,
+                s_start=0.0,
+                s_end=100.0,
+                lanes=[Lane(id=0, lane_type=LaneType.NONE, width=0.0)]
+            )
+        ]
+
+        lane = road.get_lane(-1, section_number=99)
+        assert lane is None
+
+    def test_get_lane_not_found_in_section(self):
+        """Test get_lane returns None when lane not in specified section."""
+        from orbit.models import Lane, LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(
+                section_number=1,
+                s_start=0.0,
+                s_end=100.0,
+                lanes=[Lane(id=0, lane_type=LaneType.NONE, width=0.0)]
+            )
+        ]
+
+        lane = road.get_lane(-1, section_number=1)
+        assert lane is None
+
+    def test_get_section_containing_point(self):
+        """Test get_section_containing_point."""
+        from orbit.models import LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(section_number=1, s_start=0.0, s_end=100.0),
+            LaneSection(section_number=2, s_start=100.0, s_end=200.0)
+        ]
+        centerline_points = [(0.0, 0.0), (100.0, 0.0), (200.0, 0.0)]
+
+        section = road.get_section_containing_point(1, centerline_points)
+        assert section is not None
+        assert section.section_number == 2
+
+    def test_get_section_containing_point_invalid_index(self):
+        """Test get_section_containing_point with invalid index."""
+        from orbit.models import LaneSection
+        road = Road()
+        road.lane_sections = [LaneSection(section_number=1, s_start=0.0, s_end=100.0)]
+        centerline_points = [(0.0, 0.0), (100.0, 0.0)]
+
+        section = road.get_section_containing_point(10, centerline_points)
+        assert section is None
+
+        section = road.get_section_containing_point(-1, centerline_points)
+        assert section is None
+
+    def test_split_section_no_section_found(self):
+        """Test split_section_at_point when no section contains point."""
+        from orbit.models import LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(section_number=1, s_start=0.0, s_end=50.0)
+        ]
+        # Point at s=100 is outside all sections
+        centerline_points = [(0.0, 0.0), (50.0, 0.0), (100.0, 0.0)]
+
+        success = road.split_section_at_point(2, centerline_points)
+        assert success is False
+
+    def test_delete_section_not_found(self):
+        """Test delete_section when section not found."""
+        from orbit.models import LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(section_number=1, s_start=0.0, s_end=100.0),
+            LaneSection(section_number=2, s_start=100.0, s_end=200.0)
+        ]
+
+        success = road.delete_section(99)
+        assert success is False
+        assert len(road.lane_sections) == 2
+
+    def test_update_section_boundaries_empty(self):
+        """Test update_section_boundaries with empty data."""
+        road = Road()
+        road.lane_sections = []
+        road.update_section_boundaries([])  # Should not raise
+
+        road.lane_sections = [LaneSection(section_number=1, s_start=0.0, s_end=100.0)]
+        road.update_section_boundaries([])  # Empty points - should not raise
+
+    def test_update_section_boundaries_initializes_end_point_index(self):
+        """Test that update_section_boundaries initializes end_point_index for legacy sections."""
+        from orbit.models import LaneSection
+        road = Road()
+        # Section without end_point_index (legacy)
+        road.lane_sections = [
+            LaneSection(section_number=1, s_start=0.0, s_end=50.0, end_point_index=None),
+            LaneSection(section_number=2, s_start=50.0, s_end=100.0, end_point_index=None)
+        ]
+        centerline_points = [(0.0, 0.0), (50.0, 0.0), (100.0, 0.0)]
+
+        road.update_section_boundaries(centerline_points)
+
+        # First section should now have end_point_index
+        assert road.lane_sections[0].end_point_index == 1
+
+    def test_to_dict_with_optional_fields(self):
+        """Test to_dict includes optional fields when set."""
+        road = Road(
+            opendrive_id="od-123",
+            elevation_profile=[(0.0, 10.0, 0.1, 0.0, 0.0), (100.0, 10.5, 0.05, 0.0, 0.0)],
+            superelevation_profile=[(0.0, 0.0, 0.02, 0.0, 0.0)],
+            lane_offset=[(0.0, 0.5, 0.0, 0.0, 0.0)],
+            surface_crg=[{"file": "road.crg", "s_start": 0.0, "s_end": 100.0}]
+        )
+        road.add_polyline("poly1")
+
+        data = road.to_dict()
+
+        assert data['opendrive_id'] == "od-123"
+        assert 'elevation_profile' in data
+        assert len(data['elevation_profile']) == 2
+        assert 'superelevation_profile' in data
+        assert 'lane_offset' in data
+        assert 'surface_crg' in data
+
+    def test_repr(self):
+        """Test __repr__ method."""
+        road = Road(name="Test Highway")
+        road.add_polyline("poly1")
+        road.add_polyline("poly2")
+
+        repr_str = repr(road)
+
+        assert "Road(" in repr_str
+        assert "Test Highway" in repr_str
+        assert "polylines=2" in repr_str
+
+    def test_generate_lanes(self):
+        """Test generate_lanes creates proper lane structure."""
+        road = Road()
+        road.lane_info = LaneInfo(left_count=2, right_count=2, lane_width=3.5)
+
+        road.generate_lanes(centerline_length=500.0)
+
+        assert len(road.lane_sections) == 1
+        section = road.lane_sections[0]
+        assert section.s_start == 0.0
+        assert section.s_end == 500.0
+
+        # Should have: 0 (center), -1, -2 (right), 1, 2 (left)
+        lane_ids = [lane.id for lane in section.lanes]
+        assert 0 in lane_ids
+        assert -1 in lane_ids
+        assert -2 in lane_ids
+        assert 1 in lane_ids
+        assert 2 in lane_ids
+
+    def test_distribute_lane_sections_for_split(self):
+        """Test distribute_lane_sections_for_split method."""
+        from orbit.models import Lane, LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(
+                section_number=1,
+                s_start=0.0,
+                s_end=100.0,
+                end_point_index=2,
+                lanes=[
+                    Lane(id=0, lane_type=LaneType.NONE, width=0.0),
+                    Lane(id=-1, lane_type=LaneType.DRIVING, width=3.5)
+                ]
+            ),
+            LaneSection(
+                section_number=2,
+                s_start=100.0,
+                s_end=200.0,
+                end_point_index=None,
+                lanes=[
+                    Lane(id=0, lane_type=LaneType.NONE, width=0.0),
+                    Lane(id=-1, lane_type=LaneType.DRIVING, width=3.5)
+                ]
+            )
+        ]
+
+        # Split at s=150 (in the middle of section 2)
+        sections_road1, sections_road2 = road.distribute_lane_sections_for_split(150.0, 3)
+
+        # Section 1 entirely in road1
+        assert len(sections_road1) >= 1
+        # Sections should be renumbered
+        assert sections_road1[0].section_number == 1
+
+        # Road2 should have sections with adjusted s-coordinates
+        assert len(sections_road2) >= 1
+        assert sections_road2[0].s_start == 0.0
+
+    def test_distribute_lane_sections_section_before_split(self):
+        """Test section entirely before split goes to road1."""
+        from orbit.models import Lane, LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(
+                section_number=1,
+                s_start=0.0,
+                s_end=100.0,
+                lanes=[Lane(id=0, lane_type=LaneType.NONE, width=0.0)]
+            ),
+            LaneSection(
+                section_number=2,
+                s_start=100.0,
+                s_end=200.0,
+                lanes=[Lane(id=0, lane_type=LaneType.NONE, width=0.0)]
+            )
+        ]
+
+        sections_road1, sections_road2 = road.distribute_lane_sections_for_split(100.0, 2)
+
+        # Section 1 (s=0-100) entirely in road1
+        assert any(s.s_end <= 100.0 for s in sections_road1)
+
+    def test_distribute_lane_sections_section_after_split(self):
+        """Test section entirely after split goes to road2 with adjusted coords."""
+        from orbit.models import Lane, LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(
+                section_number=1,
+                s_start=0.0,
+                s_end=50.0,
+                lanes=[Lane(id=0, lane_type=LaneType.NONE, width=0.0)]
+            ),
+            LaneSection(
+                section_number=2,
+                s_start=50.0,
+                s_end=150.0,
+                end_point_index=3,
+                lanes=[Lane(id=0, lane_type=LaneType.NONE, width=0.0)]
+            )
+        ]
+
+        sections_road1, sections_road2 = road.distribute_lane_sections_for_split(50.0, 1)
+
+        # Section 2 should be in road2 with s_start=0
+        assert len(sections_road2) >= 1
+        assert sections_road2[0].s_start == 0.0
+
+    def test_distribute_lane_sections_empty_road1(self):
+        """Test default section created when no sections for road1."""
+        from orbit.models import Lane, LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(
+                section_number=1,
+                s_start=100.0,  # Section starts after split point
+                s_end=200.0,
+                lanes=[Lane(id=0, lane_type=LaneType.NONE, width=0.0)]
+            )
+        ]
+
+        sections_road1, sections_road2 = road.distribute_lane_sections_for_split(50.0, 1)
+
+        # Should create default section for road1
+        assert len(sections_road1) >= 1
+
+    def test_distribute_lane_sections_empty_road2(self):
+        """Test default section created when no sections for road2."""
+        from orbit.models import Lane, LaneSection
+        road = Road()
+        road.lane_sections = [
+            LaneSection(
+                section_number=1,
+                s_start=0.0,
+                s_end=50.0,  # Section ends before split point
+                lanes=[Lane(id=0, lane_type=LaneType.NONE, width=0.0)]
+            )
+        ]
+
+        sections_road1, sections_road2 = road.distribute_lane_sections_for_split(100.0, 2)
+
+        # Should create default section for road2
+        assert len(sections_road2) >= 1

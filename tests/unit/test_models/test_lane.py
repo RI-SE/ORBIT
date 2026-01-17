@@ -336,3 +336,254 @@ class TestLaneComparison:
         assert len(left_lanes) == 2
         assert len(center_lanes) == 1
         assert len(right_lanes) == 2
+
+
+class TestLaneMissingCoverage:
+    """Additional tests for full coverage."""
+
+    def test_get_display_name_center(self):
+        """Test get_display_name for center lane."""
+        lane = Lane(id=0, lane_type=LaneType.NONE)
+        assert lane.get_display_name() == "Lane 0 (Center)"
+
+    def test_get_display_name_left(self):
+        """Test get_display_name for left lane."""
+        lane = Lane(id=1)
+        assert lane.get_display_name() == "Lane 1 (Left)"
+        lane2 = Lane(id=2)
+        assert lane2.get_display_name() == "Lane 2 (Left)"
+
+    def test_get_display_name_right(self):
+        """Test get_display_name for right lane."""
+        lane = Lane(id=-1)
+        assert lane.get_display_name() == "Lane -1 (Right)"
+        lane2 = Lane(id=-2)
+        assert lane2.get_display_name() == "Lane -2 (Right)"
+
+    def test_get_display_position_center(self):
+        """Test get_display_position for center lane."""
+        lane = Lane(id=0, lane_type=LaneType.NONE)
+        assert lane.get_display_position() == "Center"
+
+    def test_get_display_position_left(self):
+        """Test get_display_position for left lane."""
+        lane = Lane(id=1)
+        assert lane.get_display_position() == "Left 1"
+        lane2 = Lane(id=2)
+        assert lane2.get_display_position() == "Left 2"
+
+    def test_get_display_position_right(self):
+        """Test get_display_position for right lane."""
+        lane = Lane(id=-1)
+        assert lane.get_display_position() == "Right 1"
+        lane2 = Lane(id=-2)
+        assert lane2.get_display_position() == "Right 2"
+
+    def test_has_variable_width_false(self):
+        """Test has_variable_width for constant width lane."""
+        lane = Lane(id=1, width=3.5)
+        assert lane.has_variable_width is False
+
+    def test_has_variable_width_true_with_width_end(self):
+        """Test has_variable_width when width_end differs from width."""
+        lane = Lane(id=1, width=3.5, width_end=4.0)
+        assert lane.has_variable_width is True
+
+    def test_has_variable_width_false_same_width_end(self):
+        """Test has_variable_width when width_end equals width."""
+        lane = Lane(id=1, width=3.5, width_end=3.5)
+        assert lane.has_variable_width is False
+
+    def test_has_variable_width_true_with_polynomial(self):
+        """Test has_variable_width with non-zero polynomial coefficients."""
+        lane1 = Lane(id=1, width=3.5, width_b=0.01)
+        assert lane1.has_variable_width is True
+
+        lane2 = Lane(id=1, width=3.5, width_c=0.001)
+        assert lane2.has_variable_width is True
+
+        lane3 = Lane(id=1, width=3.5, width_d=0.0001)
+        assert lane3.has_variable_width is True
+
+    def test_get_width_at_end_constant(self):
+        """Test get_width_at_end for constant width."""
+        lane = Lane(id=1, width=3.5)
+        assert lane.get_width_at_end() == 3.5
+
+    def test_get_width_at_end_variable(self):
+        """Test get_width_at_end for variable width."""
+        lane = Lane(id=1, width=3.5, width_end=4.0)
+        assert lane.get_width_at_end() == 4.0
+
+    def test_get_width_at_s_constant(self):
+        """Test get_width_at_s for constant width."""
+        lane = Lane(id=1, width=3.5)
+        assert lane.get_width_at_s(0.0, 100.0) == 3.5
+        assert lane.get_width_at_s(50.0, 100.0) == 3.5
+        assert lane.get_width_at_s(100.0, 100.0) == 3.5
+
+    def test_get_width_at_s_linear_interpolation(self):
+        """Test get_width_at_s with width_end (linear interpolation)."""
+        lane = Lane(id=1, width=3.0, width_end=4.0)
+        # Linear from 3.0 to 4.0 over 100 units
+        assert lane.get_width_at_s(0.0, 100.0) == pytest.approx(3.0)
+        assert lane.get_width_at_s(50.0, 100.0) == pytest.approx(3.5)
+        assert lane.get_width_at_s(100.0, 100.0) == pytest.approx(4.0)
+
+    def test_get_width_at_s_polynomial(self):
+        """Test get_width_at_s with polynomial coefficients."""
+        # width(ds) = 3.0 + 0.01*ds
+        lane = Lane(id=1, width=3.0, width_b=0.01)
+        assert lane.get_width_at_s(0.0, 100.0) == pytest.approx(3.0)
+        assert lane.get_width_at_s(50.0, 100.0) == pytest.approx(3.5)
+        assert lane.get_width_at_s(100.0, 100.0) == pytest.approx(4.0)
+
+    def test_to_dict_with_optional_fields(self):
+        """Test to_dict includes optional fields when set."""
+        from orbit.models.lane import BoundaryMode
+        lane = Lane(
+            id=1,
+            width=3.5,
+            width_end=4.0,
+            width_b=0.01,
+            width_c=0.001,
+            width_d=0.0001,
+            road_mark_color="yellow",
+            road_mark_weight="bold",
+            road_mark_width=0.15,
+            speed_limit=30.0,
+            speed_limit_unit="m/s",
+            access_restrictions=["bicycle", "pedestrian"],
+            materials=[(0.0, 0.8, 0.2, "asphalt")],
+            heights=[(0.0, 0.1, 0.15)],
+            predecessor_id=2,
+            successor_id=3,
+            direction="both",
+            advisory="inner",
+            level=True,
+            turn_directions=["left", "through"],
+            boundary_mode=BoundaryMode.EXPLICIT
+        )
+
+        data = lane.to_dict()
+
+        assert data['width_end'] == 4.0
+        assert data['width_b'] == 0.01
+        assert data['width_c'] == 0.001
+        assert data['width_d'] == 0.0001
+        assert data['road_mark_color'] == "yellow"
+        assert data['road_mark_weight'] == "bold"
+        assert data['road_mark_width'] == 0.15
+        assert data['speed_limit'] == 30.0
+        assert data['speed_limit_unit'] == "m/s"
+        assert data['access_restrictions'] == ["bicycle", "pedestrian"]
+        assert 'materials' in data
+        assert 'heights' in data
+        assert data['predecessor_id'] == 2
+        assert data['successor_id'] == 3
+        assert data['direction'] == "both"
+        assert data['advisory'] == "inner"
+        assert data['level'] is True
+        assert data['turn_directions'] == ["left", "through"]
+        assert data['boundary_mode'] == "explicit"
+
+    def test_from_dict_with_invalid_boundary_mode(self):
+        """Test from_dict handles invalid boundary_mode gracefully."""
+        data = {
+            'id': 1,
+            'lane_type': 'driving',
+            'road_mark_type': 'solid',
+            'width': 3.5,
+            'boundary_mode': 'invalid_mode'
+        }
+
+        lane = Lane.from_dict(data)
+
+        # Should fall back to OFFSET
+        from orbit.models.lane import BoundaryMode
+        assert lane.boundary_mode == BoundaryMode.OFFSET
+
+    def test_from_dict_with_all_optional_fields(self):
+        """Test from_dict with all optional fields."""
+        data = {
+            'id': 1,
+            'lane_type': 'driving',
+            'road_mark_type': 'solid',
+            'width': 3.5,
+            'width_end': 4.0,
+            'width_b': 0.01,
+            'width_c': 0.001,
+            'width_d': 0.0001,
+            'road_mark_color': 'yellow',
+            'road_mark_weight': 'bold',
+            'road_mark_width': 0.15,
+            'speed_limit': 30.0,
+            'speed_limit_unit': 'km/h',
+            'access_restrictions': ['car'],
+            'materials': [(0.0, 0.8, 0.2, 'concrete')],
+            'heights': [(0.0, 0.05, 0.1)],
+            'predecessor_id': 2,
+            'successor_id': 3,
+            'direction': 'standard',
+            'advisory': 'outer',
+            'level': True,
+            'turn_directions': ['right'],
+            'boundary_mode': 'explicit'
+        }
+
+        lane = Lane.from_dict(data)
+
+        assert lane.width_end == 4.0
+        assert lane.width_b == 0.01
+        assert lane.width_c == 0.001
+        assert lane.width_d == 0.0001
+        assert lane.road_mark_color == 'yellow'
+        assert lane.road_mark_weight == 'bold'
+        assert lane.road_mark_width == 0.15
+        assert lane.speed_limit == 30.0
+        assert lane.speed_limit_unit == 'km/h'
+        assert lane.access_restrictions == ['car']
+        assert len(lane.materials) == 1
+        assert len(lane.heights) == 1
+        assert lane.predecessor_id == 2
+        assert lane.successor_id == 3
+        assert lane.direction == 'standard'
+        assert lane.advisory == 'outer'
+        assert lane.level is True
+        assert lane.turn_directions == ['right']
+
+    def test_roundtrip_with_all_optional_fields(self):
+        """Test roundtrip serialization with all optional fields."""
+        from orbit.models.lane import BoundaryMode
+        original = Lane(
+            id=1,
+            width=3.5,
+            width_end=4.0,
+            width_b=0.005,
+            road_mark_color="yellow",
+            speed_limit=25.0,
+            access_restrictions=["bicycle"],
+            materials=[(0.0, 0.9, 0.1, "concrete")],
+            heights=[(0.0, 0.0, 0.05)],
+            predecessor_id=0,
+            successor_id=-1,
+            direction="reversed",
+            level=True,
+            turn_directions=["left"],
+            boundary_mode=BoundaryMode.EXPLICIT
+        )
+
+        data = original.to_dict()
+        restored = Lane.from_dict(data)
+
+        assert restored.width_end == original.width_end
+        assert restored.width_b == original.width_b
+        assert restored.road_mark_color == original.road_mark_color
+        assert restored.speed_limit == original.speed_limit
+        assert restored.access_restrictions == original.access_restrictions
+        assert restored.predecessor_id == original.predecessor_id
+        assert restored.successor_id == original.successor_id
+        assert restored.direction == original.direction
+        assert restored.level == original.level
+        assert restored.turn_directions == original.turn_directions
+        assert restored.boundary_mode == original.boundary_mode

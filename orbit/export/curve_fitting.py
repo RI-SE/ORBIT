@@ -895,8 +895,8 @@ class CurveFitter:
             arc_end = self._find_arc_segment(points, i) if i < len(points) - 2 else i + 1
             arc_length = arc_end - i
 
-            # Choose the longer fit (prefer arc for curved sections)
-            if arc_length > 2 and arc_length >= line_length:
+            # Choose the longer fit (prefer line when equal - simpler is better)
+            if arc_length > 2 and arc_length > line_length:
                 # Arc covers more points - use it
                 element = self._create_arc_element(points, i, arc_end)
                 if element:

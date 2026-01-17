@@ -61,10 +61,15 @@ def format_enum_name(enum_value: Enum, custom_map: Optional[Dict[Enum, str]] = N
     if '_' in value:
         return format_snake_case(value)
 
-    # 2. camelCase: "lowSpeed" -> "Low Speed"
+    # 2. All uppercase: "UPPERCASE" -> "Uppercase"
+    # Check before camelCase handling to avoid "U P P E R C A S E"
+    if value.isupper():
+        return value.title()
+
+    # 3. camelCase: "lowSpeed" -> "Low Speed"
     # Insert space before each capital letter (except first)
     spaced = re.sub(r'(?<!^)(?=[A-Z])', ' ', value)
     return spaced.title()
 
-    # 3. lowercase with spaces: "solid solid" -> "Solid Solid"
+    # 4. lowercase with spaces: "solid solid" -> "Solid Solid"
     # (handled by .title() in camelCase case above)

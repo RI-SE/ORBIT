@@ -1484,7 +1484,8 @@ def project_point_to_polyline(
         return (0.0, 0.0, 0)
 
     best_s = 0.0
-    best_dist = float('inf')
+    best_abs_dist = float('inf')  # Absolute distance for comparison
+    best_signed_dist = 0.0  # Signed perpendicular distance to return
     best_segment = 0
     accumulated_s = 0.0
 
@@ -1502,8 +1503,9 @@ def project_point_to_polyline(
         if seg_len_sq < 1e-10:
             # Zero-length segment
             dist = distance_between_points(point, p1)
-            if dist < best_dist:
-                best_dist = dist
+            if dist < best_abs_dist:
+                best_abs_dist = dist
+                best_signed_dist = dist  # No direction for zero-length segment
                 best_s = accumulated_s
                 best_segment = i
             continue
@@ -1523,19 +1525,19 @@ def project_point_to_polyline(
 
         dist = math.sqrt((px - closest_x) ** 2 + (py - closest_y) ** 2)
 
-        if dist < best_dist:
-            best_dist = dist
+        if dist < best_abs_dist:
+            best_abs_dist = dist
             best_s = accumulated_s + t * seg_len
             best_segment = i
 
             # Calculate signed distance (positive = right of direction)
             # Cross product: (P2-P1) × (P-P1) / |P2-P1|
             cross = dx * (py - p1[1]) - dy * (px - p1[0])
-            best_dist = -cross / seg_len  # Negative because screen coords
+            best_signed_dist = -cross / seg_len  # Negative because screen coords
 
         accumulated_s += seg_len
 
-    return (best_s, best_dist, best_segment)
+    return (best_s, best_signed_dist, best_segment)
 
 
 def find_point_on_polyline_at_s(

@@ -558,3 +558,719 @@ class TestEdgeCases:
 
         # It's ok if this fails (returns None) due to duplicate points
         assert transformer is None or isinstance(transformer, AffineTransformer)
+
+
+# ============================================================================
+# Test TransformAdjustment
+# ============================================================================
+
+class TestTransformAdjustment:
+    """Test TransformAdjustment dataclass for fine-tuning georeferencing."""
+
+    def test_default_adjustment_is_identity(self):
+        """Test that default adjustment has no effect."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        adj = TransformAdjustment()
+        assert adj.is_identity()
+
+    def test_translation_adjustment_not_identity(self):
+        """Test that non-zero translation is not identity."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        adj = TransformAdjustment(translation_x=10.0)
+        assert not adj.is_identity()
+
+    def test_rotation_adjustment_not_identity(self):
+        """Test that non-zero rotation is not identity."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        adj = TransformAdjustment(rotation=5.0)
+        assert not adj.is_identity()
+
+    def test_scale_adjustment_not_identity(self):
+        """Test that non-unity scale is not identity."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        adj = TransformAdjustment(scale_x=1.1)
+        assert not adj.is_identity()
+
+    def test_apply_to_point_translation(self):
+        """Test applying translation to a point."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        adj = TransformAdjustment(translation_x=10.0, translation_y=-5.0)
+        x, y = adj.apply_to_point(100.0, 50.0)
+        assert x == pytest.approx(110.0, abs=0.001)
+        assert y == pytest.approx(45.0, abs=0.001)
+
+    def test_apply_to_point_rotation(self):
+        """Test applying rotation to a point around pivot."""
+        import math
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        # 90 degrees counter-clockwise around origin
+        adj = TransformAdjustment(rotation=90.0, pivot_x=0.0, pivot_y=0.0)
+        x, y = adj.apply_to_point(10.0, 0.0)
+        # (10, 0) rotated 90° CCW → (0, 10)
+        assert x == pytest.approx(0.0, abs=0.001)
+        assert y == pytest.approx(10.0, abs=0.001)
+
+    def test_apply_to_point_scale(self):
+        """Test applying scale to a point around pivot."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        adj = TransformAdjustment(scale_x=2.0, scale_y=0.5, pivot_x=0.0, pivot_y=0.0)
+        x, y = adj.apply_to_point(10.0, 10.0)
+        assert x == pytest.approx(20.0, abs=0.001)
+        assert y == pytest.approx(5.0, abs=0.001)
+
+    def test_apply_inverse_to_point(self):
+        """Test that apply and apply_inverse are inverse operations."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        adj = TransformAdjustment(
+            translation_x=15.0, translation_y=-10.0,
+            rotation=30.0, scale_x=1.2, scale_y=0.9,
+            pivot_x=50.0, pivot_y=50.0
+        )
+        orig_x, orig_y = 100.0, 75.0
+        # Forward transform
+        adj_x, adj_y = adj.apply_to_point(orig_x, orig_y)
+        # Inverse transform
+        back_x, back_y = adj.apply_inverse_to_point(adj_x, adj_y)
+        # Should return to original
+        assert back_x == pytest.approx(orig_x, abs=0.001)
+        assert back_y == pytest.approx(orig_y, abs=0.001)
+
+    def test_copy(self):
+        """Test copying adjustment."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        adj = TransformAdjustment(translation_x=10.0, rotation=5.0)
+        copy = adj.copy()
+        assert copy.translation_x == adj.translation_x
+        assert copy.rotation == adj.rotation
+        # Modifying copy shouldn't affect original
+        copy.translation_x = 20.0
+        assert adj.translation_x == 10.0
+
+    def test_reset(self):
+        """Test resetting adjustment to identity."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        adj = TransformAdjustment(
+            translation_x=10.0, translation_y=20.0,
+            rotation=45.0, scale_x=2.0, scale_y=0.5,
+            pivot_x=100.0, pivot_y=100.0
+        )
+        adj.reset()
+        assert adj.translation_x == 0.0
+        assert adj.translation_y == 0.0
+        assert adj.rotation == 0.0
+        assert adj.scale_x == 1.0
+        assert adj.scale_y == 1.0
+        # Pivot should be preserved
+        assert adj.pivot_x == 100.0
+        assert adj.pivot_y == 100.0
+
+    def test_get_adjustment_matrix_identity(self):
+        """Test that identity adjustment produces identity matrix."""
+        import numpy as np
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        adj = TransformAdjustment()
+        M = adj.get_adjustment_matrix()
+        # Should be close to identity matrix
+        expected = np.eye(3)
+        assert np.allclose(M, expected, atol=1e-10)
+
+
+# ============================================================================
+# Test Metric Conversions
+# ============================================================================
+
+class TestMetricConversions:
+    """Test lat/lon to meters conversions."""
+
+    def test_latlon_to_meters_at_reference(self, sample_control_points: List[ControlPoint]):
+        """Test that reference point converts to (0, 0)."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        ref_lat = transformer.reference_lat
+        ref_lon = transformer.reference_lon
+        east, north = transformer.latlon_to_meters(ref_lat, ref_lon)
+        assert east == pytest.approx(0.0, abs=0.01)
+        assert north == pytest.approx(0.0, abs=0.01)
+
+    def test_meters_to_latlon_roundtrip(self, sample_control_points: List[ControlPoint]):
+        """Test that latlon_to_meters and meters_to_latlon are inverses."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        lat_orig = 57.721
+        lon_orig = 12.943
+        east, north = transformer.latlon_to_meters(lat_orig, lon_orig)
+        lat_back, lon_back = transformer.meters_to_latlon(east, north)
+        assert lat_back == pytest.approx(lat_orig, abs=0.0001)
+        assert lon_back == pytest.approx(lon_orig, abs=0.0001)
+
+    def test_latlon_to_meters_without_reference_raises(self, sample_control_points: List[ControlPoint]):
+        """Test that latlon_to_meters raises if reference not set."""
+        from orbit.utils.coordinate_transform import CoordinateTransformer
+        # Create a minimal subclass for testing
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        # Clear reference points
+        transformer.reference_lat = None
+        transformer.reference_lon = None
+        with pytest.raises(ValueError, match="Reference point not set"):
+            transformer.latlon_to_meters(57.72, 12.94)
+
+    def test_meters_to_latlon_without_reference_raises(self, sample_control_points: List[ControlPoint]):
+        """Test that meters_to_latlon raises if reference not set."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        transformer.reference_lat = None
+        transformer.reference_lon = None
+        with pytest.raises(ValueError, match="Reference point not set"):
+            transformer.meters_to_latlon(100.0, 200.0)
+
+    def test_pixel_to_meters(self, sample_control_points: List[ControlPoint]):
+        """Test pixel to meters conversion."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        # Get meters for a point
+        mx, my = transformer.pixel_to_meters(300.0, 250.0)
+        # Should be some reasonable distance from origin
+        assert isinstance(mx, float)
+        assert isinstance(my, float)
+
+    def test_meters_to_pixel(self, sample_control_points: List[ControlPoint]):
+        """Test meters to pixel conversion roundtrip."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        px_orig, py_orig = 300.0, 250.0
+        mx, my = transformer.pixel_to_meters(px_orig, py_orig)
+        px_back, py_back = transformer.meters_to_pixel(mx, my)
+        assert px_back == pytest.approx(px_orig, abs=0.1)
+        assert py_back == pytest.approx(py_orig, abs=0.1)
+
+
+# ============================================================================
+# Test Batch Operations
+# ============================================================================
+
+class TestBatchOperations:
+    """Test batch coordinate conversion methods."""
+
+    def test_pixels_to_geo_batch(self, sample_control_points: List[ControlPoint]):
+        """Test batch pixel to geo conversion."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        pixels = [(100.0, 100.0), (200.0, 200.0), (300.0, 300.0)]
+        geo_coords = transformer.pixels_to_geo_batch(pixels)
+        assert len(geo_coords) == 3
+        for lon, lat in geo_coords:
+            assert isinstance(lon, float)
+            assert isinstance(lat, float)
+
+    def test_pixels_to_meters_batch(self, sample_control_points: List[ControlPoint]):
+        """Test batch pixel to meters conversion."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        pixels = [(100.0, 100.0), (200.0, 200.0), (300.0, 300.0)]
+        meters = transformer.pixels_to_meters_batch(pixels)
+        assert len(meters) == 3
+        for mx, my in meters:
+            assert isinstance(mx, float)
+            assert isinstance(my, float)
+
+    def test_meters_to_pixels_batch(self, sample_control_points: List[ControlPoint]):
+        """Test batch meters to pixel conversion."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        pixels = [(100.0, 100.0), (200.0, 200.0)]
+        meters = transformer.pixels_to_meters_batch(pixels)
+        pixels_back = transformer.meters_to_pixels_batch(meters)
+        for (px_orig, py_orig), (px_back, py_back) in zip(pixels, pixels_back):
+            assert px_back == pytest.approx(px_orig, abs=0.1)
+            assert py_back == pytest.approx(py_orig, abs=0.1)
+
+
+# ============================================================================
+# Test Heading Transformation
+# ============================================================================
+
+class TestHeadingTransformation:
+    """Test heading transformation between coordinate systems."""
+
+    def test_transform_heading(self, sample_control_points: List[ControlPoint]):
+        """Test transforming heading from pixel to meter space."""
+        import math
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        # Heading pointing east (0 radians)
+        heading_px = 0.0
+        heading_m = transformer.transform_heading(300.0, 250.0, heading_px)
+        # Should be some angle (depends on transformation)
+        assert isinstance(heading_m, float)
+        assert -math.pi <= heading_m <= math.pi
+
+    def test_transform_heading_different_angles(self, sample_control_points: List[ControlPoint]):
+        """Test heading transformation for different angles."""
+        import math
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        # Transform headings at 0, 90, 180, 270 degrees
+        for angle_deg in [0, 90, 180, 270]:
+            angle_rad = math.radians(angle_deg)
+            heading_m = transformer.transform_heading(300.0, 250.0, angle_rad)
+            assert isinstance(heading_m, float)
+
+
+# ============================================================================
+# Test Projection Strings
+# ============================================================================
+
+class TestProjectionStrings:
+    """Test projection string generation."""
+
+    def test_get_metric_origin(self, sample_control_points: List[ControlPoint]):
+        """Test getting metric origin (reference point)."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        lon, lat = transformer.get_metric_origin()
+        assert lon is not None
+        assert lat is not None
+        # Should be within reasonable range
+        assert 12.0 < lon < 13.0  # Near our test points
+        assert 57.0 < lat < 58.0
+
+    def test_get_projection_string(self, sample_control_points: List[ControlPoint]):
+        """Test PROJ4 projection string generation."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        proj_str = transformer.get_projection_string()
+        assert "+proj=tmerc" in proj_str
+        assert "+lat_0=" in proj_str
+        assert "+lon_0=" in proj_str
+        assert "+datum=WGS84" in proj_str
+
+    def test_get_utm_projection_string(self, sample_control_points: List[ControlPoint]):
+        """Test UTM projection string generation."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        proj_str = transformer.get_utm_projection_string()
+        assert "+proj=utm" in proj_str
+        assert "+zone=" in proj_str
+        assert "+north" in proj_str  # Our test points are in northern hemisphere
+        assert "+datum=WGS84" in proj_str
+
+    def test_get_utm_zone(self, sample_control_points: List[ControlPoint]):
+        """Test UTM zone calculation."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        zone = transformer.get_utm_zone()
+        # UTM zone for lon 12.94 should be zone 33
+        assert zone == 33
+
+    def test_get_utm_zone_different_longitudes(self):
+        """Test UTM zone calculation for different longitudes."""
+        # Create points at different longitudes
+        # UTM zone = floor((lon + 180) / 6) + 1
+        test_cases = [
+            (-120.0, 11),   # Western USA: floor(60/6)+1 = 11
+            (0.0, 31),      # Prime meridian: floor(180/6)+1 = 31
+            (12.0, 33),     # Europe: floor(192/6)+1 = 33
+            (120.0, 51),    # East Asia: floor(300/6)+1 = 51
+        ]
+        for lon, expected_zone in test_cases:
+            points = [
+                ControlPoint(100.0, 100.0, lon, 57.72, "CP1"),
+                ControlPoint(500.0, 100.0, lon + 0.005, 57.72, "CP2"),
+                ControlPoint(300.0, 400.0, lon + 0.0025, 57.718, "CP3"),
+            ]
+            transformer = create_transformer(
+                points,
+                method=TransformMethod.AFFINE,
+                use_validation=False
+            )
+            assert transformer.get_utm_zone() == expected_zone
+
+
+# ============================================================================
+# Test Transformation Info
+# ============================================================================
+
+class TestTransformationInfo:
+    """Test transformation info/metadata methods."""
+
+    def test_get_transformation_info(self, sample_control_points: List[ControlPoint]):
+        """Test getting transformation information dictionary."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        info = transformer.get_transformation_info()
+        assert 'method' in info
+        assert 'num_training_points' in info
+        assert 'num_validation_points' in info
+        assert 'reference_latitude' in info
+        assert 'reference_longitude' in info
+        assert 'scale_x_meters_per_pixel' in info
+        assert 'scale_y_meters_per_pixel' in info
+        assert info['num_training_points'] == 3
+        assert info['num_validation_points'] == 0
+
+    def test_get_transformation_info_with_errors(self, sample_control_points: List[ControlPoint], validation_control_point: ControlPoint):
+        """Test that transformation info includes error metrics."""
+        all_points = sample_control_points + [validation_control_point]
+        transformer = create_transformer(
+            all_points,
+            method=TransformMethod.AFFINE,
+            use_validation=True
+        )
+        info = transformer.get_transformation_info()
+        assert 'reprojection_error' in info
+        assert 'validation_error' in info
+
+
+# ============================================================================
+# Test Adjustment Integration
+# ============================================================================
+
+class TestAdjustmentIntegration:
+    """Test adjustment integration with transformers."""
+
+    def test_set_adjustment(self, sample_control_points: List[ControlPoint]):
+        """Test setting adjustment on transformer."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        adj = TransformAdjustment(translation_x=10.0)
+        transformer.set_adjustment(adj)
+        assert transformer.adjustment is not None
+        assert transformer.has_adjustment()
+
+    def test_clear_adjustment(self, sample_control_points: List[ControlPoint]):
+        """Test clearing adjustment from transformer."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        adj = TransformAdjustment(translation_x=10.0)
+        transformer.set_adjustment(adj)
+        transformer.clear_adjustment()
+        assert transformer.adjustment is None
+        assert not transformer.has_adjustment()
+
+    def test_has_adjustment_false_for_identity(self, sample_control_points: List[ControlPoint]):
+        """Test that identity adjustment is not considered active."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        adj = TransformAdjustment()  # Identity
+        transformer.set_adjustment(adj)
+        assert not transformer.has_adjustment()
+
+    def test_geo_to_pixel_with_adjustment_affine(self, sample_control_points: List[ControlPoint]):
+        """Test that adjustment affects geo_to_pixel for affine."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        lon, lat = 12.942, 57.719
+        # Get pixel without adjustment
+        px1, py1 = transformer.geo_to_pixel(lon, lat)
+        # Apply translation adjustment
+        adj = TransformAdjustment(translation_x=50.0, translation_y=-30.0)
+        transformer.set_adjustment(adj)
+        # Get pixel with adjustment
+        px2, py2 = transformer.geo_to_pixel(lon, lat)
+        # Result should be shifted
+        assert px2 == pytest.approx(px1 + 50.0, abs=0.01)
+        assert py2 == pytest.approx(py1 - 30.0, abs=0.01)
+
+    def test_geo_to_pixel_unadjusted_affine(self, sample_control_points: List[ControlPoint]):
+        """Test geo_to_pixel_unadjusted ignores adjustment."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        lon, lat = 12.942, 57.719
+        # Get unadjusted pixel
+        px1, py1 = transformer.geo_to_pixel_unadjusted(lon, lat)
+        # Apply adjustment
+        adj = TransformAdjustment(translation_x=50.0)
+        transformer.set_adjustment(adj)
+        # Unadjusted should still give same result
+        px2, py2 = transformer.geo_to_pixel_unadjusted(lon, lat)
+        assert px2 == pytest.approx(px1, abs=0.01)
+        assert py2 == pytest.approx(py1, abs=0.01)
+
+    def test_geo_to_pixel_with_adjustment_homography(self):
+        """Test that adjustment affects geo_to_pixel for homography."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+        points = [
+            ControlPoint(100.0, 100.0, 12.940, 57.720, "CP1"),
+            ControlPoint(500.0, 100.0, 12.945, 57.720, "CP2"),
+            ControlPoint(300.0, 400.0, 12.9425, 57.718, "CP3"),
+            ControlPoint(400.0, 300.0, 12.943, 57.7195, "CP4")
+        ]
+        transformer = create_transformer(
+            points,
+            method=TransformMethod.HOMOGRAPHY,
+            use_validation=False
+        )
+        lon, lat = 12.942, 57.719
+        px1, py1 = transformer.geo_to_pixel(lon, lat)
+        adj = TransformAdjustment(translation_x=25.0, translation_y=-15.0)
+        transformer.set_adjustment(adj)
+        px2, py2 = transformer.geo_to_pixel(lon, lat)
+        assert px2 == pytest.approx(px1 + 25.0, abs=0.01)
+        assert py2 == pytest.approx(py1 - 15.0, abs=0.01)
+
+
+# ============================================================================
+# Test create_transformer with String Method
+# ============================================================================
+
+class TestCreateTransformerStringMethod:
+    """Test create_transformer with string method parameter."""
+
+    def test_create_with_string_affine(self, sample_control_points: List[ControlPoint]):
+        """Test creating transformer with 'affine' string."""
+        transformer = create_transformer(
+            sample_control_points,
+            method='affine',
+            use_validation=False
+        )
+        assert transformer is not None
+        assert isinstance(transformer, AffineTransformer)
+
+    def test_create_with_string_homography(self):
+        """Test creating transformer with 'homography' string."""
+        points = [
+            ControlPoint(100.0, 100.0, 12.940, 57.720, "CP1"),
+            ControlPoint(500.0, 100.0, 12.945, 57.720, "CP2"),
+            ControlPoint(300.0, 400.0, 12.9425, 57.718, "CP3"),
+            ControlPoint(400.0, 300.0, 12.943, 57.7195, "CP4")
+        ]
+        transformer = create_transformer(
+            points,
+            method='homography',
+            use_validation=False
+        )
+        assert transformer is not None
+        assert isinstance(transformer, HomographyTransformer)
+
+
+# ============================================================================
+# Test get_rms_error_meters
+# ============================================================================
+
+class TestGetRmsErrorMeters:
+    """Test backwards-compatible get_rms_error_meters function."""
+
+    def test_get_rms_error_meters(self, sample_control_points: List[ControlPoint]):
+        """Test getting RMS error in meters."""
+        from orbit.utils.coordinate_transform import get_rms_error_meters
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        error = get_rms_error_meters(transformer)
+        assert isinstance(error, float)
+        assert error >= 0.0
+
+    def test_get_rms_error_meters_without_reprojection_error(self, sample_control_points: List[ControlPoint]):
+        """Test getting RMS error when no reprojection error computed."""
+        from orbit.utils.coordinate_transform import get_rms_error_meters
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        # Clear reprojection error
+        transformer.reprojection_error = {}
+        error = get_rms_error_meters(transformer)
+        assert error == 0.0
+
+
+# ============================================================================
+# Test Homography Scale Factor
+# ============================================================================
+
+class TestHomographyScaleFactor:
+    """Test scale factor calculation for homography transformer."""
+
+    def test_get_scale_factor_homography(self):
+        """Test getting scale factors for homography."""
+        points = [
+            ControlPoint(100.0, 100.0, 12.940, 57.720, "CP1"),
+            ControlPoint(500.0, 100.0, 12.945, 57.720, "CP2"),
+            ControlPoint(300.0, 400.0, 12.9425, 57.718, "CP3"),
+            ControlPoint(400.0, 300.0, 12.943, 57.7195, "CP4")
+        ]
+        transformer = create_transformer(
+            points,
+            method=TransformMethod.HOMOGRAPHY,
+            use_validation=False
+        )
+        scale_x, scale_y = transformer.get_scale_factor()
+        assert scale_x > 0
+        assert scale_y > 0
+        # Scale can be quite large depending on pixel/geo coordinate ratio
+        # Just verify it's positive and finite
+        assert scale_x < 1000.0
+        assert scale_y < 1000.0
+
+
+# ============================================================================
+# Test Error Handling
+# ============================================================================
+
+class TestErrorHandling:
+    """Test error handling in coordinate transformations."""
+
+    def test_affine_requires_three_points(self):
+        """Test that affine transformer requires at least 3 points."""
+        points = [
+            ControlPoint(100.0, 100.0, 12.940, 57.720, "CP1"),
+            ControlPoint(500.0, 100.0, 12.945, 57.720, "CP2"),
+        ]
+        with pytest.raises(ValueError, match="at least 3"):
+            AffineTransformer(points, use_validation=False)
+
+    def test_homography_requires_four_points(self):
+        """Test that homography transformer requires at least 4 points."""
+        points = [
+            ControlPoint(100.0, 100.0, 12.940, 57.720, "CP1"),
+            ControlPoint(500.0, 100.0, 12.945, 57.720, "CP2"),
+            ControlPoint(300.0, 400.0, 12.9425, 57.718, "CP3"),
+        ]
+        with pytest.raises(ValueError, match="at least 4"):
+            HomographyTransformer(points, use_validation=False)
+
+    def test_pixel_to_geo_without_matrix_affine(self, sample_control_points: List[ControlPoint]):
+        """Test that pixel_to_geo raises if matrix not computed."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        # Clear the matrix
+        transformer.transform_matrix = None
+        with pytest.raises(RuntimeError, match="not initialized"):
+            transformer.pixel_to_geo(100.0, 100.0)
+
+    def test_geo_to_pixel_without_matrix_affine(self, sample_control_points: List[ControlPoint]):
+        """Test that geo_to_pixel raises if inverse matrix not computed."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        # Clear the inverse matrix
+        transformer.inverse_matrix = None
+        with pytest.raises(RuntimeError, match="not initialized"):
+            transformer.geo_to_pixel(12.94, 57.72)
+
+    def test_pixel_to_geo_without_matrix_homography(self):
+        """Test that homography pixel_to_geo raises if matrix not computed."""
+        points = [
+            ControlPoint(100.0, 100.0, 12.940, 57.720, "CP1"),
+            ControlPoint(500.0, 100.0, 12.945, 57.720, "CP2"),
+            ControlPoint(300.0, 400.0, 12.9425, 57.718, "CP3"),
+            ControlPoint(400.0, 300.0, 12.943, 57.7195, "CP4")
+        ]
+        transformer = create_transformer(
+            points,
+            method=TransformMethod.HOMOGRAPHY,
+            use_validation=False
+        )
+        transformer.transform_matrix = None
+        with pytest.raises(RuntimeError, match="not initialized"):
+            transformer.pixel_to_geo(100.0, 100.0)
+
+    def test_geo_to_pixel_without_matrix_homography(self):
+        """Test that homography geo_to_pixel raises if inverse matrix not computed."""
+        points = [
+            ControlPoint(100.0, 100.0, 12.940, 57.720, "CP1"),
+            ControlPoint(500.0, 100.0, 12.945, 57.720, "CP2"),
+            ControlPoint(300.0, 400.0, 12.9425, 57.718, "CP3"),
+            ControlPoint(400.0, 300.0, 12.943, 57.7195, "CP4")
+        ]
+        transformer = create_transformer(
+            points,
+            method=TransformMethod.HOMOGRAPHY,
+            use_validation=False
+        )
+        transformer.inverse_matrix = None
+        with pytest.raises(RuntimeError, match="not initialized"):
+            transformer.geo_to_pixel(12.94, 57.72)
+
+    def test_geo_to_pixel_unadjusted_without_matrix_homography(self):
+        """Test homography geo_to_pixel_unadjusted raises if matrix not computed."""
+        points = [
+            ControlPoint(100.0, 100.0, 12.940, 57.720, "CP1"),
+            ControlPoint(500.0, 100.0, 12.945, 57.720, "CP2"),
+            ControlPoint(300.0, 400.0, 12.9425, 57.718, "CP3"),
+            ControlPoint(400.0, 300.0, 12.943, 57.7195, "CP4")
+        ]
+        transformer = create_transformer(
+            points,
+            method=TransformMethod.HOMOGRAPHY,
+            use_validation=False
+        )
+        transformer.inverse_matrix = None
+        with pytest.raises(RuntimeError, match="not initialized"):
+            transformer.geo_to_pixel_unadjusted(12.94, 57.72)

@@ -343,3 +343,505 @@ class TestConnectingRoadRepr:
         assert "lanes=1" in repr_str
         assert "road_abc" in repr_str  # First 8 chars of ID
         assert "road_xyz" in repr_str
+
+
+class TestConnectingRoadGeoCoordinates:
+    """Test geographic coordinate handling."""
+
+    def test_has_geo_coords_false_when_none(self):
+        """Test has_geo_coords returns False when geo_path is None."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 100)])
+        assert cr.has_geo_coords() is False
+
+    def test_has_geo_coords_false_when_empty(self):
+        """Test has_geo_coords returns False when geo_path is empty."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 100)])
+        cr.geo_path = []
+        assert cr.has_geo_coords() is False
+
+    def test_has_geo_coords_true_when_set(self):
+        """Test has_geo_coords returns True when geo_path is set."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 100)])
+        cr.geo_path = [(12.94, 57.72), (12.95, 57.73)]
+        assert cr.has_geo_coords() is True
+
+    def test_get_pixel_path_without_transformer(self):
+        """Test get_pixel_path returns stored path when no transformer."""
+        path = [(10, 20), (30, 40)]
+        cr = ConnectingRoad(path=path)
+        cr.geo_path = [(12.94, 57.72), (12.95, 57.73)]
+        assert cr.get_pixel_path(transformer=None) == path
+
+    def test_get_pixel_path_with_transformer(self):
+        """Test get_pixel_path uses transformer when available."""
+        path = [(10, 20), (30, 40)]
+        geo_path = [(12.94, 57.72), (12.95, 57.73)]
+        cr = ConnectingRoad(path=path)
+        cr.geo_path = geo_path
+
+        # Create a mock transformer
+        class MockTransformer:
+            def geo_to_pixel(self, lon, lat):
+                return (lon * 100, lat * 100)
+
+        result = cr.get_pixel_path(MockTransformer())
+        assert result == [(1294.0, 5772.0), (1295.0, 5773.0)]
+
+    def test_update_pixel_path_from_geo(self):
+        """Test updating pixel path from geo coordinates."""
+        cr = ConnectingRoad(path=[(0, 0)])
+        cr.geo_path = [(12.94, 57.72), (12.95, 57.73)]
+
+        class MockTransformer:
+            def geo_to_pixel(self, lon, lat):
+                return (lon * 10, lat * 10)
+
+        cr.update_pixel_path_from_geo(MockTransformer())
+        assert cr.path == [(129.4, 577.2), (129.5, 577.3)]
+
+    def test_update_pixel_path_does_nothing_without_geo(self):
+        """Test that update_pixel_path_from_geo does nothing without geo_path."""
+        original_path = [(10, 20), (30, 40)]
+        cr = ConnectingRoad(path=original_path.copy())
+        cr.geo_path = None
+
+        class MockTransformer:
+            def geo_to_pixel(self, lon, lat):
+                return (0, 0)
+
+        cr.update_pixel_path_from_geo(MockTransformer())
+        assert cr.path == original_path
+
+    def test_initialize_geo_path_from_pixels(self):
+        """Test initializing geo path from pixel coordinates."""
+        cr = ConnectingRoad(path=[(100, 200), (300, 400)])
+        assert cr.geo_path is None
+
+        class MockTransformer:
+            def pixel_to_geo(self, x, y):
+                return (x / 10, y / 10)
+
+        cr.initialize_geo_path_from_pixels(MockTransformer())
+        assert cr.geo_path == [(10.0, 20.0), (30.0, 40.0)]
+
+    def test_initialize_geo_path_skips_if_already_set(self):
+        """Test that initialize_geo_path doesn't overwrite existing geo_path."""
+        cr = ConnectingRoad(path=[(100, 200)])
+        cr.geo_path = [(12.94, 57.72)]
+
+        class MockTransformer:
+            def pixel_to_geo(self, x, y):
+                return (0.0, 0.0)
+
+        cr.initialize_geo_path_from_pixels(MockTransformer())
+        # Should not change existing geo_path
+        assert cr.geo_path == [(12.94, 57.72)]
+
+
+class TestConnectingRoadStoredHeadings:
+    """Test stored heading handling from junction analysis."""
+
+    def test_stored_start_heading_preferred(self):
+        """Test that stored start heading is used over calculated."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 0)])  # Would give heading=0
+        cr.stored_start_heading = 1.5  # Different value
+        assert cr.get_start_heading() == 1.5
+
+    def test_stored_end_heading_preferred(self):
+        """Test that stored end heading is used over calculated."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 0)])  # Would give heading=0
+        cr.stored_end_heading = -0.5  # Different value
+        assert cr.get_end_heading() == -0.5
+
+    def test_fallback_to_calculated_heading(self):
+        """Test fallback to calculated heading when stored is None."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 0)])
+        assert cr.stored_start_heading is None
+        assert cr.stored_end_heading is None
+        assert cr.get_start_heading() == pytest.approx(0.0)
+        assert cr.get_end_heading() == pytest.approx(0.0)
+
+
+class TestConnectingRoadLaneManagement:
+    """Test lane initialization and management."""
+
+    def test_ensure_lanes_initialized(self):
+        """Test that lanes are auto-initialized from lane counts."""
+        cr = ConnectingRoad(lane_count_left=1, lane_count_right=2)
+        assert cr.lanes == []
+        cr.ensure_lanes_initialized()
+        # Should have: center (0), right (-1, -2), left (1)
+        assert len(cr.lanes) == 4  # center + 2 right + 1 left
+        lane_ids = [lane.id for lane in cr.lanes]
+        assert 0 in lane_ids
+        assert -1 in lane_ids
+        assert -2 in lane_ids
+        assert 1 in lane_ids
+
+    def test_get_lane_ids(self):
+        """Test getting list of lane IDs."""
+        cr = ConnectingRoad(lane_count_left=2, lane_count_right=3)
+        lane_ids = cr.get_lane_ids()
+        # Right lanes first, then left
+        assert lane_ids == [-1, -2, -3, 1, 2]
+
+    def test_get_lane_by_id(self):
+        """Test getting a lane by its ID."""
+        cr = ConnectingRoad(lane_count_left=1, lane_count_right=2)
+        cr.ensure_lanes_initialized()
+
+        lane = cr.get_lane(-1)
+        assert lane is not None
+        assert lane.id == -1
+
+        center = cr.get_lane(0)
+        assert center is not None
+        assert center.id == 0
+
+    def test_get_lane_not_found(self):
+        """Test getting a non-existent lane returns None."""
+        cr = ConnectingRoad(lane_count_left=0, lane_count_right=1)
+        cr.ensure_lanes_initialized()
+        assert cr.get_lane(5) is None
+
+    def test_lane_initialization_uses_lane_width(self):
+        """Test that lane initialization uses lane_width."""
+        cr = ConnectingRoad(
+            lane_count_left=0,
+            lane_count_right=1,
+            lane_width=4.0
+        )
+        cr.ensure_lanes_initialized()
+        lane = cr.get_lane(-1)
+        assert lane.width == 4.0
+
+    def test_lane_initialization_with_start_end_widths(self):
+        """Test lane initialization with variable widths."""
+        cr = ConnectingRoad(
+            lane_count_left=0,
+            lane_count_right=1,
+            lane_width=3.5,
+            lane_width_start=3.0,
+            lane_width_end=4.0
+        )
+        cr.ensure_lanes_initialized()
+        lane = cr.get_lane(-1)
+        assert lane.width == 3.0  # Uses lane_width_start
+        assert lane.width_end == 4.0
+
+
+class TestConnectingRoadLanePolygons:
+    """Test lane polygon generation."""
+
+    def test_get_lane_polygons_empty_path(self):
+        """Test get_lane_polygons with empty path returns empty dict."""
+        cr = ConnectingRoad(path=[], lane_count_right=1)
+        polygons = cr.get_lane_polygons(scale=0.1)
+        assert polygons == {}
+
+    def test_get_lane_polygons_single_point(self):
+        """Test get_lane_polygons with single point returns empty dict."""
+        cr = ConnectingRoad(path=[(0, 0)], lane_count_right=1)
+        polygons = cr.get_lane_polygons(scale=0.1)
+        assert polygons == {}
+
+    def test_get_lane_polygons_basic(self):
+        """Test get_lane_polygons creates polygons for each lane."""
+        path = [(0, 0), (100, 0), (200, 0)]  # Straight path
+        cr = ConnectingRoad(
+            path=path,
+            lane_count_left=1,
+            lane_count_right=2,
+            lane_width=3.5
+        )
+        polygons = cr.get_lane_polygons(scale=0.1)  # 0.1 m/pixel
+
+        # Should have 3 lanes
+        assert len(polygons) == 3
+        assert -1 in polygons
+        assert -2 in polygons
+        assert 1 in polygons
+
+    def test_get_lane_polygons_with_variable_width(self):
+        """Test get_lane_polygons with variable width lanes."""
+        path = [(0, 0), (100, 0), (200, 0)]
+        cr = ConnectingRoad(
+            path=path,
+            lane_count_left=0,
+            lane_count_right=1,
+            lane_width=3.5,
+            lane_width_start=3.0,
+            lane_width_end=4.0
+        )
+        polygons = cr.get_lane_polygons(scale=0.1)
+        assert -1 in polygons
+        # Polygon should have enough points
+        assert len(polygons[-1]) >= 3
+
+
+class TestConnectingRoadParamPoly3D:
+    """Test ParamPoly3D geometry fields."""
+
+    def test_default_geometry_type(self):
+        """Test default geometry type is parampoly3."""
+        cr = ConnectingRoad()
+        assert cr.geometry_type == "parampoly3"
+
+    def test_param_poly_coefficients_default(self):
+        """Test default ParamPoly3D coefficients are zero."""
+        cr = ConnectingRoad()
+        assert cr.aU == 0.0
+        assert cr.bU == 0.0
+        assert cr.cU == 0.0
+        assert cr.dU == 0.0
+        assert cr.aV == 0.0
+        assert cr.bV == 0.0
+        assert cr.cV == 0.0
+        assert cr.dV == 0.0
+
+    def test_param_poly_serialization(self):
+        """Test ParamPoly3D coefficients are serialized."""
+        cr = ConnectingRoad(
+            path=[(0, 0), (100, 100)],
+            geometry_type="parampoly3",
+            aU=1.0, bU=2.0, cU=3.0, dU=4.0,
+            aV=5.0, bV=6.0, cV=7.0, dV=8.0,
+            p_range=1.5,
+            p_range_normalized=False
+        )
+        data = cr.to_dict()
+
+        assert data['geometry_type'] == 'parampoly3'
+        assert data['aU'] == 1.0
+        assert data['bU'] == 2.0
+        assert data['cU'] == 3.0
+        assert data['dU'] == 4.0
+        assert data['aV'] == 5.0
+        assert data['bV'] == 6.0
+        assert data['cV'] == 7.0
+        assert data['dV'] == 8.0
+        assert data['p_range'] == 1.5
+        assert data['p_range_normalized'] is False
+
+    def test_param_poly_deserialization(self):
+        """Test ParamPoly3D coefficients are deserialized."""
+        data = {
+            'id': 'test',
+            'path': [[0, 0], [100, 100]],
+            'geometry_type': 'parampoly3',
+            'aU': 10.0, 'bU': 20.0, 'cU': 30.0, 'dU': 40.0,
+            'aV': 50.0, 'bV': 60.0, 'cV': 70.0, 'dV': 80.0,
+            'p_range': 2.0,
+            'p_range_normalized': False,
+            'tangent_scale': 0.5
+        }
+        cr = ConnectingRoad.from_dict(data)
+
+        assert cr.geometry_type == 'parampoly3'
+        assert cr.aU == 10.0
+        assert cr.bU == 20.0
+        assert cr.cU == 30.0
+        assert cr.dU == 40.0
+        assert cr.aV == 50.0
+        assert cr.bV == 60.0
+        assert cr.cV == 70.0
+        assert cr.dV == 80.0
+        assert cr.p_range == 2.0
+        assert cr.p_range_normalized is False
+        assert cr.tangent_scale == 0.5
+
+
+class TestConnectingRoadGeoPathSerialization:
+    """Test geo_path serialization/deserialization."""
+
+    def test_geo_path_serialization(self):
+        """Test geo_path is serialized when set."""
+        cr = ConnectingRoad(path=[(100, 200), (300, 400)])
+        cr.geo_path = [(12.94, 57.72), (12.95, 57.73)]
+        data = cr.to_dict()
+
+        assert 'geo_path' in data
+        assert data['geo_path'] == [[12.94, 57.72], [12.95, 57.73]]
+
+    def test_geo_path_not_serialized_when_none(self):
+        """Test geo_path is not in dict when None."""
+        cr = ConnectingRoad(path=[(100, 200)])
+        data = cr.to_dict()
+        assert 'geo_path' not in data
+
+    def test_geo_path_deserialization(self):
+        """Test geo_path is deserialized correctly."""
+        data = {
+            'id': 'test',
+            'path': [[100, 200], [300, 400]],
+            'geo_path': [[12.94, 57.72], [12.95, 57.73]]
+        }
+        cr = ConnectingRoad.from_dict(data)
+
+        assert cr.geo_path == [(12.94, 57.72), (12.95, 57.73)]
+
+    def test_geo_path_none_when_not_in_dict(self):
+        """Test geo_path is None when not in dict."""
+        data = {
+            'id': 'test',
+            'path': [[100, 200]]
+        }
+        cr = ConnectingRoad.from_dict(data)
+        assert cr.geo_path is None
+
+
+class TestConnectingRoadStoredHeadingsSerialization:
+    """Test stored headings serialization."""
+
+    def test_stored_headings_serialization(self):
+        """Test stored headings are serialized when set."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 100)])
+        cr.stored_start_heading = 0.5
+        cr.stored_end_heading = -0.3
+        data = cr.to_dict()
+
+        assert data['stored_start_heading'] == 0.5
+        assert data['stored_end_heading'] == -0.3
+
+    def test_stored_headings_not_serialized_when_none(self):
+        """Test stored headings not in dict when None."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 100)])
+        data = cr.to_dict()
+
+        assert 'stored_start_heading' not in data
+        assert 'stored_end_heading' not in data
+
+    def test_stored_headings_deserialization(self):
+        """Test stored headings are deserialized."""
+        data = {
+            'id': 'test',
+            'path': [[0, 0], [100, 100]],
+            'stored_start_heading': 1.57,
+            'stored_end_heading': -1.57
+        }
+        cr = ConnectingRoad.from_dict(data)
+
+        assert cr.stored_start_heading == 1.57
+        assert cr.stored_end_heading == -1.57
+
+
+class TestConnectingRoadLaneSerialization:
+    """Test lane serialization in connecting roads."""
+
+    def test_lanes_serialization(self):
+        """Test that lanes are serialized."""
+        cr = ConnectingRoad(
+            path=[(0, 0), (100, 100)],
+            lane_count_right=1
+        )
+        cr.ensure_lanes_initialized()
+        data = cr.to_dict()
+
+        assert 'lanes' in data
+        assert len(data['lanes']) == 2  # center + 1 right
+
+    def test_lanes_deserialization(self):
+        """Test that lanes are deserialized."""
+        from orbit.models import Lane, LaneType
+        data = {
+            'id': 'test',
+            'path': [[0, 0], [100, 100]],
+            'lane_count_right': 1,
+            'lanes': [
+                {'id': 0, 'lane_type': 'none', 'road_mark_type': 'none', 'width': 0.0},
+                {'id': -1, 'lane_type': 'driving', 'road_mark_type': 'solid', 'width': 4.0}
+            ]
+        }
+        cr = ConnectingRoad.from_dict(data)
+
+        assert len(cr.lanes) == 2
+        assert cr.lanes[0].id == 0
+        assert cr.lanes[1].id == -1
+        assert cr.lanes[1].width == 4.0
+
+    def test_old_project_without_lanes(self):
+        """Test loading old project without lanes field."""
+        data = {
+            'id': 'old_conn',
+            'path': [[0, 0], [100, 100]],
+            'lane_count_right': 2
+            # No 'lanes' field - old project format
+        }
+        cr = ConnectingRoad.from_dict(data)
+
+        # Lanes should be empty initially
+        assert cr.lanes == []
+
+        # But should initialize on access
+        cr.ensure_lanes_initialized()
+        assert len(cr.lanes) == 3  # center + 2 right
+
+
+class TestConnectingRoadVariableWidth:
+    """Test variable width handling."""
+
+    def test_lane_width_start_end_defaults(self):
+        """Test lane_width_start/end default to None."""
+        cr = ConnectingRoad()
+        assert cr.lane_width_start is None
+        assert cr.lane_width_end is None
+
+    def test_lane_width_start_end_serialization(self):
+        """Test lane_width_start/end are serialized."""
+        cr = ConnectingRoad(
+            path=[(0, 0), (100, 100)],
+            lane_width=3.5,
+            lane_width_start=3.0,
+            lane_width_end=4.0
+        )
+        data = cr.to_dict()
+
+        assert data['lane_width'] == 3.5
+        assert data['lane_width_start'] == 3.0
+        assert data['lane_width_end'] == 4.0
+
+    def test_lane_width_start_end_deserialization(self):
+        """Test lane_width_start/end are deserialized."""
+        data = {
+            'id': 'test',
+            'path': [[0, 0], [100, 100]],
+            'lane_width': 3.5,
+            'lane_width_start': 2.5,
+            'lane_width_end': 4.5
+        }
+        cr = ConnectingRoad.from_dict(data)
+
+        assert cr.lane_width == 3.5
+        assert cr.lane_width_start == 2.5
+        assert cr.lane_width_end == 4.5
+
+
+class TestConnectingRoadRoadId:
+    """Test OpenDRIVE road_id handling."""
+
+    def test_road_id_defaults_to_none(self):
+        """Test road_id defaults to None."""
+        cr = ConnectingRoad()
+        assert cr.road_id is None
+
+    def test_road_id_serialized_when_set(self):
+        """Test road_id is serialized when set."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 100)], road_id=42)
+        data = cr.to_dict()
+        assert data['road_id'] == 42
+
+    def test_road_id_not_serialized_when_none(self):
+        """Test road_id is not in dict when None."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 100)])
+        data = cr.to_dict()
+        assert 'road_id' not in data
+
+    def test_road_id_deserialization(self):
+        """Test road_id is deserialized."""
+        data = {
+            'id': 'test',
+            'path': [[0, 0], [100, 100]],
+            'road_id': 123
+        }
+        cr = ConnectingRoad.from_dict(data)
+        assert cr.road_id == 123
