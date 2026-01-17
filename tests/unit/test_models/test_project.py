@@ -352,6 +352,559 @@ class TestProjectClear:
         assert sample_project.metadata['created'] != old_created
 
 
+class TestControlPointSerialization:
+    """Test ControlPoint to_dict/from_dict methods."""
+
+    def test_control_point_to_dict(self, sample_control_points):
+        """Test control point serialization."""
+        cp = sample_control_points[0]
+        data = cp.to_dict()
+
+        assert data['pixel_x'] == 100.0
+        assert data['pixel_y'] == 100.0
+        assert data['longitude'] == 12.940000
+        assert data['latitude'] == 57.720000
+        assert data['name'] == "CP1"
+        assert data['is_validation'] is False
+
+    def test_control_point_to_dict_validation_point(self, validation_control_point):
+        """Test validation control point serialization."""
+        data = validation_control_point.to_dict()
+
+        assert data['is_validation'] is True
+        assert data['name'] == "GVP1"
+
+    def test_control_point_from_dict(self):
+        """Test control point deserialization."""
+        data = {
+            'pixel_x': 200.0,
+            'pixel_y': 300.0,
+            'longitude': 12.95,
+            'latitude': 57.73,
+            'name': 'Test Point',
+            'is_validation': True
+        }
+
+        cp = ControlPoint.from_dict(data)
+
+        assert cp.pixel_x == 200.0
+        assert cp.pixel_y == 300.0
+        assert cp.longitude == 12.95
+        assert cp.latitude == 57.73
+        assert cp.name == 'Test Point'
+        assert cp.is_validation is True
+
+    def test_control_point_from_dict_backwards_compat(self):
+        """Test control point without is_validation field (old format)."""
+        data = {
+            'pixel_x': 100.0,
+            'pixel_y': 100.0,
+            'longitude': 12.94,
+            'latitude': 57.72
+        }
+
+        cp = ControlPoint.from_dict(data)
+
+        assert cp.is_validation is False  # Default
+        assert cp.name is None
+
+    def test_control_point_roundtrip(self, sample_control_points):
+        """Test control point serialization roundtrip."""
+        for original in sample_control_points:
+            data = original.to_dict()
+            restored = ControlPoint.from_dict(data)
+
+            assert restored.pixel_x == original.pixel_x
+            assert restored.pixel_y == original.pixel_y
+            assert restored.longitude == original.longitude
+            assert restored.latitude == original.latitude
+            assert restored.name == original.name
+            assert restored.is_validation == original.is_validation
+
+
+class TestSignalManagement:
+    """Test signal addition, removal, and retrieval."""
+
+    def test_add_signal(self, empty_project):
+        """Test adding a signal to project."""
+        from orbit.models.signal import Signal, SignalType
+
+        signal = Signal(
+            position=(100.0, 200.0),
+            signal_type=SignalType.STOP
+        )
+        empty_project.add_signal(signal)
+
+        assert len(empty_project.signals) == 1
+        assert empty_project.signals[0].id == signal.id
+
+    def test_get_signal_by_id(self, empty_project):
+        """Test retrieving signal by ID."""
+        from orbit.models.signal import Signal, SignalType
+
+        signal = Signal(
+            position=(100.0, 200.0),
+            signal_type=SignalType.GIVE_WAY
+        )
+        empty_project.add_signal(signal)
+        retrieved = empty_project.get_signal(signal.id)
+
+        assert retrieved is not None
+        assert retrieved.id == signal.id
+
+    def test_get_nonexistent_signal_returns_none(self, empty_project):
+        """Test getting a non-existent signal returns None."""
+        result = empty_project.get_signal("nonexistent-id")
+        assert result is None
+
+    def test_remove_signal(self, empty_project):
+        """Test removing a signal from project."""
+        from orbit.models.signal import Signal, SignalType
+
+        signal = Signal(
+            position=(100.0, 200.0),
+            signal_type=SignalType.STOP
+        )
+        empty_project.add_signal(signal)
+        signal_id = signal.id
+
+        empty_project.remove_signal(signal_id)
+
+        assert len(empty_project.signals) == 0
+        assert empty_project.get_signal(signal_id) is None
+
+
+class TestObjectManagement:
+    """Test roadside object addition, removal, and retrieval."""
+
+    def test_add_object(self, empty_project):
+        """Test adding an object to project."""
+        from orbit.models.object import RoadObject, ObjectType
+
+        obj = RoadObject(
+            position=(100.0, 200.0),
+            object_type=ObjectType.LAMPPOST
+        )
+        empty_project.add_object(obj)
+
+        assert len(empty_project.objects) == 1
+        assert empty_project.objects[0].id == obj.id
+
+    def test_get_object_by_id(self, empty_project):
+        """Test retrieving object by ID."""
+        from orbit.models.object import RoadObject, ObjectType
+
+        obj = RoadObject(
+            position=(100.0, 200.0),
+            object_type=ObjectType.BUILDING
+        )
+        empty_project.add_object(obj)
+        retrieved = empty_project.get_object(obj.id)
+
+        assert retrieved is not None
+        assert retrieved.id == obj.id
+
+    def test_get_nonexistent_object_returns_none(self, empty_project):
+        """Test getting a non-existent object returns None."""
+        result = empty_project.get_object("nonexistent-id")
+        assert result is None
+
+    def test_remove_object(self, empty_project):
+        """Test removing an object from project."""
+        from orbit.models.object import RoadObject, ObjectType
+
+        obj = RoadObject(
+            position=(100.0, 200.0),
+            object_type=ObjectType.TREE_BROADLEAF
+        )
+        empty_project.add_object(obj)
+        obj_id = obj.id
+
+        empty_project.remove_object(obj_id)
+
+        assert len(empty_project.objects) == 0
+        assert empty_project.get_object(obj_id) is None
+
+
+class TestParkingManagement:
+    """Test parking space addition, removal, and retrieval."""
+
+    def test_add_parking(self, empty_project):
+        """Test adding a parking space to project."""
+        from orbit.models.parking import ParkingSpace
+
+        parking = ParkingSpace(
+            position=(100.0, 200.0)
+        )
+        empty_project.add_parking(parking)
+
+        assert len(empty_project.parking_spaces) == 1
+        assert empty_project.parking_spaces[0].id == parking.id
+
+    def test_get_parking_by_id(self, empty_project):
+        """Test retrieving parking by ID."""
+        from orbit.models.parking import ParkingSpace
+
+        parking = ParkingSpace(
+            position=(100.0, 200.0)
+        )
+        empty_project.add_parking(parking)
+        retrieved = empty_project.get_parking(parking.id)
+
+        assert retrieved is not None
+        assert retrieved.id == parking.id
+
+    def test_get_nonexistent_parking_returns_none(self, empty_project):
+        """Test getting a non-existent parking returns None."""
+        result = empty_project.get_parking("nonexistent-id")
+        assert result is None
+
+    def test_remove_parking(self, empty_project):
+        """Test removing a parking space from project."""
+        from orbit.models.parking import ParkingSpace
+
+        parking = ParkingSpace(
+            position=(100.0, 200.0)
+        )
+        empty_project.add_parking(parking)
+        parking_id = parking.id
+
+        empty_project.remove_parking(parking_id)
+
+        assert len(empty_project.parking_spaces) == 0
+        assert empty_project.get_parking(parking_id) is None
+
+
+class TestControlPointOperations:
+    """Test control point operations."""
+
+    def test_add_control_point(self, empty_project):
+        """Test adding a control point."""
+        cp = ControlPoint(
+            pixel_x=100.0, pixel_y=100.0,
+            longitude=12.94, latitude=57.72
+        )
+        empty_project.add_control_point(cp)
+
+        assert len(empty_project.control_points) == 1
+        assert empty_project.control_points[0].pixel_x == 100.0
+
+    def test_add_control_point_invalidates_cache(self, empty_project):
+        """Test that adding control point invalidates uncertainty cache."""
+        empty_project.uncertainty_grid_cache = [[1.0, 2.0], [3.0, 4.0]]
+        empty_project.uncertainty_last_computed = "2024-01-01T00:00:00"
+
+        cp = ControlPoint(pixel_x=100.0, pixel_y=100.0, longitude=12.94, latitude=57.72)
+        empty_project.add_control_point(cp)
+
+        assert empty_project.uncertainty_grid_cache is None
+        assert empty_project.uncertainty_last_computed is None
+
+    def test_remove_control_point(self, sample_project):
+        """Test removing a control point."""
+        initial_count = len(sample_project.control_points)
+        sample_project.remove_control_point(0)
+
+        assert len(sample_project.control_points) == initial_count - 1
+
+    def test_remove_control_point_out_of_range(self, sample_project):
+        """Test removing a control point with invalid index does nothing."""
+        initial_count = len(sample_project.control_points)
+        sample_project.remove_control_point(100)  # Invalid index
+
+        assert len(sample_project.control_points) == initial_count
+
+    def test_remove_control_point_invalidates_cache(self, sample_project):
+        """Test that removing control point invalidates uncertainty cache."""
+        sample_project.uncertainty_grid_cache = [[1.0, 2.0], [3.0, 4.0]]
+
+        sample_project.remove_control_point(0)
+
+        assert sample_project.uncertainty_grid_cache is None
+
+    def test_has_georeferencing_true(self, sample_project):
+        """Test has_georeferencing returns True with 3+ control points."""
+        assert sample_project.has_georeferencing() is True
+
+    def test_has_georeferencing_false(self, empty_project):
+        """Test has_georeferencing returns False with fewer than 3 control points."""
+        assert empty_project.has_georeferencing() is False
+
+        # Add 2 points - still not enough
+        for i in range(2):
+            empty_project.add_control_point(ControlPoint(
+                pixel_x=i*100.0, pixel_y=100.0,
+                longitude=12.94 + i*0.01, latitude=57.72
+            ))
+        assert empty_project.has_georeferencing() is False
+
+        # Add 3rd point - now enough
+        empty_project.add_control_point(ControlPoint(
+            pixel_x=200.0, pixel_y=200.0,
+            longitude=12.96, latitude=57.73
+        ))
+        assert empty_project.has_georeferencing() is True
+
+    def test_invalidate_uncertainty_cache(self, empty_project):
+        """Test invalidate_uncertainty_cache clears all cached data."""
+        empty_project.uncertainty_grid_cache = [[1.0]]
+        empty_project.uncertainty_bootstrap_grid = [[2.0]]
+        empty_project.uncertainty_last_computed = "2024-01-01"
+
+        empty_project.invalidate_uncertainty_cache()
+
+        assert empty_project.uncertainty_grid_cache is None
+        assert empty_project.uncertainty_bootstrap_grid is None
+        assert empty_project.uncertainty_last_computed is None
+
+
+class TestFindClosestRoad:
+    """Test find_closest_road method."""
+
+    def test_find_closest_road_single_road(self, sample_project):
+        """Test finding closest road with single road."""
+        # Centerline is at y=100, point at (500, 100) is on the line
+        result = sample_project.find_closest_road((500.0, 100.0))
+
+        assert result is not None
+        assert result == sample_project.roads[0].id
+
+    def test_find_closest_road_point_near_road(self, sample_project):
+        """Test finding closest road with point near but not on road."""
+        # Point at (500, 110) is 10 pixels from centerline at y=100
+        result = sample_project.find_closest_road((500.0, 110.0))
+
+        assert result is not None
+        assert result == sample_project.roads[0].id
+
+    def test_find_closest_road_empty_project(self, empty_project):
+        """Test find_closest_road returns None when no roads exist."""
+        result = empty_project.find_closest_road((100.0, 100.0))
+        assert result is None
+
+    def test_find_closest_road_multiple_roads(self, empty_project):
+        """Test finding closest road among multiple roads."""
+        # Create two roads at different positions
+        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(0, 500, 100):
+            poly1.add_point(float(x), 100.0)
+
+        poly2 = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(0, 500, 100):
+            poly2.add_point(float(x), 300.0)
+
+        empty_project.add_polyline(poly1)
+        empty_project.add_polyline(poly2)
+
+        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road2 = Road(name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
+
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        # Point closer to road1 (y=100)
+        result = empty_project.find_closest_road((200.0, 120.0))
+        assert result == road1.id
+
+        # Point closer to road2 (y=300)
+        result = empty_project.find_closest_road((200.0, 280.0))
+        assert result == road2.id
+
+
+class TestPointToPolylineDistance:
+    """Test _point_to_polyline_distance helper method."""
+
+    def test_point_on_polyline(self, empty_project):
+        """Test distance is zero when point is on polyline."""
+        points = [(0.0, 0.0), (100.0, 0.0)]
+        distance = empty_project._point_to_polyline_distance((50.0, 0.0), points)
+
+        assert distance == pytest.approx(0.0, abs=0.001)
+
+    def test_point_perpendicular_to_segment(self, empty_project):
+        """Test distance for point perpendicular to segment."""
+        points = [(0.0, 0.0), (100.0, 0.0)]
+        distance = empty_project._point_to_polyline_distance((50.0, 10.0), points)
+
+        assert distance == pytest.approx(10.0, abs=0.001)
+
+    def test_point_nearest_to_vertex(self, empty_project):
+        """Test distance when nearest point is a vertex."""
+        points = [(0.0, 0.0), (100.0, 0.0)]
+        # Point beyond end of segment
+        distance = empty_project._point_to_polyline_distance((110.0, 10.0), points)
+
+        # Distance to endpoint (100, 0)
+        expected = ((110.0 - 100.0)**2 + 10.0**2)**0.5
+        assert distance == pytest.approx(expected, abs=0.001)
+
+    def test_empty_polyline(self, empty_project):
+        """Test distance returns infinity for empty polyline."""
+        distance = empty_project._point_to_polyline_distance((50.0, 0.0), [])
+        assert distance == float('inf')
+
+    def test_single_point_polyline(self, empty_project):
+        """Test distance for polyline with single point (degenerate segment)."""
+        points = [(50.0, 0.0), (50.0, 0.0)]  # Same point twice
+        distance = empty_project._point_to_polyline_distance((60.0, 0.0), points)
+
+        assert distance == pytest.approx(10.0, abs=0.001)
+
+
+class TestClearCrossJunctionRoadLinks:
+    """Test clear_cross_junction_road_links method."""
+
+    def test_clear_cross_junction_links(self, empty_project):
+        """Test clearing links between roads in same junction."""
+        # Create roads
+        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1.add_point(0.0, 0.0)
+        poly1.add_point(100.0, 0.0)
+
+        poly2 = Polyline(line_type=LineType.CENTERLINE)
+        poly2.add_point(100.0, 0.0)
+        poly2.add_point(200.0, 0.0)
+
+        empty_project.add_polyline(poly1)
+        empty_project.add_polyline(poly2)
+
+        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road2 = Road(name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
+
+        # Set up cross-junction links (should be cleared)
+        road1.successor_id = road2.id
+        road2.predecessor_id = road1.id
+
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        # Create junction connecting both roads
+        junction = Junction(name="Test Junction")
+        junction.connected_road_ids = [road1.id, road2.id]
+        empty_project.add_junction(junction)
+
+        # Clear cross-junction links
+        cleared = empty_project.clear_cross_junction_road_links()
+
+        assert cleared == 2
+        assert road1.successor_id is None
+        assert road2.predecessor_id is None
+
+    def test_clear_cross_junction_links_no_junctions(self, empty_project):
+        """Test clearing when no junctions returns 0."""
+        cleared = empty_project.clear_cross_junction_road_links()
+        assert cleared == 0
+
+    def test_clear_cross_junction_preserves_external_links(self, empty_project):
+        """Test that links to roads outside junction are preserved."""
+        # Create 3 roads, only 2 in junction
+        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1.add_point(0.0, 0.0)
+        poly1.add_point(100.0, 0.0)
+
+        poly2 = Polyline(line_type=LineType.CENTERLINE)
+        poly2.add_point(100.0, 0.0)
+        poly2.add_point(200.0, 0.0)
+
+        poly3 = Polyline(line_type=LineType.CENTERLINE)
+        poly3.add_point(200.0, 0.0)
+        poly3.add_point(300.0, 0.0)
+
+        empty_project.add_polyline(poly1)
+        empty_project.add_polyline(poly2)
+        empty_project.add_polyline(poly3)
+
+        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road2 = Road(name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
+        road3 = Road(name="Road 3", centerline_id=poly3.id, polyline_ids=[poly3.id])
+
+        # road2 links to both road1 (in junction) and road3 (outside junction)
+        road2.predecessor_id = road1.id  # Will be cleared
+        road2.successor_id = road3.id    # Should be preserved
+
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+        empty_project.add_road(road3)
+
+        # Junction only contains road1 and road2
+        junction = Junction(name="Test Junction")
+        junction.connected_road_ids = [road1.id, road2.id]
+        empty_project.add_junction(junction)
+
+        empty_project.clear_cross_junction_road_links()
+
+        # Link within junction should be cleared
+        assert road2.predecessor_id is None
+        # Link outside junction should be preserved
+        assert road2.successor_id == road3.id
+
+
+class TestProjectRepr:
+    """Test Project __repr__ method."""
+
+    def test_empty_project_repr(self, empty_project):
+        """Test repr of empty project."""
+        repr_str = repr(empty_project)
+
+        assert "polylines=0" in repr_str
+        assert "roads=0" in repr_str
+        assert "junctions=0" in repr_str
+        assert "signals=0" in repr_str
+        assert "objects=0" in repr_str
+        assert "control_points=0" in repr_str
+
+    def test_sample_project_repr(self, sample_project):
+        """Test repr of sample project."""
+        repr_str = repr(sample_project)
+
+        assert "polylines=3" in repr_str
+        assert "roads=1" in repr_str
+        assert "control_points=3" in repr_str
+
+
+class TestProjectSerializationExtended:
+    """Extended tests for project serialization."""
+
+    def test_to_dict_includes_all_fields(self, sample_project):
+        """Test that to_dict includes all expected fields."""
+        data = sample_project.to_dict()
+
+        expected_fields = [
+            'metadata', 'image_path', 'polylines', 'roads', 'junctions',
+            'junction_groups', 'signals', 'objects', 'parking_spaces',
+            'control_points', 'right_hand_traffic', 'transform_method',
+            'country_code', 'map_name', 'openstreetmap_used',
+            'junction_offset_distance_meters',
+            'roundabout_ring_offset_distance_meters',
+            'roundabout_approach_offset_distance_meters',
+            'georef_validation', 'uncertainty_grid_cache',
+            'uncertainty_grid_resolution', 'uncertainty_bootstrap_grid',
+            'uncertainty_last_computed', 'mc_sigma_pixels',
+            'baseline_uncertainty_m', 'gcp_suggestion_threshold',
+            'imported_geo_reference', 'enabled_sign_libraries'
+        ]
+
+        for field in expected_fields:
+            assert field in data, f"Missing field: {field}"
+
+    def test_from_dict_roundabout_offset_migration(self, tmp_path):
+        """Test migration from old roundabout_offset_distance_meters field."""
+        old_data = {
+            'metadata': {'version': '0.3.0'},
+            'polylines': [],
+            'roads': [],
+            'junctions': [],
+            'roundabout_offset_distance_meters': 5.0  # Old field name
+        }
+
+        project = Project.from_dict(old_data)
+
+        # Should use old value for ring offset
+        assert project.roundabout_ring_offset_distance_meters == 5.0
+        # New field should have default
+        assert project.roundabout_approach_offset_distance_meters == 8.0
+
+
 class TestBackwardCompatibility:
     """Test backward compatibility with older project versions."""
 
