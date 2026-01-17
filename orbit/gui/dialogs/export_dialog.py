@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFont
 
 from orbit.models import Project
-from orbit.export import CoordinateTransformer, create_transformer, export_to_opendrive, TransformMethod, validate_opendrive_file
+from orbit.export import CoordinateTransformer, create_transformer, export_to_opendrive, validate_opendrive_file
 from .base_dialog import BaseDialog
 from ..utils.message_helpers import show_error, show_warning, show_info
 
@@ -177,9 +177,8 @@ class ExportDialog(BaseDialog):
 
         # Check georeferencing
         if self.project.has_georeferencing():
-            # Use project's transform method
-            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-            self.transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            # Create transformer using project's method
+            self.transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
             if self.transformer:
                 self.georef_status_label.setText(

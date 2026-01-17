@@ -519,7 +519,7 @@ class GeoreferenceDialog(BaseDialog):
 
     def update_validation(self):
         """Compute and display validation results."""
-        from orbit.utils import create_transformer, TransformMethod
+        from orbit.utils import create_transformer
 
         # Count training points
         training_points = [cp for cp in self.project.control_points if not cp.is_validation]
@@ -538,8 +538,7 @@ class GeoreferenceDialog(BaseDialog):
         self.analyze_gcp_btn.setEnabled(len(training_points) >= 4)
 
         # Create transformer
-        method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-        transformer = create_transformer(self.project.control_points, method, use_validation=True)
+        transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
         if not transformer:
             self.validation_text.setText("Failed to create transformer.")
@@ -688,7 +687,7 @@ class GeoreferenceDialog(BaseDialog):
         self.compute_monte_carlo_btn.setEnabled(True)
 
         try:
-            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils import create_transformer
             from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
@@ -702,8 +701,7 @@ class GeoreferenceDialog(BaseDialog):
             image_height = pixmap.height()
 
             # Create transformer
-            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
             if not transformer:
                 self.uncertainty_text.setPlainText("Failed to create transformation.")
@@ -782,7 +780,7 @@ class GeoreferenceDialog(BaseDialog):
             return
 
         try:
-            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils import create_transformer
             from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
@@ -796,8 +794,7 @@ class GeoreferenceDialog(BaseDialog):
             image_height = pixmap.height()
 
             # Create transformer
-            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
             if not transformer:
                 show_warning(self, "Failed to create transformation.", "Transform Error")
@@ -861,7 +858,7 @@ class GeoreferenceDialog(BaseDialog):
             return
 
         try:
-            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils import create_transformer
             from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
@@ -875,8 +872,7 @@ class GeoreferenceDialog(BaseDialog):
             image_height = pixmap.height()
 
             # Create transformer
-            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
             if not transformer:
                 show_warning(self, "Failed to create transformation.", "Transform Error")
@@ -956,7 +952,7 @@ class GeoreferenceDialog(BaseDialog):
     def suggest_gcp_locations(self):
         """Suggest where to add new control points based on uncertainty analysis."""
         try:
-            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils import create_transformer
             from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
@@ -970,8 +966,7 @@ class GeoreferenceDialog(BaseDialog):
             image_height = pixmap.height()
 
             # Create transformer
-            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
             if not transformer:
                 show_warning(self, "Failed to create transformation.", "Transform Error")
@@ -1042,7 +1037,7 @@ class GeoreferenceDialog(BaseDialog):
 
     def show_gcp_analysis(self):
         """Show detailed GCP quality analysis dialog."""
-        from orbit.utils import create_transformer, TransformMethod
+        from orbit.utils import create_transformer
         from orbit.utils.gcp_analyzer import analyze_control_points, format_analysis_report
 
         training_points = [cp for cp in self.project.control_points if not cp.is_validation]
@@ -1051,8 +1046,7 @@ class GeoreferenceDialog(BaseDialog):
             return
 
         # Create transformer
-        method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-        transformer = create_transformer(self.project.control_points, method, use_validation=True)
+        transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
         if not transformer:
             show_warning(self, "Failed to create transformation for analysis.", "Transform Error")

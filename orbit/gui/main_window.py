@@ -677,9 +677,8 @@ class MainWindow(QMainWindow):
 
             # Update georef validation in project if we have control points
             if self.project.has_georeferencing():
-                from orbit.export import create_transformer, TransformMethod
-                method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-                transformer = create_transformer(self.project.control_points, method, use_validation=True)
+                from orbit.export import create_transformer
+                transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
                 if transformer:
                     # Update stored validation results
                     training_points = [cp for cp in self.project.control_points if not cp.is_validation]
@@ -721,7 +720,7 @@ class MainWindow(QMainWindow):
 
     def export_georeferencing(self):
         """Export georeferencing parameters to JSON file."""
-        from orbit.export import export_georeferencing, create_transformer, TransformMethod
+        from orbit.export import export_georeferencing, create_transformer
 
         # Check if we have enough control points
         if len(self.project.control_points) < 3:
@@ -734,21 +733,20 @@ class MainWindow(QMainWindow):
             return
 
         # Create transformer
-        method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-        min_points = 4 if method == TransformMethod.HOMOGRAPHY else 3
+        min_points = 4 if self.project.transform_method == 'homography' else 3
         training_points = [cp for cp in self.project.control_points if not cp.is_validation]
 
         if len(training_points) < min_points:
             show_warning(
                 self,
-                f"Cannot export: {method.name.lower()} transformation requires "
+                f"Cannot export: {self.project.transform_method} transformation requires "
                 f"at least {min_points} training (non-validation) control points.\n"
                 f"Current: {len(training_points)} training points.",
                 "Insufficient Control Points"
             )
             return
 
-        transformer = create_transformer(self.project.control_points, method, use_validation=True)
+        transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
         if not transformer:
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
@@ -801,7 +799,7 @@ class MainWindow(QMainWindow):
         DetailLevel = osm_import_module.DetailLevel
         OSMParser = osm_parser_module.OSMParser
         calculate_bbox_from_image = importlib.import_module('orbit.import.osm_to_orbit').calculate_bbox_from_image
-        from orbit.export import create_transformer, TransformMethod
+        from orbit.export import create_transformer
         from PyQt6.QtWidgets import QProgressDialog
         from PyQt6.QtCore import QCoreApplication
 
@@ -818,8 +816,7 @@ class MainWindow(QMainWindow):
             return
 
         # Create coordinate transformer
-        method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-        transformer = create_transformer(self.project.control_points, method, use_validation=True)
+        transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
         if not transformer:
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
@@ -975,7 +972,7 @@ class MainWindow(QMainWindow):
         OpenDriveImporter = opendrive_import_module.OpenDriveImporter
         ImportOptions = opendrive_import_module.ImportOptions
         ImportMode = opendrive_import_module.ImportMode
-        from orbit.export import create_transformer, TransformMethod
+        from orbit.export import create_transformer
         from PyQt6.QtWidgets import QProgressDialog
         from PyQt6.QtCore import QCoreApplication
 
@@ -992,8 +989,7 @@ class MainWindow(QMainWindow):
         transformer = None
         has_georeferencing = len(self.project.control_points) >= 3
         if has_georeferencing:
-            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
         # Show import dialog
         dialog = OpenDriveImportDialog(has_georeferencing, self.verbose, self)
@@ -1420,9 +1416,8 @@ class MainWindow(QMainWindow):
                 try:
                     # Use cached transformer for performance
                     if self._cached_transformer is None:
-                        from orbit.export import create_transformer, TransformMethod
-                        method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-                        self._cached_transformer = create_transformer(self.project.control_points, method, use_validation=True)
+                        from orbit.export import create_transformer
+                        self._cached_transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
                     if self._cached_transformer:
                         lon, lat = self._cached_transformer.pixel_to_geo(x, y)
@@ -1446,7 +1441,7 @@ class MainWindow(QMainWindow):
 
         # Calculate average scale from control points
         try:
-            from orbit.export import create_transformer, TransformMethod
+            from orbit.export import create_transformer
 
             if self.verbose:
                 logger.debug("="*60)
@@ -1460,8 +1455,7 @@ class MainWindow(QMainWindow):
                           f"Geo=(Lon={cp.longitude:.6f}, Lat={cp.latitude:.6f}) "
                           f"Type={'GVP' if cp.is_validation else 'GCP'}")
 
-            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
             if transformer is None:
                 self.scale_label.setText("Scale: N/A (transform failed)")
@@ -1897,13 +1891,12 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils import create_transformer
             from orbit.utils.uncertainty_estimator import UncertaintyEstimator
             from .graphics.uncertainty_overlay import UncertaintyOverlay
 
             # Create transformer
-            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
             if not transformer:
                 show_warning(self, "Failed to create coordinate transformer.", "Transform Error")
@@ -1967,9 +1960,8 @@ class MainWindow(QMainWindow):
             return None
 
         try:
-            from orbit.export import create_transformer, TransformMethod
-            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            from orbit.export import create_transformer
+            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
             if transformer:
                 return transformer.get_scale_factor()
         except Exception:
@@ -1992,10 +1984,9 @@ class MainWindow(QMainWindow):
             return
 
         # Get or create transformer
-        from orbit.export import create_transformer, TransformMethod
+        from orbit.export import create_transformer
         try:
-            method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-            transformer = create_transformer(self.project.control_points, method, use_validation=True)
+            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
             if not transformer:
                 return
         except Exception:

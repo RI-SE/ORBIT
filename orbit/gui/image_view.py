@@ -1547,12 +1547,11 @@ class ImageView(QGraphicsView):
             return ("No georef", QColor(255, 255, 255, 200))
 
         try:
-            from orbit.utils import create_transformer, TransformMethod
+            from orbit.utils import create_transformer
             from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
-            # Get transform method from project
-            method = TransformMethod.HOMOGRAPHY if project.transform_method == 'homography' else TransformMethod.AFFINE
-            transformer = create_transformer(project.control_points, method, use_validation=True)
+            # Create transformer
+            transformer = create_transformer(project.control_points, project.transform_method, use_validation=True)
 
             if not transformer:
                 return ("Transform error", QColor(255, 255, 255, 200))
@@ -1743,11 +1742,10 @@ class ImageView(QGraphicsView):
         # Check if we have georeferencing to convert to meters
         if self.project and self.project.has_georeferencing():
             try:
-                from orbit.utils import create_transformer, TransformMethod
+                from orbit.utils import create_transformer
 
-                # Get transform method from project
-                method = TransformMethod.HOMOGRAPHY if self.project.transform_method == 'homography' else TransformMethod.AFFINE
-                transformer = create_transformer(self.project.control_points, method, use_validation=True)
+                # Create transformer
+                transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
 
                 if transformer:
                     # Convert both points to meters

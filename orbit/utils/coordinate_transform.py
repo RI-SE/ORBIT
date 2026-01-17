@@ -19,7 +19,7 @@ Homography transformation (8 parameters):
 
 import numpy as np
 import math
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional, Dict, Union
 from enum import Enum, auto
 from dataclasses import dataclass, field
 
@@ -917,7 +917,7 @@ class HomographyTransformer(CoordinateTransformer):
 
 def create_transformer(
     control_points: List['ControlPoint'],
-    method: TransformMethod = TransformMethod.HOMOGRAPHY,
+    method: Union[str, TransformMethod] = TransformMethod.HOMOGRAPHY,
     use_validation: bool = True
 ) -> Optional[CoordinateTransformer]:
     """
@@ -925,7 +925,8 @@ def create_transformer(
 
     Args:
         control_points: List of control points
-        method: Transformation method (AFFINE or HOMOGRAPHY)
+        method: Transformation method - either TransformMethod enum or string
+                ('affine' or 'homography')
         use_validation: If True, separate validation points from training
 
     Returns:
@@ -933,6 +934,10 @@ def create_transformer(
     """
     if not control_points:
         return None
+
+    # Convert string to enum if needed
+    if isinstance(method, str):
+        method = TransformMethod.HOMOGRAPHY if method == 'homography' else TransformMethod.AFFINE
 
     # Separate training and validation points
     if use_validation:
