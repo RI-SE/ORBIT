@@ -773,3 +773,1122 @@ class TestParseObjects:
         assert obj.type == "pole"
         assert obj.name == "Lamppost"
         assert obj.height == 6.0
+
+
+class TestParsePoly3Geometry:
+    """Tests for parsing poly3 geometry type."""
+
+    @pytest.fixture
+    def poly3_xodr(self):
+        """OpenDRIVE with poly3 geometry."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="50.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="50.0">
+                <poly3 a="0.0" b="0.5" c="0.01" d="0.001"/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_poly3(self, poly3_xodr, tmp_path):
+        """Parse poly3 geometry."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(poly3_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        geom = data.roads[0].geometry[0]
+        assert geom.geometry_type == GeometryType.POLY3
+        assert geom.params["a"] == 0.0
+        assert geom.params["b"] == 0.5
+        assert geom.params["c"] == 0.01
+        assert geom.params["d"] == 0.001
+
+
+class TestParseParamPoly3Geometry:
+    """Tests for parsing paramPoly3 geometry type."""
+
+    @pytest.fixture
+    def param_poly3_xodr(self):
+        """OpenDRIVE with paramPoly3 geometry."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="50.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="50.0">
+                <paramPoly3 aU="0.0" bU="1.0" cU="0.0" dU="0.0"
+                           aV="0.0" bV="0.0" cV="0.5" dV="0.0" pRange="normalized"/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_param_poly3(self, param_poly3_xodr, tmp_path):
+        """Parse paramPoly3 geometry."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(param_poly3_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        geom = data.roads[0].geometry[0]
+        assert geom.geometry_type == GeometryType.PARAM_POLY3
+        assert geom.params["aU"] == 0.0
+        assert geom.params["bU"] == 1.0
+        assert geom.params["cV"] == 0.5
+        assert geom.params["pRange"] == "normalized"
+
+
+class TestParseGeoReference:
+    """Tests for parsing geoReference element."""
+
+    @pytest.fixture
+    def georef_xodr(self):
+        """OpenDRIVE with geoReference."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test">
+        <geoReference><![CDATA[+proj=tmerc +lat_0=57.7 +lon_0=12.0]]></geoReference>
+    </header>
+</OpenDRIVE>'''
+
+    def test_parse_geo_reference(self, georef_xodr, tmp_path):
+        """Parse geoReference PROJ string."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(georef_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        assert data.geo_reference == "+proj=tmerc +lat_0=57.7 +lon_0=12.0"
+
+
+class TestParseHeaderOffset:
+    """Tests for parsing header offset element."""
+
+    @pytest.fixture
+    def offset_xodr(self):
+        """OpenDRIVE with header offset (SUMO style)."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test" north="100" south="-100" east="200" west="-200" vendor="SUMO">
+        <offset x="1000.0" y="2000.0" z="50.0" hdg="0.5"/>
+    </header>
+</OpenDRIVE>'''
+
+    def test_parse_header_offset(self, offset_xodr, tmp_path):
+        """Parse header offset values."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(offset_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        assert data.header.offset_x == 1000.0
+        assert data.header.offset_y == 2000.0
+        assert data.header.offset_z == 50.0
+        assert data.header.offset_hdg == 0.5
+        assert data.header.north == 100.0
+        assert data.header.south == -100.0
+        assert data.header.vendor == "SUMO"
+
+
+class TestParseLateralProfile:
+    """Tests for parsing lateral profile (superelevation)."""
+
+    @pytest.fixture
+    def superelevation_xodr(self):
+        """OpenDRIVE with superelevation."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lateralProfile>
+            <superelevation s="0.0" a="0.02" b="0.0" c="0.0" d="0.0"/>
+            <superelevation s="50.0" a="0.03" b="0.001" c="0.0" d="0.0"/>
+        </lateralProfile>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_superelevation(self, superelevation_xodr, tmp_path):
+        """Parse superelevation records."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(superelevation_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        road = data.roads[0]
+        assert road.lateral_profile is not None
+        assert len(road.lateral_profile.superelevations) == 2
+        assert road.lateral_profile.superelevations[0] == (0.0, 0.02, 0.0, 0.0, 0.0)
+        assert road.lateral_profile.superelevations[1] == (50.0, 0.03, 0.001, 0.0, 0.0)
+
+
+class TestParseLaneOffset:
+    """Tests for parsing lane offset records."""
+
+    @pytest.fixture
+    def lane_offset_xodr(self):
+        """OpenDRIVE with lane offset."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneOffset s="0.0" a="1.0" b="0.0" c="0.0" d="0.0"/>
+            <laneOffset s="50.0" a="1.5" b="0.01" c="0.0" d="0.0"/>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_lane_offset(self, lane_offset_xodr, tmp_path):
+        """Parse lane offset records."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(lane_offset_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        road = data.roads[0]
+        assert road.lane_offset is not None
+        assert len(road.lane_offset.offsets) == 2
+        assert road.lane_offset.offsets[0] == (0.0, 1.0, 0.0, 0.0, 0.0)
+        assert road.lane_offset.offsets[1] == (50.0, 1.5, 0.01, 0.0, 0.0)
+
+
+class TestParseLaneProperties:
+    """Tests for parsing lane sub-elements."""
+
+    @pytest.fixture
+    def full_lane_xodr(self):
+        """OpenDRIVE with lane containing all property types."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+                <right>
+                    <lane id="-1" type="driving" level="true" direction="standard" advisory="none">
+                        <link>
+                            <predecessor id="-1"/>
+                            <successor id="-2"/>
+                        </link>
+                        <width sOffset="0.0" a="3.5" b="0.0" c="0.0" d="0.0"/>
+                        <roadMark sOffset="0.0" type="solid" weight="bold" color="yellow" width="0.15"/>
+                        <speed sOffset="0.0" max="30.0" unit="km/h"/>
+                        <material sOffset="0.0" friction="0.9" roughness="0.02" surface="concrete"/>
+                        <height sOffset="0.0" inner="0.1" outer="0.15"/>
+                    </lane>
+                </right>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_lane_road_mark(self, full_lane_xodr, tmp_path):
+        """Parse lane road mark."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(full_lane_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        lane = data.roads[0].lane_sections[0].right_lanes[0]
+        assert len(lane.road_marks) == 1
+        mark = lane.road_marks[0]
+        assert mark.s_offset == 0.0
+        assert mark.type == "solid"
+        assert mark.weight == "bold"
+        assert mark.color == "yellow"
+        assert mark.width == 0.15
+
+    def test_parse_lane_speed(self, full_lane_xodr, tmp_path):
+        """Parse lane speed limit."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(full_lane_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        lane = data.roads[0].lane_sections[0].right_lanes[0]
+        assert len(lane.speed_limits) == 1
+        speed = lane.speed_limits[0]
+        assert speed.s_offset == 0.0
+        assert speed.max_speed == 30.0
+        assert speed.unit == "km/h"
+
+    def test_parse_lane_material(self, full_lane_xodr, tmp_path):
+        """Parse lane material."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(full_lane_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        lane = data.roads[0].lane_sections[0].right_lanes[0]
+        assert len(lane.materials) == 1
+        mat = lane.materials[0]
+        assert mat.s_offset == 0.0
+        assert mat.friction == 0.9
+        assert mat.roughness == 0.02
+        assert mat.surface == "concrete"
+
+    def test_parse_lane_height(self, full_lane_xodr, tmp_path):
+        """Parse lane height."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(full_lane_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        lane = data.roads[0].lane_sections[0].right_lanes[0]
+        assert len(lane.heights) == 1
+        height = lane.heights[0]
+        assert height.s_offset == 0.0
+        assert height.inner == 0.1
+        assert height.outer == 0.15
+
+    def test_parse_lane_link(self, full_lane_xodr, tmp_path):
+        """Parse lane predecessor/successor link."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(full_lane_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        lane = data.roads[0].lane_sections[0].right_lanes[0]
+        assert lane.link is not None
+        assert lane.link.predecessor_id == -1
+        assert lane.link.successor_id == -2
+
+    def test_parse_lane_v18_attributes(self, full_lane_xodr, tmp_path):
+        """Parse lane V1.8 attributes (direction, advisory)."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(full_lane_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        lane = data.roads[0].lane_sections[0].right_lanes[0]
+        assert lane.level is True
+        assert lane.direction == "standard"
+        assert lane.advisory == "none"
+
+
+class TestParseSignalValidity:
+    """Tests for parsing signal validity."""
+
+    @pytest.fixture
+    def signal_validity_xodr(self):
+        """OpenDRIVE with signal containing validity elements."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+        <signals>
+            <signal id="sig1" s="50.0" t="3.0">
+                <validity fromLane="-2" toLane="-1"/>
+                <validity fromLane="1" toLane="2"/>
+            </signal>
+        </signals>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_signal_validity(self, signal_validity_xodr, tmp_path):
+        """Parse signal validity (which lanes it applies to)."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(signal_validity_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        signal = data.roads[0].signals[0]
+        assert signal.validity_lanes is not None
+        assert sorted(signal.validity_lanes) == [-2, -1, 1, 2]
+
+
+class TestParseParkingObject:
+    """Tests for parsing parking space objects."""
+
+    @pytest.fixture
+    def parking_xodr(self):
+        """OpenDRIVE with parking space object."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+        <objects>
+            <object id="park1" s="25.0" t="5.0" type="parkingSpace" name="P1"
+                    length="5.0" width="2.5" hdg="1.57">
+                <parkingSpace access="handicapped" restrictions="2 hours max"/>
+            </object>
+        </objects>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_parking_object(self, parking_xodr, tmp_path):
+        """Parse parking space object."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(parking_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        obj = data.roads[0].objects[0]
+        assert obj.id == "park1"
+        assert obj.is_parking is True
+        assert obj.parking_access == "handicapped"
+        assert obj.parking_restrictions == "2 hours max"
+        assert obj.length == 5.0
+        assert obj.width == 2.5
+        assert obj.hdg == 1.57
+
+
+class TestParseJunctionBoundary:
+    """Tests for parsing junction boundary (V1.8 feature)."""
+
+    @pytest.fixture
+    def junction_boundary_xodr(self):
+        """OpenDRIVE with junction boundary."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="8" name="Test"/>
+    <junction id="100" name="Test Junction">
+        <boundary>
+            <segment type="lane" roadId="1" boundaryLane="-2" sStart="0.0" sEnd="50.0"/>
+            <segment type="joint" roadId="1" contactPoint="end" jointLaneStart="-2" jointLaneEnd="-1" transitionLength="5.0"/>
+        </boundary>
+    </junction>
+</OpenDRIVE>'''
+
+    def test_parse_junction_boundary(self, junction_boundary_xodr, tmp_path):
+        """Parse junction boundary segments."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(junction_boundary_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        junction = data.junctions[0]
+        assert junction.boundary is not None
+        assert len(junction.boundary.segments) == 2
+
+        # Lane segment
+        seg1 = junction.boundary.segments[0]
+        assert seg1.segment_type == "lane"
+        assert seg1.road_id == "1"
+        assert seg1.boundary_lane == -2
+        assert seg1.s_start == 0.0
+        assert seg1.s_end == 50.0
+
+        # Joint segment
+        seg2 = junction.boundary.segments[1]
+        assert seg2.segment_type == "joint"
+        assert seg2.contact_point == "end"
+        assert seg2.joint_lane_start == -2
+        assert seg2.joint_lane_end == -1
+        assert seg2.transition_length == 5.0
+
+
+class TestParseJunctionElevationGrid:
+    """Tests for parsing junction elevation grid (V1.8 feature)."""
+
+    @pytest.fixture
+    def junction_elev_grid_xodr(self):
+        """OpenDRIVE with junction elevation grid."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="8" name="Test"/>
+    <junction id="100" name="Test Junction">
+        <elevationGrid gridSpacing="1.0">
+            <elevation center="10.5" left="10.4" right="10.6"/>
+            <elevation center="10.6" left="10.5" right="10.7"/>
+        </elevationGrid>
+    </junction>
+</OpenDRIVE>'''
+
+    def test_parse_junction_elevation_grid(self, junction_elev_grid_xodr, tmp_path):
+        """Parse junction elevation grid."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(junction_elev_grid_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        junction = data.junctions[0]
+        assert junction.elevation_grid is not None
+        assert junction.elevation_grid.grid_spacing == "1.0"
+        assert len(junction.elevation_grid.elevations) == 2
+        elev = junction.elevation_grid.elevations[0]
+        assert elev.center == "10.5"
+        assert elev.left == "10.4"
+        assert elev.right == "10.6"
+
+
+class TestParseJunctionGroup:
+    """Tests for parsing junction group."""
+
+    @pytest.fixture
+    def junction_group_xodr(self):
+        """OpenDRIVE with junction group."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <junction id="1" name="J1"/>
+    <junction id="2" name="J2"/>
+    <junction id="3" name="J3"/>
+    <junctionGroup id="group1" name="Roundabout" type="roundabout">
+        <junctionReference junction="1"/>
+        <junctionReference junction="2"/>
+        <junctionReference junction="3"/>
+    </junctionGroup>
+</OpenDRIVE>'''
+
+    def test_parse_junction_group(self, junction_group_xodr, tmp_path):
+        """Parse junction group."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(junction_group_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        assert len(data.junction_groups) == 1
+        group = data.junction_groups[0]
+        assert group.id == "group1"
+        assert group.name == "Roundabout"
+        assert group.group_type == "roundabout"
+        assert group.junction_ids == ["1", "2", "3"]
+
+
+class TestParseSurfaceCRG:
+    """Tests for parsing surface CRG data."""
+
+    @pytest.fixture
+    def surface_crg_xodr(self):
+        """OpenDRIVE with surface CRG."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+        <surface>
+            <CRG file="surface.crg" sStart="0.0" sEnd="100.0"
+                 orientation="same" mode="attached" purpose="friction"
+                 sOffset="5.0" tOffset="1.0" zOffset="0.5" zScale="2.0" hOffset="0.1"/>
+        </surface>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_surface_crg(self, surface_crg_xodr, tmp_path):
+        """Parse surface CRG data."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(surface_crg_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        road = data.roads[0]
+        assert len(road.surface_crg) == 1
+        crg = road.surface_crg[0]
+        assert crg["file"] == "surface.crg"
+        assert crg["sStart"] == 0.0
+        assert crg["sEnd"] == 100.0
+        assert crg["orientation"] == "same"
+        assert crg["mode"] == "attached"
+        assert crg["purpose"] == "friction"
+        assert crg["sOffset"] == 5.0
+        assert crg["tOffset"] == 1.0
+        assert crg["zOffset"] == 0.5
+        assert crg["zScale"] == 2.0
+        assert crg["hOffset"] == 0.1
+
+
+class TestParseElevationProfile:
+    """Additional tests for elevation profile."""
+
+    @pytest.fixture
+    def elevation_xodr(self):
+        """OpenDRIVE with elevation profile."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <elevationProfile>
+            <elevation s="0.0" a="100.0" b="0.1" c="0.001" d="0.0001"/>
+        </elevationProfile>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_elevation_profile(self, elevation_xodr, tmp_path):
+        """Parse road elevation profile."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(elevation_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        road = data.roads[0]
+        assert road.elevation_profile is not None
+        assert len(road.elevation_profile.elevations) == 1
+        assert road.elevation_profile.elevations[0] == (0.0, 100.0, 0.1, 0.001, 0.0001)
+
+
+class TestParseRoadType:
+    """Tests for parsing road type."""
+
+    @pytest.fixture
+    def road_type_xodr(self):
+        """OpenDRIVE with road type element."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <type s="0.0" type="motorway"/>
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_road_type(self, road_type_xodr, tmp_path):
+        """Parse road type."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(road_type_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        road = data.roads[0]
+        assert road.road_type == "motorway"
+
+
+class TestParseRoadLinks:
+    """Tests for parsing road predecessor/successor links."""
+
+    @pytest.fixture
+    def road_links_xodr(self):
+        """OpenDRIVE with full road links."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="2" length="100.0" junction="-1">
+        <link>
+            <predecessor elementType="road" elementId="1" contactPoint="end"/>
+            <successor elementType="junction" elementId="100" contactPoint="start"/>
+        </link>
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_road_predecessor(self, road_links_xodr, tmp_path):
+        """Parse road predecessor link."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(road_links_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        road = data.roads[0]
+        assert road.predecessor_type == "road"
+        assert road.predecessor_id == "1"
+        assert road.predecessor_contact == "end"
+
+    def test_parse_road_successor(self, road_links_xodr, tmp_path):
+        """Parse road successor link."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(road_links_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        road = data.roads[0]
+        assert road.successor_type == "junction"
+        assert road.successor_id == "100"
+        assert road.successor_contact == "start"
+
+
+class TestParseLaneSectionSingleSide:
+    """Tests for parsing lane section singleSide attribute."""
+
+    @pytest.fixture
+    def single_side_xodr(self):
+        """OpenDRIVE with singleSide lane section."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0" singleSide="right">
+                <center><lane id="0" type="none"/></center>
+                <right>
+                    <lane id="-1" type="driving"/>
+                </right>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_single_side(self, single_side_xodr, tmp_path):
+        """Parse lane section singleSide attribute."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(single_side_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        section = data.roads[0].lane_sections[0]
+        assert section.single_side == "right"
+
+
+class TestParseLeftLanes:
+    """Tests for parsing left lanes."""
+
+    @pytest.fixture
+    def left_lanes_xodr(self):
+        """OpenDRIVE with left lanes."""
+        return '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <left>
+                    <lane id="2" type="sidewalk">
+                        <width sOffset="0.0" a="1.5"/>
+                    </lane>
+                    <lane id="1" type="driving">
+                        <width sOffset="0.0" a="3.5"/>
+                    </lane>
+                </left>
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+
+    def test_parse_left_lanes(self, left_lanes_xodr, tmp_path):
+        """Parse left lanes."""
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(left_lanes_xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        section = data.roads[0].lane_sections[0]
+        assert len(section.left_lanes) == 2
+        assert section.left_lanes[0].id == 2
+        assert section.left_lanes[0].type == "sidewalk"
+        assert section.left_lanes[1].id == 1
+        assert section.left_lanes[1].type == "driving"
+
+
+class TestParserErrorHandling:
+    """Tests for parser error handling."""
+
+    def test_parse_invalid_file(self, tmp_path):
+        """Parser raises on invalid file."""
+        xodr_file = tmp_path / "invalid.xodr"
+        xodr_file.write_text("not xml content")
+
+        parser = OpenDriveParser()
+
+        with pytest.raises(Exception) as exc_info:
+            parser.parse_file(str(xodr_file))
+
+        assert "Failed to parse OpenDrive file" in str(exc_info.value)
+
+    def test_parse_nonexistent_file(self):
+        """Parser raises on nonexistent file."""
+        parser = OpenDriveParser()
+
+        with pytest.raises(Exception) as exc_info:
+            parser.parse_file("/nonexistent/path.xodr")
+
+        assert "Failed to parse OpenDrive file" in str(exc_info.value)
+
+    def test_parse_no_header(self, tmp_path):
+        """Parse file without header creates default header."""
+        xodr = '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+</OpenDRIVE>'''
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        # Default header values
+        assert data.header.rev_major == 1
+        assert data.header.rev_minor == 7
+
+    def test_parse_road_no_id(self, tmp_path):
+        """Road without ID is skipped."""
+        xodr = '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road name="No ID Road" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        assert len(data.roads) == 0
+
+    def test_parse_junction_no_id(self, tmp_path):
+        """Junction without ID is skipped."""
+        xodr = '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <junction name="No ID Junction"/>
+</OpenDRIVE>'''
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        assert len(data.junctions) == 0
+
+    def test_parse_signal_no_id(self, tmp_path):
+        """Signal without ID is skipped."""
+        xodr = '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+        <signals>
+            <signal s="50.0" t="3.0"/>
+        </signals>
+    </road>
+</OpenDRIVE>'''
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        assert len(data.roads[0].signals) == 0
+
+    def test_parse_object_no_id(self, tmp_path):
+        """Object without ID is skipped."""
+        xodr = '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane id="0" type="none"/></center>
+            </laneSection>
+        </lanes>
+        <objects>
+            <object s="25.0" t="5.0" type="pole"/>
+        </objects>
+    </road>
+</OpenDRIVE>'''
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        assert len(data.roads[0].objects) == 0
+
+    def test_parse_lane_no_id(self, tmp_path):
+        """Lane without ID is skipped."""
+        xodr = '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <road id="1" length="100.0" junction="-1">
+        <planView>
+            <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0">
+                <line/>
+            </geometry>
+        </planView>
+        <lanes>
+            <laneSection s="0.0">
+                <center><lane type="none"/></center>
+                <right><lane type="driving"/></right>
+            </laneSection>
+        </lanes>
+    </road>
+</OpenDRIVE>'''
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        section = data.roads[0].lane_sections[0]
+        assert len(section.center_lanes) == 0
+        assert len(section.right_lanes) == 0
+
+    def test_parse_junction_group_no_id(self, tmp_path):
+        """Junction group without ID is skipped."""
+        xodr = '''<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+    <header revMajor="1" revMinor="7" name="Test"/>
+    <junctionGroup name="No ID Group" type="roundabout">
+        <junctionReference junction="1"/>
+    </junctionGroup>
+</OpenDRIVE>'''
+        xodr_file = tmp_path / "test.xodr"
+        xodr_file.write_text(xodr)
+
+        parser = OpenDriveParser()
+        data = parser.parse_file(str(xodr_file))
+
+        assert len(data.junction_groups) == 0
+
+
+class TestDataclassDefaults:
+    """Tests for dataclass default values."""
+
+    def test_lateral_profile_default(self):
+        """LateralProfile default values."""
+        profile = LateralProfile()
+        assert profile.superelevations == []
+
+    def test_lane_offset_record_default(self):
+        """LaneOffsetRecord default values."""
+        record = LaneOffsetRecord()
+        assert record.offsets == []
+
+    def test_lane_road_mark_defaults(self):
+        """LaneRoadMark default values."""
+        mark = LaneRoadMark(s_offset=0.0, type="solid")
+        assert mark.weight == "standard"
+        assert mark.color == "white"
+        assert mark.width == 0.12
+
+    def test_lane_speed_defaults(self):
+        """LaneSpeed default values."""
+        speed = LaneSpeed(s_offset=0.0, max_speed=30.0)
+        assert speed.unit == "m/s"
+
+    def test_lane_material_defaults(self):
+        """LaneMaterial default values."""
+        mat = LaneMaterial(s_offset=0.0)
+        assert mat.friction == 1.0
+        assert mat.roughness is None
+        assert mat.surface == "asphalt"
+
+    def test_lane_height_defaults(self):
+        """LaneHeight default values."""
+        height = LaneHeight(s_offset=0.0)
+        assert height.inner == 0.0
+        assert height.outer == 0.0
+
+    def test_lane_link_defaults(self):
+        """LaneLink default values."""
+        link = LaneLink()
+        assert link.predecessor_id is None
+        assert link.successor_id is None
+
+    def test_odr_signal_defaults(self):
+        """ODRSignal default values."""
+        signal = ODRSignal(id="sig1", s=0.0, t=0.0)
+        assert signal.dynamic == "no"
+        assert signal.orientation == "+"
+        assert signal.z_offset == 0.0
+        assert signal.country == ""
+        assert signal.value is None
+        assert signal.validity_lanes is None
+
+    def test_odr_object_defaults(self):
+        """ODRObject default values."""
+        obj = ODRObject(id="obj1", s=0.0, t=0.0)
+        assert obj.z_offset == 0.0
+        assert obj.type == ""
+        assert obj.orientation == 0.0
+        assert obj.validity_length is None
+        assert obj.is_parking is False
+
+    def test_boundary_segment_defaults(self):
+        """ODRBoundarySegment default values."""
+        seg = ODRBoundarySegment(segment_type="lane")
+        assert seg.road_id is None
+        assert seg.boundary_lane is None
+        assert seg.contact_point is None
+
+    def test_junction_boundary_defaults(self):
+        """ODRJunctionBoundary default values."""
+        boundary = ODRJunctionBoundary()
+        assert boundary.segments == []
+
+    def test_elevation_grid_point_defaults(self):
+        """ODRElevationGridPoint default values."""
+        point = ODRElevationGridPoint()
+        assert point.center is None
+        assert point.left is None
+        assert point.right is None
+
+    def test_junction_elevation_grid_defaults(self):
+        """ODRJunctionElevationGrid default values."""
+        grid = ODRJunctionElevationGrid()
+        assert grid.grid_spacing is None
+        assert grid.elevations == []
+
+    def test_odr_junction_defaults(self):
+        """ODRJunction default values."""
+        junction = ODRJunction(id="j1")
+        assert junction.name == ""
+        assert junction.connections == []
+        assert junction.boundary is None
+        assert junction.elevation_grid is None
+
+    def test_odr_junction_group_defaults(self):
+        """ODRJunctionGroup default values."""
+        group = ODRJunctionGroup(id="g1")
+        assert group.name == ""
+        assert group.group_type == "unknown"
+        assert group.junction_ids == []
+
+    def test_odr_road_defaults(self):
+        """ODRRoad default values."""
+        road = ODRRoad(id="r1")
+        assert road.name == ""
+        assert road.length == 0.0
+        assert road.junction_id == "-1"
+        assert road.elevation_profile is None
+        assert road.lateral_profile is None
+        assert road.lane_offset is None
+        assert road.road_type == "unknown"
+
+    def test_open_drive_data_defaults(self):
+        """OpenDriveData default values."""
+        data = OpenDriveData(header=ODRHeader())
+        assert data.geo_reference is None
+        assert data.junction_groups == []

@@ -550,3 +550,216 @@ class TestSuggestLaneWidths:
         result = analyzer.suggest_lane_widths(mock_road)
 
         assert result is None
+
+    def test_verbose_mode(self, mock_project, mock_road):
+        """Verbose mode produces output without errors."""
+        analyzer = LaneAnalyzer(mock_project, scale_factors=(0.1, 0.1))
+        # Should not raise with verbose=True
+        result = analyzer.suggest_lane_widths(mock_road, verbose=True)
+
+        assert result is not None
+
+    def test_with_transformer(self, mock_project, mock_road):
+        """Uses transformer for perspective-corrected width calculation."""
+        transformer = Mock()
+        transformer.pixel_to_meters = Mock(side_effect=lambda x, y: (x * 0.1, y * 0.1))
+
+        analyzer = LaneAnalyzer(mock_project, scale_factors=(0.1, 0.1), transformer=transformer)
+        result = analyzer.suggest_lane_widths(mock_road)
+
+        assert result is not None
+        assert result['average'] > 0
+
+    def test_no_centerline_returns_none(self, mock_project, mock_road):
+        """Returns None when road has no centerline."""
+        mock_road.centerline_id = None
+
+        analyzer = LaneAnalyzer(mock_project)
+        result = analyzer.suggest_lane_widths(mock_road)
+
+        assert result is None
+
+    def test_verbose_no_boundaries(self, mock_project, mock_road):
+        """Verbose mode with no boundaries."""
+        mock_project.polylines = [mock_project.polylines[0]]  # Just centerline
+        mock_road.polyline_ids = ['cl1']
+
+        analyzer = LaneAnalyzer(mock_project)
+        result = analyzer.suggest_lane_widths(mock_road, verbose=True)
+
+        assert result is None
+
+    def test_verbose_no_centerline(self, mock_project, mock_road):
+        """Verbose mode with missing centerline."""
+        mock_road.centerline_id = 'missing'
+
+        analyzer = LaneAnalyzer(mock_project)
+        result = analyzer.suggest_lane_widths(mock_road, verbose=True)
+
+        assert result is None
+
+
+class TestPointToSegmentOffset:
+    """Tests for _point_to_segment_offset method."""
+
+    @pytest.fixture
+    def analyzer(self):
+        """Create analyzer."""
+        project = Mock()
+        project.polylines = []
+        return LaneAnalyzer(project)
+
+    def test_calls_distance_and_offset(self, analyzer):
+        """Calls internal method and returns offset."""
+        seg_start = np.array([0.0, 0.0])
+        seg_end = np.array([10.0, 0.0])
+        point = (5.0, 5.0)
+
+        offset = analyzer._point_to_segment_offset(point, seg_start, seg_end)
+
+        assert offset > 0  # Should be positive for right side
+
+
+class TestCalculateBoundaryWidthsEdgeCases:
+    """Additional edge case tests for _calculate_boundary_widths method."""
+
+    @pytest.fixture
+    def analyzer(self):
+        """Create analyzer."""
+        project = Mock()
+        project.polylines = []
+        return LaneAnalyzer(project)
+
+    def test_multiple_right_boundaries(self, analyzer):
+        """Multiple right boundaries calculate widths correctly."""
+        boundary_infos = [
+            BoundaryInfo('p1', Mock(), avg_offset=3.5, std_offset=0.1),   # Left
+            BoundaryInfo('p2', Mock(), avg_offset=-3.5, std_offset=0.1),  # Right inner
+            BoundaryInfo('p3', Mock(), avg_offset=-7.0, std_offset=0.1),  # Right outer
+        ]
+
+        analyzer._calculate_boundary_widths(boundary_infos)
+
+        # Inner right boundary should have width to outer
+        right_boundaries = [b for b in boundary_infos if b.avg_offset < 0]
+        right_boundaries.sort(key=lambda x: -x.avg_offset)  # Closest to farthest
+        assert right_boundaries[0].measured_width == pytest.approx(3.5, abs=0.01)
+
+    def test_multiple_boundaries_both_sides(self, analyzer):
+        """Multiple boundaries on both sides."""
+        boundary_infos = [
+            BoundaryInfo('p1', Mock(), avg_offset=3.5, std_offset=0.1),   # Left inner
+            BoundaryInfo('p2', Mock(), avg_offset=7.0, std_offset=0.1),   # Left outer
+            BoundaryInfo('p3', Mock(), avg_offset=-3.5, std_offset=0.1),  # Right inner
+            BoundaryInfo('p4', Mock(), avg_offset=-7.0, std_offset=0.1),  # Right outer
+        ]
+
+        analyzer._calculate_boundary_widths(boundary_infos)
+
+        # Left inner should have width to outer
+        left_inner = [b for b in boundary_infos if b.polyline_id == 'p1'][0]
+        assert left_inner.measured_width == pytest.approx(3.5, abs=0.01)
+
+        # Right inner should have width
+        right_inner = [b for b in boundary_infos if b.polyline_id == 'p3'][0]
+        assert right_inner.measured_width == pytest.approx(3.5, abs=0.01)
+
+    def test_only_left_boundaries(self, analyzer):
+        """Only left boundaries."""
+        boundary_infos = [
+            BoundaryInfo('p1', Mock(), avg_offset=3.5, std_offset=0.1),
+            BoundaryInfo('p2', Mock(), avg_offset=7.0, std_offset=0.1),
+        ]
+
+        analyzer._calculate_boundary_widths(boundary_infos)
+
+        # Inner should have width to outer
+        assert boundary_infos[0].measured_width == pytest.approx(3.5, abs=0.01)
+        # Outer has no neighbor, width may be None
+        assert boundary_infos[1].measured_width is None
+
+    def test_only_right_boundaries(self, analyzer):
+        """Only right boundaries."""
+        boundary_infos = [
+            BoundaryInfo('p1', Mock(), avg_offset=-3.5, std_offset=0.1),
+            BoundaryInfo('p2', Mock(), avg_offset=-7.0, std_offset=0.1),
+        ]
+
+        analyzer._calculate_boundary_widths(boundary_infos)
+
+        # Inner should have width to outer
+        inner = max(boundary_infos, key=lambda x: x.avg_offset)  # Less negative
+        assert inner.measured_width == pytest.approx(3.5, abs=0.01)
+
+
+class TestAnalyzeRoadVerbose:
+    """Tests for analyze_road with verbose mode."""
+
+    @pytest.fixture
+    def mock_project(self):
+        """Create mock project with polylines."""
+        project = Mock()
+
+        centerline = Mock()
+        centerline.id = 'cl1'
+        centerline.line_type = LineType.CENTERLINE
+        centerline.points = [(0, 100), (1000, 100)]
+        centerline.point_count = Mock(return_value=2)
+
+        right_boundary = Mock()
+        right_boundary.id = 'rb1'
+        right_boundary.line_type = LineType.LANE_BOUNDARY
+        right_boundary.points = [(0, 110), (1000, 110)]
+
+        left_boundary = Mock()
+        left_boundary.id = 'lb1'
+        left_boundary.line_type = LineType.LANE_BOUNDARY
+        left_boundary.points = [(0, 90), (1000, 90)]
+
+        project.polylines = [centerline, right_boundary, left_boundary]
+        return project
+
+    @pytest.fixture
+    def mock_road(self):
+        """Create mock road."""
+        road = Mock()
+        road.id = 'road1'
+        road.name = 'Test Road'
+        road.centerline_id = 'cl1'
+        road.polyline_ids = ['cl1', 'rb1', 'lb1']
+        road.lane_info.lane_width = 3.5
+        road.lane_info.left_count = 1
+        road.lane_info.right_count = 1
+        return road
+
+    def test_verbose_mode(self, mock_project, mock_road):
+        """Verbose mode works without errors."""
+        analyzer = LaneAnalyzer(mock_project)
+        infos, warning = analyzer.analyze_road(mock_road, verbose=True)
+
+        assert len(infos) == 2
+
+
+class TestCalculateLateralOffsetsVerbose:
+    """Tests for _calculate_lateral_offsets with verbose mode."""
+
+    @pytest.fixture
+    def analyzer(self):
+        """Create analyzer."""
+        project = Mock()
+        project.polylines = []
+        return LaneAnalyzer(project)
+
+    def test_verbose_shows_debug_info(self, analyzer):
+        """Verbose mode shows debug information."""
+        centerline = Mock()
+        centerline.points = [(0, 100), (100, 100), (200, 100)]
+
+        boundary = Mock()
+        boundary.id = 'test_boundary'
+        boundary.points = [(0, 110), (100, 110), (200, 110)]
+
+        # Should not raise with verbose=True
+        offsets = analyzer._calculate_lateral_offsets(boundary, centerline, verbose=True)
+
+        assert len(offsets) == 3

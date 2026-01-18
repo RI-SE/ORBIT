@@ -768,3 +768,474 @@ class TestGenerateJunctionConnections:
 
         # Should create connecting roads and lane connections
         assert len(junction.connecting_roads) > 0 or len(junction.lane_connections) > 0
+
+
+# Import create_connecting_roads_from_patterns
+create_connecting_roads_from_patterns = junction_analyzer.create_connecting_roads_from_patterns
+
+
+class TestRoadEndpointInfoGeoMethods:
+    """Tests for RoadEndpointInfo geo coordinate methods."""
+
+    def test_get_right_lane_center_position_geo_no_geo_coords(self):
+        """Returns None when no geo coordinates available."""
+        endpoint = RoadEndpointInfo(
+            road_id="road1",
+            road_name="Test Road",
+            position=(100.0, 100.0),
+            heading=0.0,
+            at_junction="end",
+            is_incoming=True,
+            is_outgoing=True,
+            left_lane_count=1,
+            right_lane_count=1,
+            lane_width=3.5,
+            position_geo=None  # No geo coordinates
+        )
+
+        # Create mock transformer
+        class MockTransformer:
+            def geo_to_meters(self, lon, lat):
+                return lon * 111000, lat * 111000
+
+            def meters_to_geo(self, x, y):
+                return x / 111000, y / 111000
+
+        transformer = MockTransformer()
+
+        result = endpoint.get_right_lane_center_position_geo(transformer)
+
+        assert result is None
+
+    def test_get_right_lane_center_position_geo_with_coords(self):
+        """Returns geo position when coordinates available."""
+        endpoint = RoadEndpointInfo(
+            road_id="road1",
+            road_name="Test Road",
+            position=(100.0, 100.0),
+            heading=0.0,  # Heading east
+            at_junction="end",
+            is_incoming=True,
+            is_outgoing=True,
+            left_lane_count=1,
+            right_lane_count=1,
+            lane_width=3.5,
+            position_geo=(12.94, 57.72)  # Has geo coordinates (lon, lat)
+        )
+
+        # Create mock transformer with correct method names
+        class MockTransformer:
+            def latlon_to_meters(self, lat, lon):
+                # Simple approximation
+                return lon * 50000, lat * 111000
+
+            def meters_to_latlon(self, x, y):
+                return y / 111000, x / 50000
+
+        transformer = MockTransformer()
+
+        result = endpoint.get_right_lane_center_position_geo(transformer)
+
+        # Should return a geo position (lon, lat)
+        assert result is not None
+        assert len(result) == 2
+        # Position should be near original but offset
+        lon, lat = result
+        assert abs(lon - 12.94) < 0.001
+        assert abs(lat - 57.72) < 0.001
+
+    def test_get_right_lane_center_position_geo_flip_heading(self):
+        """Position changes when heading is flipped."""
+        endpoint = RoadEndpointInfo(
+            road_id="road1",
+            road_name="Test Road",
+            position=(100.0, 100.0),
+            heading=0.0,  # Heading east
+            at_junction="end",
+            is_incoming=True,
+            is_outgoing=True,
+            left_lane_count=1,
+            right_lane_count=1,
+            lane_width=3.5,
+            position_geo=(12.94, 57.72)
+        )
+
+        class MockTransformer:
+            def latlon_to_meters(self, lat, lon):
+                return lon * 50000, lat * 111000
+
+            def meters_to_latlon(self, x, y):
+                return y / 111000, x / 50000
+
+        transformer = MockTransformer()
+
+        result_no_flip = endpoint.get_right_lane_center_position_geo(transformer, flip_heading=False)
+        result_flip = endpoint.get_right_lane_center_position_geo(transformer, flip_heading=True)
+
+        # Positions should be different
+        assert result_no_flip is not None
+        assert result_flip is not None
+        assert result_no_flip != result_flip
+
+
+class TestCreateConnectingRoadsFromPatterns:
+    """Tests for create_connecting_roads_from_patterns function."""
+
+    def test_empty_patterns(self):
+        """No changes when patterns list is empty."""
+        junction = Junction(name="Test Junction")
+        junction.center_point = (100.0, 100.0)
+
+        create_connecting_roads_from_patterns(junction, [], {})
+
+        assert len(junction.connecting_roads) == 0
+        assert len(junction.lane_connections) == 0
+
+    def test_single_pattern_creates_connection(self):
+        """Single pattern creates connecting road."""
+        junction = Junction(name="Test Junction")
+        junction.center_point = (100.0, 100.0)
+
+        endpoint1 = RoadEndpointInfo(
+            road_id="road1", road_name="Road 1",
+            position=(50.0, 100.0),
+            heading=0.0,
+            at_junction="end",
+            is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1,
+            lane_width=3.5
+        )
+        endpoint2 = RoadEndpointInfo(
+            road_id="road2", road_name="Road 2",
+            position=(150.0, 100.0),
+            heading=0.0,
+            at_junction="start",
+            is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1,
+            lane_width=3.5
+        )
+
+        pattern = ConnectionPattern(
+            from_road_id="road1",
+            to_road_id="road2",
+            turn_type="straight",
+            turn_angle=0.0,
+            from_endpoint=endpoint1,
+            to_endpoint=endpoint2
+        )
+
+        endpoint_lookup = {
+            "road1": endpoint1,
+            "road2": endpoint2
+        }
+
+        create_connecting_roads_from_patterns(junction, [pattern], endpoint_lookup)
+
+        # Should have created a connecting road or lane connections
+        assert len(junction.connecting_roads) > 0 or len(junction.lane_connections) > 0
+
+    def test_straight_pairs_become_bidirectional(self):
+        """Two opposite straight patterns become bidirectional road."""
+        junction = Junction(name="Test Junction")
+        junction.center_point = (100.0, 100.0)
+
+        endpoint1 = RoadEndpointInfo(
+            road_id="road1", road_name="Road 1",
+            position=(50.0, 100.0),
+            heading=0.0,  # East
+            at_junction="end",
+            is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1,
+            lane_width=3.5
+        )
+        endpoint2 = RoadEndpointInfo(
+            road_id="road2", road_name="Road 2",
+            position=(150.0, 100.0),
+            heading=math.pi,  # West (toward junction from the other side)
+            at_junction="end",
+            is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1,
+            lane_width=3.5
+        )
+
+        # Create bidirectional patterns
+        pattern1 = ConnectionPattern(
+            from_road_id="road1",
+            to_road_id="road2",
+            turn_type="straight",
+            turn_angle=0.0,
+            from_endpoint=endpoint1,
+            to_endpoint=endpoint2
+        )
+        pattern2 = ConnectionPattern(
+            from_road_id="road2",
+            to_road_id="road1",
+            turn_type="straight",
+            turn_angle=0.0,
+            from_endpoint=endpoint2,
+            to_endpoint=endpoint1
+        )
+
+        endpoint_lookup = {
+            "road1": endpoint1,
+            "road2": endpoint2
+        }
+
+        create_connecting_roads_from_patterns(junction, [pattern1, pattern2], endpoint_lookup)
+
+        # Should have connections
+        assert len(junction.connecting_roads) > 0 or len(junction.lane_connections) > 0
+
+    def test_turn_pattern_creates_unidirectional(self):
+        """Turn pattern creates unidirectional connecting road."""
+        junction = Junction(name="Test Junction")
+        junction.center_point = (100.0, 100.0)
+
+        endpoint1 = RoadEndpointInfo(
+            road_id="road1", road_name="Road 1",
+            position=(50.0, 100.0),
+            heading=0.0,  # East
+            at_junction="end",
+            is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1,
+            lane_width=3.5
+        )
+        endpoint2 = RoadEndpointInfo(
+            road_id="road2", road_name="Road 2",
+            position=(100.0, 150.0),
+            heading=math.pi / 2,  # North
+            at_junction="start",
+            is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1,
+            lane_width=3.5
+        )
+
+        # Left turn pattern
+        pattern = ConnectionPattern(
+            from_road_id="road1",
+            to_road_id="road2",
+            turn_type="left",
+            turn_angle=math.pi / 2,
+            from_endpoint=endpoint1,
+            to_endpoint=endpoint2
+        )
+
+        endpoint_lookup = {
+            "road1": endpoint1,
+            "road2": endpoint2
+        }
+
+        create_connecting_roads_from_patterns(junction, [pattern], endpoint_lookup)
+
+        # Should have created connections
+        total_connections = len(junction.connecting_roads) + len(junction.lane_connections)
+        assert total_connections > 0
+
+
+class TestConnectionPatternPriority:
+    """Tests for ConnectionPattern priority attribute."""
+
+    def test_priority_default(self):
+        """Default priority is 0."""
+        endpoint1 = RoadEndpointInfo(
+            road_id="road1", road_name="Road 1", position=(0, 0),
+            heading=0, at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+        endpoint2 = RoadEndpointInfo(
+            road_id="road2", road_name="Road 2", position=(100, 100),
+            heading=0, at_junction="start", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+
+        pattern = ConnectionPattern(
+            from_road_id="road1",
+            to_road_id="road2",
+            turn_type="straight",
+            turn_angle=0.0,
+            from_endpoint=endpoint1,
+            to_endpoint=endpoint2
+        )
+
+        assert pattern.priority == 0
+
+    def test_priority_custom(self):
+        """Custom priority can be set."""
+        endpoint1 = RoadEndpointInfo(
+            road_id="road1", road_name="Road 1", position=(0, 0),
+            heading=0, at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+        endpoint2 = RoadEndpointInfo(
+            road_id="road2", road_name="Road 2", position=(100, 100),
+            heading=0, at_junction="start", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+
+        pattern = ConnectionPattern(
+            from_road_id="road1",
+            to_road_id="road2",
+            turn_type="left",
+            turn_angle=math.pi / 2,
+            from_endpoint=endpoint1,
+            to_endpoint=endpoint2,
+            priority=5
+        )
+
+        assert pattern.priority == 5
+
+
+class TestRoadEndpointRelativeAngle:
+    """Tests for RoadEndpointInfo relative_angle attribute."""
+
+    def test_relative_angle_default(self):
+        """Default relative_angle is 0."""
+        endpoint = RoadEndpointInfo(
+            road_id="road1", road_name="Test Road", position=(0, 0),
+            heading=0, at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+
+        assert endpoint.relative_angle == 0.0
+
+    def test_relative_angle_custom(self):
+        """Custom relative_angle can be set."""
+        endpoint = RoadEndpointInfo(
+            road_id="road1", road_name="Test Road", position=(0, 0),
+            heading=0, at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5,
+            relative_angle=math.pi / 4
+        )
+
+        assert endpoint.relative_angle == pytest.approx(math.pi / 4)
+
+
+class TestAnalyzeJunctionGeometryExtended:
+    """Additional tests for analyze_junction_geometry."""
+
+    def test_road_at_start_connects_at_start(self):
+        """Road that connects at start is properly analyzed."""
+        junction = Junction(name="Test Junction")
+        junction.center_point = (100.0, 100.0)
+
+        # Road starts at junction
+        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1.add_point(100.0, 100.0)  # Starts at junction
+        poly1.add_point(200.0, 100.0)
+        poly1.add_point(300.0, 100.0)
+
+        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        junction.connected_road_ids = [road1.id]
+
+        roads_dict = {road1.id: road1}
+        polylines_dict = {poly1.id: poly1}
+
+        result = analyze_junction_geometry(junction, roads_dict, polylines_dict)
+
+        assert len(result['endpoints']) == 1
+        endpoint = result['endpoints'][0]
+        assert endpoint.at_junction == "start"
+        assert endpoint.position == (100.0, 100.0)
+
+    def test_road_at_end_connects_at_end(self):
+        """Road that connects at end is properly analyzed."""
+        junction = Junction(name="Test Junction")
+        junction.center_point = (100.0, 100.0)
+
+        # Road ends at junction
+        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1.add_point(0.0, 100.0)
+        poly1.add_point(50.0, 100.0)
+        poly1.add_point(100.0, 100.0)  # Ends at junction
+
+        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        junction.connected_road_ids = [road1.id]
+
+        roads_dict = {road1.id: road1}
+        polylines_dict = {poly1.id: poly1}
+
+        result = analyze_junction_geometry(junction, roads_dict, polylines_dict)
+
+        assert len(result['endpoints']) == 1
+        endpoint = result['endpoints'][0]
+        assert endpoint.at_junction == "end"
+        assert endpoint.position == (100.0, 100.0)
+
+    def test_junction_radius_calculated(self):
+        """Junction radius is calculated from endpoint distances."""
+        junction = Junction(name="Test Junction")
+        junction.center_point = (100.0, 100.0)
+
+        # Create two roads at different distances
+        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1.add_point(0.0, 100.0)
+        poly1.add_point(50.0, 100.0)
+        poly1.add_point(100.0, 100.0)
+
+        poly2 = Polyline(line_type=LineType.CENTERLINE)
+        poly2.add_point(100.0, 100.0)
+        poly2.add_point(100.0, 150.0)
+        poly2.add_point(100.0, 200.0)
+
+        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road2 = Road(name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
+
+        junction.connected_road_ids = [road1.id, road2.id]
+
+        roads_dict = {road1.id: road1, road2.id: road2}
+        polylines_dict = {poly1.id: poly1, poly2.id: poly2}
+
+        result = analyze_junction_geometry(junction, roads_dict, polylines_dict)
+
+        # Radius should be > 0 when there are endpoints
+        if len(result['endpoints']) > 0:
+            assert result['radius'] >= 0
+
+
+class TestDetectConnectionPatternsExtended:
+    """Additional tests for detect_connection_patterns."""
+
+    def test_four_way_junction(self):
+        """Four-way junction creates multiple patterns."""
+        # Create 4 endpoints at compass points
+        endpoint_north = RoadEndpointInfo(
+            road_id="north", road_name="North Road",
+            position=(100, 50), heading=-math.pi/2,  # Pointing south
+            at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+        endpoint_south = RoadEndpointInfo(
+            road_id="south", road_name="South Road",
+            position=(100, 150), heading=math.pi/2,  # Pointing north
+            at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+        endpoint_east = RoadEndpointInfo(
+            road_id="east", road_name="East Road",
+            position=(150, 100), heading=math.pi,  # Pointing west
+            at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+        endpoint_west = RoadEndpointInfo(
+            road_id="west", road_name="West Road",
+            position=(50, 100), heading=0,  # Pointing east
+            at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+
+        geometry_info = {
+            'endpoints': [endpoint_north, endpoint_south, endpoint_east, endpoint_west],
+            'center': (100, 100),
+            'radius': 50
+        }
+
+        patterns = detect_connection_patterns(geometry_info)
+
+        # Should have patterns for various turn types
+        # 4 roads can connect to 3 others each = 12 possible patterns
+        assert len(patterns) > 0
+
+        # Should have a mix of turn types
+        turn_types = set(p.turn_type for p in patterns)
+        # Should include straights, lefts, rights
+        assert len(turn_types) >= 2

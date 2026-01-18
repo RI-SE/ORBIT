@@ -987,3 +987,445 @@ class TestBackwardCompatibility:
         assert project.transform_method == 'affine'
         assert project.country_code == 'se'
         assert project.openstreetmap_used is False
+
+
+class TestSplitRoadAtPoint:
+    """Test split_road_at_point method."""
+
+    def test_split_road_basic(self, empty_project):
+        """Test splitting a road at a centerline point."""
+        # Create centerline with multiple points
+        centerline = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(0, 500, 50):
+            centerline.add_point(float(x), 100.0)  # 10 points
+        empty_project.add_polyline(centerline)
+
+        # Create road
+        road = Road(
+            name="Test Road",
+            centerline_id=centerline.id,
+            polyline_ids=[centerline.id]
+        )
+        empty_project.add_road(road)
+
+        # Split at point index 5 (middle)
+        result = empty_project.split_road_at_point(road.id, centerline.id, 5)
+
+        assert result is not None
+        road1, road2 = result
+
+        # Should have 2 roads now
+        assert len(empty_project.roads) == 2
+
+        # Road1 should be predecessor of road2
+        assert road1.successor_id == road2.id
+        assert road2.predecessor_id == road1.id
+
+        # Names should have segment suffix
+        assert "(seg 1/2)" in road1.name
+        assert "(seg 2/2)" in road2.name
+
+    def test_split_road_with_boundaries(self, empty_project):
+        """Test splitting a road with boundary polylines."""
+        # Create centerline
+        centerline = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(0, 500, 50):
+            centerline.add_point(float(x), 100.0)
+        empty_project.add_polyline(centerline)
+
+        # Create boundary
+        boundary = Polyline(line_type=LineType.LANE_BOUNDARY, road_mark_type=RoadMarkType.SOLID)
+        for x in range(0, 500, 50):
+            boundary.add_point(float(x), 90.0)
+        empty_project.add_polyline(boundary)
+
+        # Create road with both polylines
+        road = Road(
+            name="Test Road",
+            centerline_id=centerline.id,
+            polyline_ids=[centerline.id, boundary.id]
+        )
+        empty_project.add_road(road)
+
+        initial_polyline_count = len(empty_project.polylines)
+
+        # Split at point index 5
+        result = empty_project.split_road_at_point(road.id, centerline.id, 5)
+
+        assert result is not None
+        # Should have created new polylines for road2
+        assert len(empty_project.polylines) >= initial_polyline_count
+
+    def test_split_road_not_found(self, empty_project):
+        """Test splitting non-existent road returns None."""
+        result = empty_project.split_road_at_point("nonexistent", "nonexistent", 5)
+        assert result is None
+
+    def test_split_road_invalid_polyline(self, empty_project):
+        """Test splitting with wrong polyline returns None."""
+        centerline = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(0, 500, 50):
+            centerline.add_point(float(x), 100.0)
+        empty_project.add_polyline(centerline)
+
+        road = Road(
+            name="Test Road",
+            centerline_id=centerline.id,
+            polyline_ids=[centerline.id]
+        )
+        empty_project.add_road(road)
+
+        # Try to split with non-centerline polyline ID
+        result = empty_project.split_road_at_point(road.id, "wrong-polyline-id", 5)
+        assert result is None
+
+    def test_split_road_invalid_point_index(self, empty_project):
+        """Test splitting at invalid point index returns None."""
+        centerline = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(0, 500, 50):
+            centerline.add_point(float(x), 100.0)  # 10 points
+        empty_project.add_polyline(centerline)
+
+        road = Road(
+            name="Test Road",
+            centerline_id=centerline.id,
+            polyline_ids=[centerline.id]
+        )
+        empty_project.add_road(road)
+
+        # Index 0 is first point (invalid)
+        result = empty_project.split_road_at_point(road.id, centerline.id, 0)
+        assert result is None
+
+        # Index 9 is last point (invalid)
+        result = empty_project.split_road_at_point(road.id, centerline.id, 9)
+        assert result is None
+
+    def test_split_road_updates_junction_references(self, empty_project):
+        """Test that splitting updates junction references correctly."""
+        # Create centerline
+        centerline = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(0, 500, 50):
+            centerline.add_point(float(x), 100.0)
+        empty_project.add_polyline(centerline)
+
+        # Create road
+        road = Road(
+            name="Test Road",
+            centerline_id=centerline.id,
+            polyline_ids=[centerline.id],
+            junction_id="junction1"  # Road connects to a junction
+        )
+        empty_project.add_road(road)
+
+        # Create junction
+        junction = Junction(id="junction1", name="Test Junction")
+        junction.connected_road_ids = [road.id]
+        empty_project.add_junction(junction)
+
+        # Split the road
+        result = empty_project.split_road_at_point(road.id, centerline.id, 5)
+
+        assert result is not None
+        road1, road2 = result
+
+        # Junction should now reference road2 (the end segment)
+        assert road2.id in junction.connected_road_ids
+
+        # road2 should have the junction_id
+        assert road2.junction_id == "junction1"
+        assert road1.junction_id is None
+
+
+class TestMergeConsecutiveRoads:
+    """Test merge_consecutive_roads method."""
+
+    def test_merge_roads_basic(self, empty_project):
+        """Test merging two consecutive roads."""
+        # Create centerlines
+        centerline1 = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(0, 250, 50):
+            centerline1.add_point(float(x), 100.0)
+        empty_project.add_polyline(centerline1)
+
+        centerline2 = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(200, 500, 50):  # Overlapping start point for join
+            centerline2.add_point(float(x), 100.0)
+        empty_project.add_polyline(centerline2)
+
+        # Create roads linked together
+        road1 = Road(
+            name="Road 1",
+            centerline_id=centerline1.id,
+            polyline_ids=[centerline1.id]
+        )
+        road2 = Road(
+            name="Road 2",
+            centerline_id=centerline2.id,
+            polyline_ids=[centerline2.id],
+            predecessor_id=road1.id,
+            predecessor_contact="end"
+        )
+        road1.successor_id = road2.id
+        road1.successor_contact = "start"
+
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        assert len(empty_project.roads) == 2
+
+        # Merge the roads
+        result = empty_project.merge_consecutive_roads(road1.id, road2.id)
+
+        assert result is not None
+        assert result.id == road1.id
+
+        # Should have only 1 road now
+        assert len(empty_project.roads) == 1
+
+        # Merged road should have road2's successor
+        assert result.successor_id == road2.successor_id
+
+    def test_merge_roads_not_consecutive(self, empty_project):
+        """Test merging non-consecutive roads returns None."""
+        # Create two unlinked roads
+        centerline1 = Polyline(line_type=LineType.CENTERLINE)
+        centerline1.add_point(0.0, 0.0)
+        centerline1.add_point(100.0, 0.0)
+        empty_project.add_polyline(centerline1)
+
+        centerline2 = Polyline(line_type=LineType.CENTERLINE)
+        centerline2.add_point(200.0, 0.0)
+        centerline2.add_point(300.0, 0.0)
+        empty_project.add_polyline(centerline2)
+
+        road1 = Road(name="Road 1", centerline_id=centerline1.id, polyline_ids=[centerline1.id])
+        road2 = Road(name="Road 2", centerline_id=centerline2.id, polyline_ids=[centerline2.id])
+        # Not linked
+
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        result = empty_project.merge_consecutive_roads(road1.id, road2.id)
+        assert result is None
+
+    def test_merge_roads_not_found(self, empty_project):
+        """Test merging non-existent roads returns None."""
+        result = empty_project.merge_consecutive_roads("nonexistent1", "nonexistent2")
+        assert result is None
+
+    def test_merge_roads_removes_segment_suffix(self, empty_project):
+        """Test that merging removes segment suffix from name."""
+        centerline1 = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(0, 250, 50):
+            centerline1.add_point(float(x), 100.0)
+        empty_project.add_polyline(centerline1)
+
+        centerline2 = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(200, 500, 50):
+            centerline2.add_point(float(x), 100.0)
+        empty_project.add_polyline(centerline2)
+
+        road1 = Road(
+            name="Test Road (seg 1/2)",  # Has segment suffix
+            centerline_id=centerline1.id,
+            polyline_ids=[centerline1.id]
+        )
+        road2 = Road(
+            name="Test Road (seg 2/2)",
+            centerline_id=centerline2.id,
+            polyline_ids=[centerline2.id],
+            predecessor_id=road1.id
+        )
+        road1.successor_id = road2.id
+
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        result = empty_project.merge_consecutive_roads(road1.id, road2.id)
+
+        assert result is not None
+        # Segment suffix should be removed
+        assert "(seg" not in result.name
+        assert result.name == "Test Road"
+
+    def test_merge_roads_updates_junction_references(self, empty_project):
+        """Test that merging updates junction references."""
+        centerline1 = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(0, 250, 50):
+            centerline1.add_point(float(x), 100.0)
+        empty_project.add_polyline(centerline1)
+
+        centerline2 = Polyline(line_type=LineType.CENTERLINE)
+        for x in range(200, 500, 50):
+            centerline2.add_point(float(x), 100.0)
+        empty_project.add_polyline(centerline2)
+
+        road1 = Road(name="Road 1", centerline_id=centerline1.id, polyline_ids=[centerline1.id])
+        road2 = Road(
+            name="Road 2",
+            centerline_id=centerline2.id,
+            polyline_ids=[centerline2.id],
+            predecessor_id=road1.id
+        )
+        road1.successor_id = road2.id
+
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        # Create junction referencing road2
+        junction = Junction(name="Test Junction")
+        junction.connected_road_ids = [road2.id]
+        empty_project.add_junction(junction)
+
+        result = empty_project.merge_consecutive_roads(road1.id, road2.id)
+
+        assert result is not None
+        # Junction should now reference road1 (the kept road)
+        assert road1.id in junction.connected_road_ids
+        assert road2.id not in junction.connected_road_ids
+
+
+class TestRemapJunctionsAfterRoadSplit:
+    """Test _remap_junctions_after_road_split helper method."""
+
+    def test_remap_connected_road_ids(self, empty_project):
+        """Test that connected_road_ids are remapped."""
+        # Create minimal setup
+        centerline = Polyline(line_type=LineType.CENTERLINE)
+        centerline.add_point(0.0, 0.0)
+        centerline.add_point(100.0, 0.0)
+        empty_project.add_polyline(centerline)
+
+        road1 = Road(name="Road 1", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        road2 = Road(name="Road 2", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        junction = Junction(name="Test Junction")
+        junction.connected_road_ids = [road1.id]
+        empty_project.add_junction(junction)
+
+        empty_project._remap_junctions_after_road_split(road1.id, road2.id, None)
+
+        assert road2.id in junction.connected_road_ids
+        assert road1.id not in junction.connected_road_ids
+
+    def test_remap_entry_exit_roads(self, empty_project):
+        """Test that entry and exit roads are remapped for roundabouts."""
+        centerline = Polyline(line_type=LineType.CENTERLINE)
+        centerline.add_point(0.0, 0.0)
+        centerline.add_point(100.0, 0.0)
+        empty_project.add_polyline(centerline)
+
+        road1 = Road(name="Road 1", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        road2 = Road(name="Road 2", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        # Roundabout junctions use entry_roads and exit_roads
+        junction = Junction(name="Roundabout")
+        junction.entry_roads = [road1.id]
+        junction.exit_roads = [road1.id]
+        empty_project.add_junction(junction)
+
+        empty_project._remap_junctions_after_road_split(road1.id, road2.id, None)
+
+        assert road2.id in junction.entry_roads
+        assert road2.id in junction.exit_roads
+
+    def test_remap_transfers_junction_id(self, empty_project):
+        """Test that junction_id is transferred to new road."""
+        centerline = Polyline(line_type=LineType.CENTERLINE)
+        centerline.add_point(0.0, 0.0)
+        centerline.add_point(100.0, 0.0)
+        empty_project.add_polyline(centerline)
+
+        road1 = Road(name="Road 1", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        road2 = Road(name="Road 2", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        junction = Junction(id="junc1", name="Test Junction")
+        empty_project.add_junction(junction)
+
+        empty_project._remap_junctions_after_road_split(road1.id, road2.id, "junc1")
+
+        assert road2.junction_id == "junc1"
+        assert road1.junction_id is None
+
+
+class TestRemapJunctionsAfterRoadMerge:
+    """Test _remap_junctions_after_road_merge helper method."""
+
+    def test_remap_removes_deleted_road(self, empty_project):
+        """Test that deleted road is removed from connected_road_ids."""
+        centerline = Polyline(line_type=LineType.CENTERLINE)
+        centerline.add_point(0.0, 0.0)
+        centerline.add_point(100.0, 0.0)
+        empty_project.add_polyline(centerline)
+
+        road1 = Road(name="Road 1", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        road2 = Road(name="Road 2", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        junction = Junction(name="Test Junction")
+        junction.connected_road_ids = [road2.id]
+        empty_project.add_junction(junction)
+
+        empty_project._remap_junctions_after_road_merge(road1.id, road2.id)
+
+        assert road1.id in junction.connected_road_ids
+        assert road2.id not in junction.connected_road_ids
+
+    def test_remap_avoids_duplicates(self, empty_project):
+        """Test that road1 is not added twice to connected_road_ids."""
+        centerline = Polyline(line_type=LineType.CENTERLINE)
+        centerline.add_point(0.0, 0.0)
+        centerline.add_point(100.0, 0.0)
+        empty_project.add_polyline(centerline)
+
+        road1 = Road(name="Road 1", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        road2 = Road(name="Road 2", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        junction = Junction(name="Test Junction")
+        # Both roads already in the list
+        junction.connected_road_ids = [road1.id, road2.id]
+        empty_project.add_junction(junction)
+
+        empty_project._remap_junctions_after_road_merge(road1.id, road2.id)
+
+        # Should have road1 only once
+        assert junction.connected_road_ids.count(road1.id) == 1
+        assert road2.id not in junction.connected_road_ids
+
+    def test_remap_updates_lane_connections(self, empty_project):
+        """Test that lane connections are updated."""
+        from orbit.models.junction import LaneConnection
+
+        centerline = Polyline(line_type=LineType.CENTERLINE)
+        centerline.add_point(0.0, 0.0)
+        centerline.add_point(100.0, 0.0)
+        empty_project.add_polyline(centerline)
+
+        road1 = Road(name="Road 1", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        road2 = Road(name="Road 2", centerline_id=centerline.id, polyline_ids=[centerline.id])
+        empty_project.add_road(road1)
+        empty_project.add_road(road2)
+
+        junction = Junction(name="Test Junction")
+        lane_conn = LaneConnection(
+            from_road_id=road2.id,
+            from_lane_id=-1,
+            to_road_id="other_road",
+            to_lane_id=-1
+        )
+        junction.lane_connections = [lane_conn]
+        empty_project.add_junction(junction)
+
+        empty_project._remap_junctions_after_road_merge(road1.id, road2.id)
+
+        assert lane_conn.from_road_id == road1.id
