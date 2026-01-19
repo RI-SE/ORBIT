@@ -7,6 +7,7 @@ tools for pixel↔geo coordinate conversion.
 """
 
 import json
+from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
 
@@ -103,9 +104,19 @@ def build_georef_data(
     # Get reprojection error
     reproj_error = transformer.reprojection_error or {}
 
+    # Get ORBIT version
+    try:
+        orbit_version = get_package_version("orbit")
+    except Exception:
+        orbit_version = "unknown"
+
     # Build output structure
     data = {
         "version": GEOREF_FORMAT_VERSION,
+        "creator": {
+            "application": "ORBIT",
+            "application_version": orbit_version,
+        },
         "source": {
             "project_file": str(project_file) if project_file else None,
             "image_path": str(project.image_path) if project.image_path else None,

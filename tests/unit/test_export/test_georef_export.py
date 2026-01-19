@@ -163,6 +163,7 @@ class TestBuildGeorefData:
         )
 
         assert 'version' in data
+        assert 'creator' in data
         assert 'source' in data
         assert 'image_size' in data
         assert 'transform_method' in data
@@ -172,6 +173,17 @@ class TestBuildGeorefData:
         assert 'inverse_matrix' in data
         assert 'scale_factors' in data
         assert 'reprojection_error' in data
+
+    def test_creator_info(self, mock_project, mock_affine_transformer):
+        """Creator info includes ORBIT application and version."""
+        project = mock_project()
+
+        data = build_georef_data(project, mock_affine_transformer, (1000, 1000))
+
+        assert data['creator']['application'] == 'ORBIT'
+        # Version should be a non-empty string (either version number or "unknown")
+        assert isinstance(data['creator']['application_version'], str)
+        assert len(data['creator']['application_version']) > 0
 
     def test_version_is_current(self, mock_project, mock_affine_transformer):
         """Version matches current format version."""
