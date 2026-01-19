@@ -802,3 +802,292 @@ class TestConvertLane:
 
         assert result.predecessor_id == 1
         assert result.successor_id == 2
+
+
+class TestImportLaneSections:
+    """Tests for _import_lane_sections method."""
+
+    @pytest.fixture
+    def importer(self):
+        project = Project()
+        return OpenDriveImporter(project, None, 1000, 800)
+
+    def test_import_single_section(self, importer):
+        """Import single lane section."""
+        mock_section = Mock()
+        mock_section.s = 0.0
+        mock_section.single_side = None
+        mock_section.left_lanes = []
+        mock_section.right_lanes = []
+
+        centerline_points = [(0, 0), (100, 0), (200, 0)]
+        road_length = 200.0
+
+        sections = importer._import_lane_sections(
+            [mock_section], road_length, centerline_points
+        )
+
+        assert len(sections) == 1
+        assert sections[0].section_number == 1
+
+    def test_import_multiple_sections(self, importer):
+        """Import multiple lane sections."""
+        mock_section1 = Mock()
+        mock_section1.s = 0.0
+        mock_section1.single_side = None
+        mock_section1.left_lanes = []
+        mock_section1.right_lanes = []
+
+        mock_section2 = Mock()
+        mock_section2.s = 100.0
+        mock_section2.single_side = None
+        mock_section2.left_lanes = []
+        mock_section2.right_lanes = []
+
+        centerline_points = [(0, 0), (100, 0), (200, 0)]
+        road_length = 200.0
+
+        sections = importer._import_lane_sections(
+            [mock_section1, mock_section2], road_length, centerline_points
+        )
+
+        assert len(sections) == 2
+        assert sections[0].section_number == 1
+        assert sections[1].section_number == 2
+
+    def test_import_section_with_lanes(self, importer):
+        """Import section with left and right lanes."""
+        left_lane = Mock()
+        left_lane.id = 1
+        left_lane.type = "driving"
+        left_lane.widths = []
+        left_lane.road_marks = []
+        left_lane.speed_limits = []
+        left_lane.materials = []
+        left_lane.heights = []
+        left_lane.link = None
+        left_lane.direction = "forward"
+        left_lane.advisory = None
+        left_lane.level = False
+
+        right_lane = Mock()
+        right_lane.id = -1
+        right_lane.type = "driving"
+        right_lane.widths = []
+        right_lane.road_marks = []
+        right_lane.speed_limits = []
+        right_lane.materials = []
+        right_lane.heights = []
+        right_lane.link = None
+        right_lane.direction = "forward"
+        right_lane.advisory = None
+        right_lane.level = False
+
+        mock_section = Mock()
+        mock_section.s = 0.0
+        mock_section.single_side = None
+        mock_section.left_lanes = [left_lane]
+        mock_section.right_lanes = [right_lane]
+
+        centerline_points = [(0, 0), (100, 0)]
+        road_length = 100.0
+
+        sections = importer._import_lane_sections(
+            [mock_section], road_length, centerline_points
+        )
+
+        assert len(sections) == 1
+        assert len(sections[0].lanes) == 2  # left + right (no center)
+
+
+class TestImportResultWarnings:
+    """Tests for ImportResult warnings handling."""
+
+    def test_warnings_list_empty_by_default(self):
+        """Warnings list is empty by default."""
+        result = ImportResult()
+        assert result.warnings == []
+
+    def test_warnings_can_be_appended(self):
+        """Warnings can be appended to list."""
+        result = ImportResult()
+        result.warnings.append("Road 1 has no lanes")
+        result.warnings.append("Junction 2 has no connections")
+
+        assert len(result.warnings) == 2
+
+    def test_features_skipped_empty_by_default(self):
+        """Features skipped dict is empty by default."""
+        result = ImportResult()
+        assert result.features_skipped == {}
+
+    def test_features_skipped_can_track_counts(self):
+        """Features skipped dict can track counts."""
+        result = ImportResult()
+        result.features_skipped['lateralProfile'] = 5
+        result.features_skipped['signals'] = 3
+
+        assert result.features_skipped['lateralProfile'] == 5
+        assert result.features_skipped['signals'] == 3
+
+
+class TestImportFromFile:
+    """Tests for import_from_file method."""
+
+    @pytest.fixture
+    def mock_transformer(self):
+        transformer = Mock()
+        transformer.pixels_to_meters_batch = Mock(return_value=[(0, 0)])
+        transformer.meters_to_latlon = Mock(return_value=(57.7, 12.9))
+        return transformer
+
+    @pytest.fixture
+    def empty_project(self):
+        return Project()
+
+    def test_import_nonexistent_file(self, empty_project, mock_transformer):
+        """Import from nonexistent file returns error."""
+        importer = OpenDriveImporter(
+            project=empty_project,
+            orbit_transformer=mock_transformer,
+            image_width=1000,
+            image_height=800
+        )
+
+        result = importer.import_from_file("/nonexistent/file.xodr")
+
+        assert result.success is False
+        assert "parse" in result.error_message.lower() or "failed" in result.error_message.lower()
+
+    def test_import_clears_state(self, empty_project, mock_transformer):
+        """Import clears previous import state."""
+        importer = OpenDriveImporter(
+            project=empty_project,
+            orbit_transformer=mock_transformer,
+            image_width=1000,
+            image_height=800
+        )
+
+        # Add some state
+        importer.odr_road_to_orbit["old_road"] = "old_orbit_id"
+        importer.imported_odr_road_ids.add("old_road")
+
+        # Import (will fail but should clear state first)
+        result = importer.import_from_file("/nonexistent/file.xodr")
+
+        # State should be cleared
+        assert "old_road" not in importer.odr_road_to_orbit
+        assert "old_road" not in importer.imported_odr_road_ids
+
+
+class TestConvertLaneMaterials:
+    """Tests for lane material conversion."""
+
+    @pytest.fixture
+    def importer(self):
+        project = Project()
+        return OpenDriveImporter(project, None, 1000, 800)
+
+    @pytest.fixture
+    def mock_odr_lane(self):
+        lane = Mock()
+        lane.id = -1
+        lane.type = "driving"
+        lane.widths = []
+        lane.road_marks = []
+        lane.speed_limits = []
+        lane.heights = []
+        lane.link = None
+        lane.direction = "forward"
+        lane.advisory = None
+        lane.level = False
+        return lane
+
+    def test_convert_lane_with_materials(self, importer, mock_odr_lane):
+        """Convert lane with material properties."""
+        material = Mock()
+        material.s_offset = 0.0
+        material.friction = 0.8
+        material.roughness = 0.01
+        material.surface = "asphalt"
+        mock_odr_lane.materials = [material]
+
+        result = importer._convert_lane(mock_odr_lane, 'right')
+
+        assert len(result.materials) == 1
+        assert result.materials[0] == (0.0, 0.8, 0.01, "asphalt")
+
+    def test_convert_lane_with_heights(self, importer, mock_odr_lane):
+        """Convert lane with height offsets."""
+        height = Mock()
+        height.s_offset = 0.0
+        height.inner = 0.1
+        height.outer = 0.2
+        mock_odr_lane.heights = [height]
+        mock_odr_lane.materials = []
+
+        result = importer._convert_lane(mock_odr_lane, 'right')
+
+        assert len(result.heights) == 1
+        assert result.heights[0] == (0.0, 0.1, 0.2)
+
+
+class TestImportOptionsDefault:
+    """Tests for import options defaults."""
+
+    def test_default_import_mode_is_add(self):
+        """Default import mode is ADD."""
+        options = opendrive_importer.ImportOptions()
+        assert options.import_mode == opendrive_importer.ImportMode.ADD
+
+    def test_default_scale(self):
+        """Default scale is 10.0 pixels per meter."""
+        options = opendrive_importer.ImportOptions()
+        assert options.scale_pixels_per_meter == 10.0
+
+    def test_default_auto_control_points(self):
+        """Default auto_create_control_points is False."""
+        options = opendrive_importer.ImportOptions()
+        assert options.auto_create_control_points is False
+
+    def test_default_verbose(self):
+        """Default verbose is False."""
+        options = opendrive_importer.ImportOptions()
+        assert options.verbose is False
+
+
+class TestImportResultGeometryConversions:
+    """Tests for geometry conversion tracking."""
+
+    def test_geometry_conversions_empty_by_default(self):
+        """Geometry conversions list is empty by default."""
+        result = ImportResult()
+        assert result.geometry_conversions == []
+
+    def test_geometry_conversions_can_track(self):
+        """Geometry conversions can be tracked."""
+        result = ImportResult()
+        result.geometry_conversions.append("spiral to arc")
+        result.geometry_conversions.append("clothoid simplified")
+
+        assert len(result.geometry_conversions) == 2
+
+    def test_connecting_roads_count(self):
+        """Connecting roads are counted separately."""
+        result = ImportResult(
+            success=True,
+            roads_imported=10,
+            connecting_roads_imported=5
+        )
+
+        assert result.roads_imported == 10
+        assert result.connecting_roads_imported == 5
+
+    def test_control_points_created(self):
+        """Control points created are tracked."""
+        result = ImportResult(
+            success=True,
+            control_points_created=4
+        )
+
+        assert result.control_points_created == 4

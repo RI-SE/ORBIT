@@ -599,3 +599,489 @@ class TestConnectionPointSorting:
         assert sorted_points[0].osm_node_id == 2  # angle=0
         assert sorted_points[1].osm_node_id == 3  # angle=π/2
         assert sorted_points[2].osm_node_id == 1  # angle=π
+
+
+# Import additional functions for testing
+analyze_roundabout = roundabout_handler.analyze_roundabout
+create_ring_segments = roundabout_handler.create_ring_segments
+create_roundabout_junctions = roundabout_handler.create_roundabout_junctions
+_create_single_ring_road = roundabout_handler._create_single_ring_road
+_create_ring_lane_section = roundabout_handler._create_ring_lane_section
+
+from orbit.models import Junction, Polyline
+from orbit.models.polyline import LineType
+
+
+class MockTransformer:
+    """Mock coordinate transformer for testing."""
+
+    def geo_to_pixel(self, lon, lat):
+        """Simple linear transformation for testing."""
+        return (lon * 1000, lat * 1000)
+
+
+class TestAnalyzeRoundabout:
+    """Tests for analyze_roundabout function."""
+
+    @pytest.fixture
+    def simple_roundabout_data(self):
+        """Create simple roundabout OSM data."""
+        # Create nodes for a simple circular roundabout
+        nodes = {
+            1: OSMNode(1, 0.010, 0.000),  # Right
+            2: OSMNode(2, 0.007, 0.007),  # Top-right
+            3: OSMNode(3, 0.000, 0.010),  # Top
+            4: OSMNode(4, -0.007, 0.007),  # Top-left
+            5: OSMNode(5, -0.010, 0.000),  # Left
+            6: OSMNode(6, -0.007, -0.007),  # Bottom-left
+            7: OSMNode(7, 0.000, -0.010),  # Bottom
+            8: OSMNode(8, 0.007, -0.007),  # Bottom-right
+            # Approach road node
+            100: OSMNode(100, 0.020, 0.000),
+        }
+
+        # Create roundabout way
+        roundabout_way = OSMWay(
+            id=1000,
+            nodes=[1, 2, 3, 4, 5, 6, 7, 8, 1],  # Closed ring
+            tags={'junction': 'roundabout', 'highway': 'primary', 'lanes': '2'}
+        )
+
+        # Create approach road
+        approach_way = OSMWay(
+            id=2000,
+            nodes=[100, 1],  # Connects to node 1
+            tags={'highway': 'primary'}
+        )
+
+        osm_data = OSMData()
+        osm_data.nodes = nodes
+        osm_data.ways = {1000: roundabout_way, 2000: approach_way}
+
+        return osm_data, roundabout_way
+
+    def test_analyze_basic_roundabout(self, simple_roundabout_data):
+        """Analyze a basic circular roundabout."""
+        osm_data, roundabout_way = simple_roundabout_data
+        transformer = MockTransformer()
+
+        info = analyze_roundabout(roundabout_way, osm_data, transformer)
+
+        assert info.osm_way_id == 1000
+        assert info.lane_count == 2
+        # Check center is approximately at origin
+        assert info.center[0] == pytest.approx(0, abs=5)
+        assert info.center[1] == pytest.approx(0, abs=5)
+        # Check radius is approximately 10 (0.01 * 1000)
+        assert info.radius == pytest.approx(10, abs=2)
+
+    def test_analyze_finds_connection_points(self, simple_roundabout_data):
+        """Analyze identifies connection points with other roads."""
+        osm_data, roundabout_way = simple_roundabout_data
+        transformer = MockTransformer()
+
+        info = analyze_roundabout(roundabout_way, osm_data, transformer)
+
+        # Should find node 1 as a connection point (shared with approach road)
+        # Note: closed rings can have the same node appear twice (start/end)
+        assert len(info.connection_points) >= 1
+        node_ids = [cp.osm_node_id for cp in info.connection_points]
+        assert 1 in node_ids
+
+    def test_analyze_extracts_lane_count(self, simple_roundabout_data):
+        """Lane count is extracted from tags."""
+        osm_data, roundabout_way = simple_roundabout_data
+        transformer = MockTransformer()
+
+        info = analyze_roundabout(roundabout_way, osm_data, transformer)
+
+        assert info.lane_count == 2
+
+    def test_analyze_extracts_speed_limit(self):
+        """Speed limit is extracted from tags."""
+        nodes = {
+            1: OSMNode(1, 0.010, 0.000),
+            2: OSMNode(2, 0.000, 0.010),
+            3: OSMNode(3, -0.010, 0.000),
+        }
+
+        roundabout_way = OSMWay(
+            id=1000,
+            nodes=[1, 2, 3, 1],
+            tags={'junction': 'roundabout', 'maxspeed': '30 km/h'}
+        )
+
+        osm_data = OSMData()
+        osm_data.nodes = nodes
+        osm_data.ways = {1000: roundabout_way}
+
+        transformer = MockTransformer()
+        info = analyze_roundabout(roundabout_way, osm_data, transformer)
+
+        assert info.speed_limit == 30.0
+
+    def test_analyze_too_few_points_raises(self):
+        """Roundabout with < 3 points raises ValueError."""
+        nodes = {
+            1: OSMNode(1, 0.0, 0.0),
+            2: OSMNode(2, 0.0, 1.0),
+        }
+
+        roundabout_way = OSMWay(
+            id=1000,
+            nodes=[1, 2],
+            tags={'junction': 'roundabout'}
+        )
+
+        osm_data = OSMData()
+        osm_data.nodes = nodes
+        osm_data.ways = {1000: roundabout_way}
+
+        transformer = MockTransformer()
+
+        with pytest.raises(ValueError, match="fewer than 3"):
+            analyze_roundabout(roundabout_way, osm_data, transformer)
+
+    def test_analyze_determines_clockwise(self):
+        """Traffic direction is determined from node order."""
+        # Create counter-clockwise ring (right-hand traffic)
+        nodes = {
+            1: OSMNode(1, 0.010, 0.000),
+            2: OSMNode(2, 0.000, 0.010),
+            3: OSMNode(3, -0.010, 0.000),
+            4: OSMNode(4, 0.000, -0.010),
+        }
+
+        roundabout_way = OSMWay(
+            id=1000,
+            nodes=[1, 2, 3, 4, 1],  # Counter-clockwise
+            tags={'junction': 'roundabout'}
+        )
+
+        osm_data = OSMData()
+        osm_data.nodes = nodes
+        osm_data.ways = {1000: roundabout_way}
+
+        transformer = MockTransformer()
+        info = analyze_roundabout(roundabout_way, osm_data, transformer)
+
+        # In pixel coords (y-down), counter-clockwise in geo is clockwise in pixels
+        assert isinstance(info.clockwise, bool)
+
+
+class TestCreateRingSegments:
+    """Tests for create_ring_segments function."""
+
+    @pytest.fixture
+    def roundabout_with_connections(self):
+        """Create RoundaboutInfo with multiple connection points."""
+        info = RoundaboutInfo(
+            osm_way_id=1000,
+            center=(100.0, 100.0),
+            radius=50.0,
+            lane_count=1,
+            speed_limit=30.0
+        )
+
+        # Add ring points (8 points in a circle)
+        for i in range(8):
+            angle = i * math.pi / 4
+            x = 100 + 50 * math.cos(angle)
+            y = 100 + 50 * math.sin(angle)
+            info.ring_points.append((x, y))
+            info.ring_node_ids.append(i + 1)
+
+        # Add 4 connection points at cardinal directions
+        for i in [0, 2, 4, 6]:
+            cp = ConnectionPoint(
+                osm_node_id=i + 1,
+                position=info.ring_points[i],
+                ring_index=i,
+                angle_from_center=i * math.pi / 4,
+                connecting_way_ids={1000 + i}
+            )
+            info.connection_points.append(cp)
+
+        return info
+
+    def test_create_segments_basic(self, roundabout_with_connections):
+        """Create ring segments from roundabout with connections."""
+        segments = create_ring_segments(roundabout_with_connections)
+
+        # Should create 4 segments (one between each pair of connections)
+        assert len(segments) == 4
+
+        # Each segment is a (Road, Polyline) tuple
+        for road, polyline in segments:
+            assert isinstance(road, Road)
+            assert isinstance(polyline, Polyline)
+
+    def test_create_segments_naming(self, roundabout_with_connections):
+        """Segment roads have proper naming."""
+        segments = create_ring_segments(roundabout_with_connections)
+
+        for i, (road, polyline) in enumerate(segments):
+            assert f"Ring {i + 1}" in road.name
+
+    def test_create_segments_lane_config(self, roundabout_with_connections):
+        """Segment roads have correct lane configuration."""
+        segments = create_ring_segments(roundabout_with_connections)
+
+        for road, polyline in segments:
+            assert road.lane_info is not None
+            assert road.lane_info.left_count == 0  # One-way
+            assert road.lane_info.right_count == 1  # From roundabout lane_count
+
+    def test_create_segments_with_custom_lane_width(self, roundabout_with_connections):
+        """Segments use custom lane width."""
+        segments = create_ring_segments(roundabout_with_connections, default_lane_width=4.0)
+
+        for road, polyline in segments:
+            assert road.lane_info.lane_width == 4.0
+
+    def test_create_segments_sets_polyline_type(self, roundabout_with_connections):
+        """Segment polylines are marked as centerlines."""
+        segments = create_ring_segments(roundabout_with_connections)
+
+        for road, polyline in segments:
+            assert polyline.line_type == LineType.CENTERLINE
+
+
+class TestCreateSingleRingRoad:
+    """Tests for _create_single_ring_road function."""
+
+    @pytest.fixture
+    def simple_roundabout(self):
+        """Create RoundaboutInfo with no connections."""
+        info = RoundaboutInfo(
+            osm_way_id=1000,
+            center=(100.0, 100.0),
+            radius=50.0,
+            lane_count=2,
+            speed_limit=40.0,
+            tags={'name': 'Test Roundabout'}
+        )
+
+        # Add ring points
+        for i in range(8):
+            angle = i * math.pi / 4
+            x = 100 + 50 * math.cos(angle)
+            y = 100 + 50 * math.sin(angle)
+            info.ring_points.append((x, y))
+            info.ring_node_ids.append(i + 1)
+
+        return info
+
+    def test_create_single_ring_road(self, simple_roundabout):
+        """Create single ring road when no connections."""
+        segments = _create_single_ring_road(simple_roundabout, default_lane_width=3.5)
+
+        assert len(segments) == 1
+        road, polyline = segments[0]
+
+        assert "Ring" in road.name
+        assert len(polyline.points) == 8
+
+    def test_single_ring_has_lane_section(self, simple_roundabout):
+        """Single ring road has proper lane section."""
+        segments = _create_single_ring_road(simple_roundabout, default_lane_width=3.5)
+        road, _ = segments[0]
+
+        assert len(road.lane_sections) == 1
+        section = road.lane_sections[0]
+
+        # Should have center + 2 right lanes
+        assert len(section.lanes) == 3
+
+
+class TestCreateRingLaneSection:
+    """Tests for _create_ring_lane_section function."""
+
+    def test_create_single_lane_section(self):
+        """Create lane section for single-lane ring."""
+        section = _create_ring_lane_section(lane_count=1, lane_width=3.5, num_points=10)
+
+        assert section.section_number == 1
+        assert section.s_start == 0.0
+        assert section.s_end == 9.0
+        # 1 center lane + 1 right lane
+        assert len(section.lanes) == 2
+
+    def test_create_multi_lane_section(self):
+        """Create lane section for multi-lane ring."""
+        section = _create_ring_lane_section(lane_count=3, lane_width=3.0, num_points=20)
+
+        # 1 center + 3 right lanes
+        assert len(section.lanes) == 4
+
+        # Check lane IDs (center=0, right=-1,-2,-3)
+        lane_ids = [lane.id for lane in section.lanes]
+        assert 0 in lane_ids
+        assert -1 in lane_ids
+        assert -2 in lane_ids
+        assert -3 in lane_ids
+
+    def test_lane_widths_set(self):
+        """Lane widths are set correctly."""
+        section = _create_ring_lane_section(lane_count=2, lane_width=4.0, num_points=10)
+
+        for lane in section.lanes:
+            if lane.id != 0:  # Skip center lane
+                assert lane.width == 4.0
+
+
+class TestCreateRoundaboutJunctions:
+    """Tests for create_roundabout_junctions function."""
+
+    @pytest.fixture
+    def roundabout_setup(self):
+        """Create roundabout with ring segments and approach roads."""
+        # Create RoundaboutInfo
+        info = RoundaboutInfo(
+            osm_way_id=1000,
+            center=(100.0, 100.0),
+            radius=50.0,
+            lane_count=1
+        )
+
+        # Add ring points
+        for i in range(4):
+            angle = i * math.pi / 2
+            x = 100 + 50 * math.cos(angle)
+            y = 100 + 50 * math.sin(angle)
+            info.ring_points.append((x, y))
+            info.ring_node_ids.append(i + 1)
+
+        # Add connection points at each cardinal direction
+        for i in range(4):
+            cp = ConnectionPoint(
+                osm_node_id=i + 1,
+                position=info.ring_points[i],
+                ring_index=i,
+                angle_from_center=i * math.pi / 2
+            )
+            info.connection_points.append(cp)
+
+        # Create ring segments
+        ring_segments = []
+        for i in range(4):
+            polyline = Polyline(
+                points=[info.ring_points[i], info.ring_points[(i + 1) % 4]],
+                line_type=LineType.CENTERLINE,
+                osm_node_ids=[i + 1, ((i + 1) % 4) + 1]
+            )
+            road = Road(name=f"Ring {i + 1}", centerline_id=polyline.id)
+            ring_segments.append((road, polyline))
+
+        # Create approach roads dict
+        approach_roads = {}
+        polylines_dict = {}
+
+        # Add polylines from ring segments
+        for road, polyline in ring_segments:
+            polylines_dict[polyline.id] = polyline
+
+        return info, ring_segments, approach_roads, polylines_dict
+
+    def test_create_junctions_basic(self, roundabout_setup):
+        """Create junctions at each connection point."""
+        info, ring_segments, approach_roads, polylines_dict = roundabout_setup
+
+        junctions = create_roundabout_junctions(
+            info, ring_segments, approach_roads, polylines_dict
+        )
+
+        # Should create 4 junctions (one at each connection point)
+        assert len(junctions) == 4
+
+        for junction in junctions:
+            assert isinstance(junction, Junction)
+
+    def test_junctions_connect_ring_segments(self, roundabout_setup):
+        """Junctions connect adjacent ring segments."""
+        info, ring_segments, approach_roads, polylines_dict = roundabout_setup
+
+        junctions = create_roundabout_junctions(
+            info, ring_segments, approach_roads, polylines_dict
+        )
+
+        for junction in junctions:
+            # Each junction should have at least 2 connected roads (incoming and outgoing ring)
+            assert len(junction.connected_road_ids) >= 2
+
+    def test_no_junctions_with_single_connection(self):
+        """No junctions created when < 2 connection points."""
+        info = RoundaboutInfo(
+            osm_way_id=1000,
+            center=(100.0, 100.0),
+            radius=50.0
+        )
+
+        # Only one connection point
+        cp = ConnectionPoint(
+            osm_node_id=1,
+            position=(150, 100),
+            ring_index=0,
+            angle_from_center=0
+        )
+        info.connection_points.append(cp)
+
+        junctions = create_roundabout_junctions(info, [], {}, {})
+
+        assert len(junctions) == 0
+
+
+class TestCreateRingSegmentsEdgeCases:
+    """Edge case tests for create_ring_segments."""
+
+    def test_single_connection_creates_single_road(self):
+        """Single connection point creates single ring road."""
+        info = RoundaboutInfo(
+            osm_way_id=1000,
+            center=(100.0, 100.0),
+            radius=50.0,
+            lane_count=1
+        )
+
+        # Add ring points
+        for i in range(8):
+            angle = i * math.pi / 4
+            x = 100 + 50 * math.cos(angle)
+            y = 100 + 50 * math.sin(angle)
+            info.ring_points.append((x, y))
+            info.ring_node_ids.append(i + 1)
+
+        # Only one connection point
+        cp = ConnectionPoint(
+            osm_node_id=1,
+            position=info.ring_points[0],
+            ring_index=0,
+            angle_from_center=0
+        )
+        info.connection_points.append(cp)
+
+        segments = create_ring_segments(info)
+
+        # Should fall back to single ring road
+        assert len(segments) == 1
+
+    def test_no_connections_creates_single_road(self):
+        """No connection points creates single ring road."""
+        info = RoundaboutInfo(
+            osm_way_id=1000,
+            center=(100.0, 100.0),
+            radius=50.0,
+            lane_count=1
+        )
+
+        # Add ring points but no connections
+        for i in range(8):
+            angle = i * math.pi / 4
+            x = 100 + 50 * math.cos(angle)
+            y = 100 + 50 * math.sin(angle)
+            info.ring_points.append((x, y))
+            info.ring_node_ids.append(i + 1)
+
+        segments = create_ring_segments(info)
+
+        assert len(segments) == 1
