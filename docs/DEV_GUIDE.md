@@ -26,7 +26,7 @@ A guide for developers who want to understand and contribute to ORBIT.
 
 ## Introduction
 
-ORBIT (OpenDrive Road Builder from Imagery Tool) is a PyQt6 desktop application for creating OpenDRIVE road networks by annotating aerial/satellite imagery. Users draw polylines on images, group them into roads, add georeferencing control points, and export to OpenDRIVE 1.7 XML.
+ORBIT (OpenDrive Road Builder from Imagery Tool) is a PyQt6 desktop application for creating OpenDRIVE road networks by annotating aerial/satellite imagery. Users draw polylines on images, group them into roads, add georeferencing control points, and export to OpenDRIVE 1.8 XML.
 
 ### Core Workflow
 

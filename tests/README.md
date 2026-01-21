@@ -81,7 +81,7 @@ tests/
 
 **Real-world data tests**: The coordinate transformation tests use real control points extracted from `ekas_from_overpass2.orbit` (6 control points with both pixel and geo coordinates). These verify transformation accuracy with actual georeferencing data.
 
-See `dev_plans/TEST_PLAN.md` for the complete testing roadmap.
+See [CHANGELOG.md](../CHANGELOG.md) for version history and [DEV_GUIDE.md](../docs/DEV_GUIDE.md) for development documentation.
 
 ## Writing Tests
 
@@ -118,10 +118,8 @@ class TestPolylineCreation:
         assert polyline.closed is False
 ```
 
-## Future Phases
+## Future Plans
 
-- **Phase 2**: Integration tests, import/export coverage
-- **Phase 3**: Minimal GUI tests for dialog validation
-- **Phase 4**: CI/CD setup, coverage enforcement
-
-See `dev_plans/TEST_PLAN.md` for details.
+- Integration tests for import/export coverage
+- Minimal GUI tests for dialog validation
+- CI/CD setup with coverage enforcement

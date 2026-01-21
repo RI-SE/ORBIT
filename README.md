@@ -124,11 +124,10 @@ orbit --xodr_schema /path/to/OpenDRIVE_Core.xsd
 
 | Guide | Description |
 |-------|-------------|
-| [Usage Guide](docs/USAGE_GUIDE.md) | Detailed user guide with tips and keyboard shortcuts |
-| [Complete Workflow](docs/COMPLETE_WORKFLOW.md) | End-to-end tutorial from image to OpenDRIVE |
-| [Georeferencing Guide](docs/GEOREFERENCING_GUIDE.md) | Control points and uncertainty analysis |
-| [OSM Import Guide](docs/OSM_IMPORT_GUIDE.md) | OpenStreetMap import feature |
-| [Validation Guide](docs/VALIDATION_AND_UNCERTAINTY.md) | Validation metrics and uncertainty estimation |
+| [User Guide](docs/USER_GUIDE.md) | Complete user guide with workflow, tips, and keyboard shortcuts |
+| [Georeferencing Guide](docs/GEOREFERENCING.md) | Control points and uncertainty analysis |
+| [OSM Import Guide](docs/OSM_IMPORT.md) | OpenStreetMap import feature |
+| [Validation Guide](docs/VALIDATION.md) | Validation metrics and uncertainty estimation |
 | [Developer Guide](docs/DEV_GUIDE.md) | Architecture and contribution guidelines |
 
 ---
