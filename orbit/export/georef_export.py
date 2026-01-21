@@ -112,6 +112,7 @@ def build_georef_data(
 
     # Build output structure
     data = {
+        "format": "ORBIT Georeferencing Data",
         "version": GEOREF_FORMAT_VERSION,
         "creator": {
             "application": "ORBIT",

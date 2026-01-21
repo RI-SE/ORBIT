@@ -162,6 +162,7 @@ class TestBuildGeorefData:
             (1000, 1000)
         )
 
+        assert data['format'] == 'ORBIT Georeferencing Data'
         assert 'version' in data
         assert 'creator' in data
         assert 'source' in data

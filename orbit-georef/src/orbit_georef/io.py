@@ -34,6 +34,11 @@ def load_georef(path: Union[str, Path]) -> GeoTransformer:
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
+    # Validate format (optional, for files created by ORBIT 0.4.0+)
+    file_format = data.get("format")
+    if file_format and file_format != "ORBIT Georeferencing Data":
+        raise ValueError(f"Unknown georef format: {file_format}")
+
     # Validate version
     version = data.get("version", "1.0")
     if not version.startswith("1."):
@@ -74,6 +79,11 @@ def load_georef(path: Union[str, Path]) -> GeoTransformer:
         # Legacy format: image_path at root level
         source_info = {"image_path": data.get("image_path")}
 
+    # Include creator info if present (ORBIT 0.4.0+)
+    creator_info = data.get("creator")
+    if creator_info:
+        source_info["creator"] = creator_info
+
     return GeoTransformer(
         transform_matrix=transform_matrix,
         inverse_matrix=inverse_matrix,
@@ -97,9 +107,15 @@ def save_georef(transformer: GeoTransformer, path: Union[str, Path]) -> None:
     """
     path = Path(path)
 
+    # Extract creator from source_info if present, otherwise use orbit-georef as creator
+    source_info = dict(transformer.source_info) if transformer.source_info else {}
+    creator = source_info.pop("creator", {"application": "orbit-georef"})
+
     data = {
+        "format": "ORBIT Georeferencing Data",
         "version": "1.0",
-        "source": transformer.source_info if transformer.source_info else {},
+        "creator": creator,
+        "source": source_info,
         "transform_method": transformer.method,
         "control_points": [
             {
