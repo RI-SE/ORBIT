@@ -382,6 +382,9 @@ class OpenDriveWriter:
         if not centerline or centerline.point_count() < 2:
             return None
 
+        # Get pixel points (needed for signal/object s-position calculations)
+        centerline_points_pixel = centerline.points
+
         # Transform centerline points to metric coordinates (meters)
         # Use geo coords directly if available (more precise, avoids double conversion)
         if centerline.geo_points:
@@ -390,7 +393,6 @@ class OpenDriveWriter:
                 for lon, lat in centerline.geo_points
             ]
         else:
-            centerline_points_pixel = centerline.points
             all_points_meters = self.transformer.pixels_to_meters_batch(centerline_points_pixel)
 
         # Fit curves to metric coordinates
