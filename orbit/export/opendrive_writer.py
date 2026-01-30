@@ -67,6 +67,9 @@ class OpenDriveWriter:
         # Junction numeric IDs (assigned during export)
         self.junction_numeric_ids = {}
 
+        # Mapping from ORBIT UUID to exported road ID (populated in _create_opendrive_root)
+        self.road_id_map: dict[str, str] = {}
+
         # Get scale factors for lane width calculations
         scale_factors = transformer.get_scale_factor() if transformer else None
 
@@ -178,6 +181,15 @@ class OpenDriveWriter:
                     self.junction_numeric_ids[junction.id] = int(junction.opendrive_id)
                 else:
                     self.junction_numeric_ids[junction.id] = idx + 1
+
+        # Build mapping from ORBIT UUID to exported road ID.
+        # Uses the original OpenDRIVE ID when available (round-trip preservation).
+        self.road_id_map: dict[str, str] = {}
+        for road in self.project.roads:
+            if road.opendrive_id:
+                self.road_id_map[road.id] = road.opendrive_id
+            else:
+                self.road_id_map[road.id] = road.id
 
         # Export order:
         # 1. Regular roads (junction="-1")
@@ -406,7 +418,7 @@ class OpenDriveWriter:
 
         # Create road element
         road_elem = etree.Element('road')
-        road_elem.set('id', road.id)
+        road_elem.set('id', self.road_id_map.get(road.id, road.id))
         road_elem.set('name', road.name)
         road_elem.set('length', f'{road_length:.4f}')
         road_elem.set('junction', road.junction_id if road.junction_id else '-1')
@@ -429,7 +441,7 @@ class OpenDriveWriter:
             # Road predecessor connects to another road
             predecessor = etree.SubElement(link, 'predecessor')
             predecessor.set('elementType', 'road')
-            predecessor.set('elementId', road.predecessor_id)
+            predecessor.set('elementId', self.road_id_map.get(road.predecessor_id, road.predecessor_id))
             predecessor.set('contactPoint', road.predecessor_contact)
 
         # Add successor - check if junction or road
@@ -443,7 +455,7 @@ class OpenDriveWriter:
             # Road successor connects to another road
             successor = etree.SubElement(link, 'successor')
             successor.set('elementType', 'road')
-            successor.set('elementId', road.successor_id)
+            successor.set('elementId', self.road_id_map.get(road.successor_id, road.successor_id))
             successor.set('contactPoint', road.successor_contact)
 
         # Add road type
@@ -719,14 +731,16 @@ class OpenDriveWriter:
         if connecting_road.predecessor_road_id:
             predecessor = etree.SubElement(link, 'predecessor')
             predecessor.set('elementType', 'road')
-            predecessor.set('elementId', connecting_road.predecessor_road_id)
+            predecessor.set('elementId', self.road_id_map.get(
+                connecting_road.predecessor_road_id, connecting_road.predecessor_road_id))
             predecessor.set('contactPoint', connecting_road.contact_point_start)
 
         # Add successor (outgoing road)
         if connecting_road.successor_road_id:
             successor = etree.SubElement(link, 'successor')
             successor.set('elementType', 'road')
-            successor.set('elementId', connecting_road.successor_road_id)
+            successor.set('elementId', self.road_id_map.get(
+                connecting_road.successor_road_id, connecting_road.successor_road_id))
             successor.set('contactPoint', connecting_road.contact_point_end)
 
         # Add road type (junction internal road)
@@ -956,7 +970,7 @@ class OpenDriveWriter:
 
             connection = etree.SubElement(junction_elem, 'connection')
             connection.set('id', str(connection_id))
-            connection.set('incomingRoad', from_road_id)
+            connection.set('incomingRoad', self.road_id_map.get(from_road_id, from_road_id))
             connection.set('connectingRoad', str(connecting_road.road_id))
             connection.set('contactPoint', 'start')  # Connecting roads start at junction
 

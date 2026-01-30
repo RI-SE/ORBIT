@@ -264,10 +264,8 @@ class DeleteRoadCommand(QUndoCommand):
     """
     Command for deleting a road.
 
-    Undo: Restore the road and its lane graphics
-    Redo: Delete the road and lane graphics
-
-    Note: Polylines are NOT deleted, only unassigned from the road.
+    Undo: Restore the road, its polylines, and lane graphics
+    Redo: Delete the road, its polylines, and lane graphics
     """
 
     def __init__(self, main_window: 'MainWindow', road_id: str):
@@ -280,22 +278,43 @@ class DeleteRoadCommand(QUndoCommand):
         road = main_window.project.get_road(road_id)
         self.road_data = road.to_dict() if road else None
 
+        # Capture assigned polyline state before deletion
+        self.polyline_data_list = []
+        if road:
+            for pid in road.polyline_ids:
+                polyline = main_window.project.get_polyline(pid)
+                if polyline:
+                    self.polyline_data_list.append(polyline.to_dict())
+
     def redo(self):
-        """Delete road from project."""
+        """Delete road and its polylines from project."""
         if self._first_redo:
             self._first_redo = False
             return
 
+        road = self.main_window.project.get_road(self.road_id)
+        if road:
+            # Remove polyline graphics and data
+            for pid in list(road.polyline_ids):
+                self.main_window.image_view.remove_polyline_graphics(pid)
+                self.main_window.project.remove_polyline(pid)
+
         # Remove lane graphics
         self.main_window.image_view.remove_road_lanes(self.road_id)
-        # Remove from project
+        # Remove road from project
         self.main_window.project.remove_road(self.road_id)
         self.main_window._refresh_trees()
 
     def undo(self):
-        """Restore road to project."""
+        """Restore road and its polylines to project."""
         if not self.road_data:
             return
+
+        # Restore polylines first (road references them)
+        for pdata in self.polyline_data_list:
+            polyline = Polyline.from_dict(pdata)
+            self.main_window.project.polylines.append(polyline)
+            self.main_window.image_view.add_polyline_graphics(polyline)
 
         road = Road.from_dict(self.road_data)
         self.main_window.project.add_road(road)

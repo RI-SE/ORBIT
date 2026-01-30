@@ -621,6 +621,12 @@ class OpenDriveImporter:
             contact_point_end=contact_point_end
         )
 
+        # Preserve original OpenDRIVE road ID for round-trip export
+        try:
+            connecting_road.road_id = int(odr_road.id)
+        except (ValueError, TypeError):
+            pass
+
         # Set paramPoly3 geometry if available
         if param_poly3:
             connecting_road.geometry_type = "parampoly3"

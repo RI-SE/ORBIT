@@ -611,7 +611,7 @@ class RoadTreeWidget(QWidget):
     def delete_road(self, road_id: str):
         """Delete a road."""
         if ask_yes_no(self, "Are you sure you want to delete this road?\n"
-            "Polylines will be unassigned but not deleted.", "Delete Road"):
+            "Assigned polylines will also be deleted.", "Delete Road"):
             # Emit request signal - main_window will handle deletion with undo support
             self.road_delete_requested.emit(road_id)
 

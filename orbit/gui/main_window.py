@@ -1661,16 +1661,28 @@ class MainWindow(QMainWindow):
         self.image_view.update_road_lanes(road_id, scale_factors)
 
     def on_road_delete_requested(self, road_id):
-        """Handle road delete request with undo support."""
+        """Handle road delete request with undo support.
+
+        Deletes the road and all its assigned polylines.
+        """
         from .undo_commands import DeleteRoadCommand
 
-        # Create command BEFORE deletion (captures state)
+        road = self.project.get_road(road_id)
+        if not road:
+            return
+
+        # Create command BEFORE deletion (captures road + polyline state)
         cmd = DeleteRoadCommand(self, road_id)
 
         # Remove lane graphics
         self.image_view.remove_road_lanes(road_id)
 
-        # Remove from project
+        # Remove assigned polylines and their graphics
+        for polyline_id in list(road.polyline_ids):
+            self.image_view.remove_polyline_graphics(polyline_id)
+            self.project.remove_polyline(polyline_id)
+
+        # Remove road from project
         self.project.remove_road(road_id)
 
         # Push command (first redo skipped)
@@ -1979,6 +1991,10 @@ class MainWindow(QMainWindow):
 
         For legacy projects with connecting roads that lack geo_path, initializes
         geo_path from pixel path for backward compatibility.
+
+        Includes bounds validation: if the transformer produces pixel coordinates
+        far outside the image (e.g., due to homography extrapolation beyond the
+        control point region), the original saved coordinates are preserved.
         """
         if not self.project.has_georeferencing():
             return
@@ -1992,23 +2008,48 @@ class MainWindow(QMainWindow):
         except Exception:
             return
 
+        # Determine image bounds for validation (allow 3x margin)
+        image_w, image_h = 3840, 2160  # defaults
+        if self.image_view.image_item:
+            pixmap = self.image_view.image_item.pixmap()
+            image_w = pixmap.width()
+            image_h = pixmap.height()
+        max_extent = max(image_w, image_h) * 3
+
+        def _points_in_bounds(points):
+            """Check if all pixel points are within reasonable distance of the image."""
+            for x, y in points:
+                if abs(x) > max_extent or abs(y) > max_extent:
+                    return False
+            return True
+
         # Initialize geo_path for connecting roads that don't have it (legacy support)
         for junction in self.project.junctions:
             for conn_road in junction.connecting_roads:
                 if conn_road.path and not conn_road.has_geo_coords():
                     conn_road.initialize_geo_path_from_pixels(transformer)
 
-        # Refresh pixel coordinates from geo coordinates for ALL elements
+        # Refresh pixel coordinates from geo coordinates for ALL elements,
+        # but revert if the transformer produces out-of-bounds results
+        skipped = 0
         for polyline in self.project.polylines:
             if polyline.has_geo_coords():
+                saved_points = list(polyline.points)
                 polyline.update_pixel_points_from_geo(transformer)
+                if not _points_in_bounds(polyline.points):
+                    polyline.points = saved_points
+                    skipped += 1
 
         for junction in self.project.junctions:
             if junction.has_geo_coords():
                 junction.update_pixel_coords_from_geo(transformer)
             for conn_road in junction.connecting_roads:
                 if conn_road.has_geo_coords():
+                    saved_path = list(conn_road.path)
                     conn_road.update_pixel_path_from_geo(transformer)
+                    if not _points_in_bounds(conn_road.path):
+                        conn_road.path = saved_path
+                        skipped += 1
 
         for signal in self.project.signals:
             if signal.has_geo_coords():
@@ -2017,6 +2058,12 @@ class MainWindow(QMainWindow):
         for obj in self.project.objects:
             if obj.has_geo_coords():
                 obj.update_pixel_coords_from_geo(transformer)
+
+        if skipped > 0:
+            logger.warning(
+                f"Skipped pixel coordinate refresh for {skipped} elements "
+                f"(geo coordinates outside control point coverage area)"
+            )
 
         # Snap connecting road endpoints to match road endpoints exactly
         # This prevents gaps due to transformer precision issues
