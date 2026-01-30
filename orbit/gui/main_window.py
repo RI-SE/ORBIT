@@ -109,6 +109,7 @@ class MainWindow(QMainWindow):
         self.image_view.lane_edit_requested.connect(self.on_lane_edit_requested)
         self.image_view.connecting_road_lane_edit_requested.connect(self.on_connecting_road_lane_edit_requested)
         self.image_view.point_picked.connect(self.on_point_picked)
+        self.image_view.area_delete_requested.connect(self.on_area_delete_requested)
 
         # Status bar with permanent widgets
         self.setup_statusbar()
@@ -3355,6 +3356,215 @@ class MainWindow(QMainWindow):
         # (it should only be visible when adjustment mode is active)
         self.adjustment_dock.setVisible(False)
         self.image_view.set_adjustment_mode(False)
+
+    # ========================================================================
+    # Area selection batch delete
+    # ========================================================================
+
+    def _build_batch_delete_info(self, selected: dict) -> dict:
+        """Build display info for the batch delete dialog.
+
+        Args:
+            selected: Dict with road_ids, junction_ids, signal_ids,
+                      object_ids, parking_ids lists.
+
+        Returns:
+            Dict mapping category keys to lists of item dicts with
+            id, name, details, and cascade fields.
+        """
+        info: dict = {}
+
+        # Roads
+        if selected.get("road_ids"):
+            items = []
+            for rid in selected["road_ids"]:
+                road = self.project.get_road(rid)
+                if not road:
+                    continue
+                cascade = []
+                for pid in road.polyline_ids:
+                    pl = self.project.get_polyline(pid)
+                    if pl:
+                        cascade.append(f"Polyline: {pl.line_type.value} ({pid[:8]})")
+                items.append({
+                    "id": rid,
+                    "name": road.name or rid[:8],
+                    "details": f"{len(road.polyline_ids)} polyline(s)",
+                    "cascade": cascade,
+                })
+            if items:
+                info["road_ids"] = items
+
+        # Junctions
+        if selected.get("junction_ids"):
+            items = []
+            for jid in selected["junction_ids"]:
+                junction = self.project.get_junction(jid)
+                if not junction:
+                    continue
+                cascade = []
+                for crid in junction.connected_road_ids:
+                    road = self.project.get_road(crid)
+                    if road:
+                        cascade.append(f"Connected road: {road.name or crid[:8]}")
+                items.append({
+                    "id": jid,
+                    "name": junction.name or jid[:8],
+                    "details": f"{len(junction.connecting_roads)} connecting road(s)",
+                    "cascade": cascade,
+                })
+            if items:
+                info["junction_ids"] = items
+
+        # Signals
+        if selected.get("signal_ids"):
+            items = []
+            for sid in selected["signal_ids"]:
+                signal = self.project.get_signal(sid)
+                if not signal:
+                    continue
+                items.append({
+                    "id": sid,
+                    "name": signal.get_display_name(),
+                    "details": signal.type.value if hasattr(signal.type, 'value') else str(signal.type),
+                })
+            if items:
+                info["signal_ids"] = items
+
+        # Objects
+        if selected.get("object_ids"):
+            items = []
+            for oid in selected["object_ids"]:
+                obj = self.project.get_object(oid)
+                if not obj:
+                    continue
+                items.append({
+                    "id": oid,
+                    "name": obj.get_display_name(),
+                    "details": obj.type.value if hasattr(obj.type, 'value') else str(obj.type),
+                })
+            if items:
+                info["object_ids"] = items
+
+        # Parking
+        if selected.get("parking_ids"):
+            items = []
+            for pid in selected["parking_ids"]:
+                parking = self.project.get_parking(pid)
+                if not parking:
+                    continue
+                items.append({
+                    "id": pid,
+                    "name": parking.get_display_name(),
+                    "details": parking.parking_type.value if hasattr(parking.parking_type, 'value') else "",
+                })
+            if items:
+                info["parking_ids"] = items
+
+        return info
+
+    def on_area_delete_requested(self, selected: dict):
+        """Handle area selection batch delete request.
+
+        Shows a confirmation dialog and deletes checked items as a
+        single undo macro.
+        """
+        from .dialogs.batch_delete_dialog import BatchDeleteDialog
+        from .undo_commands import (
+            DeleteRoadCommand, DeleteJunctionCommand,
+            DeleteSignalCommand, DeleteObjectCommand, DeleteParkingCommand,
+        )
+
+        info = self._build_batch_delete_info(selected)
+        if not info:
+            return
+
+        dialog = BatchDeleteDialog(info, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        confirmed = dialog.get_selected_ids()
+        if not confirmed:
+            return
+
+        # Count total items for macro name
+        total = sum(len(ids) for ids in confirmed.values())
+
+        # Capture ALL command state BEFORE any deletions, so that
+        # cross-references (e.g. junction.connected_road_ids) are intact.
+        road_cmds = []
+        for road_id in confirmed.get("road_ids", []):
+            if self.project.get_road(road_id):
+                road_cmds.append(DeleteRoadCommand(self, road_id))
+
+        junction_cmds = []
+        for junction_id in confirmed.get("junction_ids", []):
+            if self.project.get_junction(junction_id):
+                junction_cmds.append((junction_id, DeleteJunctionCommand(self, junction_id)))
+
+        signal_cmds = []
+        for signal_id in confirmed.get("signal_ids", []):
+            if self.project.get_signal(signal_id):
+                signal_cmds.append(DeleteSignalCommand(self, signal_id))
+
+        object_cmds = []
+        for object_id in confirmed.get("object_ids", []):
+            if self.project.get_object(object_id):
+                object_cmds.append(DeleteObjectCommand(self, object_id))
+
+        parking_cmds = []
+        for parking_id in confirmed.get("parking_ids", []):
+            if self.project.get_parking(parking_id):
+                parking_cmds.append(DeleteParkingCommand(self, parking_id))
+
+        # Now perform deletions and push commands
+        self.undo_stack.beginMacro(f"Batch Delete ({total} items)")
+
+        # Delete roads first (project.remove_road cleans up junction refs)
+        for cmd in road_cmds:
+            road = self.project.get_road(cmd.road_id)
+            if road:
+                self.image_view.remove_road_lanes(cmd.road_id)
+                for pid in list(road.polyline_ids):
+                    self.image_view.remove_polyline_graphics(pid)
+                    self.project.remove_polyline(pid)
+                self.project.remove_road(cmd.road_id)
+            self.undo_stack.push(cmd)
+
+        # Delete junctions
+        for junction_id, cmd in junction_cmds:
+            junction = self.project.get_junction(junction_id)
+            if junction:
+                for conn_road in junction.connecting_roads:
+                    self.image_view.remove_connecting_road_graphics(conn_road.id)
+                self.image_view.remove_junction_graphics(junction_id)
+                self.project.remove_junction(junction_id)
+            self.undo_stack.push(cmd)
+
+        # Delete signals
+        for cmd in signal_cmds:
+            self.image_view.remove_signal_graphics(cmd.signal_id)
+            self.project.remove_signal(cmd.signal_id)
+            self.undo_stack.push(cmd)
+
+        # Delete objects
+        for cmd in object_cmds:
+            self.image_view.remove_object_graphics(cmd.object_id)
+            self.project.remove_object(cmd.object_id)
+            self.undo_stack.push(cmd)
+
+        # Delete parking spaces
+        for cmd in parking_cmds:
+            self.image_view.remove_parking_graphics(cmd.parking_id)
+            self.project.remove_parking(cmd.parking_id)
+            self.undo_stack.push(cmd)
+
+        self.undo_stack.endMacro()
+
+        self._refresh_trees()
+        self.modified = True
+        self.update_window_title()
+        self.statusBar().showMessage(f"Deleted {total} item(s)")
 
     def closeEvent(self, event):
         """Handle window close event."""

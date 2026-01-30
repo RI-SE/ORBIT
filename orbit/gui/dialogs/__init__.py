@@ -24,6 +24,7 @@ from .opendrive_import_dialog import OpenDriveImportDialog
 from .import_report_dialog import ImportReportDialog, show_opendrive_import_report
 from .roundabout_wizard_dialog import RoundaboutWizardDialog
 from .junction_group_dialog import JunctionGroupDialog
+from .batch_delete_dialog import BatchDeleteDialog
 
 __all__ = [
     'BaseDialog',
@@ -49,4 +50,5 @@ __all__ = [
     'show_opendrive_import_report',
     'RoundaboutWizardDialog',
     'JunctionGroupDialog',
+    'BatchDeleteDialog',
 ]

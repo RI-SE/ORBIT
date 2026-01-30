@@ -9,8 +9,8 @@ from typing import Optional, List, Dict, Tuple
 import cv2
 import numpy as np
 
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsItem, QMenu, QMessageBox, QGraphicsPolygonItem, QGraphicsPathItem
-from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsItem, QMenu, QMessageBox, QGraphicsPolygonItem, QGraphicsPathItem, QGraphicsRectItem
+from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QLineF
 from PyQt6.QtGui import (
     QPixmap, QImage, QPen, QColor, QBrush, QPainter,
     QWheelEvent, QMouseEvent, QKeyEvent, QFont
@@ -73,6 +73,7 @@ class ImageView(QGraphicsView):
     point_picked = pyqtSignal(float, float)  # Emits x, y coordinates
     mouse_moved = pyqtSignal(float, float)  # Emits x, y mouse position in scene coordinates
     adjustment_changed = pyqtSignal(object)  # Emits TransformAdjustment when user adjusts alignment
+    area_delete_requested = pyqtSignal(dict)  # Emits dict of item IDs found in area selection
 
     def __init__(self, parent=None, verbose: bool = False):
         super().__init__(parent)
@@ -157,6 +158,11 @@ class ImageView(QGraphicsView):
         self.dragging_connecting_road_point = False
         self.drag_connecting_road_id: Optional[str] = None
         # drag_point_index is also used for connecting road point dragging
+
+        # Area selection state (Alt+drag rubber-band)
+        self._area_selecting = False
+        self._area_select_start: Optional[QPointF] = None
+        self._area_select_rect_item: Optional[QGraphicsRectItem] = None
 
         # Measure mode state
         self.measure_points: List[QPointF] = []  # Current pair being measured
@@ -2234,6 +2240,163 @@ class ImageView(QGraphicsView):
         elif action == remove_action:
             self.signal_deleted.emit(signal_id)
 
+    @staticmethod
+    def _segment_intersects_rect(x1: float, y1: float, x2: float, y2: float, rect: QRectF) -> bool:
+        """Check if a line segment intersects or is contained within a rectangle."""
+        # Quick check: either endpoint inside rect
+        if rect.contains(QPointF(x1, y1)) or rect.contains(QPointF(x2, y2)):
+            return True
+
+        # Check intersection with all 4 rect edges
+        segment = QLineF(x1, y1, x2, y2)
+        edges = [
+            QLineF(rect.topLeft(), rect.topRight()),
+            QLineF(rect.topRight(), rect.bottomRight()),
+            QLineF(rect.bottomRight(), rect.bottomLeft()),
+            QLineF(rect.bottomLeft(), rect.topLeft()),
+        ]
+        for edge in edges:
+            itype, _ = segment.intersects(edge)
+            if itype == QLineF.IntersectionType.BoundedIntersection:
+                return True
+        return False
+
+    def _find_items_in_rect(self, rect: QRectF) -> dict:
+        """Find project items that intersect the selection rectangle.
+
+        Tests roads (via their polylines), junctions, signals, objects,
+        and parking spaces against the given rectangle in scene (pixel)
+        coordinates.
+
+        Returns:
+            Dict with keys road_ids, junction_ids, signal_ids,
+            object_ids, parking_ids — each a list of matching IDs.
+        """
+        result = {
+            "road_ids": [],
+            "junction_ids": [],
+            "signal_ids": [],
+            "object_ids": [],
+            "parking_ids": [],
+        }
+        if not self.project:
+            return result
+
+        # Roads: check if any polyline point/segment is in rect
+        for road in self.project.roads:
+            found = False
+            for pid in road.polyline_ids:
+                polyline = self.project.get_polyline(pid)
+                if not polyline:
+                    continue
+                points = polyline.points
+                for px, py in points:
+                    if rect.contains(QPointF(px, py)):
+                        found = True
+                        break
+                if found:
+                    break
+                for i in range(len(points) - 1):
+                    if self._segment_intersects_rect(
+                        points[i][0], points[i][1],
+                        points[i + 1][0], points[i + 1][1],
+                        rect,
+                    ):
+                        found = True
+                        break
+                if found:
+                    break
+            if found:
+                result["road_ids"].append(road.id)
+
+        # Junctions: check center point or any connecting road path
+        for junction in self.project.junctions:
+            found = False
+            if junction.center_point and rect.contains(
+                QPointF(junction.center_point[0], junction.center_point[1])
+            ):
+                found = True
+            if not found:
+                for conn_road in junction.connecting_roads:
+                    if not conn_road.path:
+                        continue
+                    for px, py in conn_road.path:
+                        if rect.contains(QPointF(px, py)):
+                            found = True
+                            break
+                    if found:
+                        break
+                    for i in range(len(conn_road.path) - 1):
+                        if self._segment_intersects_rect(
+                            conn_road.path[i][0], conn_road.path[i][1],
+                            conn_road.path[i + 1][0], conn_road.path[i + 1][1],
+                            rect,
+                        ):
+                            found = True
+                            break
+                    if found:
+                        break
+            if found:
+                result["junction_ids"].append(junction.id)
+
+        # Signals: check position
+        for signal in self.project.signals:
+            if signal.position and rect.contains(
+                QPointF(signal.position[0], signal.position[1])
+            ):
+                result["signal_ids"].append(signal.id)
+
+        # Objects: point or polyline shapes
+        for obj in self.project.objects:
+            if obj.type.get_shape_type() == "polyline" and obj.points:
+                found = False
+                for px, py in obj.points:
+                    if rect.contains(QPointF(px, py)):
+                        found = True
+                        break
+                if not found:
+                    for i in range(len(obj.points) - 1):
+                        if self._segment_intersects_rect(
+                            obj.points[i][0], obj.points[i][1],
+                            obj.points[i + 1][0], obj.points[i + 1][1],
+                            rect,
+                        ):
+                            found = True
+                            break
+                if found:
+                    result["object_ids"].append(obj.id)
+            elif obj.position and rect.contains(
+                QPointF(obj.position[0], obj.position[1])
+            ):
+                result["object_ids"].append(obj.id)
+
+        # Parking spaces: check position or polygon points
+        for parking in self.project.parking_spaces:
+            if parking.points:
+                found = False
+                for px, py in parking.points:
+                    if rect.contains(QPointF(px, py)):
+                        found = True
+                        break
+                if not found:
+                    pts = parking.points
+                    for i in range(len(pts) - 1):
+                        if self._segment_intersects_rect(
+                            pts[i][0], pts[i][1],
+                            pts[i + 1][0], pts[i + 1][1],
+                            rect,
+                        ):
+                            found = True
+                            break
+                if found:
+                    result["parking_ids"].append(parking.id)
+            elif parking.position and rect.contains(
+                QPointF(parking.position[0], parking.position[1])
+            ):
+                result["parking_ids"].append(parking.id)
+
+        return result
+
     def _is_click_on_object(self, item, scene_pos: QPointF, tolerance: float = 15.0) -> bool:
         """
         Check if a click is on an object, with better detection for different object types.
@@ -2565,8 +2728,23 @@ class ImageView(QGraphicsView):
                 self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
 
             else:
+                # Alt+LMB drag starts area selection for batch delete
+                if event.modifiers() & Qt.KeyboardModifier.AltModifier:
+                    self._area_selecting = True
+                    self._area_select_start = scene_pos
+                    self._area_select_rect_item = QGraphicsRectItem()
+                    self._area_select_rect_item.setPen(
+                        QPen(QColor(70, 130, 180), 1.5, Qt.PenStyle.DashLine)
+                    )
+                    self._area_select_rect_item.setBrush(
+                        QBrush(QColor(70, 130, 180, 40))
+                    )
+                    self._area_select_rect_item.setZValue(1000)
+                    self.scene.addItem(self._area_select_rect_item)
+                    return
+
                 # Check if Ctrl+Click on a line segment to insert a point
-                if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                elif event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                     # First check guardrails
                     for object_id, object_item in self.object_items.items():
                         if object_item.obj.type.get_shape_type() == "polyline":
@@ -2904,6 +3082,13 @@ class ImageView(QGraphicsView):
         scene_pos = self.mapToScene(event.pos())
         self.mouse_moved.emit(scene_pos.x(), scene_pos.y())
 
+        if self._area_selecting and self._area_select_start is not None:
+            # Update rubber-band rectangle
+            if self._area_select_rect_item:
+                rect = QRectF(self._area_select_start, scene_pos).normalized()
+                self._area_select_rect_item.setRect(rect)
+            return
+
         if self.drawing_guardrail and event.buttons() & Qt.MouseButton.LeftButton:
             # Dragging to create guardrail - add points continuously
             if not self.guardrail_points or \
@@ -2946,6 +3131,24 @@ class ImageView(QGraphicsView):
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         """Handle mouse release events."""
+        if self._area_selecting:
+            # Finalize area selection
+            self._area_selecting = False
+            rect = None
+            if self._area_select_rect_item and self._area_select_start is not None:
+                scene_pos = self.mapToScene(event.pos())
+                rect = QRectF(self._area_select_start, scene_pos).normalized()
+                self.scene.removeItem(self._area_select_rect_item)
+            self._area_select_rect_item = None
+            self._area_select_start = None
+
+            # Only proceed if rectangle has meaningful size (>5px both dims)
+            if rect and rect.width() > 5 and rect.height() > 5:
+                selected = self._find_items_in_rect(rect)
+                if any(selected.values()):
+                    self.area_delete_requested.emit(selected)
+            return
+
         if self.drawing_guardrail and event.button() == Qt.MouseButton.LeftButton:
             # Finish guardrail drawing
             if len(self.guardrail_points) >= 2:

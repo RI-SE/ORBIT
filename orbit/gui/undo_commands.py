@@ -5,6 +5,7 @@ Uses Qt's QUndoStack/QUndoCommand framework for undo/redo functionality.
 Each command captures state using model to_dict()/from_dict() methods.
 """
 
+import copy
 from typing import Optional, List, Tuple, TYPE_CHECKING
 
 from PyQt6.QtGui import QUndoCommand
@@ -274,9 +275,10 @@ class DeleteRoadCommand(QUndoCommand):
         self.road_id = road_id
         self._first_redo = True
 
-        # Capture road state before deletion
+        # Capture road state before deletion (deep copy to avoid
+        # mutation via project.remove_polyline -> road.remove_polyline)
         road = main_window.project.get_road(road_id)
-        self.road_data = road.to_dict() if road else None
+        self.road_data = copy.deepcopy(road.to_dict()) if road else None
 
         # Capture assigned polyline state before deletion
         self.polyline_data_list = []
@@ -649,11 +651,18 @@ class DeleteJunctionCommand(QUndoCommand):
         # Capture junction state before deletion
         junction = main_window.project.get_junction(junction_id)
         self.junction_data = junction.to_dict() if junction else None
+        # Track connecting road IDs for graphics cleanup/restore
+        self.connecting_road_ids = [
+            cr.id for cr in junction.connecting_roads
+        ] if junction else []
 
     def redo(self):
         if self._first_redo:
             self._first_redo = False
             return
+        # Remove connecting road graphics before junction
+        for cr_id in self.connecting_road_ids:
+            self.main_window.image_view.remove_connecting_road_graphics(cr_id)
         self.main_window.image_view.remove_junction_graphics(self.junction_id)
         self.main_window.project.remove_junction(self.junction_id)
         self.main_window._refresh_trees()
@@ -664,6 +673,10 @@ class DeleteJunctionCommand(QUndoCommand):
         junction = Junction.from_dict(self.junction_data)
         self.main_window.project.add_junction(junction)
         self.main_window.image_view.add_junction_graphics(junction)
+        # Restore connecting road graphics
+        scale_factors = self.main_window.get_current_scale()
+        for cr in junction.connecting_roads:
+            self.main_window.image_view.add_connecting_road_graphics(cr, scale_factors)
         self.main_window._refresh_trees()
 
 
