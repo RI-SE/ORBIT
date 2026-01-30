@@ -272,20 +272,37 @@ class OpenDriveWriter:
             if road_id not in junction.connected_road_ids:
                 continue
 
-            if not junction.center_point:
+            junction_numeric_id = self.junction_numeric_ids.get(junction.id)
+            if junction_numeric_id is None:
                 continue
 
-            # Calculate distance from endpoint to junction center
-            dx = check_point[0] - junction.center_point[0]
-            dy = check_point[1] - junction.center_point[1]
-            dist = math.sqrt(dx*dx + dy*dy)
+            if junction.center_point:
+                # Calculate distance from endpoint to junction center
+                dx = check_point[0] - junction.center_point[0]
+                dy = check_point[1] - junction.center_point[1]
+                dist = math.sqrt(dx*dx + dy*dy)
 
-            # If within tolerance (15 pixels), this endpoint is at this junction
-            # Using 15 pixels to account for offset that will be applied
-            if dist < 15.0:
-                junction_numeric_id = self.junction_numeric_ids.get(junction.id)
-                if junction_numeric_id is not None:
+                # If within tolerance (15 pixels), this endpoint is at this junction
+                if dist < 15.0:
                     return junction_numeric_id
+            else:
+                # No center_point — check endpoints of other connected roads
+                for other_road_id in junction.connected_road_ids:
+                    if other_road_id == road_id:
+                        continue
+                    other_road = self.road_map.get(other_road_id)
+                    if not other_road or not other_road.centerline_id:
+                        continue
+                    other_cl = self.polyline_map.get(other_road.centerline_id)
+                    if not other_cl or len(other_cl.points) < 2:
+                        continue
+                    # Check both endpoints of the other road
+                    for pt in (other_cl.points[0], other_cl.points[-1]):
+                        dx = check_point[0] - pt[0]
+                        dy = check_point[1] - pt[1]
+                        dist = math.sqrt(dx*dx + dy*dy)
+                        if dist < 15.0:
+                            return junction_numeric_id
 
         return None
 
@@ -427,8 +444,28 @@ class OpenDriveWriter:
         link = etree.SubElement(road_elem, 'link')
 
         # Check if this road connects to a junction
-        predecessor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=True)
-        successor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=False)
+        # First check stored junction links (preserved from import), fall back to geometric detection
+        predecessor_junction = None
+        successor_junction = None
+
+        if road.predecessor_junction_id:
+            # Use stored junction ID from import (raw ODR numeric ID)
+            try:
+                predecessor_junction = int(road.predecessor_junction_id)
+            except (ValueError, TypeError):
+                pass
+
+        if road.successor_junction_id:
+            try:
+                successor_junction = int(road.successor_junction_id)
+            except (ValueError, TypeError):
+                pass
+
+        # Fall back to geometric reconstruction for links not stored from import
+        if predecessor_junction is None:
+            predecessor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=True)
+        if successor_junction is None:
+            successor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=False)
 
         # Add predecessor - check if junction or road
         if predecessor_junction is not None:

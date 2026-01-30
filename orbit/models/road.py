@@ -85,6 +85,8 @@ class Road:
     predecessor_contact: str = "end"  # "start" or "end"
     successor_id: Optional[str] = None
     successor_contact: str = "start"  # "start" or "end"
+    predecessor_junction_id: Optional[str] = None  # Junction ID if predecessor is a junction
+    successor_junction_id: Optional[str] = None  # Junction ID if successor is a junction
     opendrive_id: Optional[str] = None  # OpenDrive ID for round-trip import/export
     # Elevation profile: list of (s, a, b, c, d) tuples for polynomial elevation(ds) = a + b*ds + c*ds² + d*ds³
     elevation_profile: List[Tuple[float, float, float, float, float]] = field(default_factory=list)
@@ -556,6 +558,10 @@ class Road:
             'successor_contact': self.successor_contact
         }
         # Only include optional fields if set (backward compatibility)
+        if self.predecessor_junction_id is not None:
+            data['predecessor_junction_id'] = self.predecessor_junction_id
+        if self.successor_junction_id is not None:
+            data['successor_junction_id'] = self.successor_junction_id
         if self.opendrive_id is not None:
             data['opendrive_id'] = self.opendrive_id
         if self.elevation_profile:
@@ -606,6 +612,8 @@ class Road:
             predecessor_contact=data.get('predecessor_contact', 'end'),
             successor_id=data.get('successor_id'),
             successor_contact=data.get('successor_contact', 'start'),
+            predecessor_junction_id=data.get('predecessor_junction_id'),
+            successor_junction_id=data.get('successor_junction_id'),
             opendrive_id=data.get('opendrive_id'),
             elevation_profile=[tuple(e) for e in data.get('elevation_profile', [])],
             superelevation_profile=[tuple(e) for e in data.get('superelevation_profile', [])],

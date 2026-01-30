@@ -423,11 +423,15 @@ class OpenDriveImporter:
         )
 
         # Set predecessor/successor links
-        if odr_road.predecessor_type == "road" and odr_road.predecessor_id:
+        if odr_road.predecessor_type == "junction" and odr_road.predecessor_id:
+            road.predecessor_junction_id = odr_road.predecessor_id
+        elif odr_road.predecessor_type == "road" and odr_road.predecessor_id:
             road.predecessor_id = odr_road.predecessor_id  # Will be resolved later
             road.predecessor_contact = odr_road.predecessor_contact or "end"
 
-        if odr_road.successor_type == "road" and odr_road.successor_id:
+        if odr_road.successor_type == "junction" and odr_road.successor_id:
+            road.successor_junction_id = odr_road.successor_id
+        elif odr_road.successor_type == "road" and odr_road.successor_id:
             road.successor_id = odr_road.successor_id  # Will be resolved later
             road.successor_contact = odr_road.successor_contact or "start"
 
