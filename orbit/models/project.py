@@ -222,16 +222,47 @@ class Project:
             centerline.points, point_index, duplicate_point=True
         )
 
+        # Split per-point arrays (same slicing as duplicate_point=True)
+        geo_pts1 = geo_pts2 = None
+        if centerline.geo_points and len(centerline.geo_points) == len(centerline.points):
+            geo_pts1 = list(centerline.geo_points[:point_index + 1])
+            geo_pts2 = list(centerline.geo_points[point_index:])
+
+        elev1 = elev2 = None
+        if centerline.elevations and len(centerline.elevations) == len(centerline.points):
+            elev1 = list(centerline.elevations[:point_index + 1])
+            elev2 = list(centerline.elevations[point_index:])
+
+        soff1 = soff2 = None
+        if centerline.s_offsets and len(centerline.s_offsets) == len(centerline.points):
+            soff1 = list(centerline.s_offsets[:point_index + 1])
+            soff2 = list(centerline.s_offsets[point_index:])
+
+        osm1 = osm2 = None
+        if centerline.osm_node_ids and len(centerline.osm_node_ids) == len(centerline.points):
+            osm1 = list(centerline.osm_node_ids[:point_index + 1])
+            osm2 = list(centerline.osm_node_ids[point_index:])
+
         # Create new centerline polyline for road 2
         new_centerline = Polyline(
             points=centerline_pts2,
             line_type=centerline.line_type,
             road_mark_type=centerline.road_mark_type
         )
+        new_centerline.geo_points = geo_pts2
+        new_centerline.elevations = elev2
+        new_centerline.s_offsets = soff2
+        new_centerline.osm_node_ids = osm2
+        new_centerline.geometry_segments = None  # Invalidated by split
         self.add_polyline(new_centerline)
 
         # Update original centerline
         centerline.points = centerline_pts1
+        centerline.geo_points = geo_pts1
+        centerline.elevations = elev1
+        centerline.s_offsets = soff1
+        centerline.osm_node_ids = osm1
+        centerline.geometry_segments = None  # Invalidated by split
 
         # Split boundary polylines
         new_boundary_ids = []
@@ -259,11 +290,18 @@ class Project:
                     line_type=boundary.line_type,
                     road_mark_type=boundary.road_mark_type
                 )
+                # Clear per-point metadata — interpolated split point has no geo coordinate
+                new_boundary.geometry_segments = None
                 self.add_polyline(new_boundary)
                 new_boundary_ids.append(new_boundary.id)
 
                 # Update original boundary
                 boundary.points = boundary_pts1
+                boundary.geo_points = None
+                boundary.elevations = None
+                boundary.s_offsets = None
+                boundary.osm_node_ids = None
+                boundary.geometry_segments = None
 
         # Distribute lane sections
         sections_road1, sections_road2 = road.distribute_lane_sections_for_split(
@@ -283,8 +321,10 @@ class Project:
         road1_name = f"{base_name} (seg 1/2)"
         road2_name = f"{base_name} (seg 2/2)"
 
-        # Store original junction_id before we clear it from road1
+        # Store original junction_id and junction links before we modify road1
         original_junction_id = road.junction_id
+        original_successor_junction_id = road.successor_junction_id
+        original_predecessor_junction_id = road.predecessor_junction_id
 
         # Create new road (road 2) with second segment
         road2 = Road(
@@ -299,7 +339,10 @@ class Project:
             predecessor_id=road.id,  # Link to first road
             predecessor_contact="end",
             successor_id=road.successor_id,  # Keep original successor
-            successor_contact=road.successor_contact
+            successor_contact=road.successor_contact,
+            # Road2 is the tail — gets original successor junction, no predecessor junction
+            predecessor_junction_id=None,
+            successor_junction_id=original_successor_junction_id
         )
 
         # Update road 1 (original road)
@@ -311,6 +354,9 @@ class Project:
         road.lane_sections = sections_road1
         road.successor_id = road2.id
         road.successor_contact = "start"
+        # Road1 is the head — keeps original predecessor junction, loses successor junction
+        road.predecessor_junction_id = original_predecessor_junction_id
+        road.successor_junction_id = None
 
         # Add new road to project
         self.add_road(road2)
