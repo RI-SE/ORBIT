@@ -362,7 +362,7 @@ class Junction:
             self.connected_road_ids.append(road_id)
 
     def remove_road(self, road_id: str) -> None:
-        """Remove a road from this junction."""
+        """Remove a road from this junction and clean up all references."""
         if road_id in self.connected_road_ids:
             self.connected_road_ids.remove(road_id)
             # Also remove any connections involving this road
@@ -370,6 +370,24 @@ class Junction:
                 conn for conn in self.connections
                 if conn.incoming_road_id != road_id and conn.connecting_road_id != road_id
             ]
+
+        # Remove connecting roads that reference the deleted road
+        self.connecting_roads = [
+            cr for cr in self.connecting_roads
+            if cr.predecessor_road_id != road_id and cr.successor_road_id != road_id
+        ]
+
+        # Remove lane connections that reference the deleted road
+        self.lane_connections = [
+            lc for lc in self.lane_connections
+            if lc.from_road_id != road_id and lc.to_road_id != road_id
+        ]
+
+        # Clean roundabout entry/exit references
+        if road_id in self.entry_roads:
+            self.entry_roads.remove(road_id)
+        if road_id in self.exit_roads:
+            self.exit_roads.remove(road_id)
 
     def add_connection(self, connection: JunctionConnection) -> None:
         """Add a connection between roads at this junction."""

@@ -500,9 +500,18 @@ class Project:
         self.roads.append(road)
 
     def remove_road(self, road_id: str) -> None:
-        """Remove a road and update junctions."""
+        """Remove a road and clean up all references to it."""
         self.roads = [r for r in self.roads if r.id != road_id]
-        # Remove from junctions
+
+        # Clear successor/predecessor references on other roads
+        for road in self.roads:
+            if road.successor_id == road_id:
+                road.successor_id = None
+            if road.predecessor_id == road_id:
+                road.predecessor_id = None
+
+        # Remove from junctions (connected_road_ids, connecting_roads,
+        # lane_connections, entry/exit_roads)
         for junction in self.junctions:
             junction.remove_road(road_id)
 

@@ -11,7 +11,8 @@ from typing import Optional, List, Tuple, TYPE_CHECKING
 from PyQt6.QtGui import QUndoCommand
 
 from orbit.models import (
-    Polyline, Road, Junction, Signal, RoadObject, ParkingSpace, ConnectingRoad
+    Polyline, Road, Junction, Signal, RoadObject, ParkingSpace,
+    ConnectingRoad, LaneConnection
 )
 
 if TYPE_CHECKING:
@@ -288,6 +289,30 @@ class DeleteRoadCommand(QUndoCommand):
                 if polyline:
                     self.polyline_data_list.append(polyline.to_dict())
 
+        # Capture incoming references that will be cleared on deletion
+        # (road_id, field_name) tuples for successor/predecessor links
+        self.cleared_road_refs = []
+        for r in main_window.project.roads:
+            if r.id == road_id:
+                continue
+            if r.successor_id == road_id:
+                self.cleared_road_refs.append((r.id, 'successor_id'))
+            if r.predecessor_id == road_id:
+                self.cleared_road_refs.append((r.id, 'predecessor_id'))
+
+        # Capture junction items that will be removed
+        # (junction_id, type, serialized_data) tuples
+        self.removed_junction_items = []
+        for junction in main_window.project.junctions:
+            for cr in junction.connecting_roads:
+                if cr.predecessor_road_id == road_id or cr.successor_road_id == road_id:
+                    self.removed_junction_items.append(
+                        (junction.id, 'connecting_road', copy.deepcopy(cr.to_dict())))
+            for lc in junction.lane_connections:
+                if lc.from_road_id == road_id or lc.to_road_id == road_id:
+                    self.removed_junction_items.append(
+                        (junction.id, 'lane_connection', copy.deepcopy(lc.to_dict())))
+
     def redo(self):
         """Delete road and its polylines from project."""
         if self._first_redo:
@@ -308,7 +333,7 @@ class DeleteRoadCommand(QUndoCommand):
         self.main_window._refresh_trees()
 
     def undo(self):
-        """Restore road and its polylines to project."""
+        """Restore road, its polylines, and cleared references."""
         if not self.road_data:
             return
 
@@ -320,6 +345,21 @@ class DeleteRoadCommand(QUndoCommand):
 
         road = Road.from_dict(self.road_data)
         self.main_window.project.add_road(road)
+
+        # Restore cleared successor/predecessor references on other roads
+        for ref_road_id, field_name in self.cleared_road_refs:
+            ref_road = self.main_window.project.get_road(ref_road_id)
+            if ref_road:
+                setattr(ref_road, field_name, self.road_id)
+
+        # Restore removed junction connecting_roads and lane_connections
+        for junction_id, item_type, data in self.removed_junction_items:
+            junction = self.main_window.project.get_junction(junction_id)
+            if junction:
+                if item_type == 'connecting_road':
+                    junction.connecting_roads.append(ConnectingRoad.from_dict(data))
+                elif item_type == 'lane_connection':
+                    junction.lane_connections.append(LaneConnection.from_dict(data))
 
         # Restore lane graphics if road has centerline
         if road.centerline_id:
