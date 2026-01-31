@@ -655,6 +655,19 @@ class DeleteJunctionCommand(QUndoCommand):
         self.connecting_road_ids = [
             cr.id for cr in junction.connecting_roads
         ] if junction else []
+        # Capture road junction references that will be cleared on deletion
+        self._road_junction_refs = []
+        if junction:
+            match_ids = {junction_id}
+            if junction.opendrive_id:
+                match_ids.add(junction.opendrive_id)
+            for road in main_window.project.roads:
+                if road.predecessor_junction_id in match_ids:
+                    self._road_junction_refs.append(
+                        (road.id, 'predecessor', road.predecessor_junction_id))
+                if road.successor_junction_id in match_ids:
+                    self._road_junction_refs.append(
+                        (road.id, 'successor', road.successor_junction_id))
 
     def redo(self):
         if self._first_redo:
@@ -677,6 +690,14 @@ class DeleteJunctionCommand(QUndoCommand):
         scale_factors = self.main_window.get_current_scale()
         for cr in junction.connecting_roads:
             self.main_window.image_view.add_connecting_road_graphics(cr, scale_factors)
+        # Restore road junction references cleared during deletion
+        for road_id, ref_type, ref_value in self._road_junction_refs:
+            road = self.main_window.project.get_road(road_id)
+            if road:
+                if ref_type == 'predecessor':
+                    road.predecessor_junction_id = ref_value
+                else:
+                    road.successor_junction_id = ref_value
         self.main_window._refresh_trees()
 
 
@@ -702,9 +723,9 @@ class ModifyJunctionCommand(QUndoCommand):
         self._apply_data(self.old_data)
 
     def _apply_data(self, data: dict):
-        # Remove old junction and graphics
+        # Remove old junction and graphics (keep road refs since junction is re-added)
         self.main_window.image_view.remove_junction_graphics(self.junction_id)
-        self.main_window.project.remove_junction(self.junction_id)
+        self.main_window.project.remove_junction(self.junction_id, cleanup_road_refs=False)
         # Recreate from data
         junction = Junction.from_dict(data)
         self.main_window.project.add_junction(junction)

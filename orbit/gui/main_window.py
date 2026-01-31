@@ -1408,31 +1408,34 @@ class MainWindow(QMainWindow):
 
     def on_mouse_moved(self, x: float, y: float):
         """Handle mouse movement in image view."""
-        if x >= 0 and y >= 0:
-            # Update pixel coordinates
-            self.mouse_pos_label.setText(f"Pixel: ({x:.1f}, {y:.1f})")
-
-            # Update geographic coordinates if georeferencing is available
-            if self.project.has_georeferencing():
-                try:
-                    # Use cached transformer for performance
-                    if self._cached_transformer is None:
-                        from orbit.export import create_transformer
-                        self._cached_transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
-
-                    if self._cached_transformer:
-                        lon, lat = self._cached_transformer.pixel_to_geo(x, y)
-                        # Format with 6 decimal places for good precision (~0.1m)
-                        self.geo_coords_label.setText(f"Geo: {lat:.6f}°, {lon:.6f}°")
-                    else:
-                        self.geo_coords_label.setText("Geo: N/A (transform error)")
-                except Exception:
-                    self.geo_coords_label.setText("Geo: N/A (error)")
-            else:
-                self.geo_coords_label.setText("Geo: N/A (no georef)")
-        else:
+        # Sentinel (-1, -1) is emitted on leaveEvent; show N/A.
+        # Otherwise always display coordinates — transforms handle
+        # negative pixel values (points above/left of image origin).
+        if x == -1 and y == -1:
             self.mouse_pos_label.setText("Pixel: N/A")
             self.geo_coords_label.setText("Geo: N/A")
+            return
+
+        self.mouse_pos_label.setText(f"Pixel: ({x:.1f}, {y:.1f})")
+
+        # Update geographic coordinates if georeferencing is available
+        if self.project.has_georeferencing():
+            try:
+                # Use cached transformer for performance
+                if self._cached_transformer is None:
+                    from orbit.export import create_transformer
+                    self._cached_transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+
+                if self._cached_transformer:
+                    lon, lat = self._cached_transformer.pixel_to_geo(x, y)
+                    # Format with 6 decimal places for good precision (~0.1m)
+                    self.geo_coords_label.setText(f"Geo: {lat:.6f}°, {lon:.6f}°")
+                else:
+                    self.geo_coords_label.setText("Geo: N/A (transform error)")
+            except Exception:
+                self.geo_coords_label.setText("Geo: N/A (error)")
+        else:
+            self.geo_coords_label.setText("Geo: N/A (no georef)")
 
     def update_scale_display(self):
         """Update the scale display based on georeferencing."""
@@ -1553,13 +1556,16 @@ class MainWindow(QMainWindow):
         self._refresh_trees()
 
     def on_polyline_modified(self, polyline_id=None):
-        """Handle polyline modified signal."""
-        # If a specific polyline was modified and transformer is available,
-        # update its geo_points from the new pixel positions
+        """Handle polyline modified signal.
+
+        Per-point geo_points updates (insert, delete, move) are handled at the
+        individual modification sites in ImageView. This handler only calculates
+        geo_points for polylines that don't have them yet (e.g., newly drawn).
+        """
         if polyline_id and self._cached_transformer:
             polyline = self.project.get_polyline(polyline_id)
-            if polyline:
-                # Update geo_points from current pixel positions
+            if polyline and not polyline.has_geo_coords():
+                # Only calculate geo_points for polylines that don't have them
                 geo_points = []
                 for px, py in polyline.points:
                     lon, lat = self._cached_transformer.pixel_to_geo(px, py)

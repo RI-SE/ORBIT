@@ -697,8 +697,29 @@ class Project:
         """Add a junction to the project."""
         self.junctions.append(junction)
 
-    def remove_junction(self, junction_id: str) -> None:
-        """Remove a junction from the project."""
+    def remove_junction(self, junction_id: str, cleanup_road_refs: bool = True) -> None:
+        """Remove a junction from the project.
+
+        Args:
+            junction_id: Internal UUID of the junction to remove.
+            cleanup_road_refs: If True, clear predecessor/successor junction
+                references on roads that point to this junction. Set to False
+                when the junction is being re-added immediately (e.g. modify).
+        """
+        if cleanup_road_refs:
+            junction = self.get_junction(junction_id)
+            if junction:
+                # Match both internal UUID and OpenDRIVE numeric ID
+                match_ids = {junction_id}
+                if junction.opendrive_id:
+                    match_ids.add(junction.opendrive_id)
+
+                for road in self.roads:
+                    if road.predecessor_junction_id in match_ids:
+                        road.predecessor_junction_id = None
+                    if road.successor_junction_id in match_ids:
+                        road.successor_junction_id = None
+
         self.junctions = [j for j in self.junctions if j.id != junction_id]
 
     def get_junction(self, junction_id: str) -> Optional[Junction]:

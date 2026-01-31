@@ -493,6 +493,154 @@ class ImageView(QGraphicsView):
             self.safe_remove_item(self.parking_polygon_preview)
             self.parking_polygon_preview = None
 
+    def _get_geo_transformer(self):
+        """Get the cached geo transformer from the parent MainWindow, if available."""
+        parent = self.parent()
+        return getattr(parent, '_cached_transformer', None) if parent else None
+
+    @staticmethod
+    def _interpolate_geo_for_insert(polyline, insert_index: int,
+                                    px: float, py: float) -> tuple[float, float] | None:
+        """Interpolate a geo_point for a newly inserted point.
+
+        Called AFTER the pixel point has been inserted into polyline.points
+        but BEFORE the geo_point is inserted into polyline.geo_points.
+
+        Uses the fractional pixel position along the segment to linearly
+        interpolate between neighbor geo_points. Much more accurate than
+        pixel_to_geo for points far from control points.
+
+        Returns (lon, lat) or None if interpolation is not possible.
+        """
+        gp = polyline.geo_points  # Still has original count (one fewer than pts)
+        if gp is None or len(gp) < 2:
+            return None
+
+        pts = polyline.points  # Already has the new point at insert_index
+
+        # Neighbors in geo space (pre-insert indices):
+        #   prev = gp[insert_index - 1]  (same index in both arrays)
+        #   next = gp[insert_index]       (was at insert_index before pixel insertion)
+        # Neighbors in pixel space (post-insert indices):
+        #   prev = pts[insert_index - 1]
+        #   next = pts[insert_index + 1]  (shifted by insertion)
+        if insert_index < 1 or insert_index >= len(gp) + 1:
+            return None
+
+        prev_geo_idx = insert_index - 1
+        next_geo_idx = insert_index  # in the pre-insert geo array
+        if next_geo_idx >= len(gp):
+            return None
+
+        prev_px, prev_py = pts[insert_index - 1]
+        next_px, next_py = pts[insert_index + 1]
+
+        seg_len_sq = (next_px - prev_px) ** 2 + (next_py - prev_py) ** 2
+        if seg_len_sq < 1e-6:
+            return tuple(gp[prev_geo_idx])
+
+        # Project new point onto the segment to get fraction t
+        t = ((px - prev_px) * (next_px - prev_px) +
+             (py - prev_py) * (next_py - prev_py)) / seg_len_sq
+        t = max(0.0, min(1.0, t))
+
+        lon = gp[prev_geo_idx][0] * (1 - t) + gp[next_geo_idx][0] * t
+        lat = gp[prev_geo_idx][1] * (1 - t) + gp[next_geo_idx][1] * t
+        return (lon, lat)
+
+    @staticmethod
+    def _compute_dragged_geo_point(polyline, drag_index: int,
+                                   old_px: float, old_py: float,
+                                   old_geo: tuple[float, float]) -> tuple[float, float] | None:
+        """Compute an updated geo_point for a dragged point using local context.
+
+        Uses the polyline's own pixel/geo pairs to derive a local scale,
+        avoiding the global control-point affine which extrapolates badly
+        for points far from control points.
+
+        Returns (lon, lat) or None if local computation is not possible.
+        """
+        pts = polyline.points
+        gp = polyline.geo_points
+        if gp is None or len(gp) < 2:
+            return None
+
+        new_px, new_py = pts[drag_index]
+        delta_px = new_px - old_px
+        delta_py = new_py - old_py
+
+        # Build reference pairs: all undragged points + old position of
+        # the dragged point (known correct pixel→geo mapping).
+        ref_pairs = []
+        for i in range(len(pts)):
+            if i != drag_index:
+                ref_pairs.append((pts[i][0], pts[i][1], gp[i][0], gp[i][1]))
+        # Add old dragged point as a reference — guarantees >=2 pairs
+        # for any polyline with >=2 points
+        ref_pairs.append((old_px, old_py, old_geo[0], old_geo[1]))
+
+        if len(ref_pairs) < 2:
+            return None
+
+        # Use widest-separated pair for a stable Jacobian estimate.
+        # Candidates: first undragged, last undragged, old dragged point.
+        candidates = [0, len(ref_pairs) - 1]
+        if len(ref_pairs) > 2:
+            candidates.append(len(ref_pairs) - 2)  # last undragged
+        best_span_sq = 0.0
+        best_i0, best_i1 = 0, len(ref_pairs) - 1
+        for a in candidates:
+            for b in candidates:
+                if a >= b:
+                    continue
+                sq = (ref_pairs[b][0] - ref_pairs[a][0]) ** 2 + \
+                     (ref_pairs[b][1] - ref_pairs[a][1]) ** 2
+                if sq > best_span_sq:
+                    best_span_sq = sq
+                    best_i0, best_i1 = a, b
+        dpx = ref_pairs[best_i1][0] - ref_pairs[best_i0][0]
+        dpy = ref_pairs[best_i1][1] - ref_pairs[best_i0][1]
+        dlon = ref_pairs[best_i1][2] - ref_pairs[best_i0][2]
+        dlat = ref_pairs[best_i1][3] - ref_pairs[best_i0][3]
+
+        px_span_sq = dpx ** 2 + dpy ** 2
+        if px_span_sq < 1e-6:
+            return None
+
+        # Solve for a local 2x2 Jacobian mapping pixel delta to geo delta.
+        # With one pair of reference points we can estimate the projection of
+        # the displacement along the polyline direction. For small moves this
+        # is more accurate than the global affine.
+        #
+        # J = [[dlon/dpx, dlon/dpy], [dlat/dpx, dlat/dpy]]
+        # We have one vector constraint: J @ [dpx, dpy]^T = [dlon, dlat]^T
+        # Under-determined with one pair, so assume the Jacobian is a scaled
+        # rotation (conformal mapping) — reasonable for map projections.
+        # J = s * R  where R is rotation matrix
+        #
+        # From the reference pair: s = geo_dist / px_dist, angle from pixel to geo direction.
+        import math
+        geo_span = math.sqrt(dlon ** 2 + dlat ** 2)
+        px_span = math.sqrt(px_span_sq)
+
+        if geo_span < 1e-12:
+            # Reference points have same geo coords — can't determine scale
+            return None
+
+        # Rotation angle from pixel-space vector to geo-space vector
+        angle_px = math.atan2(dpy, dpx)
+        angle_geo = math.atan2(dlat, dlon)
+        angle_diff = angle_geo - angle_px
+        scale = geo_span / px_span
+
+        # Apply rotation + scale to the pixel delta
+        cos_a = math.cos(angle_diff)
+        sin_a = math.sin(angle_diff)
+        delta_lon = scale * (delta_px * cos_a - delta_py * sin_a)
+        delta_lat = scale * (delta_px * sin_a + delta_py * cos_a)
+
+        return (old_geo[0] + delta_lon, old_geo[1] + delta_lat)
+
     def update_all_from_geo_coords(self, transformer):
         """
         Update all geometry items from their geo coordinates using the transformer.
@@ -2607,6 +2755,14 @@ class ImageView(QGraphicsView):
 
         item.polyline.remove_point(point_index)
 
+        # Remove corresponding entry from per-point metadata arrays
+        for arr_name in ('geo_points', 'elevations', 's_offsets', 'osm_node_ids'):
+            arr = getattr(polyline, arr_name, None)
+            if arr is not None and point_index < len(arr):
+                arr.pop(point_index)
+        # Invalidate geometry segments (no longer valid after point removal)
+        polyline.geometry_segments = None
+
         # Check if polyline has no points left - delete it
         if item.polyline.point_count() == 0:
             item.remove()
@@ -2784,6 +2940,34 @@ class ImageView(QGraphicsView):
 
                             # Insert point after the first point of the segment
                             polyline.insert_point(insert_index, scene_pos.x(), scene_pos.y())
+
+                            # Insert corresponding entries in per-point metadata
+                            if polyline.geo_points is not None:
+                                # Interpolate from neighbors (accurate even far from
+                                # control points). Never fall back to pixel_to_geo
+                                # which corrupts geo_points for distant roads.
+                                new_geo = self._interpolate_geo_for_insert(
+                                    polyline, insert_index,
+                                    scene_pos.x(), scene_pos.y())
+                                if new_geo is None:
+                                    # Fallback: copy nearest neighbor's geo_point
+                                    if insert_index > 0:
+                                        new_geo = tuple(polyline.geo_points[insert_index - 1])
+                                    elif insert_index < len(polyline.geo_points):
+                                        new_geo = tuple(polyline.geo_points[insert_index])
+                                    else:
+                                        new_geo = (0.0, 0.0)
+                                polyline.geo_points.insert(insert_index, new_geo)
+                            if polyline.elevations is not None:
+                                # Interpolate elevation from neighbours
+                                prev_e = polyline.elevations[insert_index - 1] if insert_index > 0 else 0.0
+                                next_e = polyline.elevations[insert_index] if insert_index < len(polyline.elevations) else prev_e
+                                polyline.elevations.insert(insert_index, (prev_e + next_e) / 2.0)
+                            if polyline.s_offsets is not None:
+                                polyline.s_offsets.insert(insert_index, 0.0)  # Will be recalculated
+                            if polyline.osm_node_ids is not None:
+                                polyline.osm_node_ids.insert(insert_index, None)
+                            polyline.geometry_segments = None  # Invalidated
 
                             # Update section boundaries with new point list
                             if affected_road:
@@ -3209,6 +3393,33 @@ class ImageView(QGraphicsView):
                             break
 
                 item.set_selected_point(-1)
+
+                # Update the dragged point's geo_point only if it actually moved
+                if (polyline.geo_points is not None
+                        and 0 <= self.drag_point_index < len(polyline.geo_points)
+                        and hasattr(self, '_drag_start_points')
+                        and self._drag_start_points is not None):
+                    idx = self.drag_point_index
+                    new_px, new_py = polyline.points[idx]
+                    old_px, old_py = self._drag_start_points[idx]
+                    moved = abs(new_px - old_px) > 0.5 or abs(new_py - old_py) > 0.5
+
+                    if moved:
+                        # Compute updated geo_point using local polyline
+                        # context. Never fall back to pixel_to_geo which
+                        # maps to the control-point area, corrupting
+                        # geo_points for roads far from control points.
+                        old_geo = (self._drag_start_geo_points[idx]
+                                   if self._drag_start_geo_points else None)
+                        new_geo = None
+                        if old_geo:
+                            new_geo = self._compute_dragged_geo_point(
+                                polyline, idx, old_px, old_py, old_geo)
+                        if new_geo is not None:
+                            polyline.geo_points[idx] = new_geo
+                        # If new_geo is None, keep existing geo_point unchanged
+                        # Invalidate preserved geometry (no longer valid after move)
+                        polyline.geometry_segments = None
 
                 # Emit undo signal with captured state
                 if hasattr(self, '_drag_start_points') and self._drag_start_points is not None:

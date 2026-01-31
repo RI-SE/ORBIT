@@ -453,7 +453,6 @@ class ElementsTreeWidget(QWidget):
     def delete_junction(self, junction_id: str):
         """Delete a junction."""
         if ask_yes_no(self, "Are you sure you want to delete this junction?", "Delete Junction"):
-            self.project.remove_junction(junction_id)
             self.junction_deleted.emit(junction_id)
             self.refresh_tree()
 
