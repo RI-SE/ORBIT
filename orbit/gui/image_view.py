@@ -551,15 +551,28 @@ class ImageView(QGraphicsView):
     @staticmethod
     def _compute_dragged_geo_point(polyline, drag_index: int,
                                    old_px: float, old_py: float,
-                                   old_geo: tuple[float, float]) -> tuple[float, float] | None:
+                                   old_geo: tuple[float, float],
+                                   transformer=None) -> tuple[float, float] | None:
         """Compute an updated geo_point for a dragged point using local context.
 
-        Uses the polyline's own pixel/geo pairs to derive a local scale,
-        avoiding the global control-point affine which extrapolates badly
-        for points far from control points.
+        Uses the polyline's own pixel/geo pairs to derive a local affine
+        Jacobian, avoiding the global control-point transform which
+        extrapolates badly for points far from control points.
+
+        Prefers a full 2x2 Jacobian when reference points have enough
+        angular diversity (curved roads). Falls back to a similarity model
+        for straight roads, using the global transform only to determine
+        mapping orientation (conformal vs anti-conformal).
+
+        The pixel→geo mapping may be orientation-reversing (e.g. when the
+        image y-axis is flipped relative to geographic north). The full
+        Jacobian handles this automatically; the similarity fallback checks
+        the global transform's Jacobian determinant sign.
 
         Returns (lon, lat) or None if local computation is not possible.
         """
+        import math
+
         pts = polyline.points
         gp = polyline.geo_points
         if gp is None or len(gp) < 2:
@@ -575,69 +588,110 @@ class ImageView(QGraphicsView):
         for i in range(len(pts)):
             if i != drag_index:
                 ref_pairs.append((pts[i][0], pts[i][1], gp[i][0], gp[i][1]))
-        # Add old dragged point as a reference — guarantees >=2 pairs
-        # for any polyline with >=2 points
+        # Add old dragged point — guarantees >=2 pairs for any polyline
+        # with >=2 points
         ref_pairs.append((old_px, old_py, old_geo[0], old_geo[1]))
 
         if len(ref_pairs) < 2:
             return None
 
-        # Use widest-separated pair for a stable Jacobian estimate.
-        # Candidates: first undragged, last undragged, old dragged point.
-        candidates = [0, len(ref_pairs) - 1]
-        if len(ref_pairs) > 2:
-            candidates.append(len(ref_pairs) - 2)  # last undragged
+        # --- Step 1: Find widest-separated pair ---
         best_span_sq = 0.0
-        best_i0, best_i1 = 0, len(ref_pairs) - 1
-        for a in candidates:
-            for b in candidates:
-                if a >= b:
+        i0, i1 = 0, len(ref_pairs) - 1
+        # Check endpoints + old dragged point (usually widest for polylines)
+        cands = list(set([0, len(ref_pairs) - 1] +
+                         ([len(ref_pairs) - 2] if len(ref_pairs) > 2 else [])))
+        for a in range(len(ref_pairs)):
+            for b in cands:
+                if a == b:
                     continue
                 sq = (ref_pairs[b][0] - ref_pairs[a][0]) ** 2 + \
                      (ref_pairs[b][1] - ref_pairs[a][1]) ** 2
                 if sq > best_span_sq:
                     best_span_sq = sq
-                    best_i0, best_i1 = a, b
-        dpx = ref_pairs[best_i1][0] - ref_pairs[best_i0][0]
-        dpy = ref_pairs[best_i1][1] - ref_pairs[best_i0][1]
-        dlon = ref_pairs[best_i1][2] - ref_pairs[best_i0][2]
-        dlat = ref_pairs[best_i1][3] - ref_pairs[best_i0][3]
+                    i0, i1 = (a, b) if a < b else (b, a)
 
-        px_span_sq = dpx ** 2 + dpy ** 2
-        if px_span_sq < 1e-6:
+        if best_span_sq < 1e-6:
             return None
 
-        # Solve for a local 2x2 Jacobian mapping pixel delta to geo delta.
-        # With one pair of reference points we can estimate the projection of
-        # the displacement along the polyline direction. For small moves this
-        # is more accurate than the global affine.
-        #
-        # J = [[dlon/dpx, dlon/dpy], [dlat/dpx, dlat/dpy]]
-        # We have one vector constraint: J @ [dpx, dpy]^T = [dlon, dlat]^T
-        # Under-determined with one pair, so assume the Jacobian is a scaled
-        # rotation (conformal mapping) — reasonable for map projections.
-        # J = s * R  where R is rotation matrix
-        #
-        # From the reference pair: s = geo_dist / px_dist, angle from pixel to geo direction.
-        import math
-        geo_span = math.sqrt(dlon ** 2 + dlat ** 2)
-        px_span = math.sqrt(px_span_sq)
+        dpx_a = ref_pairs[i1][0] - ref_pairs[i0][0]
+        dpy_a = ref_pairs[i1][1] - ref_pairs[i0][1]
+        dlon_a = ref_pairs[i1][2] - ref_pairs[i0][2]
+        dlat_a = ref_pairs[i1][3] - ref_pairs[i0][3]
+        span_a = math.sqrt(best_span_sq)
 
+        geo_span = math.sqrt(dlon_a ** 2 + dlat_a ** 2)
         if geo_span < 1e-12:
-            # Reference points have same geo coords — can't determine scale
             return None
 
-        # Rotation angle from pixel-space vector to geo-space vector
-        angle_px = math.atan2(dpy, dpx)
-        angle_geo = math.atan2(dlat, dlon)
-        angle_diff = angle_geo - angle_px
-        scale = geo_span / px_span
+        # --- Step 2: Try full 2x2 Jacobian (needs a non-collinear point) ---
+        # Find the reference point farthest from the line i0→i1.
+        best_perp = 0.0
+        i2 = -1
+        for k in range(len(ref_pairs)):
+            if k == i0 or k == i1:
+                continue
+            dpx_k = ref_pairs[k][0] - ref_pairs[i0][0]
+            dpy_k = ref_pairs[k][1] - ref_pairs[i0][1]
+            perp = abs(dpx_a * dpy_k - dpy_a * dpx_k) / span_a
+            if perp > best_perp:
+                best_perp = perp
+                i2 = k
 
-        # Apply rotation + scale to the pixel delta
-        cos_a = math.cos(angle_diff)
-        sin_a = math.sin(angle_diff)
-        delta_lon = scale * (delta_px * cos_a - delta_py * sin_a)
-        delta_lat = scale * (delta_px * sin_a + delta_py * cos_a)
+        if i2 >= 0 and best_perp > 1.0:
+            # Enough angular diversity — solve full 2x2 Jacobian.
+            # J maps pixel deltas to geo deltas:
+            #   J @ [dpx, dpy]^T = [dlon, dlat]^T
+            # Using two direction vectors from ref point i0:
+            dpx_c = ref_pairs[i2][0] - ref_pairs[i0][0]
+            dpy_c = ref_pairs[i2][1] - ref_pairs[i0][1]
+            dlon_c = ref_pairs[i2][2] - ref_pairs[i0][2]
+            dlat_c = ref_pairs[i2][3] - ref_pairs[i0][3]
+
+            det = dpx_a * dpy_c - dpy_a * dpx_c
+            if abs(det) > 1e-6:
+                J11 = (dlon_a * dpy_c - dlon_c * dpy_a) / det
+                J12 = (dpx_a * dlon_c - dpx_c * dlon_a) / det
+                J21 = (dlat_a * dpy_c - dlat_c * dpy_a) / det
+                J22 = (dpx_a * dlat_c - dpx_c * dlat_a) / det
+
+                delta_lon = J11 * delta_px + J12 * delta_py
+                delta_lat = J21 * delta_px + J22 * delta_py
+                return (old_geo[0] + delta_lon, old_geo[1] + delta_lat)
+
+        # --- Step 3: Collinear fallback — similarity model ---
+        # With collinear reference points, the perpendicular direction is
+        # ambiguous. Check the global transform's Jacobian determinant to
+        # distinguish conformal (orientation-preserving, det>0) from
+        # anti-conformal (orientation-reversing, det<0) mapping.
+        # This is a safe use of the global transform — only the sign of the
+        # determinant is used, not absolute position.
+        orientation_reversing = False
+        if transformer:
+            try:
+                eps = 1.0
+                lon0, lat0 = transformer.pixel_to_geo(old_px, old_py)
+                lon_dx, lat_dx = transformer.pixel_to_geo(old_px + eps, old_py)
+                lon_dy, lat_dy = transformer.pixel_to_geo(old_px, old_py + eps)
+                det_global = ((lon_dx - lon0) * (lat_dy - lat0) -
+                              (lon_dy - lon0) * (lat_dx - lat0))
+                orientation_reversing = (det_global < 0)
+            except Exception:
+                pass
+
+        px_span_sq = best_span_sq
+        if orientation_reversing:
+            # Anti-conformal: J = s * [[cos θ, sin θ], [sin θ, -cos θ]]
+            a = (dpx_a * dlon_a - dpy_a * dlat_a) / px_span_sq
+            b = (dpy_a * dlon_a + dpx_a * dlat_a) / px_span_sq
+            delta_lon = a * delta_px + b * delta_py
+            delta_lat = b * delta_px - a * delta_py
+        else:
+            # Conformal: J = s * [[cos θ, -sin θ], [sin θ, cos θ]]
+            a = (dpx_a * dlon_a + dpy_a * dlat_a) / px_span_sq
+            b = (-dpy_a * dlon_a + dpx_a * dlat_a) / px_span_sq
+            delta_lon = a * delta_px - b * delta_py
+            delta_lat = b * delta_px + a * delta_py
 
         return (old_geo[0] + delta_lon, old_geo[1] + delta_lat)
 
@@ -3414,7 +3468,8 @@ class ImageView(QGraphicsView):
                         new_geo = None
                         if old_geo:
                             new_geo = self._compute_dragged_geo_point(
-                                polyline, idx, old_px, old_py, old_geo)
+                                polyline, idx, old_px, old_py, old_geo,
+                                self._get_geo_transformer())
                         if new_geo is not None:
                             polyline.geo_points[idx] = new_geo
                         # If new_geo is None, keep existing geo_point unchanged
