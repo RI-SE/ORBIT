@@ -577,21 +577,21 @@ class TestFindAllSharedPoints:
     def test_find_shared_endpoint(self, importer):
         """Find shared point at road endpoints."""
         # Create two roads with touching endpoints
-        centerline1 = Polyline()
+        centerline1 = Polyline(id="1")
         centerline1.line_type = LineType.CENTERLINE
         centerline1.points = [(0, 0), (100, 100)]
         importer.project.polylines.append(centerline1)
 
-        road1 = Road()
+        road1 = Road(id="1")
         road1.centerline_id = centerline1.id
         importer.project.roads.append(road1)
 
-        centerline2 = Polyline()
+        centerline2 = Polyline(id="2")
         centerline2.line_type = LineType.CENTERLINE
         centerline2.points = [(100, 100), (200, 0)]  # Starts where road1 ends
         importer.project.polylines.append(centerline2)
 
-        road2 = Road()
+        road2 = Road(id="2")
         road2.centerline_id = centerline2.id
         importer.project.roads.append(road2)
 
@@ -602,21 +602,21 @@ class TestFindAllSharedPoints:
 
     def test_no_shared_points(self, importer):
         """No shared points between distant roads."""
-        centerline1 = Polyline()
+        centerline1 = Polyline(id="1")
         centerline1.line_type = LineType.CENTERLINE
         centerline1.points = [(0, 0), (100, 0)]
         importer.project.polylines.append(centerline1)
 
-        road1 = Road()
+        road1 = Road(id="1")
         road1.centerline_id = centerline1.id
         importer.project.roads.append(road1)
 
-        centerline2 = Polyline()
+        centerline2 = Polyline(id="2")
         centerline2.line_type = LineType.CENTERLINE
         centerline2.points = [(500, 500), (600, 500)]  # Far away
         importer.project.polylines.append(centerline2)
 
-        road2 = Road()
+        road2 = Road(id="2")
         road2.centerline_id = centerline2.id
         importer.project.roads.append(road2)
 

@@ -133,7 +133,7 @@ class TestSignalConstruction:
     def test_default_construction(self):
         """Test default construction."""
         signal = Signal()
-        assert signal.id is not None
+        assert signal.id == ""
         assert signal.position == (0.0, 0.0)
         assert signal.type == SignalType.LIBRARY_SIGN
         assert signal.value is None
@@ -195,7 +195,6 @@ class TestSignalConstruction:
         assert signal.z_offset == 2.0
         assert signal.s_position is None
         assert signal.validity_range is None
-        assert signal.opendrive_id is None
         assert signal.dynamic == "no"
         assert signal.subtype == ""
         assert signal.country == ""
@@ -322,14 +321,12 @@ class TestSignalSerialization:
     def test_serialization_with_opendrive_fields(self):
         """Test serialization includes OpenDRIVE fields when set."""
         signal = Signal()
-        signal.opendrive_id = "od-123"
         signal.dynamic = "yes"
         signal.subtype = "270"
         signal.country = "SE"
 
         data = signal.to_dict()
 
-        assert data['opendrive_id'] == "od-123"
         assert data['dynamic'] == "yes"
         assert data['subtype'] == "270"
         assert data['country'] == "SE"
@@ -433,7 +430,6 @@ class TestSignalDeserialization:
             'id': 'test-1',
             'type': 'library_sign',
             'position': [100.0, 200.0],
-            'opendrive_id': 'od-123',
             'dynamic': 'yes',
             'subtype': '270',
             'country': 'SE'
@@ -441,7 +437,6 @@ class TestSignalDeserialization:
 
         signal = Signal.from_dict(data)
 
-        assert signal.opendrive_id == "od-123"
         assert signal.dynamic == "yes"
         assert signal.subtype == "270"
         assert signal.country == "SE"
@@ -629,7 +624,6 @@ class TestSignalRoundTrip:
         original.sign_height = 0.7
         original.s_position = 100.0
         original.validity_range = (90.0, 110.0)
-        original.opendrive_id = "od-456"
         original.dynamic = "no"
         original.subtype = "50"
         original.country = "SE"
@@ -655,7 +649,6 @@ class TestSignalRoundTrip:
         assert restored.sign_height == original.sign_height
         assert restored.s_position == original.s_position
         assert restored.validity_range == original.validity_range
-        assert restored.opendrive_id == original.opendrive_id
         assert restored.country == original.country
         assert restored.validity_lanes == original.validity_lanes
 

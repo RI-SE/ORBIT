@@ -232,9 +232,8 @@ class JunctionGroupDialog(QDialog):
 
     def add_group(self):
         """Add a new junction group."""
-        import uuid
         new_group = JunctionGroup(
-            id=str(uuid.uuid4()),
+            id=self.project.next_id('junction_group'),
             name="New Group",
             group_type="unknown",
             junction_ids=[]

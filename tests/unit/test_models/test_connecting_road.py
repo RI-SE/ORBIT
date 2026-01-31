@@ -17,8 +17,7 @@ class TestConnectingRoadCreation:
         """Test creating connecting road with defaults."""
         cr = ConnectingRoad()
 
-        assert cr.id is not None
-        assert len(cr.id) > 0
+        assert cr.id == ""
         assert cr.path == []
         assert cr.lane_count_left == 0
         assert cr.lane_count_right == 1

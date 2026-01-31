@@ -5,7 +5,6 @@ Tests road creation, polyline management, lane sections, and serialization.
 """
 
 import pytest
-import uuid
 from typing import List
 
 from orbit.models import (
@@ -28,14 +27,11 @@ class TestRoadCreation:
         assert road.speed_limit is None
         assert road.junction_id is None
 
-    def test_road_auto_generates_id(self):
-        """Test that roads automatically generate unique IDs."""
-        road1 = Road()
-        road2 = Road()
+    def test_road_default_id_is_empty(self):
+        """Test that roads default to empty string ID."""
+        road = Road()
 
-        assert road1.id != road2.id
-        uuid.UUID(road1.id)  # Validate it's a UUID
-        uuid.UUID(road2.id)
+        assert road.id == ""
 
     def test_road_with_properties(self):
         """Test creating road with properties."""
@@ -794,7 +790,6 @@ class TestRoadMissingCoverage:
     def test_to_dict_with_optional_fields(self):
         """Test to_dict includes optional fields when set."""
         road = Road(
-            opendrive_id="od-123",
             elevation_profile=[(0.0, 10.0, 0.1, 0.0, 0.0), (100.0, 10.5, 0.05, 0.0, 0.0)],
             superelevation_profile=[(0.0, 0.0, 0.02, 0.0, 0.0)],
             lane_offset=[(0.0, 0.5, 0.0, 0.0, 0.0)],
@@ -804,7 +799,6 @@ class TestRoadMissingCoverage:
 
         data = road.to_dict()
 
-        assert data['opendrive_id'] == "od-123"
         assert 'elevation_profile' in data
         assert len(data['elevation_profile']) == 2
         assert 'superelevation_profile' in data

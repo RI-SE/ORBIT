@@ -7,7 +7,6 @@ path for vehicles traversing the junction.
 
 from typing import List, Tuple, Dict, Any, Optional
 from dataclasses import dataclass, field
-import uuid
 import math
 
 from .lane import Lane, LaneType
@@ -51,7 +50,7 @@ class ConnectingRoad:
         p_range_normalized: If True, pRange="normalized" (standard), else pRange=p_range value
         tangent_scale: Scale factor for tangent lengths (user-adjustable)
     """
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    id: str = ""
     path: List[Tuple[float, float]] = field(default_factory=list)
     geo_path: Optional[List[Tuple[float, float]]] = None  # (lon, lat) pairs - source of truth
 
@@ -588,7 +587,7 @@ class ConnectingRoad:
             New ConnectingRoad instance
         """
         cr = cls()
-        cr.id = data.get('id', str(uuid.uuid4()))
+        cr.id = data.get('id', '')
 
         # Convert path from list of lists to list of tuples
         path_data = data.get('path', [])
@@ -642,7 +641,7 @@ class ConnectingRoad:
 
     def __repr__(self) -> str:
         """String representation for debugging."""
-        return (f"ConnectingRoad(id={self.id[:8]}..., "
+        return (f"ConnectingRoad(id={self.id}, "
                 f"points={len(self.path)}, "
                 f"lanes={self.get_total_lane_count()}, "
-                f"{self.predecessor_road_id[:8]}... -> {self.successor_road_id[:8]}...)")
+                f"{self.predecessor_road_id} -> {self.successor_road_id})")

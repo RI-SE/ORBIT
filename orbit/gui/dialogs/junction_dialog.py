@@ -31,7 +31,7 @@ class JunctionDialog(BaseDialog):
     def __init__(self, junction: Optional[Junction] = None, project: Optional[Project] = None, parent=None):
         super().__init__("Junction Properties", parent, min_width=500, min_height=400)
 
-        self.junction = junction if junction else Junction()
+        self.junction = junction if junction else Junction(id=project.next_id('junction') if project else "")
         self.project = project
         self.setup_ui()
         self.load_properties()
@@ -606,7 +606,7 @@ class JunctionDialog(BaseDialog):
         Returns:
             The new junction if accepted, None if cancelled
         """
-        junction = Junction()
+        junction = Junction(id=project.next_id('junction') if project else "")
         if center_point:
             junction.center_point = center_point
 

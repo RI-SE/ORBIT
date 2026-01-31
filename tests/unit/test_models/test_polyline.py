@@ -5,7 +5,6 @@ Tests polyline creation, point manipulation, serialization, and validation.
 """
 
 import pytest
-import uuid
 
 from orbit.models import Polyline, LineType, RoadMarkType
 
@@ -25,15 +24,11 @@ class TestPolylineCreation:
         assert polyline.elevations is None
         assert polyline.s_offsets is None
 
-    def test_polyline_auto_generates_id(self):
-        """Test that polylines automatically generate unique IDs."""
+    def test_polyline_default_id_is_empty(self):
+        """Test that polylines default to empty string ID."""
         poly1 = Polyline()
-        poly2 = Polyline()
 
-        assert poly1.id != poly2.id
-        # Verify it's a valid UUID
-        uuid.UUID(poly1.id)
-        uuid.UUID(poly2.id)
+        assert poly1.id == ""
 
     def test_centerline_polyline_creation(self, centerline_polyline: Polyline):
         """Test creating a centerline polyline."""
@@ -316,13 +311,11 @@ class TestPolylineSerialization:
         polyline.add_point(100.0, 0.0)
         polyline.elevations = [10.0, 15.0]
         polyline.s_offsets = [0.0, 100.0]
-        polyline.opendrive_id = "road_123"
 
         data = polyline.to_dict()
 
         assert data['elevations'] == [10.0, 15.0]
         assert data['s_offsets'] == [0.0, 100.0]
-        assert data['opendrive_id'] == "road_123"
 
     def test_polyline_to_dict_omits_none_optional_fields(self):
         """Test that None optional fields are omitted from dict."""
@@ -366,15 +359,13 @@ class TestPolylineSerialization:
             'line_type': 'centerline',
             'road_mark_type': 'none',
             'elevations': [10.0, 15.0],
-            's_offsets': [0.0, 100.0],
-            'opendrive_id': 'road_456'
+            's_offsets': [0.0, 100.0]
         }
 
         polyline = Polyline.from_dict(data)
 
         assert polyline.elevations == [10.0, 15.0]
         assert polyline.s_offsets == [0.0, 100.0]
-        assert polyline.opendrive_id == 'road_456'
 
     def test_polyline_from_dict_uses_defaults(self):
         """Test that from_dict() uses defaults for missing fields."""
@@ -384,9 +375,8 @@ class TestPolylineSerialization:
 
         polyline = Polyline.from_dict(minimal_data)
 
-        # Should auto-generate ID
-        assert polyline.id is not None
-        uuid.UUID(polyline.id)  # Validate it's a UUID
+        # Should default to empty string ID
+        assert polyline.id == ""
 
         # Should use defaults
         assert polyline.color == (0, 255, 255)

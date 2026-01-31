@@ -116,18 +116,366 @@ class Project:
     enabled_sign_libraries: List[str] = field(default_factory=lambda: ['se'])  # Enabled sign library IDs
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    # ID counters for sequential ID generation (one per entity type)
+    _next_polyline_id: int = field(default=1, repr=False)
+    _next_road_id: int = field(default=1, repr=False)
+    _next_junction_id: int = field(default=1, repr=False)
+    _next_signal_id: int = field(default=1, repr=False)
+    _next_object_id: int = field(default=1, repr=False)
+    _next_parking_id: int = field(default=1, repr=False)
+    _next_connecting_road_id: int = field(default=1, repr=False)
+    _next_lane_connection_id: int = field(default=1, repr=False)
+    _next_junction_group_id: int = field(default=1, repr=False)
+
+    # Map from entity type name to counter attribute name
+    _COUNTER_MAP: Dict[str, str] = field(default_factory=dict, repr=False, init=False)
+
     def __post_init__(self):
         """Initialize metadata if not provided."""
         if not self.metadata:
             self.metadata = {
-                'version': '0.3.1',
+                'version': '0.4.0',
                 'created': datetime.now().isoformat(),
                 'modified': datetime.now().isoformat()
             }
+        # Build counter map
+        self._COUNTER_MAP = {
+            'polyline': '_next_polyline_id',
+            'road': '_next_road_id',
+            'junction': '_next_junction_id',
+            'signal': '_next_signal_id',
+            'object': '_next_object_id',
+            'parking': '_next_parking_id',
+            'connecting_road': '_next_connecting_road_id',
+            'lane_connection': '_next_lane_connection_id',
+            'junction_group': '_next_junction_group_id',
+        }
+
+    def next_id(self, entity_type: str) -> str:
+        """
+        Get the next sequential ID for a given entity type and increment the counter.
+
+        Args:
+            entity_type: One of 'polyline', 'road', 'junction', 'signal',
+                         'object', 'parking', 'connecting_road', 'lane_connection',
+                         'junction_group'
+
+        Returns:
+            String representation of the next ID (e.g. "1", "2", ...)
+        """
+        attr = self._COUNTER_MAP.get(entity_type)
+        if attr is None:
+            raise ValueError(f"Unknown entity type: {entity_type}")
+        current = getattr(self, attr)
+        setattr(self, attr, current + 1)
+        return str(current)
+
+    def _sync_id_counters(self) -> None:
+        """
+        Scan all collections and set counters to max(existing numeric IDs) + 1.
+
+        Non-numeric IDs (e.g. UUIDs from old projects) are skipped gracefully.
+        Called after from_dict() / load() to ensure counters don't collide
+        with existing IDs.
+        """
+        def _max_numeric_id(ids):
+            """Return the maximum numeric ID from a list of string IDs, or 0."""
+            max_id = 0
+            for id_str in ids:
+                try:
+                    val = int(id_str)
+                    if val > max_id:
+                        max_id = val
+                except (ValueError, TypeError):
+                    pass
+            return max_id
+
+        self._next_polyline_id = _max_numeric_id(p.id for p in self.polylines) + 1
+        self._next_road_id = _max_numeric_id(r.id for r in self.roads) + 1
+        self._next_junction_id = _max_numeric_id(j.id for j in self.junctions) + 1
+        self._next_signal_id = _max_numeric_id(s.id for s in self.signals) + 1
+        self._next_object_id = _max_numeric_id(o.id for o in self.objects) + 1
+        self._next_parking_id = _max_numeric_id(p.id for p in self.parking_spaces) + 1
+        self._next_junction_group_id = _max_numeric_id(jg.id for jg in self.junction_groups) + 1
+
+        # ConnectingRoad and LaneConnection are nested inside junctions
+        cr_ids = []
+        lc_ids = []
+        for junction in self.junctions:
+            for cr in junction.connecting_roads:
+                cr_ids.append(cr.id)
+            for lc in junction.lane_connections:
+                lc_ids.append(lc.id)
+        self._next_connecting_road_id = _max_numeric_id(cr_ids) + 1
+        self._next_lane_connection_id = _max_numeric_id(lc_ids) + 1
+
+    def _has_uuid_ids(self) -> bool:
+        """Check if any entity has a non-numeric (UUID) ID."""
+        for p in self.polylines:
+            try:
+                int(p.id)
+            except (ValueError, TypeError):
+                return True
+        for r in self.roads:
+            try:
+                int(r.id)
+            except (ValueError, TypeError):
+                return True
+        for j in self.junctions:
+            try:
+                int(j.id)
+            except (ValueError, TypeError):
+                return True
+        return False
+
+    def _migrate_uuid_ids(self, odr_id_lookup: Optional[Dict[str, str]] = None) -> None:
+        """
+        Migrate UUID-based IDs to sequential integers.
+
+        Called from from_dict() when old project files with UUID IDs are loaded.
+        Builds remap tables for each entity type, preferring opendrive_id (if numeric)
+        as the new ID, then remaps all cross-reference fields.
+
+        Args:
+            odr_id_lookup: Mapping from old UUID IDs to opendrive_id values,
+                          extracted from raw JSON before deserialization.
+        """
+        if not self._has_uuid_ids():
+            return
+
+        logger.info("Migrating UUID-based IDs to sequential integers...")
+
+        # Build remap tables: {old_uuid: new_int_str}
+        polyline_remap: Dict[str, str] = {}
+        road_remap: Dict[str, str] = {}
+        junction_remap: Dict[str, str] = {}
+        signal_remap: Dict[str, str] = {}
+        object_remap: Dict[str, str] = {}
+        parking_remap: Dict[str, str] = {}
+        connecting_road_remap: Dict[str, str] = {}
+        lane_connection_remap: Dict[str, str] = {}
+        junction_group_remap: Dict[str, str] = {}
+
+        if odr_id_lookup is None:
+            odr_id_lookup = {}
+
+        # Helper to assign a new ID, preferring opendrive_id if numeric
+        def _new_id(old_id: str, opendrive_id, used_ids: set, counter: list) -> str:
+            """Assign a new numeric ID. Prefers opendrive_id if numeric and unused."""
+            if opendrive_id:
+                try:
+                    int(opendrive_id)
+                    if opendrive_id not in used_ids:
+                        used_ids.add(opendrive_id)
+                        return opendrive_id
+                except (ValueError, TypeError):
+                    pass
+            # Already numeric and unused?
+            try:
+                int(old_id)
+                if old_id not in used_ids:
+                    used_ids.add(old_id)
+                    return old_id
+            except (ValueError, TypeError):
+                pass
+            # Generate sequential
+            while str(counter[0]) in used_ids:
+                counter[0] += 1
+            new_id = str(counter[0])
+            used_ids.add(new_id)
+            counter[0] += 1
+            return new_id
+
+        # --- Assign new polyline IDs ---
+        poly_used: set = set()
+        poly_counter = [1]
+        for p in self.polylines:
+            odr_id = odr_id_lookup.get(p.id)
+            new_id = _new_id(p.id, odr_id, poly_used, poly_counter)
+            polyline_remap[p.id] = new_id
+            p.id = new_id
+
+        # --- Assign new road IDs ---
+        road_used: set = set()
+        road_counter = [1]
+        for r in self.roads:
+            odr_id = odr_id_lookup.get(r.id)
+            new_id = _new_id(r.id, odr_id, road_used, road_counter)
+            road_remap[r.id] = new_id
+            r.id = new_id
+
+        # --- Assign new junction IDs ---
+        junction_used: set = set()
+        junction_counter = [1]
+        for j in self.junctions:
+            odr_id = odr_id_lookup.get(j.id)
+            new_id = _new_id(j.id, odr_id, junction_used, junction_counter)
+            junction_remap[j.id] = new_id
+            j.id = new_id
+
+        # --- Assign new signal IDs ---
+        signal_used: set = set()
+        signal_counter = [1]
+        for s in self.signals:
+            odr_id = odr_id_lookup.get(s.id)
+            new_id = _new_id(s.id, odr_id, signal_used, signal_counter)
+            signal_remap[s.id] = new_id
+            s.id = new_id
+
+        # --- Assign new object IDs ---
+        object_used: set = set()
+        object_counter = [1]
+        for o in self.objects:
+            odr_id = odr_id_lookup.get(o.id)
+            new_id = _new_id(o.id, odr_id, object_used, object_counter)
+            object_remap[o.id] = new_id
+            o.id = new_id
+
+        # --- Assign new parking IDs ---
+        parking_used: set = set()
+        parking_counter = [1]
+        for p in self.parking_spaces:
+            odr_id = odr_id_lookup.get(p.id)
+            new_id = _new_id(p.id, odr_id, parking_used, parking_counter)
+            parking_remap[p.id] = new_id
+            p.id = new_id
+
+        # --- Assign new connecting road and lane connection IDs ---
+        cr_used: set = set()
+        cr_counter = [1]
+        lc_used: set = set()
+        lc_counter = [1]
+        for j in self.junctions:
+            for cr in j.connecting_roads:
+                new_id = _new_id(cr.id, None, cr_used, cr_counter)
+                connecting_road_remap[cr.id] = new_id
+                cr.id = new_id
+            for lc in j.lane_connections:
+                new_id = _new_id(lc.id, None, lc_used, lc_counter)
+                lane_connection_remap[lc.id] = new_id
+                lc.id = new_id
+
+        # --- Assign new junction group IDs ---
+        jg_used: set = set()
+        jg_counter = [1]
+        for jg in self.junction_groups:
+            new_id = _new_id(jg.id, None, jg_used, jg_counter)
+            junction_group_remap[jg.id] = new_id
+            jg.id = new_id
+
+        # --- Remap all cross-references ---
+
+        def _remap(old_id: Optional[str], remap_table: Dict[str, str]) -> Optional[str]:
+            """Remap an ID using the given table, returning None if input is None."""
+            if old_id is None:
+                return None
+            return remap_table.get(old_id, old_id)
+
+        def _remap_list(id_list: List[str], remap_table: Dict[str, str]) -> List[str]:
+            """Remap a list of IDs."""
+            return [remap_table.get(old_id, old_id) for old_id in id_list]
+
+        # Road cross-references
+        for road in self.roads:
+            road.centerline_id = _remap(road.centerline_id, polyline_remap)
+            road.polyline_ids = _remap_list(road.polyline_ids, polyline_remap)
+            road.predecessor_id = _remap(road.predecessor_id, road_remap)
+            road.successor_id = _remap(road.successor_id, road_remap)
+            road.junction_id = _remap(road.junction_id, junction_remap)
+            road.predecessor_junction_id = _remap(road.predecessor_junction_id, junction_remap)
+            road.successor_junction_id = _remap(road.successor_junction_id, junction_remap)
+
+            # Lane boundary IDs
+            for section in road.lane_sections:
+                for lane in section.lanes:
+                    lane.left_boundary_id = _remap(lane.left_boundary_id, polyline_remap)
+                    lane.right_boundary_id = _remap(lane.right_boundary_id, polyline_remap)
+
+        # Junction cross-references
+        for junction in self.junctions:
+            junction.connected_road_ids = _remap_list(junction.connected_road_ids, road_remap)
+            junction.entry_roads = _remap_list(junction.entry_roads, road_remap)
+            junction.exit_roads = _remap_list(junction.exit_roads, road_remap)
+
+            for cr in junction.connecting_roads:
+                cr.predecessor_road_id = _remap(cr.predecessor_road_id, road_remap) or ""
+                cr.successor_road_id = _remap(cr.successor_road_id, road_remap) or ""
+
+            for lc in junction.lane_connections:
+                lc.from_road_id = _remap(lc.from_road_id, road_remap) or ""
+                lc.to_road_id = _remap(lc.to_road_id, road_remap) or ""
+                lc.connecting_road_id = _remap(lc.connecting_road_id, connecting_road_remap)
+                lc.traffic_light_id = _remap(lc.traffic_light_id, signal_remap)
+
+            if junction.boundary:
+                for seg in junction.boundary.segments:
+                    seg.road_id = _remap(seg.road_id, road_remap)
+
+        # Signal cross-references
+        for signal in self.signals:
+            signal.road_id = _remap(signal.road_id, road_remap)
+
+        # Object cross-references
+        for obj in self.objects:
+            obj.road_id = _remap(obj.road_id, road_remap)
+
+        # Parking cross-references
+        for parking in self.parking_spaces:
+            parking.road_id = _remap(parking.road_id, road_remap)
+
+        # JunctionGroup cross-references
+        for jg in self.junction_groups:
+            jg.junction_ids = _remap_list(jg.junction_ids, junction_remap)
+
+        # Update version
+        self.metadata['version'] = '0.4.0'
+
+        logger.info(
+            f"Migration complete: {len(polyline_remap)} polylines, "
+            f"{len(road_remap)} roads, {len(junction_remap)} junctions, "
+            f"{len(signal_remap)} signals, {len(object_remap)} objects, "
+            f"{len(parking_remap)} parking spaces"
+        )
 
     # Polyline management
+    def assign_missing_ids(self) -> None:
+        """Assign sequential IDs to all entities that have empty IDs.
+
+        Includes nested entities (ConnectingRoad, LaneConnection inside junctions).
+        Call this after bulk operations that may create entities without IDs.
+        """
+        for p in self.polylines:
+            if not p.id:
+                p.id = self.next_id('polyline')
+        for r in self.roads:
+            if not r.id:
+                r.id = self.next_id('road')
+        for j in self.junctions:
+            if not j.id:
+                j.id = self.next_id('junction')
+            for cr in j.connecting_roads:
+                if not cr.id:
+                    cr.id = self.next_id('connecting_road')
+            for lc in j.lane_connections:
+                if not lc.id:
+                    lc.id = self.next_id('lane_connection')
+        for s in self.signals:
+            if not s.id:
+                s.id = self.next_id('signal')
+        for o in self.objects:
+            if not o.id:
+                o.id = self.next_id('object')
+        for p in self.parking_spaces:
+            if not p.id:
+                p.id = self.next_id('parking')
+        for jg in self.junction_groups:
+            if not jg.id:
+                jg.id = self.next_id('junction_group')
+
     def add_polyline(self, polyline: Polyline) -> None:
-        """Add a polyline to the project."""
+        """Add a polyline to the project. Auto-assigns ID if empty."""
+        if not polyline.id:
+            polyline.id = self.next_id('polyline')
         self.polylines.append(polyline)
 
     def remove_polyline(self, polyline_id: str) -> None:
@@ -146,7 +494,9 @@ class Project:
 
     # Road management
     def add_road(self, road: Road) -> None:
-        """Add a road to the project."""
+        """Add a road to the project. Auto-assigns ID if empty."""
+        if not road.id:
+            road.id = self.next_id('road')
         self.roads.append(road)
 
     def remove_road(self, road_id: str) -> None:
@@ -245,6 +595,7 @@ class Project:
 
         # Create new centerline polyline for road 2
         new_centerline = Polyline(
+            id=self.next_id('polyline'),
             points=centerline_pts2,
             line_type=centerline.line_type,
             road_mark_type=centerline.road_mark_type
@@ -286,6 +637,7 @@ class Project:
 
                 # Create new boundary for road 2
                 new_boundary = Polyline(
+                    id=self.next_id('polyline'),
                     points=boundary_pts2,
                     line_type=boundary.line_type,
                     road_mark_type=boundary.road_mark_type
@@ -328,6 +680,7 @@ class Project:
 
         # Create new road (road 2) with second segment
         road2 = Road(
+            id=self.next_id('road'),
             name=road2_name,
             polyline_ids=[new_centerline.id] + new_boundary_ids,
             centerline_id=new_centerline.id,
@@ -450,7 +803,7 @@ class Project:
                         remapped = True
 
             if remapped:
-                logger.info(f"Remapped junction '{junction.name}' to reference new road {new_road_id[:8]}...")
+                logger.info(f"Remapped junction '{junction.name}' to reference new road {new_road_id}")
 
     def merge_consecutive_roads(
         self,
@@ -621,7 +974,7 @@ class Project:
         # Delete road2
         self.remove_road(road2.id)
 
-        logger.info(f"Merged roads into '{road1.name}' (id={road1.id[:8]}...)")
+        logger.info(f"Merged roads into '{road1.name}' (id={road1.id})")
 
         return road1
 
@@ -689,19 +1042,21 @@ class Project:
             if remapped:
                 logger.info(
                     f"Remapped junction '{junction.name}' references from "
-                    f"{deleted_road_id[:8]}... to {kept_road_id[:8]}..."
+                    f"{deleted_road_id} to {kept_road_id}"
                 )
 
     # Junction management
     def add_junction(self, junction: Junction) -> None:
-        """Add a junction to the project."""
+        """Add a junction to the project. Auto-assigns ID if empty."""
+        if not junction.id:
+            junction.id = self.next_id('junction')
         self.junctions.append(junction)
 
     def remove_junction(self, junction_id: str, cleanup_road_refs: bool = True) -> None:
         """Remove a junction from the project.
 
         Args:
-            junction_id: Internal UUID of the junction to remove.
+            junction_id: ID of the junction to remove.
             cleanup_road_refs: If True, clear predecessor/successor junction
                 references on roads that point to this junction. Set to False
                 when the junction is being re-added immediately (e.g. modify).
@@ -709,15 +1064,10 @@ class Project:
         if cleanup_road_refs:
             junction = self.get_junction(junction_id)
             if junction:
-                # Match both internal UUID and OpenDRIVE numeric ID
-                match_ids = {junction_id}
-                if junction.opendrive_id:
-                    match_ids.add(junction.opendrive_id)
-
                 for road in self.roads:
-                    if road.predecessor_junction_id in match_ids:
+                    if road.predecessor_junction_id == junction_id:
                         road.predecessor_junction_id = None
-                    if road.successor_junction_id in match_ids:
+                    if road.successor_junction_id == junction_id:
                         road.successor_junction_id = None
 
         self.junctions = [j for j in self.junctions if j.id != junction_id]
@@ -731,7 +1081,9 @@ class Project:
 
     # Signal management
     def add_signal(self, signal: Signal) -> None:
-        """Add a traffic signal to the project."""
+        """Add a traffic signal to the project. Auto-assigns ID if empty."""
+        if not signal.id:
+            signal.id = self.next_id('signal')
         self.signals.append(signal)
 
     def remove_signal(self, signal_id: str) -> None:
@@ -747,7 +1099,9 @@ class Project:
 
     # Object management
     def add_object(self, obj: RoadObject) -> None:
-        """Add a roadside object to the project."""
+        """Add a roadside object to the project. Auto-assigns ID if empty."""
+        if not obj.id:
+            obj.id = self.next_id('object')
         self.objects.append(obj)
 
     def remove_object(self, object_id: str) -> None:
@@ -763,7 +1117,9 @@ class Project:
 
     # Parking management
     def add_parking(self, parking: ParkingSpace) -> None:
-        """Add a parking space to the project."""
+        """Add a parking space to the project. Auto-assigns ID if empty."""
+        if not parking.id:
+            parking.id = self.next_id('parking')
         self.parking_spaces.append(parking)
 
     def remove_parking(self, parking_id: str) -> None:
@@ -905,7 +1261,18 @@ class Project:
             'baseline_uncertainty_m': self.baseline_uncertainty_m,
             'gcp_suggestion_threshold': self.gcp_suggestion_threshold,
             'imported_geo_reference': self.imported_geo_reference,
-            'enabled_sign_libraries': self.enabled_sign_libraries
+            'enabled_sign_libraries': self.enabled_sign_libraries,
+            'id_counters': {
+                'polyline': self._next_polyline_id,
+                'road': self._next_road_id,
+                'junction': self._next_junction_id,
+                'signal': self._next_signal_id,
+                'object': self._next_object_id,
+                'parking': self._next_parking_id,
+                'connecting_road': self._next_connecting_road_id,
+                'lane_connection': self._next_lane_connection_id,
+                'junction_group': self._next_junction_group_id,
+            }
         }
 
     @classmethod
@@ -920,23 +1287,32 @@ class Project:
         metadata = data.get('metadata', {})
         version = metadata.get('version', '0.1.0')
 
-        # Migration from v0.2.x/v0.3.0 to v0.3.1
-        if version.startswith('0.2') or version.startswith('0.1') or version == '0.3.0':
-            if version != '0.3.0':
-                logger.info(f"Migrating project from version {version} to 0.3.1...")
+        # Migration from old versions
+        if version.startswith('0.1') or version.startswith('0.2') or version.startswith('0.3'):
+            if not version.startswith('0.3'):
+                logger.info(f"Migrating project from version {version}...")
+                logger.info("Junctions will have empty connection lists.")
+                logger.info("Use 'Auto-Generate Connections' in junction dialogs to populate connections.")
             # Junction.from_dict() handles backward compatibility automatically
             # by providing empty lists for new fields (connecting_roads, lane_connections)
             # Polyline.from_dict() handles osm_node_ids (optional field, defaults to None)
-            # Update metadata version
-            metadata['version'] = '0.3.1'
+            # UUID→integer ID migration is handled by _migrate_uuid_ids() after construction
+            metadata['version'] = '0.4.0'
             data['metadata'] = metadata
-            if version != '0.3.0':
-                logger.info("Migration complete. Junctions will have empty connection lists.")
-                logger.info("Use 'Auto-Generate Connections' in junction dialogs to populate connections.")
 
         image_path = data.get('image_path')
         if image_path:
             image_path = Path(image_path)
+
+        # Build opendrive_id lookup from raw data before deserialization.
+        # Old .orbit files may have opendrive_id fields that we want to prefer during migration.
+        odr_id_lookup: Dict[str, str] = {}
+        for collection_key in ('polylines', 'roads', 'junctions', 'signals', 'objects', 'parking_spaces'):
+            for item_data in data.get(collection_key, []):
+                item_id = item_data.get('id', '')
+                odr_id = item_data.get('opendrive_id')
+                if item_id and odr_id:
+                    odr_id_lookup[item_id] = odr_id
 
         polylines = [Polyline.from_dict(p) for p in data.get('polylines', [])]
         roads = [Road.from_dict(r) for r in data.get('roads', [])]
@@ -947,7 +1323,7 @@ class Project:
         parking_spaces = [ParkingSpace.from_dict(p) for p in data.get('parking_spaces', [])]
         control_points = [ControlPoint.from_dict(cp) for cp in data.get('control_points', [])]
 
-        return cls(
+        project = cls(
             image_path=image_path,
             polylines=polylines,
             roads=roads,
@@ -979,6 +1355,26 @@ class Project:
             metadata=data.get('metadata', {})
         )
 
+        # Migrate UUID-based IDs to sequential integers if needed
+        project._migrate_uuid_ids(odr_id_lookup)
+
+        # Restore ID counters from saved data, then sync to ensure correctness
+        id_counters = data.get('id_counters', {})
+        if id_counters:
+            project._next_polyline_id = id_counters.get('polyline', 1)
+            project._next_road_id = id_counters.get('road', 1)
+            project._next_junction_id = id_counters.get('junction', 1)
+            project._next_signal_id = id_counters.get('signal', 1)
+            project._next_object_id = id_counters.get('object', 1)
+            project._next_parking_id = id_counters.get('parking', 1)
+            project._next_connecting_road_id = id_counters.get('connecting_road', 1)
+            project._next_lane_connection_id = id_counters.get('lane_connection', 1)
+            project._next_junction_group_id = id_counters.get('junction_group', 1)
+        # Always sync to ensure counters are >= max existing ID + 1
+        project._sync_id_counters()
+
+        return project
+
     def save(self, file_path: Path) -> None:
         """Save project to .orbit file."""
         file_path = Path(file_path)
@@ -1000,20 +1396,31 @@ class Project:
         return project
 
     def clear(self) -> None:
-        """Clear all project data."""
+        """Clear all project data and reset ID counters."""
         self.polylines.clear()
         self.roads.clear()
         self.junctions.clear()
+        self.junction_groups.clear()
         self.signals.clear()
         self.objects.clear()
         self.parking_spaces.clear()
         self.control_points.clear()
         self.image_path = None
         self.metadata = {
-            'version': '0.3.1',
+            'version': '0.4.0',
             'created': datetime.now().isoformat(),
             'modified': datetime.now().isoformat()
         }
+        # Reset all ID counters
+        self._next_polyline_id = 1
+        self._next_road_id = 1
+        self._next_junction_id = 1
+        self._next_signal_id = 1
+        self._next_object_id = 1
+        self._next_parking_id = 1
+        self._next_connecting_road_id = 1
+        self._next_lane_connection_id = 1
+        self._next_junction_group_id = 1
 
     def clear_cross_junction_road_links(self) -> int:
         """

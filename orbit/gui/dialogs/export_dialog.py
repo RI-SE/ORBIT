@@ -17,6 +17,7 @@ from PyQt6.QtGui import QFont
 
 from orbit.models import Project
 from orbit.export import CoordinateTransformer, create_transformer, export_to_opendrive, validate_opendrive_file
+from orbit.export.reference_validator import validate_references
 from .base_dialog import BaseDialog
 from ..utils.message_helpers import show_error, show_warning, show_info
 
@@ -334,6 +335,26 @@ class ExportDialog(BaseDialog):
             )
 
             if success:
+                # Check for dangling references
+                ref_warnings = validate_references(self.project)
+                ref_msg = ""
+                if ref_warnings:
+                    print(f"\n=== Reference Validation Warnings ({len(ref_warnings)}) ===")
+                    for w in ref_warnings:
+                        print(f"  {w}")
+                    print("=" * 50)
+                    ref_text = "\n".join(ref_warnings[:10])
+                    if len(ref_warnings) > 10:
+                        ref_text += f"\n... and {len(ref_warnings) - 10} more"
+                    show_warning(
+                        self,
+                        f"Dangling references detected:\n\n{ref_text}",
+                        "Reference Warnings"
+                    )
+                    ref_msg = f"\n\nReference check: {len(ref_warnings)} warning(s)"
+                else:
+                    ref_msg = "\n\nReference check: Passed"
+
                 # Validate against schema if path was provided
                 validation_msg = ""
                 if self.xodr_schema_path:
@@ -362,7 +383,7 @@ class ExportDialog(BaseDialog):
 
                 show_info(self, f"OpenDrive file exported successfully to:\n{self.output_path}\n\n"
                     f"Roads: {len(self.project.roads)}\n"
-                    f"Junctions: {len(self.project.junctions)}{validation_msg}", "Export Successful")
+                    f"Junctions: {len(self.project.junctions)}{ref_msg}{validation_msg}", "Export Successful")
                 self.accept()
             else:
                 show_error(self, "Failed to export OpenDrive file. Check console for errors.", "Export Failed")

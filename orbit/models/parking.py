@@ -7,7 +7,6 @@ Supports both point-based (single space) and polygon-based (lot outline) represe
 
 from enum import Enum
 from typing import Optional, Tuple, List, Dict, Any
-import uuid
 
 
 class ParkingAccess(Enum):
@@ -55,7 +54,7 @@ class ParkingSpace:
     - geographic coordinates (geo_position/geo_points fields) - source of truth for imports
 
     Attributes:
-        id: Unique identifier (UUID)
+        id: Unique identifier
         position: (x, y) pixel coordinates on the map
         geo_position: (lon, lat) geographic coordinates (source of truth)
         access: ParkingAccess type defining who can use the space
@@ -69,7 +68,6 @@ class ParkingSpace:
         z_offset: Height above ground in meters
         s_position: Position along road centerline (s-coordinate) in pixels
         t_offset: Lateral offset from road in pixels
-        opendrive_id: OpenDRIVE object ID for round-trip consistency
         capacity: Number of parking spaces (for lots)
         points: List of (x, y) pixel coordinates for polygon outline
         geo_points: List of (lon, lat) geographic coordinates for polygon outline
@@ -84,7 +82,7 @@ class ParkingSpace:
         road_id: Optional[str] = None,
         geo_position: Optional[Tuple[float, float]] = None
     ):
-        self.id = parking_id or str(uuid.uuid4())
+        self.id = parking_id or ""
         self.position = position
         self.geo_position = geo_position  # (lon, lat) - source of truth
 
@@ -103,9 +101,6 @@ class ParkingSpace:
         # Position relative to road
         self.s_position: Optional[float] = None  # pixels along road
         self.t_offset: Optional[float] = None    # pixels from centerline
-
-        # Round-trip support
-        self.opendrive_id: Optional[str] = None
 
         # For parking lots (polygon outline)
         self.capacity: Optional[int] = None
@@ -211,8 +206,6 @@ class ParkingSpace:
             data['geo_points'] = [list(p) for p in self.geo_points]
 
         # Optional fields
-        if self.opendrive_id is not None:
-            data['opendrive_id'] = self.opendrive_id
         if self.capacity is not None:
             data['capacity'] = self.capacity
 
@@ -246,7 +239,6 @@ class ParkingSpace:
         space.z_offset = data.get('z_offset', 0.0)
         space.s_position = data.get('s_position')
         space.t_offset = data.get('t_offset')
-        space.opendrive_id = data.get('opendrive_id')
         space.capacity = data.get('capacity')
 
         # Load polygon points

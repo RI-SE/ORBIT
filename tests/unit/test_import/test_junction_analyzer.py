@@ -512,20 +512,20 @@ class TestAnalyzeJunctionGeometry:
         junction.center_point = (100.0, 100.0)
 
         # Create road 1 ending at junction
-        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1 = Polyline(id="1", line_type=LineType.CENTERLINE)
         poly1.add_point(0.0, 100.0)
         poly1.add_point(50.0, 100.0)
         poly1.add_point(100.0, 100.0)  # Ends at junction
 
-        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road1 = Road(id="1", name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
 
         # Create road 2 starting at junction
-        poly2 = Polyline(line_type=LineType.CENTERLINE)
+        poly2 = Polyline(id="2", line_type=LineType.CENTERLINE)
         poly2.add_point(100.0, 100.0)  # Starts at junction
         poly2.add_point(150.0, 100.0)
         poly2.add_point(200.0, 100.0)
 
-        road2 = Road(name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
+        road2 = Road(id="2", name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
 
         junction.connected_road_ids = [road1.id, road2.id]
 
@@ -546,11 +546,11 @@ class TestAnalyzeJunctionGeometry:
         junction.center_point = (100.0, 100.0)
 
         # Create road with endpoint far from junction center
-        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1 = Polyline(id="1", line_type=LineType.CENTERLINE)
         poly1.add_point(0.0, 0.0)
         poly1.add_point(50.0, 0.0)
 
-        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road1 = Road(id="1", name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
         junction.connected_road_ids = [road1.id]
 
         roads_dict = {road1.id: road1}
@@ -668,8 +668,8 @@ class TestClearCrossJunctionLinks:
     def test_clear_links_between_connected_roads(self):
         """Clear predecessor/successor links between roads in junction."""
         # Create roads with links to each other
-        road1 = Road(name="Road 1", centerline_id="cl1", polyline_ids=["cl1"])
-        road2 = Road(name="Road 2", centerline_id="cl2", polyline_ids=["cl2"])
+        road1 = Road(id="1", name="Road 1", centerline_id="cl1", polyline_ids=["cl1"])
+        road2 = Road(id="2", name="Road 2", centerline_id="cl2", polyline_ids=["cl2"])
 
         road1.successor_id = road2.id
         road2.predecessor_id = road1.id
@@ -688,9 +688,9 @@ class TestClearCrossJunctionLinks:
 
     def test_preserve_external_links(self):
         """Links to roads outside junction are preserved."""
-        road1 = Road(name="Road 1", centerline_id="cl1", polyline_ids=["cl1"])
-        road2 = Road(name="Road 2", centerline_id="cl2", polyline_ids=["cl2"])
-        road3 = Road(name="Road 3", centerline_id="cl3", polyline_ids=["cl3"])
+        road1 = Road(id="1", name="Road 1", centerline_id="cl1", polyline_ids=["cl1"])
+        road2 = Road(id="2", name="Road 2", centerline_id="cl2", polyline_ids=["cl2"])
+        road3 = Road(id="3", name="Road 3", centerline_id="cl3", polyline_ids=["cl3"])
 
         # road1 -> road2 (both in junction)
         # road2 -> road3 (road3 outside junction)
@@ -744,20 +744,20 @@ class TestGenerateJunctionConnections:
         junction.center_point = (100.0, 100.0)
 
         # Create road 1 ending at junction
-        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1 = Polyline(id="1", line_type=LineType.CENTERLINE)
         poly1.add_point(0.0, 100.0)
         poly1.add_point(50.0, 100.0)
         poly1.add_point(100.0, 100.0)
 
-        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road1 = Road(id="1", name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
 
         # Create road 2 starting at junction
-        poly2 = Polyline(line_type=LineType.CENTERLINE)
+        poly2 = Polyline(id="2", line_type=LineType.CENTERLINE)
         poly2.add_point(100.0, 100.0)
         poly2.add_point(150.0, 100.0)
         poly2.add_point(200.0, 100.0)
 
-        road2 = Road(name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
+        road2 = Road(id="2", name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
 
         junction.connected_road_ids = [road1.id, road2.id]
 
@@ -1119,12 +1119,12 @@ class TestAnalyzeJunctionGeometryExtended:
         junction.center_point = (100.0, 100.0)
 
         # Road starts at junction
-        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1 = Polyline(id="1", line_type=LineType.CENTERLINE)
         poly1.add_point(100.0, 100.0)  # Starts at junction
         poly1.add_point(200.0, 100.0)
         poly1.add_point(300.0, 100.0)
 
-        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road1 = Road(id="1", name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
         junction.connected_road_ids = [road1.id]
 
         roads_dict = {road1.id: road1}
@@ -1143,12 +1143,12 @@ class TestAnalyzeJunctionGeometryExtended:
         junction.center_point = (100.0, 100.0)
 
         # Road ends at junction
-        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1 = Polyline(id="1", line_type=LineType.CENTERLINE)
         poly1.add_point(0.0, 100.0)
         poly1.add_point(50.0, 100.0)
         poly1.add_point(100.0, 100.0)  # Ends at junction
 
-        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road1 = Road(id="1", name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
         junction.connected_road_ids = [road1.id]
 
         roads_dict = {road1.id: road1}
@@ -1167,18 +1167,18 @@ class TestAnalyzeJunctionGeometryExtended:
         junction.center_point = (100.0, 100.0)
 
         # Create two roads at different distances
-        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1 = Polyline(id="1", line_type=LineType.CENTERLINE)
         poly1.add_point(0.0, 100.0)
         poly1.add_point(50.0, 100.0)
         poly1.add_point(100.0, 100.0)
 
-        poly2 = Polyline(line_type=LineType.CENTERLINE)
+        poly2 = Polyline(id="2", line_type=LineType.CENTERLINE)
         poly2.add_point(100.0, 100.0)
         poly2.add_point(100.0, 150.0)
         poly2.add_point(100.0, 200.0)
 
-        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
-        road2 = Road(name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
+        road1 = Road(id="1", name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road2 = Road(id="2", name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
 
         junction.connected_road_ids = [road1.id, road2.id]
 

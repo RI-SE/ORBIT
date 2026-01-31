@@ -658,14 +658,11 @@ class DeleteJunctionCommand(QUndoCommand):
         # Capture road junction references that will be cleared on deletion
         self._road_junction_refs = []
         if junction:
-            match_ids = {junction_id}
-            if junction.opendrive_id:
-                match_ids.add(junction.opendrive_id)
             for road in main_window.project.roads:
-                if road.predecessor_junction_id in match_ids:
+                if road.predecessor_junction_id == junction_id:
                     self._road_junction_refs.append(
                         (road.id, 'predecessor', road.predecessor_junction_id))
-                if road.successor_junction_id in match_ids:
+                if road.successor_junction_id == junction_id:
                     self._road_junction_refs.append(
                         (road.id, 'successor', road.successor_junction_id))
 

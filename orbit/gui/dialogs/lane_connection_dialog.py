@@ -304,7 +304,7 @@ class LaneConnectionDialog(BaseDialog):
 
     def add_connection(self):
         """Add a new empty connection."""
-        conn = LaneConnection()
+        conn = LaneConnection(id=self.project.next_id('lane_connection'))
         # Default to first connected roads if available
         if len(self.junction.connected_road_ids) >= 2:
             conn.from_road_id = self.junction.connected_road_ids[0]

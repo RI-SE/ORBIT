@@ -7,7 +7,6 @@ from an incoming road to an outgoing road.
 
 from typing import Dict, Any, Optional, Tuple, List
 from dataclasses import dataclass, field
-import uuid
 
 
 @dataclass
@@ -31,7 +30,7 @@ class LaneConnection:
         traffic_light_id: Optional reference to a traffic signal controlling this connection
         stop_line_offset: Optional distance of stop line from junction center
     """
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    id: str = ""
 
     # Source lane
     from_road_id: str = ""
@@ -143,7 +142,7 @@ class LaneConnection:
             New LaneConnection instance
         """
         lc = cls()
-        lc.id = data.get('id', str(uuid.uuid4()))
+        lc.id = data.get('id', '')
         lc.from_road_id = data.get('from_road_id', '')
         lc.from_lane_id = data.get('from_lane_id', -1)
         lc.to_road_id = data.get('to_road_id', '')
@@ -159,5 +158,5 @@ class LaneConnection:
 
     def __repr__(self) -> str:
         """String representation for debugging."""
-        return (f"LaneConnection(from={self.from_road_id[:8]}...:{self.from_lane_id} -> "
-                f"to={self.to_road_id[:8]}...:{self.to_lane_id}, type={self.turn_type})")
+        return (f"LaneConnection(from={self.from_road_id}:{self.from_lane_id} -> "
+                f"to={self.to_road_id}:{self.to_lane_id}, type={self.turn_type})")

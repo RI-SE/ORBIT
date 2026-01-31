@@ -6,7 +6,6 @@ Represents an intersection or junction where multiple roads connect.
 
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
-import uuid
 
 from .connecting_road import ConnectingRoad
 from .lane_connection import LaneConnection
@@ -174,7 +173,7 @@ class JunctionGroup:
         group_type: Type of junction group ('roundabout', 'complexJunction', 'highwayInterchange', 'unknown')
         junction_ids: List of junction IDs that belong to this group
     """
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    id: str = ""
     name: Optional[str] = None
     group_type: str = "unknown"  # 'roundabout', 'complexJunction', 'highwayInterchange', 'unknown'
     junction_ids: List[str] = field(default_factory=list)
@@ -202,14 +201,14 @@ class JunctionGroup:
     def from_dict(cls, data: Dict[str, Any]) -> 'JunctionGroup':
         """Create junction group from dictionary."""
         return cls(
-            id=data.get('id', str(uuid.uuid4())),
+            id=data.get('id', ''),
             name=data.get('name'),
             group_type=data.get('group_type', 'unknown'),
             junction_ids=data.get('junction_ids', [])
         )
 
     def __repr__(self) -> str:
-        return f"JunctionGroup(id={self.id[:8]}..., type='{self.group_type}', junctions={len(self.junction_ids)})"
+        return f"JunctionGroup(id={self.id}, type='{self.group_type}', junctions={len(self.junction_ids)})"
 
 
 @dataclass
@@ -264,7 +263,6 @@ class Junction:
         connected_road_ids: List of road IDs that connect at this junction
         connections: List of road-level connections (imported from OpenDRIVE)
         junction_type: Type of junction (e.g., 'default', 'virtual')
-        opendrive_id: Optional OpenDrive junction ID (for round-trip consistency)
 
         # New fields for enhanced junction support (v0.3.0+):
         connecting_roads: List of ConnectingRoad objects providing junction geometry
@@ -278,14 +276,13 @@ class Junction:
         entry_roads: Road IDs that enter the roundabout
         exit_roads: Road IDs that exit the roundabout
     """
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    id: str = ""
     name: str = "Unnamed Junction"
     center_point: Optional[Tuple[float, float]] = None
     geo_center_point: Optional[Tuple[float, float]] = None  # (lon, lat) - source of truth for imports
     connected_road_ids: List[str] = field(default_factory=list)
     connections: List[JunctionConnection] = field(default_factory=list)  # Road-level connections from OpenDRIVE
     junction_type: str = "default"  # OpenDrive junction type
-    opendrive_id: Optional[str] = None  # OpenDrive ID for round-trip import/export
 
     # New fields for enhanced junction support (v0.3.0+)
     connecting_roads: List[ConnectingRoad] = field(default_factory=list)
@@ -491,15 +488,15 @@ class Junction:
         for lc in self.lane_connections:
             is_valid, lc_errors = lc.validate_basic()
             if not is_valid:
-                errors.extend([f"Lane connection {lc.id[:8]}...: {err}" for err in lc_errors])
+                errors.extend([f"Lane connection {lc.id}: {err}" for err in lc_errors])
 
         # Check connecting road references
         for lc in self.lane_connections:
             if lc.connecting_road_id:
                 if not self.get_connecting_road_by_id(lc.connecting_road_id):
                     errors.append(
-                        f"Lane connection {lc.id[:8]}... references non-existent "
-                        f"connecting road {lc.connecting_road_id[:8]}..."
+                        f"Lane connection {lc.id} references non-existent "
+                        f"connecting road {lc.connecting_road_id}"
                     )
 
         # Check road IDs in lane connections match connected roads
@@ -507,11 +504,11 @@ class Junction:
         for lc in self.lane_connections:
             if lc.from_road_id and lc.from_road_id not in all_road_ids:
                 errors.append(
-                    f"Lane connection references unknown from_road: {lc.from_road_id[:8]}..."
+                    f"Lane connection references unknown from_road: {lc.from_road_id}"
                 )
             if lc.to_road_id and lc.to_road_id not in all_road_ids:
                 errors.append(
-                    f"Lane connection references unknown to_road: {lc.to_road_id[:8]}..."
+                    f"Lane connection references unknown to_road: {lc.to_road_id}"
                 )
 
         # Roundabout-specific validation
@@ -645,8 +642,6 @@ class Junction:
         }
 
         # Only include optional fields if set
-        if self.opendrive_id is not None:
-            data['opendrive_id'] = self.opendrive_id
         if self.roundabout_center is not None:
             data['roundabout_center'] = self.roundabout_center
         if self.roundabout_radius is not None:
@@ -719,14 +714,13 @@ class Junction:
             elevation_grid = JunctionElevationGrid.from_dict(elev_grid_data)
 
         return cls(
-            id=data.get('id', str(uuid.uuid4())),
+            id=data.get('id', ''),
             name=data.get('name', 'Unnamed Junction'),
             center_point=center_point,
             geo_center_point=geo_center_point,
             connected_road_ids=data.get('connected_road_ids', []),
             connections=connections,
             junction_type=data.get('junction_type', 'default'),
-            opendrive_id=data.get('opendrive_id'),
             # New fields (v0.3.0+) with defaults for backward compatibility
             connecting_roads=connecting_roads,
             lane_connections=lane_connections,
@@ -744,4 +738,4 @@ class Junction:
         )
 
     def __repr__(self) -> str:
-        return f"Junction(id={self.id[:8]}..., name='{self.name}', roads={len(self.connected_road_ids)})"
+        return f"Junction(id={self.id}, name='{self.name}', roads={len(self.connected_road_ids)})"

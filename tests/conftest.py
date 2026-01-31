@@ -96,6 +96,7 @@ def sample_polyline() -> Polyline:
     Forms a roughly straight line from (0,0) to (400,0).
     """
     polyline = Polyline(
+        id="100",
         line_type=LineType.LANE_BOUNDARY,
         road_mark_type=RoadMarkType.SOLID,
         color=(255, 255, 0)
@@ -113,6 +114,7 @@ def centerline_polyline() -> Polyline:
     10 points from (0,100) to (900,100) - straight horizontal line.
     """
     polyline = Polyline(
+        id="101",
         line_type=LineType.CENTERLINE,
         road_mark_type=RoadMarkType.NONE,
         color=(255, 0, 0)
@@ -126,6 +128,7 @@ def centerline_polyline() -> Polyline:
 def boundary_polyline_left() -> Polyline:
     """Create a left boundary polyline parallel to centerline."""
     polyline = Polyline(
+        id="102",
         line_type=LineType.LANE_BOUNDARY,
         road_mark_type=RoadMarkType.SOLID,
         color=(0, 255, 255)
@@ -139,6 +142,7 @@ def boundary_polyline_left() -> Polyline:
 def boundary_polyline_right() -> Polyline:
     """Create a right boundary polyline parallel to centerline."""
     polyline = Polyline(
+        id="103",
         line_type=LineType.LANE_BOUNDARY,
         road_mark_type=RoadMarkType.BROKEN,
         color=(0, 255, 255)
@@ -259,6 +263,7 @@ def sample_road(centerline_polyline: Polyline,
     - 1 lane section with 2 driving lanes
     """
     road = Road(
+        id="201",
         name="Test Road",
         road_type=RoadType.TOWN,
         centerline_id=centerline_polyline.id,
@@ -279,6 +284,7 @@ def complex_road(centerline_polyline: Polyline,
                  two_section_lane_sections: List[LaneSection]) -> Road:
     """Create a road with multiple lane sections."""
     road = Road(
+        id="202",
         name="Complex Road",
         road_type=RoadType.MOTORWAY,
         centerline_id=centerline_polyline.id,
@@ -303,6 +309,7 @@ def sample_junction() -> Junction:
     from orbit.models.junction import JunctionConnection
 
     junction = Junction(
+        id="301",
         name="Test Junction",
         junction_type="default"
     )

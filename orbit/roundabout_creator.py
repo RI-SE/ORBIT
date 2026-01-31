@@ -116,7 +116,7 @@ def create_roundabout_from_params(
     # If no approach roads, create single ring road
     if not approach_road_ids or not approach_roads:
         road, polyline = _create_single_ring_road(
-            ring_points, lane_count, lane_width, center, radius, clockwise
+            ring_points, lane_count, lane_width, center, radius, clockwise, project
         )
         created_roads.append(road)
         created_polylines.append(polyline)
@@ -167,7 +167,7 @@ def create_roundabout_from_params(
     # If fewer than 2 connections, create single ring road
     if len(connection_indices) < 2:
         road, polyline = _create_single_ring_road(
-            ring_points, lane_count, lane_width, center, radius, clockwise
+            ring_points, lane_count, lane_width, center, radius, clockwise, project
         )
         created_roads.append(road)
         created_polylines.append(polyline)
@@ -199,6 +199,7 @@ def create_roundabout_from_params(
 
         # Create polyline
         polyline = Polyline(
+            id=project.next_id('polyline'),
             points=list(segment_points),
             line_type=LineType.CENTERLINE,
             road_mark_type=RoadMarkType.SOLID,
@@ -207,6 +208,7 @@ def create_roundabout_from_params(
 
         # Create road
         road = Road(
+            id=project.next_id('road'),
             name=f"Roundabout Ring {i + 1}",
             road_type=RoadType.TOWN,
             centerline_id=polyline.id
@@ -249,6 +251,7 @@ def create_roundabout_from_params(
 
         # Create junction
         junction = Junction(
+            id=project.next_id('junction'),
             name=f"Roundabout Entry {i + 1}",
             center_point=position,
             connected_road_ids=[incoming_ring.id, outgoing_ring.id, conn['road_id']]
@@ -269,7 +272,7 @@ def create_roundabout_from_params(
             junction, incoming_ring, outgoing_ring,
             ring_segments[(i - 1) % len(ring_segments)][1],
             ring_segments[i][1],
-            center, clockwise, lane_count, lane_width
+            center, clockwise, lane_count, lane_width, project
         )
 
         created_junctions.append(junction)
@@ -293,13 +296,15 @@ def _create_single_ring_road(
     lane_width: float,
     center: Tuple[float, float],
     radius: float,
-    clockwise: bool
+    clockwise: bool,
+    project: Optional[Project] = None
 ) -> Tuple[Road, Polyline]:
     """Create a single closed ring road (no connections)."""
     # Close the ring
     closed_points = list(ring_points) + [ring_points[0]]
 
     polyline = Polyline(
+        id=project.next_id('polyline') if project else "",
         points=closed_points,
         line_type=LineType.CENTERLINE,
         road_mark_type=RoadMarkType.SOLID,
@@ -308,6 +313,7 @@ def _create_single_ring_road(
     )
 
     road = Road(
+        id=project.next_id('road') if project else "",
         name="Roundabout",
         road_type=RoadType.TOWN,
         centerline_id=polyline.id
@@ -361,7 +367,8 @@ def _create_junction_connectors(
     center: Tuple[float, float],
     clockwise: bool,
     lane_count: int,
-    lane_width: float
+    lane_width: float,
+    project: Optional[Project] = None
 ) -> None:
     """Create connecting roads for a roundabout junction."""
     # Through connector (ring to ring)
@@ -374,6 +381,7 @@ def _create_junction_connectors(
         )
 
         through_connector = ConnectingRoad(
+            id=project.next_id('connecting_road') if project else "",
             path=through_path,
             lane_count_left=0,
             lane_count_right=lane_count,
@@ -389,6 +397,7 @@ def _create_junction_connectors(
         # Lane connections
         for i in range(1, lane_count + 1):
             lc = LaneConnection(
+                id=project.next_id('lane_connection') if project else "",
                 from_road_id=incoming_ring.id,
                 from_lane_id=-i,
                 to_road_id=outgoing_ring.id,

@@ -28,6 +28,7 @@ from .signal_builder import SignalBuilder
 from .object_builder import ObjectBuilder
 from .parking_builder import ParkingBuilder
 from .georef_export import export_georeferencing, build_georef_data
+from .reference_validator import validate_references
 
 __all__ = [
     'CoordinateTransformer',
@@ -47,4 +48,5 @@ __all__ = [
     'ParkingBuilder',
     'export_georeferencing',
     'build_georef_data',
+    'validate_references',
 ]

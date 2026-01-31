@@ -6,7 +6,6 @@ Represents physical objects placed on the map with position, type, and propertie
 
 from enum import Enum
 from typing import Optional, Tuple, List, Dict, Any
-import uuid
 
 from orbit.utils.enum_formatting import format_enum_name
 
@@ -156,7 +155,6 @@ class RoadObject:
         s_position: Position along road centerline (s-coordinate) in pixels
         t_offset: Lateral offset from road in pixels
         validity_length: Length along road (for guardrails) in pixels, or None
-        opendrive_id: Optional OpenDrive object ID (for round-trip consistency)
         pitch: Pitch angle in radians (OpenDRIVE attribute)
         roll: Roll angle in radians (OpenDRIVE attribute)
     """
@@ -169,7 +167,7 @@ class RoadObject:
         road_id: Optional[str] = None,
         geo_position: Optional[Tuple[float, float]] = None
     ):
-        self.id = object_id or str(uuid.uuid4())
+        self.id = object_id or ""
         self.position = position
         self.geo_position = geo_position  # (lon, lat) - source of truth for point objects
         self.points: List[Tuple[float, float]] = []  # For guardrails
@@ -186,7 +184,6 @@ class RoadObject:
         self.s_position: Optional[float] = None
         self.t_offset: Optional[float] = None
         self.validity_length: Optional[float] = None  # For guardrails
-        self.opendrive_id: Optional[str] = None  # OpenDrive ID for round-trip import/export
         # OpenDRIVE orientation angles for round-trip preservation
         self.pitch: float = 0.0  # Pitch angle in radians
         self.roll: float = 0.0  # Roll angle in radians
@@ -270,8 +267,6 @@ class RoadObject:
         if self.geo_points is not None:
             data['geo_points'] = [list(p) for p in self.geo_points]
         # Only include optional fields if set (backward compatibility)
-        if self.opendrive_id is not None:
-            data['opendrive_id'] = self.opendrive_id
         if self.pitch != 0.0:
             data['pitch'] = self.pitch
         if self.roll != 0.0:
@@ -312,7 +307,6 @@ class RoadObject:
         obj.s_position = data.get('s_position')
         obj.t_offset = data.get('t_offset')
         obj.validity_length = data.get('validity_length')
-        obj.opendrive_id = data.get('opendrive_id')
         # OpenDRIVE orientation angles
         obj.pitch = data.get('pitch', 0.0)
         obj.roll = data.get('roll', 0.0)

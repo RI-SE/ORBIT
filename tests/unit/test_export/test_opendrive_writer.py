@@ -104,15 +104,15 @@ class TestOpenDriveWriterInit:
     def test_init_builds_lookup_maps(self, mock_transformer):
         """Initialize builds lookup maps for polylines, roads, junctions."""
         project = Project()
-        polyline = Polyline()
+        polyline = Polyline(id="1")
         polyline.points = [(0, 0), (100, 100)]
         project.polylines.append(polyline)
 
-        road = Road()
+        road = Road(id="1")
         road.name = "Test Road"
         project.roads.append(road)
 
-        junction = Junction()
+        junction = Junction(id="1")
         project.junctions.append(junction)
 
         writer = OpenDriveWriter(
@@ -151,12 +151,12 @@ class TestOpenDriveWriterWrite:
         """Create project with a simple valid road."""
         project = Project()
 
-        centerline = Polyline()
+        centerline = Polyline(id="1")
         centerline.line_type = LineType.CENTERLINE
         centerline.points = [(0, 0), (100, 0), (200, 0)]
         project.polylines.append(centerline)
 
-        road = Road()
+        road = Road(id="1")
         road.name = "Test Road"
         road.centerline_id = centerline.id
         road.polyline_ids = [centerline.id]
@@ -234,12 +234,12 @@ class TestOpenDriveWriterWriteAndValidate:
     @pytest.fixture
     def simple_project(self):
         project = Project()
-        centerline = Polyline()
+        centerline = Polyline(id="1")
         centerline.line_type = LineType.CENTERLINE
         centerline.points = [(0, 0), (100, 0)]
         project.polylines.append(centerline)
 
-        road = Road()
+        road = Road(id="1")
         road.centerline_id = centerline.id
         project.roads.append(road)
         return project
@@ -424,7 +424,7 @@ class TestCalculateBounds:
     def test_calculate_bounds_with_polylines(self, mock_transformer):
         """Calculate bounds from polyline points."""
         project = Project()
-        polyline = Polyline()
+        polyline = Polyline(id="1")
         polyline.points = [(10, 20), (30, 40), (50, 60)]
         project.polylines.append(polyline)
 
@@ -563,7 +563,7 @@ class TestCreateRoad:
         """Create project with centerline polyline."""
         project = Project()
 
-        centerline = Polyline()
+        centerline = Polyline(id="1")
         centerline.line_type = LineType.CENTERLINE
         centerline.points = [(0, 0), (100, 0), (200, 0)]
         project.polylines.append(centerline)
@@ -574,7 +574,7 @@ class TestCreateRoad:
         """Create basic road element."""
         project, centerline = project_with_centerline
 
-        road = Road()
+        road = Road(id="1")
         road.name = "Test Road"
         road.centerline_id = centerline.id
         project.roads.append(road)
@@ -590,7 +590,7 @@ class TestCreateRoad:
     def test_create_road_no_centerline(self, mock_transformer):
         """Road without centerline returns None."""
         project = Project()
-        road = Road()
+        road = Road(id="1")
         project.roads.append(road)
 
         writer = OpenDriveWriter(project, mock_transformer)
@@ -602,7 +602,7 @@ class TestCreateRoad:
         """Create road with type and speed limit."""
         project, centerline = project_with_centerline
 
-        road = Road()
+        road = Road(id="2")
         road.name = "Highway"
         road.road_type = RoadType.MOTORWAY
         road.speed_limit = 110  # km/h
@@ -625,7 +625,7 @@ class TestCreateRoad:
         """Create road with custom elevation profile."""
         project, centerline = project_with_centerline
 
-        road = Road()
+        road = Road(id="3")
         road.name = "Hill Road"
         road.centerline_id = centerline.id
         road.elevation_profile = [
@@ -647,7 +647,7 @@ class TestCreateRoad:
         """Create road with superelevation profile."""
         project, centerline = project_with_centerline
 
-        road = Road()
+        road = Road(id="4")
         road.name = "Curved Road"
         road.centerline_id = centerline.id
         road.superelevation_profile = [
@@ -674,7 +674,7 @@ class TestCreateJunction:
     def test_create_junction_basic(self, mock_transformer):
         """Create basic junction element."""
         project = Project()
-        junction = Junction()
+        junction = Junction(id="1")
         junction.name = "Test Junction"
         junction.connected_road_ids = ['road1', 'road2']
         project.junctions.append(junction)
@@ -690,7 +690,7 @@ class TestCreateJunction:
     def test_create_junction_too_few_roads(self, mock_transformer):
         """Junction with less than 2 roads returns None."""
         project = Project()
-        junction = Junction()
+        junction = Junction(id="1")
         junction.connected_road_ids = ['road1']
         project.junctions.append(junction)
 
@@ -702,7 +702,7 @@ class TestCreateJunction:
     def test_create_junction_virtual(self, mock_transformer):
         """Virtual junction has no connections."""
         project = Project()
-        junction = Junction()
+        junction = Junction(id="1")
         junction.junction_type = "virtual"
         junction.connected_road_ids = ['road1', 'road2']
         project.junctions.append(junction)
@@ -718,7 +718,7 @@ class TestCreateJunction:
     def test_create_junction_with_lane_connections(self, mock_transformer):
         """Junction with lane connections creates connection elements."""
         project = Project()
-        junction = Junction()
+        junction = Junction(id="1")
         junction.name = "Intersection"
         junction.connected_road_ids = ['road1', 'road2']
 
@@ -765,7 +765,7 @@ class TestCreateJunctionGroup:
         project = Project()
 
         # Add a junction to map IDs
-        junction = Junction()
+        junction = Junction(id="1")
         project.junctions.append(junction)
 
         # Create junction group
@@ -885,12 +885,12 @@ class TestExportToOpendrive:
     @pytest.fixture
     def simple_project(self):
         project = Project()
-        centerline = Polyline()
+        centerline = Polyline(id="1")
         centerline.line_type = LineType.CENTERLINE
         centerline.points = [(0, 0), (100, 0)]
         project.polylines.append(centerline)
 
-        road = Road()
+        road = Road(id="1")
         road.centerline_id = centerline.id
         project.roads.append(road)
         return project
@@ -978,18 +978,18 @@ class TestFindJunctionForRoadEndpoint:
         project = Project()
 
         # Create centerline
-        centerline = Polyline()
+        centerline = Polyline(id="1")
         centerline.line_type = LineType.CENTERLINE
         centerline.points = [(100, 100), (200, 100), (300, 100)]
         project.polylines.append(centerline)
 
         # Create road
-        road = Road()
+        road = Road(id="1")
         road.centerline_id = centerline.id
         project.roads.append(road)
 
         # Create junction at start of road
-        junction = Junction()
+        junction = Junction(id="1")
         junction.center_point = (100, 100)  # At road start
         junction.connected_road_ids = [road.id]
         project.junctions.append(junction)
@@ -1006,18 +1006,18 @@ class TestFindJunctionForRoadEndpoint:
         project = Project()
 
         # Create centerline
-        centerline = Polyline()
+        centerline = Polyline(id="1")
         centerline.line_type = LineType.CENTERLINE
         centerline.points = [(100, 100), (200, 100), (300, 100)]
         project.polylines.append(centerline)
 
         # Create road
-        road = Road()
+        road = Road(id="1")
         road.centerline_id = centerline.id
         project.roads.append(road)
 
         # Create junction at end of road
-        junction = Junction()
+        junction = Junction(id="1")
         junction.center_point = (300, 100)  # At road end
         junction.connected_road_ids = [road.id]
         project.junctions.append(junction)
@@ -1034,18 +1034,18 @@ class TestFindJunctionForRoadEndpoint:
         project = Project()
 
         # Create centerline
-        centerline = Polyline()
+        centerline = Polyline(id="1")
         centerline.line_type = LineType.CENTERLINE
         centerline.points = [(100, 100), (200, 100), (300, 100)]
         project.polylines.append(centerline)
 
         # Create road
-        road = Road()
+        road = Road(id="1")
         road.centerline_id = centerline.id
         project.roads.append(road)
 
         # Create junction far from road
-        junction = Junction()
+        junction = Junction(id="1")
         junction.center_point = (500, 500)  # Far from road
         junction.connected_road_ids = [road.id]
         project.junctions.append(junction)

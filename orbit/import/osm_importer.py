@@ -259,6 +259,9 @@ class OSMImporter:
         # Roads in junctions should not have predecessor/successor pointing to each other
         self.project.clear_cross_junction_road_links()
 
+        # Assign IDs to any entities created without explicit IDs
+        self.project.assign_missing_ids()
+
         # Mark success if we imported anything
         result.success = (
             result.roads_imported > 0 or
@@ -359,6 +362,9 @@ class OSMImporter:
         # Step 7: Clear stale cross-junction road links
         # Roads in junctions should not have predecessor/successor pointing to each other
         self.project.clear_cross_junction_road_links()
+
+        # Assign IDs to any entities created without explicit IDs
+        self.project.assign_missing_ids()
 
         # Mark success if we imported anything
         result.success = (

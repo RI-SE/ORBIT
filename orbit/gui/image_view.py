@@ -1445,7 +1445,7 @@ class ImageView(QGraphicsView):
 
         if enabled:
             # Start a new polyline
-            self.current_polyline = Polyline()
+            self.current_polyline = Polyline(id=self.project.next_id('polyline') if self.project else "")
             self.current_polyline_item = PolylineGraphicsItem(self.current_polyline, self.scene)
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
         else:
@@ -1470,7 +1470,7 @@ class ImageView(QGraphicsView):
             self.polyline_added.emit(self.current_polyline)
 
             # Start a new polyline
-            self.current_polyline = Polyline()
+            self.current_polyline = Polyline(id=self.project.next_id('polyline') if self.project else "")
             self.current_polyline_item = PolylineGraphicsItem(self.current_polyline, self.scene)
 
     def set_junction_mode(self, enabled: bool):
@@ -2899,7 +2899,7 @@ class ImageView(QGraphicsView):
 
             elif self.junction_mode:
                 # Create junction at click position
-                junction = Junction()
+                junction = Junction(id=self.project.next_id('junction') if self.project else "")
                 junction.center_point = (scene_pos.x(), scene_pos.y())
                 self.junction_added.emit(junction)
 
@@ -3392,6 +3392,7 @@ class ImageView(QGraphicsView):
             if len(self.guardrail_points) >= 2:
                 # Create guardrail object with the points
                 obj = RoadObject(
+                    object_id=self.project.next_id('object') if self.project else "",
                     position=self.guardrail_points[0],
                     object_type=ObjectType.GUARDRAIL
                 )

@@ -7,7 +7,6 @@ Represents a road composed of one or more polylines with associated properties.
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
-import uuid
 import math
 
 from .lane import Lane, LaneType
@@ -69,10 +68,9 @@ class Road:
         predecessor_contact: Contact point on predecessor ("start" or "end")
         successor_id: ID of road that follows this one (optional)
         successor_contact: Contact point on successor ("start" or "end")
-        opendrive_id: Optional OpenDrive road ID (for round-trip consistency)
         elevation_profile: List of (s, a, b, c, d) tuples for elevation polynomial
     """
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    id: str = ""
     name: str = "Unnamed Road"
     polyline_ids: List[str] = field(default_factory=list)
     centerline_id: Optional[str] = None  # Required for export
@@ -87,7 +85,6 @@ class Road:
     successor_contact: str = "start"  # "start" or "end"
     predecessor_junction_id: Optional[str] = None  # Junction ID if predecessor is a junction
     successor_junction_id: Optional[str] = None  # Junction ID if successor is a junction
-    opendrive_id: Optional[str] = None  # OpenDrive ID for round-trip import/export
     # Elevation profile: list of (s, a, b, c, d) tuples for polynomial elevation(ds) = a + b*ds + c*ds² + d*ds³
     elevation_profile: List[Tuple[float, float, float, float, float]] = field(default_factory=list)
     # Superelevation (lateral profile): list of (s, a, b, c, d) tuples for polynomial superelevation(ds) = a + b*ds + c*ds² + d*ds³
@@ -562,8 +559,6 @@ class Road:
             data['predecessor_junction_id'] = self.predecessor_junction_id
         if self.successor_junction_id is not None:
             data['successor_junction_id'] = self.successor_junction_id
-        if self.opendrive_id is not None:
-            data['opendrive_id'] = self.opendrive_id
         if self.elevation_profile:
             data['elevation_profile'] = [list(elev) for elev in self.elevation_profile]
         if self.superelevation_profile:
@@ -599,7 +594,7 @@ class Road:
         legacy_lanes = [Lane.from_dict(lane_data) for lane_data in legacy_lanes_data]
 
         road = cls(
-            id=data.get('id', str(uuid.uuid4())),
+            id=data.get('id', ''),
             name=data.get('name', 'Unnamed Road'),
             polyline_ids=data.get('polyline_ids', []),
             centerline_id=data.get('centerline_id'),
@@ -614,7 +609,6 @@ class Road:
             successor_contact=data.get('successor_contact', 'start'),
             predecessor_junction_id=data.get('predecessor_junction_id'),
             successor_junction_id=data.get('successor_junction_id'),
-            opendrive_id=data.get('opendrive_id'),
             elevation_profile=[tuple(e) for e in data.get('elevation_profile', [])],
             superelevation_profile=[tuple(e) for e in data.get('superelevation_profile', [])],
             lane_offset=[tuple(e) for e in data.get('lane_offset', [])],
@@ -639,4 +633,4 @@ class Road:
         return road
 
     def __repr__(self) -> str:
-        return f"Road(id={self.id[:8]}..., name='{self.name}', polylines={len(self.polyline_ids)})"
+        return f"Road(id={self.id}, name='{self.name}', polylines={len(self.polyline_ids)})"

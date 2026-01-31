@@ -27,7 +27,7 @@ class RoadPropertiesDialog(QDialog):
     def __init__(self, road: Optional[Road] = None, project: Optional[Project] = None, parent=None, verbose: bool = False):
         super().__init__(parent)
 
-        self.road = road if road else Road()
+        self.road = road if road else Road(id=project.next_id('road') if project else "")
         self.project = project
         self.measured_widths = None  # Will store suggested widths
         self.verbose = verbose  # Debug flag for verbose output

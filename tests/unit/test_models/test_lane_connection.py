@@ -16,8 +16,7 @@ class TestLaneConnectionCreation:
         """Test creating lane connection with defaults."""
         lc = LaneConnection()
 
-        assert lc.id is not None
-        assert len(lc.id) > 0
+        assert lc.id == ""
         assert lc.from_road_id == ""
         assert lc.from_lane_id == -1
         assert lc.to_road_id == ""

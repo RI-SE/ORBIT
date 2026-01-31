@@ -6,7 +6,6 @@ Represents traffic signals placed on the map with position, type, and properties
 
 from enum import Enum, auto
 from typing import Optional, Tuple, List
-import uuid
 
 from orbit.utils.enum_formatting import format_enum_name
 
@@ -128,7 +127,6 @@ class Signal:
         sign_height: Physical height of the sign in meters (OpenDRIVE height)
         s_position: Position along road centerline (s-coordinate) in pixels
         validity_range: (s_start, s_end) range in pixels, or None for point signal
-        opendrive_id: Optional OpenDrive signal ID (for round-trip consistency)
         dynamic: OpenDRIVE dynamic flag ("yes" for traffic lights, "no" for static signs)
         subtype: OpenDRIVE subtype code (preserved for round-trip)
         country: Country code (e.g., "SE" for Sweden)
@@ -151,7 +149,7 @@ class Signal:
         sign_id: Optional[str] = None,
         geo_position: Optional[Tuple[float, float]] = None
     ):
-        self.id = signal_id or str(uuid.uuid4())
+        self.id = signal_id or ""
         self.position = position
         self.geo_position = geo_position  # (lon, lat) - source of truth for imports
         self.type = signal_type
@@ -168,7 +166,6 @@ class Signal:
         self.sign_height = default_height
         self.s_position = None  # Position along road
         self.validity_range = None  # (s_start, s_end) or None
-        self.opendrive_id = None  # OpenDrive ID for round-trip import/export
         # OpenDRIVE attributes for round-trip preservation
         self.dynamic = "no"  # "yes" for traffic lights, "no" for static signs
         self.subtype = ""  # OpenDRIVE subtype code
@@ -239,8 +236,6 @@ class Signal:
         if self.geo_position is not None:
             data['geo_position'] = list(self.geo_position)
         # Only include optional fields if set (backward compatibility)
-        if self.opendrive_id is not None:
-            data['opendrive_id'] = self.opendrive_id
         if self.dynamic != "no":
             data['dynamic'] = self.dynamic
         if self.subtype:
@@ -347,7 +342,6 @@ class Signal:
 
         signal.s_position = data.get('s_position')
         signal.validity_range = tuple(data['validity_range']) if data.get('validity_range') else None
-        signal.opendrive_id = data.get('opendrive_id')
         # OpenDRIVE round-trip attributes
         signal.dynamic = data.get('dynamic', 'no')
         signal.subtype = data.get('subtype', '')

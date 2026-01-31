@@ -7,7 +7,6 @@ Represents a polyline drawn on the image with pixel coordinates.
 from typing import List, Tuple, Dict, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
-import uuid
 
 
 class LineType(Enum):
@@ -118,11 +117,10 @@ class Polyline:
         road_mark_type: Road marking type (for OpenDRIVE export)
         elevations: Optional elevation values in meters for each point (from OpenDrive import)
         s_offsets: Optional s-coordinate values along polyline for each point (for display)
-        opendrive_id: Optional OpenDrive road/element ID (for round-trip consistency)
         osm_node_ids: Optional OSM node IDs for each point (from OSM import, enables road splitting)
         geometry_segments: Preserved OpenDRIVE geometry metadata for round-trip fidelity
     """
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    id: str = ""
     points: List[Tuple[float, float]] = field(default_factory=list)
     geo_points: Optional[List[Tuple[float, float]]] = None  # (lon, lat) pairs - source of truth
     color: Tuple[int, int, int] = (0, 255, 255)  # Default cyan for lane boundaries
@@ -131,7 +129,6 @@ class Polyline:
     road_mark_type: RoadMarkType = RoadMarkType.SOLID  # Default to solid
     elevations: Optional[List[float]] = None  # Elevation in meters for each point (if available)
     s_offsets: Optional[List[float]] = None  # S-coordinate for each point (if available)
-    opendrive_id: Optional[str] = None  # OpenDrive ID for round-trip import/export
     osm_node_ids: Optional[List[Optional[int]]] = None  # OSM node IDs for each point (from OSM import)
     geometry_segments: Optional[List[GeometrySegment]] = None  # Preserved geometry from OpenDRIVE import
 
@@ -229,8 +226,6 @@ class Polyline:
             data['elevations'] = self.elevations
         if self.s_offsets is not None:
             data['s_offsets'] = self.s_offsets
-        if self.opendrive_id is not None:
-            data['opendrive_id'] = self.opendrive_id
         if self.osm_node_ids is not None:
             data['osm_node_ids'] = self.osm_node_ids
         if self.geometry_segments is not None:
@@ -265,7 +260,7 @@ class Polyline:
             geometry_segments = [GeometrySegment.from_dict(seg) for seg in geometry_segments_raw]
 
         return cls(
-            id=data.get('id', str(uuid.uuid4())),
+            id=data.get('id', ''),
             points=[tuple(p) for p in data.get('points', [])],
             geo_points=geo_points,
             color=tuple(data.get('color', (0, 255, 255))),
@@ -274,10 +269,9 @@ class Polyline:
             road_mark_type=road_mark_type,
             elevations=data.get('elevations'),
             s_offsets=data.get('s_offsets'),
-            opendrive_id=data.get('opendrive_id'),
             osm_node_ids=data.get('osm_node_ids'),
             geometry_segments=geometry_segments
         )
 
     def __repr__(self) -> str:
-        return f"Polyline(id={self.id[:8]}..., points={len(self.points)})"
+        return f"Polyline(id={self.id}, points={len(self.points)})"

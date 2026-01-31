@@ -111,7 +111,7 @@ class TestParkingSpaceConstruction:
     def test_default_construction(self):
         """Test default construction."""
         space = ParkingSpace()
-        assert space.id is not None
+        assert space.id == ""
         assert space.position == (0.0, 0.0)
         assert space.access == ParkingAccess.STANDARD
         assert space.parking_type == ParkingType.SURFACE
@@ -157,7 +157,6 @@ class TestParkingSpaceConstruction:
         assert space.z_offset == 0.0
         assert space.s_position is None
         assert space.t_offset is None
-        assert space.opendrive_id is None
         assert space.capacity is None
         assert space.points == []
         assert space.geo_points is None
@@ -417,15 +416,6 @@ class TestParkingSpaceSerialization:
 
         assert data['geo_points'] == [[12.0, 57.0], [12.001, 57.0]]
 
-    def test_serialization_with_opendrive_id(self):
-        """Test serialization includes opendrive_id when set."""
-        space = ParkingSpace()
-        space.opendrive_id = "od-parking-1"
-
-        data = space.to_dict()
-
-        assert data['opendrive_id'] == "od-parking-1"
-
     def test_serialization_with_capacity(self):
         """Test serialization includes capacity when set."""
         space = ParkingSpace()
@@ -441,7 +431,6 @@ class TestParkingSpaceSerialization:
 
         data = space.to_dict()
 
-        assert 'opendrive_id' not in data
         assert 'capacity' not in data
         assert 'geo_position' not in data
 
@@ -544,13 +533,11 @@ class TestParkingSpaceDeserialization:
             'id': 'test-1',
             'access': 'standard',
             'parking_type': 'surface',
-            'opendrive_id': 'od-123',
             'capacity': 25
         }
 
         space = ParkingSpace.from_dict(data)
 
-        assert space.opendrive_id == "od-123"
         assert space.capacity == 25
 
     def test_deserialization_uses_defaults(self):
@@ -591,7 +578,6 @@ class TestParkingSpaceRoundTrip:
         original.z_offset = 0.5
         original.s_position = 100.0
         original.t_offset = -3.0
-        original.opendrive_id = "od-456"
         original.capacity = 10
 
         # Round trip
@@ -612,7 +598,6 @@ class TestParkingSpaceRoundTrip:
         assert restored.z_offset == original.z_offset
         assert restored.s_position == original.s_position
         assert restored.t_offset == original.t_offset
-        assert restored.opendrive_id == original.opendrive_id
         assert restored.capacity == original.capacity
 
     def test_polygon_round_trip(self):

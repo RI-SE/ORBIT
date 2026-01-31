@@ -35,7 +35,7 @@ class TestProjectCreation:
         assert 'version' in empty_project.metadata
         assert 'created' in empty_project.metadata
         assert 'modified' in empty_project.metadata
-        assert empty_project.metadata['version'] == '0.3.1'
+        assert empty_project.metadata['version'] == '0.4.0'
 
     def test_project_with_initial_data(self, sample_project: Project):
         """Test creating project with initial data."""
@@ -308,6 +308,11 @@ class TestProjectSaveLoad:
         del data1['metadata']['modified']
         del data2['metadata']['modified']
 
+        # ID counters are synced from existing IDs on load, so may differ
+        # from the initial state where counters were not advanced
+        data1.pop('id_counters', None)
+        data2.pop('id_counters', None)
+
         assert data1 == data2
 
     def test_load_real_project(self, example_project_path: Path):
@@ -347,7 +352,7 @@ class TestProjectClear:
         sample_project.clear()
 
         # Version should stay the same
-        assert sample_project.metadata['version'] == '0.3.1'
+        assert sample_project.metadata['version'] == '0.4.0'
         # Created timestamp should be updated
         assert sample_project.metadata['created'] != old_created
 
@@ -757,19 +762,19 @@ class TestClearCrossJunctionRoadLinks:
     def test_clear_cross_junction_links(self, empty_project):
         """Test clearing links between roads in same junction."""
         # Create roads
-        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1 = Polyline(id="p1", line_type=LineType.CENTERLINE)
         poly1.add_point(0.0, 0.0)
         poly1.add_point(100.0, 0.0)
 
-        poly2 = Polyline(line_type=LineType.CENTERLINE)
+        poly2 = Polyline(id="p2", line_type=LineType.CENTERLINE)
         poly2.add_point(100.0, 0.0)
         poly2.add_point(200.0, 0.0)
 
         empty_project.add_polyline(poly1)
         empty_project.add_polyline(poly2)
 
-        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
-        road2 = Road(name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
+        road1 = Road(id="r1", name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road2 = Road(id="r2", name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
 
         # Set up cross-junction links (should be cleared)
         road1.successor_id = road2.id
@@ -779,7 +784,7 @@ class TestClearCrossJunctionRoadLinks:
         empty_project.add_road(road2)
 
         # Create junction connecting both roads
-        junction = Junction(name="Test Junction")
+        junction = Junction(id="j1", name="Test Junction")
         junction.connected_road_ids = [road1.id, road2.id]
         empty_project.add_junction(junction)
 
@@ -798,15 +803,15 @@ class TestClearCrossJunctionRoadLinks:
     def test_clear_cross_junction_preserves_external_links(self, empty_project):
         """Test that links to roads outside junction are preserved."""
         # Create 3 roads, only 2 in junction
-        poly1 = Polyline(line_type=LineType.CENTERLINE)
+        poly1 = Polyline(id="p1", line_type=LineType.CENTERLINE)
         poly1.add_point(0.0, 0.0)
         poly1.add_point(100.0, 0.0)
 
-        poly2 = Polyline(line_type=LineType.CENTERLINE)
+        poly2 = Polyline(id="p2", line_type=LineType.CENTERLINE)
         poly2.add_point(100.0, 0.0)
         poly2.add_point(200.0, 0.0)
 
-        poly3 = Polyline(line_type=LineType.CENTERLINE)
+        poly3 = Polyline(id="p3", line_type=LineType.CENTERLINE)
         poly3.add_point(200.0, 0.0)
         poly3.add_point(300.0, 0.0)
 
@@ -814,9 +819,9 @@ class TestClearCrossJunctionRoadLinks:
         empty_project.add_polyline(poly2)
         empty_project.add_polyline(poly3)
 
-        road1 = Road(name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
-        road2 = Road(name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
-        road3 = Road(name="Road 3", centerline_id=poly3.id, polyline_ids=[poly3.id])
+        road1 = Road(id="r1", name="Road 1", centerline_id=poly1.id, polyline_ids=[poly1.id])
+        road2 = Road(id="r2", name="Road 2", centerline_id=poly2.id, polyline_ids=[poly2.id])
+        road3 = Road(id="r3", name="Road 3", centerline_id=poly3.id, polyline_ids=[poly3.id])
 
         # road2 links to both road1 (in junction) and road3 (outside junction)
         road2.predecessor_id = road1.id  # Will be cleared
@@ -827,7 +832,7 @@ class TestClearCrossJunctionRoadLinks:
         empty_project.add_road(road3)
 
         # Junction only contains road1 and road2
-        junction = Junction(name="Test Junction")
+        junction = Junction(id="j1", name="Test Junction")
         junction.connected_road_ids = [road1.id, road2.id]
         empty_project.add_junction(junction)
 
@@ -1143,23 +1148,25 @@ class TestMergeConsecutiveRoads:
     def test_merge_roads_basic(self, empty_project):
         """Test merging two consecutive roads."""
         # Create centerlines
-        centerline1 = Polyline(line_type=LineType.CENTERLINE)
+        centerline1 = Polyline(id="p1", line_type=LineType.CENTERLINE)
         for x in range(0, 250, 50):
             centerline1.add_point(float(x), 100.0)
         empty_project.add_polyline(centerline1)
 
-        centerline2 = Polyline(line_type=LineType.CENTERLINE)
+        centerline2 = Polyline(id="p2", line_type=LineType.CENTERLINE)
         for x in range(200, 500, 50):  # Overlapping start point for join
             centerline2.add_point(float(x), 100.0)
         empty_project.add_polyline(centerline2)
 
         # Create roads linked together
         road1 = Road(
+            id="r1",
             name="Road 1",
             centerline_id=centerline1.id,
             polyline_ids=[centerline1.id]
         )
         road2 = Road(
+            id="r2",
             name="Road 2",
             centerline_id=centerline2.id,
             polyline_ids=[centerline2.id],
@@ -1216,22 +1223,24 @@ class TestMergeConsecutiveRoads:
 
     def test_merge_roads_removes_segment_suffix(self, empty_project):
         """Test that merging removes segment suffix from name."""
-        centerline1 = Polyline(line_type=LineType.CENTERLINE)
+        centerline1 = Polyline(id="p1", line_type=LineType.CENTERLINE)
         for x in range(0, 250, 50):
             centerline1.add_point(float(x), 100.0)
         empty_project.add_polyline(centerline1)
 
-        centerline2 = Polyline(line_type=LineType.CENTERLINE)
+        centerline2 = Polyline(id="p2", line_type=LineType.CENTERLINE)
         for x in range(200, 500, 50):
             centerline2.add_point(float(x), 100.0)
         empty_project.add_polyline(centerline2)
 
         road1 = Road(
+            id="r1",
             name="Test Road (seg 1/2)",  # Has segment suffix
             centerline_id=centerline1.id,
             polyline_ids=[centerline1.id]
         )
         road2 = Road(
+            id="r2",
             name="Test Road (seg 2/2)",
             centerline_id=centerline2.id,
             polyline_ids=[centerline2.id],
@@ -1251,18 +1260,19 @@ class TestMergeConsecutiveRoads:
 
     def test_merge_roads_updates_junction_references(self, empty_project):
         """Test that merging updates junction references."""
-        centerline1 = Polyline(line_type=LineType.CENTERLINE)
+        centerline1 = Polyline(id="p1", line_type=LineType.CENTERLINE)
         for x in range(0, 250, 50):
             centerline1.add_point(float(x), 100.0)
         empty_project.add_polyline(centerline1)
 
-        centerline2 = Polyline(line_type=LineType.CENTERLINE)
+        centerline2 = Polyline(id="p2", line_type=LineType.CENTERLINE)
         for x in range(200, 500, 50):
             centerline2.add_point(float(x), 100.0)
         empty_project.add_polyline(centerline2)
 
-        road1 = Road(name="Road 1", centerline_id=centerline1.id, polyline_ids=[centerline1.id])
+        road1 = Road(id="r1", name="Road 1", centerline_id=centerline1.id, polyline_ids=[centerline1.id])
         road2 = Road(
+            id="r2",
             name="Road 2",
             centerline_id=centerline2.id,
             polyline_ids=[centerline2.id],
@@ -1274,7 +1284,7 @@ class TestMergeConsecutiveRoads:
         empty_project.add_road(road2)
 
         # Create junction referencing road2
-        junction = Junction(name="Test Junction")
+        junction = Junction(id="j1", name="Test Junction")
         junction.connected_road_ids = [road2.id]
         empty_project.add_junction(junction)
 

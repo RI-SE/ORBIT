@@ -123,8 +123,8 @@ class TestDetectRoadLinks:
 
     def test_single_road_no_links(self):
         """Single road has no predecessor/successor."""
-        centerline = Polyline(points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
-        road = Road(name="Road 1", centerline_id=centerline.id)
+        centerline = Polyline(id="1", points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
+        road = Road(id="1", name="Road 1", centerline_id=centerline.id)
 
         osm_to_orbit.detect_road_links([road], {centerline.id: centerline})
 
@@ -133,11 +133,11 @@ class TestDetectRoadLinks:
 
     def test_two_roads_same_name_linked(self):
         """Two roads with same base name that connect are linked."""
-        centerline1 = Polyline(points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
-        centerline2 = Polyline(points=[(100, 0), (200, 0)], line_type=LineType.CENTERLINE)
+        centerline1 = Polyline(id="1", points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
+        centerline2 = Polyline(id="2", points=[(100, 0), (200, 0)], line_type=LineType.CENTERLINE)
 
-        road1 = Road(name="Main St (seg 1/2)", centerline_id=centerline1.id)
-        road2 = Road(name="Main St (seg 2/2)", centerline_id=centerline2.id)
+        road1 = Road(id="1", name="Main St (seg 1/2)", centerline_id=centerline1.id)
+        road2 = Road(id="2", name="Main St (seg 2/2)", centerline_id=centerline2.id)
 
         polylines_dict = {
             centerline1.id: centerline1,
@@ -152,11 +152,11 @@ class TestDetectRoadLinks:
 
     def test_different_names_not_linked(self):
         """Roads with different base names are not linked."""
-        centerline1 = Polyline(points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
-        centerline2 = Polyline(points=[(100, 0), (200, 0)], line_type=LineType.CENTERLINE)
+        centerline1 = Polyline(id="1", points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
+        centerline2 = Polyline(id="2", points=[(100, 0), (200, 0)], line_type=LineType.CENTERLINE)
 
-        road1 = Road(name="Main St", centerline_id=centerline1.id)
-        road2 = Road(name="Oak Ave", centerline_id=centerline2.id)
+        road1 = Road(id="1", name="Main St", centerline_id=centerline1.id)
+        road2 = Road(id="2", name="Oak Ave", centerline_id=centerline2.id)
 
         polylines_dict = {
             centerline1.id: centerline1,
@@ -171,11 +171,11 @@ class TestDetectRoadLinks:
 
     def test_roads_outside_tolerance_not_linked(self):
         """Roads with endpoints outside tolerance are not linked."""
-        centerline1 = Polyline(points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
-        centerline2 = Polyline(points=[(110, 0), (200, 0)], line_type=LineType.CENTERLINE)  # 10px gap
+        centerline1 = Polyline(id="1", points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
+        centerline2 = Polyline(id="2", points=[(110, 0), (200, 0)], line_type=LineType.CENTERLINE)  # 10px gap
 
-        road1 = Road(name="Main St (seg 1/2)", centerline_id=centerline1.id)
-        road2 = Road(name="Main St (seg 2/2)", centerline_id=centerline2.id)
+        road1 = Road(id="1", name="Main St (seg 1/2)", centerline_id=centerline1.id)
+        road2 = Road(id="2", name="Main St (seg 2/2)", centerline_id=centerline2.id)
 
         polylines_dict = {
             centerline1.id: centerline1,
@@ -438,8 +438,8 @@ class TestDetectJunctionsGeometric:
 
     def test_single_road_no_junction(self):
         """Single road has no junctions."""
-        centerline = Polyline(points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
-        road = Road(name="Main St", centerline_id=centerline.id)
+        centerline = Polyline(id="1", points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
+        road = Road(id="1", name="Main St", centerline_id=centerline.id)
 
         result = osm_to_orbit.detect_junctions([road], {centerline.id: centerline})
         assert result == []
@@ -447,13 +447,13 @@ class TestDetectJunctionsGeometric:
     def test_three_roads_meeting_creates_junction(self):
         """Three roads meeting at a point creates junction."""
         # Three roads meeting at (100, 100)
-        cl1 = Polyline(points=[(0, 0), (100, 100)], line_type=LineType.CENTERLINE)
-        cl2 = Polyline(points=[(200, 0), (100, 100)], line_type=LineType.CENTERLINE)
-        cl3 = Polyline(points=[(100, 200), (100, 100)], line_type=LineType.CENTERLINE)
+        cl1 = Polyline(id="1", points=[(0, 0), (100, 100)], line_type=LineType.CENTERLINE)
+        cl2 = Polyline(id="2", points=[(200, 0), (100, 100)], line_type=LineType.CENTERLINE)
+        cl3 = Polyline(id="3", points=[(100, 200), (100, 100)], line_type=LineType.CENTERLINE)
 
-        road1 = Road(name="Road 1", centerline_id=cl1.id)
-        road2 = Road(name="Road 2", centerline_id=cl2.id)
-        road3 = Road(name="Road 3", centerline_id=cl3.id)
+        road1 = Road(id="1", name="Road 1", centerline_id=cl1.id)
+        road2 = Road(id="2", name="Road 2", centerline_id=cl2.id)
+        road3 = Road(id="3", name="Road 3", centerline_id=cl3.id)
 
         polylines = {cl1.id: cl1, cl2.id: cl2, cl3.id: cl3}
 
@@ -465,11 +465,11 @@ class TestDetectJunctionsGeometric:
     def test_two_roads_at_angle_creates_junction(self):
         """Two roads meeting at significant angle creates junction."""
         # T-junction: road1 going east, road2 going north from same point
-        cl1 = Polyline(points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
-        cl2 = Polyline(points=[(100, 0), (100, 100)], line_type=LineType.CENTERLINE)  # 90 degrees
+        cl1 = Polyline(id="1", points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
+        cl2 = Polyline(id="2", points=[(100, 0), (100, 100)], line_type=LineType.CENTERLINE)  # 90 degrees
 
-        road1 = Road(name="Road 1", centerline_id=cl1.id)
-        road2 = Road(name="Road 2", centerline_id=cl2.id)
+        road1 = Road(id="1", name="Road 1", centerline_id=cl1.id)
+        road2 = Road(id="2", name="Road 2", centerline_id=cl2.id)
 
         polylines = {cl1.id: cl1, cl2.id: cl2}
 
@@ -480,11 +480,11 @@ class TestDetectJunctionsGeometric:
     def test_two_roads_parallel_no_junction(self):
         """Two roads meeting nearly parallel does not create junction."""
         # Two roads continuing in same direction (< 30 degrees)
-        cl1 = Polyline(points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
-        cl2 = Polyline(points=[(100, 0), (200, 5)], line_type=LineType.CENTERLINE)  # Nearly parallel
+        cl1 = Polyline(id="1", points=[(0, 0), (100, 0)], line_type=LineType.CENTERLINE)
+        cl2 = Polyline(id="2", points=[(100, 0), (200, 5)], line_type=LineType.CENTERLINE)  # Nearly parallel
 
-        road1 = Road(name="Road 1", centerline_id=cl1.id)
-        road2 = Road(name="Road 2", centerline_id=cl2.id)
+        road1 = Road(id="1", name="Road 1", centerline_id=cl1.id)
+        road2 = Road(id="2", name="Road 2", centerline_id=cl2.id)
 
         polylines = {cl1.id: cl1, cl2.id: cl2}
 
@@ -501,8 +501,8 @@ class TestSplitRoadAtJunctions:
 
     def test_no_junctions_no_change(self):
         """Road without junctions is unchanged."""
-        centerline = Polyline(points=[(0, 0), (50, 0), (100, 0)], line_type=LineType.CENTERLINE)
-        road = Road(name="Main St", centerline_id=centerline.id)
+        centerline = Polyline(id="1", points=[(0, 0), (50, 0), (100, 0)], line_type=LineType.CENTERLINE)
+        road = Road(id="1", name="Main St", centerline_id=centerline.id)
 
         # Create initial section
         section = LaneSection(section_number=1, s_start=0.0, s_end=100.0)
@@ -515,8 +515,8 @@ class TestSplitRoadAtJunctions:
 
     def test_junction_not_connected_no_change(self):
         """Junction not connected to road causes no change."""
-        centerline = Polyline(points=[(0, 0), (50, 0), (100, 0)], line_type=LineType.CENTERLINE)
-        road = Road(name="Main St", centerline_id=centerline.id)
+        centerline = Polyline(id="1", points=[(0, 0), (50, 0), (100, 0)], line_type=LineType.CENTERLINE)
+        road = Road(id="1", name="Main St", centerline_id=centerline.id)
 
         section = LaneSection(section_number=1, s_start=0.0, s_end=100.0)
         section.lanes.append(Lane(id=0, lane_type=LaneType.NONE, width=0))
@@ -531,8 +531,8 @@ class TestSplitRoadAtJunctions:
 
     def test_junction_at_endpoint_no_split(self):
         """Junction at endpoint does not split the road."""
-        centerline = Polyline(points=[(0, 0), (50, 0), (100, 0)], line_type=LineType.CENTERLINE)
-        road = Road(name="Main St", centerline_id=centerline.id)
+        centerline = Polyline(id="1", points=[(0, 0), (50, 0), (100, 0)], line_type=LineType.CENTERLINE)
+        road = Road(id="1", name="Main St", centerline_id=centerline.id)
 
         section = LaneSection(section_number=1, s_start=0.0, s_end=100.0)
         section.lanes.append(Lane(id=0, lane_type=LaneType.NONE, width=0))
@@ -547,8 +547,8 @@ class TestSplitRoadAtJunctions:
 
     def test_junction_in_middle_splits_road(self):
         """Junction in middle of road splits into sections."""
-        centerline = Polyline(points=[(0, 0), (50, 0), (100, 0)], line_type=LineType.CENTERLINE)
-        road = Road(name="Main St", centerline_id=centerline.id)
+        centerline = Polyline(id="1", points=[(0, 0), (50, 0), (100, 0)], line_type=LineType.CENTERLINE)
+        road = Road(id="1", name="Main St", centerline_id=centerline.id)
 
         section = LaneSection(section_number=1, s_start=0.0, s_end=100.0)
         section.lanes.append(Lane(id=0, lane_type=LaneType.NONE, width=0))
@@ -575,11 +575,12 @@ class TestSplitRoadsAtJunctionNodes:
     def test_no_junction_nodes_no_split(self):
         """Roads without junction nodes are unchanged."""
         centerline = Polyline(
+            id="1",
             points=[(0, 0), (100, 0)],
             line_type=LineType.CENTERLINE,
             osm_node_ids=[1, 2]
         )
-        road = Road(name="Main St", centerline_id=centerline.id)
+        road = Road(id="1", name="Main St", centerline_id=centerline.id)
 
         polylines = {centerline.id: centerline}
 
@@ -593,11 +594,12 @@ class TestSplitRoadsAtJunctionNodes:
     def test_junction_at_middle_splits_road(self):
         """Junction node in middle of road causes split."""
         centerline = Polyline(
+            id="1",
             points=[(0, 0), (50, 0), (100, 0)],
             line_type=LineType.CENTERLINE,
             osm_node_ids=[1, 2, 3]  # Node 2 is in the middle
         )
-        road = Road(name="Main St", centerline_id=centerline.id)
+        road = Road(id="1", name="Main St", centerline_id=centerline.id)
 
         # Add a lane section
         section = LaneSection(section_number=1, s_start=0.0, s_end=100.0)
@@ -619,11 +621,12 @@ class TestSplitRoadsAtJunctionNodes:
     def test_junction_at_endpoint_no_split(self):
         """Junction node at endpoint does not cause split."""
         centerline = Polyline(
+            id="1",
             points=[(0, 0), (50, 0), (100, 0)],
             line_type=LineType.CENTERLINE,
             osm_node_ids=[1, 2, 3]
         )
-        road = Road(name="Main St", centerline_id=centerline.id)
+        road = Road(id="1", name="Main St", centerline_id=centerline.id)
         polylines = {centerline.id: centerline}
 
         new_roads, _, _ = osm_to_orbit.split_roads_at_junction_nodes(
@@ -635,11 +638,12 @@ class TestSplitRoadsAtJunctionNodes:
     def test_preserves_osm_way_mapping(self):
         """Split preserves OSM way ID mapping."""
         centerline = Polyline(
+            id="1",
             points=[(0, 0), (50, 0), (100, 0)],
             line_type=LineType.CENTERLINE,
             osm_node_ids=[1, 2, 3]
         )
-        road = Road(name="Main St", centerline_id=centerline.id)
+        road = Road(id="1", name="Main St", centerline_id=centerline.id)
         polylines = {centerline.id: centerline}
         road_to_osm = {road.id: 12345}
 
@@ -665,10 +669,11 @@ class TestOffsetRoadEndpointsFromJunctions:
 
     def test_virtual_junction_skipped(self, mock_transformer):
         """Virtual junctions are skipped (no offset)."""
-        centerline = Polyline(points=[(100, 100), (200, 100)], line_type=LineType.CENTERLINE)
-        road = Road(name="Main St", centerline_id=centerline.id)
+        centerline = Polyline(id="1", points=[(100, 100), (200, 100)], line_type=LineType.CENTERLINE)
+        road = Road(id="1", name="Main St", centerline_id=centerline.id)
 
         junction = Junction(
+            id="1",
             name="Virtual J1",
             center_point=(100, 100),
             connected_road_ids=[road.id],
@@ -690,12 +695,14 @@ class TestOffsetRoadEndpointsFromJunctions:
         """Road start at junction is offset away."""
         # Long road starting at junction
         centerline = Polyline(
+            id="1",
             points=[(0, 0), (500, 0), (1000, 0)],
             line_type=LineType.CENTERLINE
         )
-        road = Road(name="Main St", centerline_id=centerline.id)
+        road = Road(id="1", name="Main St", centerline_id=centerline.id)
 
         junction = Junction(
+            id="1",
             name="J1",
             center_point=(0, 0),
             connected_road_ids=[road.id]

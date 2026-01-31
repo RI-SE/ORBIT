@@ -208,7 +208,7 @@ class TestRoadObjectConstruction:
     def test_default_construction(self):
         """Test default construction."""
         obj = RoadObject()
-        assert obj.id is not None
+        assert obj.id == ""
         assert obj.position == (0.0, 0.0)
         assert obj.type == ObjectType.BUILDING  # Default type
         assert obj.road_id is None
@@ -252,7 +252,6 @@ class TestRoadObjectConstruction:
         assert obj.s_position is None
         assert obj.t_offset is None
         assert obj.validity_length is None
-        assert obj.opendrive_id is None
         assert obj.pitch == 0.0
         assert obj.roll == 0.0
 
@@ -443,15 +442,6 @@ class TestRoadObjectSerialization:
 
         assert data['geo_points'] == [[12.0, 57.0], [12.001, 57.001]]
 
-    def test_serialization_with_opendrive_id(self):
-        """Test serialization includes opendrive_id when set."""
-        obj = RoadObject()
-        obj.opendrive_id = "od-123"
-
-        data = obj.to_dict()
-
-        assert data['opendrive_id'] == "od-123"
-
     def test_serialization_with_pitch_roll(self):
         """Test serialization includes pitch/roll when non-zero."""
         obj = RoadObject()
@@ -549,14 +539,12 @@ class TestRoadObjectDeserialization:
         data = {
             'id': 'test-1',
             'type': 'building',
-            'opendrive_id': 'od-123',
             'pitch': 0.1,
             'roll': 0.2
         }
 
         obj = RoadObject.from_dict(data)
 
-        assert obj.opendrive_id == "od-123"
         assert obj.pitch == 0.1
         assert obj.roll == 0.2
 
@@ -604,7 +592,6 @@ class TestRoadObjectRoundTrip:
         original.z_offset = 0.5
         original.s_position = 100.0
         original.t_offset = -3.0
-        original.opendrive_id = "od-456"
         original.pitch = 0.05
         original.roll = -0.02
 
@@ -620,7 +607,6 @@ class TestRoadObjectRoundTrip:
         assert restored.road_id == original.road_id
         assert restored.s_position == original.s_position
         assert restored.t_offset == original.t_offset
-        assert restored.opendrive_id == original.opendrive_id
         assert restored.pitch == original.pitch
         assert restored.roll == original.roll
 

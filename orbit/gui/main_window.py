@@ -2448,6 +2448,7 @@ class MainWindow(QMainWindow):
             if signal_type:
                 # Create signal at clicked position
                 signal = Signal(
+                    signal_id=self.project.next_id('signal'),
                     position=(x, y),
                     signal_type=signal_type,
                     value=value,
@@ -2633,6 +2634,7 @@ class MainWindow(QMainWindow):
 
         # Create object at clicked position
         obj = RoadObject(
+            object_id=self.project.next_id('object'),
             position=(x, y),
             object_type=object_type
         )
@@ -2679,6 +2681,7 @@ class MainWindow(QMainWindow):
 
         # Create parking at clicked position
         parking = ParkingSpace(
+            parking_id=self.project.next_id('parking'),
             position=(x, y),
             parking_type=parking_type,
             access=access_type
@@ -2733,6 +2736,7 @@ class MainWindow(QMainWindow):
 
         # Create parking with polygon points
         parking = ParkingSpace(
+            parking_id=self.project.next_id('parking'),
             position=(centroid_x, centroid_y),
             parking_type=parking_type,
             access=access_type

@@ -7,7 +7,6 @@ Coordinates the full OpenDrive import process: parse, transform, and create ORBI
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Set, Tuple
 from enum import Enum
-import uuid
 import math
 
 from orbit.models import Project, Road, Junction, Signal, RoadObject, Polyline, ControlPoint, ParkingSpace
@@ -110,9 +109,11 @@ class OpenDriveImporter:
         # Geometry converter
         self.geom_converter = GeometryConverter(sampling_interval=1.0)
 
-        # Mapping from OpenDrive IDs to ORBIT IDs
-        self.odr_road_to_orbit: Dict[str, str] = {}  # ODR road ID -> ORBIT road ID
-        self.odr_junction_to_orbit: Dict[str, str] = {}  # ODR junction ID -> ORBIT junction ID
+        # Mapping from OpenDrive IDs to ORBIT IDs.
+        # Currently identity mappings since ODR IDs are used directly as ORBIT IDs.
+        # Kept for potential future collision handling (import-into-existing).
+        self.odr_road_to_orbit: Dict[str, str] = {}
+        self.odr_junction_to_orbit: Dict[str, str] = {}
 
         # Track imported OpenDrive IDs for duplicate detection
         self.imported_odr_road_ids: Set[str] = set()
@@ -310,6 +311,9 @@ class OpenDriveImporter:
         # Roads in junctions should not have predecessor/successor pointing to each other
         self.project.clear_cross_junction_road_links()
 
+        # Sync ID counters to account for all imported IDs
+        self.project._sync_id_counters()
+
         result.success = True
         return result
 
@@ -395,7 +399,7 @@ class OpenDriveImporter:
                 geo_points.append((lon, lat))  # Store as (lon, lat)
 
         # Create centerline polyline
-        centerline_id = str(uuid.uuid4())
+        centerline_id = self.project.next_id('polyline')
         centerline = Polyline(
             id=centerline_id,
             points=points_pixel,
@@ -404,13 +408,12 @@ class OpenDriveImporter:
             line_type=LineType.CENTERLINE,
             elevations=elevations,
             s_offsets=s_offsets_pixel,
-            opendrive_id=odr_road.id,
             geometry_segments=geometry_segments  # Preserve original geometry for round-trip
         )
-        self.project.polylines.append(centerline)
+        self.project.add_polyline(centerline)
 
-        # Create road
-        road_id = str(uuid.uuid4())
+        # Create road — use ODR ID directly as primary ID
+        road_id = odr_road.id
         road_name = odr_road.name if odr_road.name else f"Road {odr_road.id}"
 
         road = Road(
@@ -419,7 +422,6 @@ class OpenDriveImporter:
             polyline_ids=[centerline_id],
             centerline_id=centerline_id,
             road_type=self._convert_road_type(odr_road.road_type),
-            opendrive_id=odr_road.id
         )
 
         # Set predecessor/successor links
@@ -462,7 +464,7 @@ class OpenDriveImporter:
             # No lane sections - generate default
             road.generate_lanes()
 
-        self.project.roads.append(road)
+        self.project.add_road(road)
 
         # Track mapping
         self.odr_road_to_orbit[odr_road.id] = road_id
@@ -613,7 +615,7 @@ class OpenDriveImporter:
 
         # Create connecting road
         connecting_road = ConnectingRoad(
-            id=str(uuid.uuid4()),
+            id=self.project.next_id('connecting_road'),
             path=points_pixel,
             geo_path=geo_points,  # Store geo coords as source of truth
             lane_count_left=lane_count_left,
@@ -705,6 +707,7 @@ class OpenDriveImporter:
                             # not the outgoing road. We store it in connecting_lane_id.
                             # to_lane_id is the outgoing road lane (assumed same as from_lane_id).
                             lane_connection = LaneConnection(
+                                id=self.project.next_id('lane_connection'),
                                 from_road_id=from_road_id,
                                 from_lane_id=lane_link.from_lane,
                                 to_road_id=to_road_id,
@@ -1013,28 +1016,26 @@ class OpenDriveImporter:
 
     def _import_junction(self, odr_junction, options: ImportOptions, result: ImportResult) -> bool:
         """Import junction from OpenDrive."""
-        junction_id = str(uuid.uuid4())
+        # Use ODR junction ID directly as primary ID
+        junction_id = odr_junction.id
         junction = Junction(
             id=junction_id,
             name=odr_junction.name if odr_junction.name else f"Junction {odr_junction.id}",
-            opendrive_id=odr_junction.id
         )
 
-        # Import connections
+        # Import connections — ODR road IDs are now used directly as ORBIT IDs
         for odr_conn in odr_junction.connections:
-            # Map OpenDrive road IDs to ORBIT road IDs
-            incoming_orbit_id = self.odr_road_to_orbit.get(odr_conn.incoming_road)
-            connecting_orbit_id = self.odr_road_to_orbit.get(odr_conn.connecting_road)
+            incoming_orbit_id = self.odr_road_to_orbit.get(odr_conn.incoming_road, odr_conn.incoming_road)
+            connecting_orbit_id = self.odr_road_to_orbit.get(odr_conn.connecting_road, odr_conn.connecting_road)
 
-            if incoming_orbit_id and connecting_orbit_id:
-                conn = JunctionConnection(
-                    incoming_road_id=incoming_orbit_id,
-                    connecting_road_id=connecting_orbit_id,
-                    contact_point=odr_conn.contact_point
-                )
-                junction.connections.append(conn)
-                junction.connected_road_ids.append(incoming_orbit_id)
-                junction.connected_road_ids.append(connecting_orbit_id)
+            conn = JunctionConnection(
+                incoming_road_id=incoming_orbit_id,
+                connecting_road_id=connecting_orbit_id,
+                contact_point=odr_conn.contact_point
+            )
+            junction.connections.append(conn)
+            junction.connected_road_ids.append(incoming_orbit_id)
+            junction.connected_road_ids.append(connecting_orbit_id)
 
         # Remove duplicates from connected_road_ids
         junction.connected_road_ids = list(set(junction.connected_road_ids))
@@ -1074,25 +1075,24 @@ class OpenDriveImporter:
 
         # Store junction for later processing (center point assignment)
         # This will be handled in _assign_junction_center_points()
-        self.project.junctions.append(junction)
+        self.project.add_junction(junction)
         self.odr_junction_to_orbit[odr_junction.id] = junction_id
 
         return True
 
     def _import_junction_group(self, odr_jg) -> None:
         """Import junction group from OpenDrive."""
-        # Map OpenDrive junction IDs to ORBIT junction IDs
+        # ODR junction IDs are now used directly as ORBIT IDs
         orbit_junction_ids = []
         for odr_junction_id in odr_jg.junction_ids:
-            orbit_id = self.odr_junction_to_orbit.get(odr_junction_id)
-            if orbit_id:
-                orbit_junction_ids.append(orbit_id)
+            orbit_id = self.odr_junction_to_orbit.get(odr_junction_id, odr_junction_id)
+            orbit_junction_ids.append(orbit_id)
 
         if not orbit_junction_ids:
-            return  # No mapped junctions, skip this group
+            return  # No junctions, skip this group
 
         junction_group = JunctionGroup(
-            id=str(uuid.uuid4()),
+            id=self.project.next_id('junction_group'),
             name=odr_jg.name if odr_jg.name else None,
             group_type=odr_jg.group_type,
             junction_ids=orbit_junction_ids
@@ -1183,8 +1183,9 @@ class OpenDriveImporter:
             lon, lat = self.orbit_transformer.pixel_to_geo(position_pixel[0], position_pixel[1])
             geo_position = (lon, lat)
 
-        # Create signal
+        # Create signal — use ODR signal ID directly if numeric, else generate
         signal = Signal(
+            signal_id=odr_signal.id if odr_signal.id else self.project.next_id('signal'),
             position=position_pixel,
             signal_type=signal_type,
             value=value,
@@ -1197,7 +1198,6 @@ class OpenDriveImporter:
         signal.z_offset = odr_signal.z_offset
         signal.sign_width = odr_signal.width if odr_signal.width > 0 else signal.sign_width
         signal.sign_height = odr_signal.height if odr_signal.height > 0 else signal.sign_height
-        signal.opendrive_id = odr_signal.id
         # Preserve OpenDRIVE attributes for round-trip
         signal.dynamic = odr_signal.dynamic
         signal.subtype = odr_signal.subtype
@@ -1205,7 +1205,7 @@ class OpenDriveImporter:
         # Lane validity (which lanes this signal applies to)
         signal.validity_lanes = odr_signal.validity_lanes
 
-        self.project.signals.append(signal)
+        self.project.add_signal(signal)
         return True
 
     def _import_object(self, odr_object: ODRObject, road_id: str, odr_road: ODRRoad, options: ImportOptions) -> bool:
@@ -1232,8 +1232,9 @@ class OpenDriveImporter:
             lon, lat = self.orbit_transformer.pixel_to_geo(position_pixel[0], position_pixel[1])
             geo_position = (lon, lat)
 
-        # Create object
+        # Create object — use ODR object ID directly if available, else generate
         obj = RoadObject(
+            object_id=odr_object.id if odr_object.id else self.project.next_id('object'),
             position=position_pixel,
             object_type=object_type,
             road_id=road_id,
@@ -1254,12 +1255,11 @@ class OpenDriveImporter:
         if odr_object.height > 0:
             obj.dimensions['height'] = odr_object.height
 
-        obj.opendrive_id = odr_object.id
         # Preserve OpenDRIVE orientation angles for round-trip
         obj.pitch = odr_object.pitch
         obj.roll = odr_object.roll
 
-        self.project.objects.append(obj)
+        self.project.add_object(obj)
         return True
 
     def _import_parking(self, odr_object: ODRObject, road_id: str, odr_road: ODRRoad, options: ImportOptions) -> bool:
@@ -1295,8 +1295,9 @@ class OpenDriveImporter:
         }
         access = access_map.get(odr_object.parking_access.lower(), ParkingAccess.STANDARD)
 
-        # Create parking space
+        # Create parking space — use ODR ID directly if available, else generate
         parking = ParkingSpace(
+            parking_id=odr_object.id if odr_object.id else self.project.next_id('parking'),
             position=position_pixel,
             access=access,
             parking_type=ParkingType.SURFACE,  # Default to surface
@@ -1308,7 +1309,6 @@ class OpenDriveImporter:
         parking.z_offset = odr_object.z_offset
         parking.orientation = math.degrees(odr_object.hdg)  # Convert radians to degrees
         parking.restrictions = odr_object.parking_restrictions
-        parking.opendrive_id = odr_object.id
 
         # Set dimensions from object
         if odr_object.width > 0:
