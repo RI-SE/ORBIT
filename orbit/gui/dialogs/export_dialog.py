@@ -295,16 +295,41 @@ class ExportDialog(BaseDialog):
             if not country_code:
                 country_code = "se"  # Default to Sweden
 
+            # Determine projection string for export so that coordinate
+            # conversion matches the declared geoReference in the output file.
+            use_tmerc = self.use_tmerc_checkbox.isChecked()
+            if use_tmerc:
+                proj_string = self.transformer.get_projection_string()
+            elif self.project.imported_geo_reference:
+                proj_string = self.project.imported_geo_reference
+            else:
+                proj_string = self.transformer.get_utm_projection_string()
+
+            # Create a fresh transformer that uses pyproj for the export
+            # projection. This ensures the homography/affine matrix is
+            # computed in the same coordinate system written to the file.
+            export_transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+                use_validation=True,
+                export_proj_string=proj_string
+            )
+            if not export_transformer:
+                show_error(self, "Failed to create export transformer.", "Export Error")
+                self.export_btn.setEnabled(True)
+                self.status_label.setText("<b>Export failed.</b>")
+                return
+
             success = export_to_opendrive(
                 self.project,
-                self.transformer,
+                export_transformer,
                 str(self.output_path),
                 line_tolerance=self.line_tolerance_spin.value(),
                 arc_tolerance=self.arc_tolerance_spin.value(),
                 preserve_geometry=self.preserve_geometry_checkbox.isChecked(),
                 right_hand_traffic=self.project.right_hand_traffic,
                 country_code=country_code,
-                use_tmerc=self.use_tmerc_checkbox.isChecked(),
+                use_tmerc=use_tmerc,
                 use_german_codes=self.use_german_codes_checkbox.isChecked()
             )
 

@@ -338,8 +338,11 @@ class OpenDriveWriter:
         # Add georef first if available
         if self.project.has_georeferencing():
             georef = etree.SubElement(header, 'geoReference')
-            # Select projection string based on export option
-            if self.use_tmerc:
+            # Use export projection string if set (guarantees consistency
+            # between declared projection and actual coordinate conversion)
+            if getattr(self.transformer, '_export_proj_string', None):
+                georef.text = self.transformer._export_proj_string
+            elif self.use_tmerc:
                 # Use local Transverse Mercator projection centered on control points
                 georef.text = self.transformer.get_projection_string()
             else:

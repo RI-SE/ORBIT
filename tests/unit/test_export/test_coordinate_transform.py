@@ -10,6 +10,8 @@ import csv
 from pathlib import Path
 from typing import List
 
+from pyproj import Proj
+
 from orbit.models import ControlPoint
 from orbit.utils.coordinate_transform import (
     create_transformer, TransformMethod,
@@ -1274,3 +1276,135 @@ class TestErrorHandling:
         transformer.inverse_matrix = None
         with pytest.raises(RuntimeError, match="not initialized"):
             transformer.geo_to_pixel_unadjusted(12.94, 57.72)
+
+
+# ============================================================================
+# Test Export Projection Support
+# ============================================================================
+
+class TestExportProjection:
+    """Test pyproj-based export projection in coordinate transformers."""
+
+    UTM33_PROJ = "+proj=utm +zone=33 +datum=WGS84 +units=m +no_defs"
+
+    def test_create_transformer_with_export_proj(self, sample_control_points: List[ControlPoint]):
+        """Verify _export_proj is initialized when export_proj_string is given."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False,
+            export_proj_string=self.UTM33_PROJ
+        )
+
+        assert transformer is not None
+        assert transformer._export_proj_string == self.UTM33_PROJ
+        assert transformer._export_proj is not None
+
+    def test_latlon_to_meters_uses_pyproj(self, sample_control_points: List[ControlPoint]):
+        """Verify latlon_to_meters matches a direct pyproj call."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False,
+            export_proj_string=self.UTM33_PROJ
+        )
+
+        lat, lon = 57.72, 12.94
+        east, north = transformer.latlon_to_meters(lat, lon)
+
+        # Compare with direct pyproj
+        proj = Proj(self.UTM33_PROJ)
+        expected_east, expected_north = proj(lon, lat)
+
+        assert east == pytest.approx(expected_east, abs=0.001)
+        assert north == pytest.approx(expected_north, abs=0.001)
+
+        # UTM zone 33 at this latitude should give large coordinates
+        assert east > 100_000
+        assert north > 6_000_000
+
+    def test_meters_to_latlon_roundtrip_with_pyproj(self, sample_control_points: List[ControlPoint]):
+        """Verify lat/lon → meters → lat/lon round-trip with pyproj."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False,
+            export_proj_string=self.UTM33_PROJ
+        )
+
+        lat_orig, lon_orig = 57.72, 12.94
+        east, north = transformer.latlon_to_meters(lat_orig, lon_orig)
+        lat_back, lon_back = transformer.meters_to_latlon(east, north)
+
+        assert lat_back == pytest.approx(lat_orig, abs=1e-8)
+        assert lon_back == pytest.approx(lon_orig, abs=1e-8)
+
+    def test_without_export_proj_uses_equirectangular(self, sample_control_points: List[ControlPoint]):
+        """Verify default (no export_proj_string) still uses equirectangular."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+
+        assert transformer._export_proj_string is None
+        assert transformer._export_proj is None
+
+        # Reference point should map to ~(0, 0) with equirectangular
+        ref_lat = transformer.reference_lat
+        ref_lon = transformer.reference_lon
+        east, north = transformer.latlon_to_meters(ref_lat, ref_lon)
+        assert east == pytest.approx(0.0, abs=0.01)
+        assert north == pytest.approx(0.0, abs=0.01)
+
+    def test_homography_with_export_proj(self):
+        """Verify homography transformer works with export projection (pixel↔geo round-trip)."""
+        points = [
+            ControlPoint(100.0, 100.0, 12.940, 57.720, "CP1"),
+            ControlPoint(500.0, 100.0, 12.945, 57.720, "CP2"),
+            ControlPoint(300.0, 400.0, 12.9425, 57.718, "CP3"),
+            ControlPoint(400.0, 300.0, 12.943, 57.7195, "CP4")
+        ]
+
+        transformer = create_transformer(
+            points,
+            method=TransformMethod.HOMOGRAPHY,
+            use_validation=False,
+            export_proj_string=self.UTM33_PROJ
+        )
+
+        assert transformer is not None
+        assert isinstance(transformer, HomographyTransformer)
+        assert transformer._export_proj is not None
+
+        # Pixel → geo → pixel round-trip should still work
+        px_orig, py_orig = 300.0, 250.0
+        lon, lat = transformer.pixel_to_geo(px_orig, py_orig)
+        px_back, py_back = transformer.geo_to_pixel(lon, lat)
+
+        assert px_back == pytest.approx(px_orig, abs=1.0)
+        assert py_back == pytest.approx(py_orig, abs=1.0)
+
+    def test_tmerc_export_proj(self, sample_control_points: List[ControlPoint]):
+        """Verify Transverse Mercator projection produces near-zero coordinates at origin."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False
+        )
+        tmerc_proj = transformer.get_projection_string()
+
+        transformer_export = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False,
+            export_proj_string=tmerc_proj
+        )
+
+        # TM centered on reference point → reference point should map near (0, 0)
+        ref_lat = transformer_export.reference_lat
+        ref_lon = transformer_export.reference_lon
+        east, north = transformer_export.latlon_to_meters(ref_lat, ref_lon)
+
+        assert abs(east) < 1.0
+        assert abs(north) < 1.0

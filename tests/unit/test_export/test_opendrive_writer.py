@@ -24,6 +24,7 @@ class MockTransformer:
 
     def __init__(self, scale=(1.0, 1.0)):
         self.scale_x, self.scale_y = scale
+        self._export_proj_string = None
 
     def get_scale_factor(self):
         return (self.scale_x, self.scale_y)
@@ -364,6 +365,25 @@ class TestCreateHeader:
 
         assert georef is not None
         assert georef.text == "+proj=utm +zone=33 +datum=WGS84"
+
+    def test_header_georef_uses_export_proj_string(self, mock_transformer):
+        """Header uses _export_proj_string when set on transformer."""
+        project = Project()
+        from orbit.models import ControlPoint
+        project.control_points.append(ControlPoint(100, 100, 12.9, 57.7))
+        project.control_points.append(ControlPoint(200, 100, 12.91, 57.7))
+        project.control_points.append(ControlPoint(100, 200, 12.9, 57.71))
+
+        custom_proj = "+proj=utm +zone=34 +datum=WGS84 +units=m +no_defs"
+        mock_transformer._export_proj_string = custom_proj
+
+        # Even with use_tmerc=True, the _export_proj_string should take priority
+        writer = OpenDriveWriter(project, mock_transformer, use_tmerc=True)
+        header = writer._create_header()
+        georef = header.find('geoReference')
+
+        assert georef is not None
+        assert georef.text == custom_proj
 
     def test_header_osm_attribution(self, mock_transformer):
         """Header includes OSM attribution when OpenStreetMap was used."""

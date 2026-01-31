@@ -23,6 +23,8 @@ from typing import List, Tuple, Optional, Dict, Union
 from enum import Enum, auto
 from dataclasses import dataclass, field
 
+from pyproj import Proj
+
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -175,19 +177,27 @@ class CoordinateTransformer:
     Subclasses implement specific transformation methods (affine, homography).
     """
 
-    def __init__(self, control_points: List['ControlPoint'], use_validation: bool = True):
+    def __init__(self, control_points: List['ControlPoint'], use_validation: bool = True,
+                 export_proj_string: Optional[str] = None):
         """
         Initialize transformer with control points.
 
         Args:
             control_points: List of control points
             use_validation: If True, separate validation points from training
+            export_proj_string: If set, latlon_to_meters/meters_to_latlon use this
+                pyproj projection instead of equirectangular approximation.
+                Used for export to ensure coordinates match the declared geoReference.
 
         Raises:
             ValueError: If insufficient control points provided
         """
         self.all_control_points = control_points
         self.use_validation = use_validation
+
+        # Export projection (pyproj-based conversion instead of equirectangular)
+        self._export_proj_string: Optional[str] = export_proj_string
+        self._export_proj: Optional[Proj] = None
 
         # Separate training (GCP) and validation (GVP) points
         if use_validation:
@@ -233,17 +243,24 @@ class CoordinateTransformer:
         return self.adjustment is not None and not self.adjustment.is_identity()
 
     def _set_reference_point(self):
-        """Set reference point as mean of all control points."""
+        """Set reference point as mean of all control points.
+
+        Also initializes the pyproj Proj if export_proj_string was provided.
+        """
         if not self.all_control_points:
             return
         self.reference_lat = np.mean([cp.latitude for cp in self.all_control_points])
         self.reference_lon = np.mean([cp.longitude for cp in self.all_control_points])
 
+        if self._export_proj_string:
+            self._export_proj = Proj(self._export_proj_string)
+
     def latlon_to_meters(self, lat: float, lon: float) -> Tuple[float, float]:
         """
-        Convert lat/lon to local metric coordinates relative to reference point.
+        Convert lat/lon to metric coordinates.
 
-        Uses equirectangular projection (suitable for areas <100km).
+        When export_proj_string is set, uses pyproj for accurate projection.
+        Otherwise uses equirectangular approximation (suitable for areas <100km).
 
         Args:
             lat: Latitude in decimal degrees
@@ -252,6 +269,9 @@ class CoordinateTransformer:
         Returns:
             Tuple of (east, north) in meters
         """
+        if self._export_proj is not None:
+            return self._export_proj(lon, lat)
+
         if self.reference_lat is None or self.reference_lon is None:
             raise ValueError("Reference point not set. Call compute transformation first.")
 
@@ -269,7 +289,10 @@ class CoordinateTransformer:
 
     def meters_to_latlon(self, east: float, north: float) -> Tuple[float, float]:
         """
-        Convert local metric coordinates back to lat/lon.
+        Convert metric coordinates back to lat/lon.
+
+        When export_proj_string is set, uses pyproj inverse projection.
+        Otherwise uses equirectangular approximation.
 
         Args:
             east: East coordinate in meters
@@ -278,6 +301,10 @@ class CoordinateTransformer:
         Returns:
             Tuple of (latitude, longitude) in decimal degrees
         """
+        if self._export_proj is not None:
+            lon, lat = self._export_proj(east, north, inverse=True)
+            return lat, lon
+
         if self.reference_lat is None or self.reference_lon is None:
             raise ValueError("Reference point not set. Call compute transformation first.")
 
@@ -613,8 +640,9 @@ class AffineTransformer(CoordinateTransformer):
     Uses least-squares fitting for 6 affine parameters.
     """
 
-    def __init__(self, control_points: List['ControlPoint'], use_validation: bool = True):
-        super().__init__(control_points, use_validation)
+    def __init__(self, control_points: List['ControlPoint'], use_validation: bool = True,
+                 export_proj_string: Optional[str] = None):
+        super().__init__(control_points, use_validation, export_proj_string=export_proj_string)
 
         if len(self.training_points) < 3:
             raise ValueError("Affine transformation requires at least 3 training control points")
@@ -743,8 +771,9 @@ class HomographyTransformer(CoordinateTransformer):
     Uses Direct Linear Transform (DLT) with SVD and coordinate normalization.
     """
 
-    def __init__(self, control_points: List['ControlPoint'], use_validation: bool = True):
-        super().__init__(control_points, use_validation)
+    def __init__(self, control_points: List['ControlPoint'], use_validation: bool = True,
+                 export_proj_string: Optional[str] = None):
+        super().__init__(control_points, use_validation, export_proj_string=export_proj_string)
 
         if len(self.training_points) < 4:
             raise ValueError("Homography transformation requires at least 4 training control points")
@@ -918,7 +947,8 @@ class HomographyTransformer(CoordinateTransformer):
 def create_transformer(
     control_points: List['ControlPoint'],
     method: Union[str, TransformMethod] = TransformMethod.HOMOGRAPHY,
-    use_validation: bool = True
+    use_validation: bool = True,
+    export_proj_string: Optional[str] = None
 ) -> Optional[CoordinateTransformer]:
     """
     Create a coordinate transformer from control points.
@@ -928,6 +958,8 @@ def create_transformer(
         method: Transformation method - either TransformMethod enum or string
                 ('affine' or 'homography')
         use_validation: If True, separate validation points from training
+        export_proj_string: If set, latlon_to_meters/meters_to_latlon use this
+            pyproj projection instead of equirectangular approximation.
 
     Returns:
         CoordinateTransformer if successful, None if insufficient points
@@ -952,9 +984,11 @@ def create_transformer(
 
     try:
         if method == TransformMethod.HOMOGRAPHY:
-            return HomographyTransformer(control_points, use_validation)
+            return HomographyTransformer(control_points, use_validation,
+                                         export_proj_string=export_proj_string)
         else:
-            return AffineTransformer(control_points, use_validation)
+            return AffineTransformer(control_points, use_validation,
+                                     export_proj_string=export_proj_string)
     except (ValueError, np.linalg.LinAlgError) as e:
         logger.error(f"Error creating transformer: {e}")
         return None
