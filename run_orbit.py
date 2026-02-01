@@ -17,6 +17,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
+from orbit import __version__
 from orbit.gui.main_window import MainWindow
 from orbit.utils import setup_logging
 
@@ -46,7 +47,7 @@ Examples:
     parser.add_argument(
         '--version',
         action='version',
-        version='ORBIT 0.4.0'
+        version=f'ORBIT {__version__}'
     )
 
     parser.add_argument(

@@ -43,7 +43,7 @@ try:
     from importlib.metadata import version as _get_version
     __version__ = _get_version("orbit")
 except Exception:
-    __version__ = "0.3.1"  # fallback if not installed
+    __version__ = "0.5.0"  # fallback if not installed
 
 __all__ = [
     # Version

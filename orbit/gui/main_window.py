@@ -111,6 +111,8 @@ class MainWindow(QMainWindow):
         self.image_view.connecting_road_lane_edit_requested.connect(self.on_connecting_road_lane_edit_requested)
         self.image_view.point_picked.connect(self.on_point_picked)
         self.image_view.area_delete_requested.connect(self.on_area_delete_requested)
+        self.image_view.road_link_requested.connect(self.on_road_link_requested)
+        self.image_view.road_unlink_requested.connect(self.on_road_unlink_requested)
 
         # Status bar with permanent widgets
         self.setup_statusbar()
@@ -1740,6 +1742,77 @@ class MainWindow(QMainWindow):
 
             self._refresh_trees()
             self.statusBar().showMessage("Road properties updated")
+
+    def on_road_link_requested(self, road_a_id: str, road_b_id: str,
+                               a_contact: str, b_contact: str):
+        """Handle road link request from snap-connect in image view."""
+        from .undo_commands import LinkRoadsCommand
+
+        road_a = self.project.get_road(road_a_id)
+        road_b = self.project.get_road(road_b_id)
+        if not road_a or not road_b:
+            return
+
+        cmd = LinkRoadsCommand(self, road_a_id, road_b_id, a_contact, b_contact)
+        self.undo_stack.push(cmd)
+
+        # Apply the link (first redo is skipped by the command)
+        if a_contact == "end":
+            road_a.successor_id = road_b.id
+            road_a.successor_contact = b_contact
+        else:
+            road_a.predecessor_id = road_b.id
+            road_a.predecessor_contact = b_contact
+
+        if b_contact == "start":
+            road_b.predecessor_id = road_a.id
+            road_b.predecessor_contact = a_contact
+        else:
+            road_b.successor_id = road_a.id
+            road_b.successor_contact = a_contact
+
+        # Snap coordinates
+        self.project.enforce_road_link_coordinates(road_a_id)
+
+        # Refresh graphics for both roads
+        for road in (road_a, road_b):
+            if road.centerline_id and road.centerline_id in self.image_view.polyline_items:
+                self.image_view.polyline_items[road.centerline_id].update_graphics()
+            if road.id in self.image_view.road_lanes_items:
+                cl = self.project.get_polyline(road.centerline_id)
+                if cl:
+                    road.update_section_boundaries(cl.points)
+                self.image_view.road_lanes_items[road.id].update_graphics()
+
+        self._refresh_trees()
+        road_b_name = road_b.name or f"Road {road_b.id}"
+        self.statusBar().showMessage(f"Connected to '{road_b_name}'")
+
+    def on_road_unlink_requested(self, road_id: str, linked_road_id: str):
+        """Handle road unlink request from context menu."""
+        from .undo_commands import UnlinkRoadsCommand
+
+        road = self.project.get_road(road_id)
+        linked = self.project.get_road(linked_road_id)
+        if not road or not linked:
+            return
+
+        cmd = UnlinkRoadsCommand(self, road_id, linked_road_id)
+        self.undo_stack.push(cmd)
+
+        # Apply the unlink (first redo is skipped by the command)
+        if road.predecessor_id == linked_road_id:
+            road.predecessor_id = None
+        if road.successor_id == linked_road_id:
+            road.successor_id = None
+        if linked.predecessor_id == road_id:
+            linked.predecessor_id = None
+        if linked.successor_id == road_id:
+            linked.successor_id = None
+
+        self._refresh_trees()
+        linked_name = linked.name or f"Road {linked.id}"
+        self.statusBar().showMessage(f"Disconnected from '{linked_name}'")
 
     def toggle_lane_visibility(self):
         """Toggle visibility of lane graphics."""

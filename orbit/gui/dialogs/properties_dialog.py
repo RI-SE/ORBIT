@@ -555,6 +555,9 @@ class RoadPropertiesDialog(QDialog):
             self.road.successor_id = self.successor_combo.currentData()
             self.road.successor_contact = self.successor_contact_combo.currentData()
 
+            # Enforce endpoint coordinate alignment with connected roads
+            self.project.enforce_road_link_coordinates(self.road.id)
+
         # Lane info
         old_left_count = self.road.lane_info.left_count
         old_right_count = self.road.lane_info.right_count
