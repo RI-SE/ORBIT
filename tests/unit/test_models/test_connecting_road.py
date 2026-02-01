@@ -815,32 +815,40 @@ class TestConnectingRoadVariableWidth:
         assert cr.lane_width_end == 4.5
 
 
-class TestConnectingRoadRoadId:
-    """Test OpenDRIVE road_id handling."""
+class TestConnectingRoadIdMigration:
+    """Test migration of old road_id field to id."""
 
-    def test_road_id_defaults_to_none(self):
-        """Test road_id defaults to None."""
-        cr = ConnectingRoad()
-        assert cr.road_id is None
-
-    def test_road_id_serialized_when_set(self):
-        """Test road_id is serialized when set."""
-        cr = ConnectingRoad(path=[(0, 0), (100, 100)], road_id=42)
-        data = cr.to_dict()
-        assert data['road_id'] == 42
-
-    def test_road_id_not_serialized_when_none(self):
-        """Test road_id is not in dict when None."""
-        cr = ConnectingRoad(path=[(0, 0), (100, 100)])
-        data = cr.to_dict()
-        assert 'road_id' not in data
-
-    def test_road_id_deserialization(self):
-        """Test road_id is deserialized."""
+    def test_old_road_id_migrated_to_id_for_uuid(self):
+        """Test that old road_id is migrated to id when id is a non-numeric UUID."""
         data = {
-            'id': 'test',
+            'id': 'abc-123-uuid',
             'path': [[0, 0], [100, 100]],
-            'road_id': 123
+            'road_id': 42
         }
         cr = ConnectingRoad.from_dict(data)
-        assert cr.road_id == 123
+        assert cr.id == '42'
+
+    def test_numeric_id_kept_over_road_id(self):
+        """Test that numeric id is kept even when road_id is present."""
+        data = {
+            'id': '7',
+            'path': [[0, 0], [100, 100]],
+            'road_id': 42
+        }
+        cr = ConnectingRoad.from_dict(data)
+        assert cr.id == '7'
+
+    def test_no_road_id_field_leaves_id_unchanged(self):
+        """Test that missing road_id field does not affect id."""
+        data = {
+            'id': 'some-uuid',
+            'path': [[0, 0], [100, 100]]
+        }
+        cr = ConnectingRoad.from_dict(data)
+        assert cr.id == 'some-uuid'
+
+    def test_road_id_not_in_serialized_output(self):
+        """Test that road_id is no longer serialized."""
+        cr = ConnectingRoad(id='5', path=[(0, 0), (100, 100)])
+        data = cr.to_dict()
+        assert 'road_id' not in data

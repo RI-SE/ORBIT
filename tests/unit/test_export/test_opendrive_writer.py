@@ -723,8 +723,7 @@ class TestCreateJunction:
         junction.connected_road_ids = ['road1', 'road2']
 
         # Add a connecting road
-        conn_road = ConnectingRoad(path=[(0, 0), (10, 10)])
-        conn_road.road_id = 1001
+        conn_road = ConnectingRoad(id="1001", path=[(0, 0), (10, 10)])
         conn_road.predecessor_road_id = 'road1'
         conn_road.successor_road_id = 'road2'
         junction.connecting_roads.append(conn_road)
@@ -820,6 +819,7 @@ class TestCreateConnectingRoad:
         project = Project()
 
         conn_road = ConnectingRoad(
+            id="100",
             path=[(0, 0), (50, 50), (100, 100)]
         )
         conn_road.predecessor_road_id = 'road1'
@@ -859,6 +859,7 @@ class TestCreateConnectingRoad:
         project = Project()
 
         conn_road = ConnectingRoad(
+            id="101",
             path=[(0, 0), (50, 25), (100, 0)]
         )
         conn_road.geometry_type = "parampoly3"

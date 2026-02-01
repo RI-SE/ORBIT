@@ -123,7 +123,6 @@ class Project:
     _next_signal_id: int = field(default=1, repr=False)
     _next_object_id: int = field(default=1, repr=False)
     _next_parking_id: int = field(default=1, repr=False)
-    _next_connecting_road_id: int = field(default=1, repr=False)
     _next_lane_connection_id: int = field(default=1, repr=False)
     _next_junction_group_id: int = field(default=1, repr=False)
 
@@ -146,7 +145,7 @@ class Project:
             'signal': '_next_signal_id',
             'object': '_next_object_id',
             'parking': '_next_parking_id',
-            'connecting_road': '_next_connecting_road_id',
+            'connecting_road': '_next_road_id',
             'lane_connection': '_next_lane_connection_id',
             'junction_group': '_next_junction_group_id',
         }
@@ -191,14 +190,13 @@ class Project:
             return max_id
 
         self._next_polyline_id = _max_numeric_id(p.id for p in self.polylines) + 1
-        self._next_road_id = _max_numeric_id(r.id for r in self.roads) + 1
         self._next_junction_id = _max_numeric_id(j.id for j in self.junctions) + 1
         self._next_signal_id = _max_numeric_id(s.id for s in self.signals) + 1
         self._next_object_id = _max_numeric_id(o.id for o in self.objects) + 1
         self._next_parking_id = _max_numeric_id(p.id for p in self.parking_spaces) + 1
         self._next_junction_group_id = _max_numeric_id(jg.id for jg in self.junction_groups) + 1
 
-        # ConnectingRoad and LaneConnection are nested inside junctions
+        # ConnectingRoad shares the road counter; LaneConnection is nested inside junctions
         cr_ids = []
         lc_ids = []
         for junction in self.junctions:
@@ -206,7 +204,10 @@ class Project:
                 cr_ids.append(cr.id)
             for lc in junction.lane_connections:
                 lc_ids.append(lc.id)
-        self._next_connecting_road_id = _max_numeric_id(cr_ids) + 1
+        self._next_road_id = max(
+            _max_numeric_id(r.id for r in self.roads),
+            _max_numeric_id(cr_ids)
+        ) + 1
         self._next_lane_connection_id = _max_numeric_id(lc_ids) + 1
 
     def _has_uuid_ids(self) -> bool:
@@ -340,14 +341,13 @@ class Project:
             parking_remap[p.id] = new_id
             p.id = new_id
 
-        # --- Assign new connecting road and lane connection IDs ---
-        cr_used: set = set()
-        cr_counter = [1]
+        # --- Assign new connecting road IDs (shares road namespace) ---
         lc_used: set = set()
         lc_counter = [1]
         for j in self.junctions:
             for cr in j.connecting_roads:
-                new_id = _new_id(cr.id, None, cr_used, cr_counter)
+                odr_id = odr_id_lookup.get(cr.id)
+                new_id = _new_id(cr.id, odr_id, road_used, road_counter)
                 connecting_road_remap[cr.id] = new_id
                 cr.id = new_id
             for lc in j.lane_connections:
@@ -1345,7 +1345,6 @@ class Project:
                 'signal': self._next_signal_id,
                 'object': self._next_object_id,
                 'parking': self._next_parking_id,
-                'connecting_road': self._next_connecting_road_id,
                 'lane_connection': self._next_lane_connection_id,
                 'junction_group': self._next_junction_group_id,
             }
@@ -1443,7 +1442,6 @@ class Project:
             project._next_signal_id = id_counters.get('signal', 1)
             project._next_object_id = id_counters.get('object', 1)
             project._next_parking_id = id_counters.get('parking', 1)
-            project._next_connecting_road_id = id_counters.get('connecting_road', 1)
             project._next_lane_connection_id = id_counters.get('lane_connection', 1)
             project._next_junction_group_id = id_counters.get('junction_group', 1)
         # Always sync to ensure counters are >= max existing ID + 1
@@ -1467,7 +1465,8 @@ class Project:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         project = cls.from_dict(data)
-        # Clear any stale cross-junction road links (OpenDRIVE compliance)
+        # Clean up data integrity issues from older versions
+        project.cleanup_junction_connected_road_ids()
         project.clear_cross_junction_road_links()
         return project
 
@@ -1494,9 +1493,37 @@ class Project:
         self._next_signal_id = 1
         self._next_object_id = 1
         self._next_parking_id = 1
-        self._next_connecting_road_id = 1
         self._next_lane_connection_id = 1
         self._next_junction_group_id = 1
+
+    def cleanup_junction_connected_road_ids(self) -> int:
+        """
+        Remove invalid entries from junction connected_road_ids lists.
+
+        Removes IDs that are connecting roads (should not be in this list)
+        or that reference roads which no longer exist. Older imports incorrectly
+        added connecting road IDs here, and road deletion may leave orphans.
+
+        Returns:
+            Number of stale entries removed
+        """
+        removed = 0
+        road_ids = {r.id for r in self.roads}
+
+        for junction in self.junctions:
+            cr_ids = {cr.id for cr in junction.connecting_roads}
+            before = len(junction.connected_road_ids)
+            junction.connected_road_ids = [
+                rid for rid in junction.connected_road_ids
+                if rid in road_ids and rid not in cr_ids
+            ]
+            removed += before - len(junction.connected_road_ids)
+
+        if removed > 0:
+            logger.info(
+                f"Cleaned {removed} invalid entry/entries from junction connected_road_ids"
+            )
+        return removed
 
     def clear_cross_junction_road_links(self) -> int:
         """

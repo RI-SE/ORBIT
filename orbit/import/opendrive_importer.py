@@ -615,7 +615,7 @@ class OpenDriveImporter:
 
         # Create connecting road
         connecting_road = ConnectingRoad(
-            id=self.project.next_id('connecting_road'),
+            id=str(odr_road.id),
             path=points_pixel,
             geo_path=geo_points,  # Store geo coords as source of truth
             lane_count_left=lane_count_left,
@@ -626,12 +626,6 @@ class OpenDriveImporter:
             contact_point_start=contact_point_start,
             contact_point_end=contact_point_end
         )
-
-        # Preserve original OpenDRIVE road ID for round-trip export
-        try:
-            connecting_road.road_id = int(odr_road.id)
-        except (ValueError, TypeError):
-            pass
 
         # Set paramPoly3 geometry if available
         if param_poly3:
@@ -1035,7 +1029,6 @@ class OpenDriveImporter:
             )
             junction.connections.append(conn)
             junction.connected_road_ids.append(incoming_orbit_id)
-            junction.connected_road_ids.append(connecting_orbit_id)
 
         # Remove duplicates from connected_road_ids
         junction.connected_road_ids = list(set(junction.connected_road_ids))

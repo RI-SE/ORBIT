@@ -42,7 +42,6 @@ class ConnectingRoad:
         successor_road_id: ID of the outgoing road (road exiting junction)
         contact_point_start: Contact point at start ('start' or 'end' of predecessor)
         contact_point_end: Contact point at end ('start' or 'end' of successor)
-        road_id: Optional numeric OpenDRIVE road ID (assigned during export)
         geometry_type: Type of geometry ("parampoly3" or "polyline")
         aU, bU, cU, dU: ParamPoly3D coefficients for u(p) polynomial
         aV, bV, cV, dV: ParamPoly3D coefficients for v(p) polynomial
@@ -67,9 +66,6 @@ class ConnectingRoad:
     successor_road_id: str = ""
     contact_point_start: str = "end"   # Where predecessor connects
     contact_point_end: str = "start"   # Where successor connects
-
-    # OpenDRIVE export
-    road_id: Optional[int] = None  # Numeric road ID for OpenDRIVE (assigned during export)
 
     # ParamPoly3D geometry (new in ParamPoly3D update)
     geometry_type: str = "parampoly3"  # "parampoly3" or "polyline" (legacy)
@@ -563,10 +559,6 @@ class ConnectingRoad:
         if self.geo_path is not None:
             data['geo_path'] = [[lon, lat] for lon, lat in self.geo_path]
 
-        # Only include road_id if it's set
-        if self.road_id is not None:
-            data['road_id'] = self.road_id
-
         # Only include stored headings if set (for accurate export)
         if self.stored_start_heading is not None:
             data['stored_start_heading'] = self.stored_start_heading
@@ -606,7 +598,13 @@ class ConnectingRoad:
         cr.successor_road_id = data.get('successor_road_id', '')
         cr.contact_point_start = data.get('contact_point_start', 'end')
         cr.contact_point_end = data.get('contact_point_end', 'start')
-        cr.road_id = data.get('road_id')  # Optional, defaults to None
+        # Migration: old projects stored ODR road ID in road_id field
+        old_road_id = data.get('road_id')
+        if old_road_id is not None and cr.id:
+            try:
+                int(cr.id)  # Already numeric — keep it
+            except (ValueError, TypeError):
+                cr.id = str(old_road_id)  # Non-numeric UUID — use road_id
 
         # ParamPoly3D fields (backward compatible with older projects)
         cr.geometry_type = data.get('geometry_type', 'polyline')  # Old projects use polyline

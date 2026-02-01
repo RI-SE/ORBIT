@@ -614,12 +614,7 @@ class OpenDriveWriter:
         if not connecting_road.path or len(connecting_road.path) < 2:
             return None
 
-        # Use road_id if set, otherwise generate one
-        road_id = connecting_road.road_id
-        if road_id is None:
-            # Generate road ID: junction_id * 1000 + hash of connecting_road.id
-            road_id = junction_numeric_id * 1000 + (hash(connecting_road.id) % 1000)
-            connecting_road.road_id = road_id  # Store for future reference
+        road_id = int(connecting_road.id)
 
         # Transform path points from pixels to meters
         # Use geo coords directly if available (more precise, avoids double conversion)
@@ -996,16 +991,15 @@ class OpenDriveWriter:
         # Create connection elements
         connection_id = 0
         for (from_road_id, connecting_road_id), lane_connections in connection_groups.items():
-            # Find the connecting road to get its road_id for the connection element
+            # Find the connecting road to get its ID for the connection element
             connecting_road = junction.get_connecting_road_by_id(connecting_road_id)
-            if not connecting_road or connecting_road.road_id is None:
-                # Skip if connecting road not found or doesn't have numeric ID
+            if not connecting_road:
                 continue
 
             connection = etree.SubElement(junction_elem, 'connection')
             connection.set('id', str(connection_id))
             connection.set('incomingRoad', from_road_id)
-            connection.set('connectingRoad', str(connecting_road.road_id))
+            connection.set('connectingRoad', connecting_road.id)
             connection.set('contactPoint', 'start')  # Connecting roads start at junction
 
             # Note: priority is a child element of junction, not an attribute of connection
