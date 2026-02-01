@@ -4,18 +4,26 @@ Road tree widget for ORBIT.
 Displays hierarchical view of roads and their polylines with management capabilities.
 """
 
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
+from PyQt6.QtCore import QEvent, QMimeData, Qt, pyqtSignal
+from PyQt6.QtGui import QAction, QDrag
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
-    QMenu, QMessageBox, QLineEdit, QAbstractItemView
+    QAbstractItemView,
+    QHBoxLayout,
+    QLineEdit,
+    QMenu,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTreeWidgetItemIterator,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QMimeData
-from PyQt6.QtGui import QAction, QKeyEvent, QDrag
 
-from orbit.models import Project, Road, Polyline, LaneType
-from ..utils.message_helpers import show_info, ask_yes_no
+from orbit.models import LaneType, Polyline, Project, Road
+
+from ..utils.message_helpers import ask_yes_no, show_info
 
 
 class DraggableTreeWidget(QTreeWidget):
@@ -377,7 +385,6 @@ class RoadTreeWidget(QWidget):
 
     def create_section_item(self, section, road_id: str) -> QTreeWidgetItem:
         """Create a tree item for a lane section."""
-        from orbit.models import LaneSection
 
         # Format section display name with s-offset range
         scale = self._get_scale_factor()
@@ -410,7 +417,6 @@ class RoadTreeWidget(QWidget):
 
     def create_lane_item(self, lane, road_id: str, section_number: Optional[int] = None) -> QTreeWidgetItem:
         """Create a tree item for a lane."""
-        from orbit.models import Lane, LaneType
 
         # Format lane display name with type
         lane_type_name = lane.lane_type.value.title() if lane.lane_type != LaneType.NONE else "None"
@@ -660,8 +666,9 @@ class RoadTreeWidget(QWidget):
 
     def edit_section(self, section_number: int, road_id: str):
         """Edit a lane section's properties."""
-        from ..dialogs.section_properties_dialog import SectionPropertiesDialog
         from orbit.export import create_transformer
+
+        from ..dialogs.section_properties_dialog import SectionPropertiesDialog
 
         road = self.project.get_road(road_id)
         if road:

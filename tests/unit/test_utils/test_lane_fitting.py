@@ -4,19 +4,18 @@ Unit tests for lane width polynomial fitting utilities.
 Tests polynomial fitting for lane boundaries.
 """
 
-import pytest
 import math
-from typing import List, Tuple
+
+import pytest
 
 from orbit.utils.lane_fitting import (
+    _get_perpendicular_at_point,
+    _point_to_polyline_perpendicular_distance,
+    _ray_to_polyline_distance,
+    evaluate_fit_quality,
     fit_lane_width_polynomial,
     fit_single_lane_width,
-    evaluate_fit_quality,
-    _get_perpendicular_at_point,
-    _ray_to_polyline_distance,
-    _point_to_polyline_perpendicular_distance,
 )
-
 
 # ============================================================================
 # Test Fixtures - Geometric Test Data

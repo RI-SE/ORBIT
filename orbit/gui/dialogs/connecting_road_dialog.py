@@ -4,18 +4,16 @@ Connecting road properties dialog for ORBIT.
 Allows editing of connecting road properties including tangent adjustment for ParamPoly3D curves.
 """
 
+import math
 from typing import Optional
 
-from PyQt6.QtWidgets import (
-    QDialog, QSpinBox, QComboBox,
-    QLabel, QDoubleSpinBox, QPushButton
-)
+from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QLabel, QPushButton, QSpinBox
 
-from orbit.models.connecting_road import ConnectingRoad
 from orbit.models import Project
-from .base_dialog import BaseDialog, InfoIconLabel
+from orbit.models.connecting_road import ConnectingRoad
 from orbit.utils.geometry import generate_simple_connection_path
-import math
+
+from .base_dialog import BaseDialog
 
 
 class ConnectingRoadDialog(BaseDialog):
@@ -40,8 +38,16 @@ class ConnectingRoadDialog(BaseDialog):
             succ_road = self.project.get_road(self.connecting_road.successor_road_id)
             pred_id_short = self.connecting_road.predecessor_road_id[:8]
             succ_id_short = self.connecting_road.successor_road_id[:8]
-            pred_name = f"{pred_road.name} ({pred_id_short})" if pred_road and pred_road.name else f"Road {pred_id_short}"
-            succ_name = f"{succ_road.name} ({succ_id_short})" if succ_road and succ_road.name else f"Road {succ_id_short}"
+            pred_name = (
+                f"{pred_road.name} ({pred_id_short})"
+                if pred_road and pred_road.name
+                else f"Road {pred_id_short}"
+            )
+            succ_name = (
+                f"{succ_road.name} ({succ_id_short})"
+                if succ_road and succ_road.name
+                else f"Road {succ_id_short}"
+            )
         else:
             pred_name = f"Road {self.connecting_road.predecessor_road_id[:8]}"
             succ_name = f"Road {self.connecting_road.successor_road_id[:8]}"
@@ -349,7 +355,12 @@ class ConnectingRoadDialog(BaseDialog):
         super().accept()
 
     @classmethod
-    def edit_connecting_road(cls, connecting_road: ConnectingRoad, project: Optional[Project] = None, parent=None) -> bool:
+    def edit_connecting_road(
+        cls,
+        connecting_road: ConnectingRoad,
+        project: Optional[Project] = None,
+        parent=None,
+    ) -> bool:
         """
         Show dialog to edit a connecting road's properties.
 

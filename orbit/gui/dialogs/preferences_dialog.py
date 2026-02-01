@@ -5,13 +5,11 @@ Allows configuring project-level settings including georeferencing method,
 traffic side, and country code.
 """
 
-from PyQt6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QLineEdit, QListWidget, QListWidgetItem,
-    QAbstractItemView
-)
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QAbstractItemView, QComboBox, QDoubleSpinBox, QLineEdit, QListWidget, QListWidgetItem
 
 from orbit.models import Project, SignLibraryManager
+
 from .base_dialog import BaseDialog, InfoIconLabel
 
 

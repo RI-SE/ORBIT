@@ -8,6 +8,7 @@ All functions use QMessageBox internally with consistent styling and behavior.
 """
 
 from typing import Optional
+
 from PyQt6.QtWidgets import QMessageBox, QWidget
 
 

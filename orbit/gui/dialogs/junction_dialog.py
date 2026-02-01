@@ -4,25 +4,41 @@ Junction dialog for ORBIT.
 Allows editing of junction properties and road connections.
 """
 
-from typing import Optional, List
+from typing import Optional
 
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLineEdit, QComboBox, QPushButton,
-    QListWidget, QLabel, QMessageBox,
-    QListWidgetItem, QGroupBox, QToolButton, QWidget,
-    QTableWidget, QTableWidgetItem, QHeaderView, QDoubleSpinBox, QSpinBox,
-    QScrollArea, QFrame
-)
 from PyQt6.QtCore import Qt
-
-from orbit.models import Junction, JunctionConnection, Project
-from orbit.models.junction import (
-    JunctionBoundary, JunctionBoundarySegment,
-    JunctionElevationGrid, JunctionElevationGridPoint
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDoubleSpinBox,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
-from .base_dialog import BaseDialog, InfoIconLabel
+
+from orbit.models import Junction, Project
+from orbit.models.junction import (
+    JunctionBoundary,
+    JunctionBoundarySegment,
+    JunctionElevationGrid,
+    JunctionElevationGridPoint,
+)
+
 from ..utils.message_helpers import show_warning
+from .base_dialog import BaseDialog, InfoIconLabel
 
 
 class JunctionDialog(BaseDialog):
@@ -55,7 +71,6 @@ class JunctionDialog(BaseDialog):
         basic_layout.addRow("Center Point:", self.center_label)
 
         # Connected roads section - custom layout
-        from PyQt6.QtWidgets import QGroupBox
         roads_group = QGroupBox()
         roads_layout = QVBoxLayout()
 
@@ -280,7 +295,14 @@ class JunctionDialog(BaseDialog):
             self.boundary_table.setCellWidget(row, 0, type_combo)
             # Other fields
             self.boundary_table.setItem(row, 1, QTableWidgetItem(segment.road_id or ""))
-            self.boundary_table.setItem(row, 2, QTableWidgetItem(str(segment.boundary_lane) if segment.boundary_lane is not None else ""))
+            lane_text = (
+                str(segment.boundary_lane)
+                if segment.boundary_lane is not None
+                else ""
+            )
+            self.boundary_table.setItem(
+                row, 2, QTableWidgetItem(lane_text)
+            )
             self.boundary_table.setItem(row, 3, QTableWidgetItem(segment.connection_id or ""))
 
     def _load_elevation_table(self):

@@ -2,9 +2,9 @@
 Parse OSM JSON and XML data into intermediate Python objects.
 """
 
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
+from typing import Dict, List
 
 
 @dataclass

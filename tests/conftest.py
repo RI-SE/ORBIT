@@ -4,16 +4,24 @@ Pytest configuration and shared fixtures for ORBIT tests.
 Provides reusable test data and helper functions for unit and integration tests.
 """
 
-import pytest
 from pathlib import Path
 from typing import List
 
-from orbit.models import (
-    Project, ControlPoint, Polyline, LineType, RoadMarkType,
-    Road, RoadType, LaneInfo, Lane, LaneType, LaneSection,
-    Junction
-)
+import pytest
 
+from orbit.models import (
+    ControlPoint,
+    Junction,
+    Lane,
+    LaneSection,
+    LaneType,
+    LineType,
+    Polyline,
+    Project,
+    Road,
+    RoadMarkType,
+    RoadType,
+)
 
 # ============================================================================
 # Path Fixtures

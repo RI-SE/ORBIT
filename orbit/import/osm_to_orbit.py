@@ -5,43 +5,38 @@ Handles coordinate transformation, junction detection, and creation of
 Road, Junction, Signal, and RoadObject instances from OSM data.
 """
 
-from typing import List, Dict, Tuple, Optional, Set
-from collections import defaultdict
-import uuid
 import math
+from collections import defaultdict
+from typing import Dict, List, Optional, Set, Tuple
 
-from orbit.utils import CoordinateTransformer
-from orbit.utils.geometry import (
-    find_point_at_distance_along_path,
-    calculate_path_length,
-    shorten_geo_points
-)
-from orbit.models import ControlPoint, Road, Junction, Signal, RoadObject, ParkingSpace
-from orbit.models.polyline import Polyline, LineType, RoadMarkType
-from orbit.models.road import RoadType
+from orbit.models import Junction, ParkingSpace, Road, RoadObject, Signal
 from orbit.models.lane import Lane, LaneType
 from orbit.models.lane_section import LaneSection
-from orbit.models.signal import SignalType
 from orbit.models.object import ObjectType
+from orbit.models.polyline import LineType, Polyline, RoadMarkType
+from orbit.models.road import RoadType
+from orbit.models.signal import SignalType
+from orbit.utils import CoordinateTransformer
+from orbit.utils.geometry import calculate_path_length, find_point_at_distance_along_path, shorten_geo_points
 
-from .osm_parser import OSMData, OSMWay, OSMNode
 from .osm_mappings import (
-    get_road_type_for_highway,
-    get_lane_width_for_highway,
-    should_import_highway,
-    is_oneway,
-    is_reverse_oneway,
     estimate_lane_count,
-    parse_maxspeed,
-    get_signal_type_from_osm,
+    get_lane_width_for_highway,
     get_object_type_from_osm,
+    get_parking_access_from_osm,
+    get_parking_type_from_osm,
     get_path_type_and_lane_type,
     get_path_width_from_osm,
-    parse_turn_lanes,
+    get_road_type_for_highway,
+    get_signal_type_from_osm,
     get_surface_material,
-    get_parking_type_from_osm,
-    get_parking_access_from_osm,
+    is_oneway,
+    is_reverse_oneway,
+    parse_maxspeed,
+    parse_turn_lanes,
+    should_import_highway,
 )
+from .osm_parser import OSMData, OSMNode, OSMWay
 
 
 def calculate_bbox_from_image(image_width: int, image_height: int,
@@ -1524,7 +1519,7 @@ def process_turn_restrictions(
         osm_way_to_roads[way_id].append(road_id)
 
     # Build mapping: OSM node ID -> Junction
-    node_to_junction: Dict[int, Junction] = {}
+    _node_to_junction: Dict[int, Junction] = {}
     # We need to find which junction corresponds to which OSM node
     # This requires looking at the via node in restrictions
 

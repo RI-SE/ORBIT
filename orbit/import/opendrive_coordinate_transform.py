@@ -8,10 +8,9 @@ Supports three modes:
 3. Auto-georeference: Create control points from OpenDrive geoReference
 """
 
-from typing import List, Tuple, Optional
-from dataclasses import dataclass
 import math
-import numpy as np
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 
 @dataclass
@@ -238,7 +237,7 @@ class OpenDriveCoordinateTransform:
 
         # Parse PROJ4 string and use pyproj if available
         try:
-            from pyproj import Proj, transform
+            from pyproj import Proj
 
             # Create projection from geoReference
             proj = Proj(self.opendrive_geo_reference)

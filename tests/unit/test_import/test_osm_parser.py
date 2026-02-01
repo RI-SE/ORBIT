@@ -1,6 +1,7 @@
 """Tests for orbit.import.osm_parser module."""
 
 import importlib
+
 import pytest
 
 # Import from orbit.import using importlib (import is a reserved keyword)

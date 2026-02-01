@@ -6,14 +6,15 @@ and perform leave-one-out testing to identify problematic control points.
 """
 
 import math
-import numpy as np
-from typing import List, Dict, Tuple, Optional, TYPE_CHECKING
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, List, Optional
+
+import numpy as np
 
 from .logging_config import get_logger
 
 if TYPE_CHECKING:
-    from orbit.models import ControlPoint
+    pass
 
 logger = get_logger(__name__)
 
@@ -207,7 +208,7 @@ def _calculate_correlation(x_values: List[float], y_values: List[float]) -> floa
 
 def _compute_leave_one_out(transformer, errors, point_analyses, original_rmse):
     """Compute leave-one-out RMSE improvement for each point."""
-    from .coordinate_transform import HomographyTransformer, AffineTransformer
+    from .coordinate_transform import AffineTransformer, HomographyTransformer
 
     all_cps = transformer.training_points + transformer.validation_points
 

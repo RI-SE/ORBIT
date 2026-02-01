@@ -8,11 +8,11 @@ Provides visual debugging for junction connections:
 """
 
 import math
-from typing import Optional, Tuple
+from typing import Tuple
 
-from PyQt6.QtWidgets import QGraphicsItem, QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsPathItem
-from PyQt6.QtGui import QPen, QBrush, QColor, QPainterPath, QPainter, QPolygonF
-from PyQt6.QtCore import Qt, QPointF, QRectF
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QBrush, QColor, QPainterPath, QPen, QPolygonF
+from PyQt6.QtWidgets import QGraphicsEllipseItem, QGraphicsPathItem
 
 
 class RoadEndpointMarker(QGraphicsEllipseItem):

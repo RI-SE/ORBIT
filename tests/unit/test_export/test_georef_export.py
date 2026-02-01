@@ -1,19 +1,19 @@
 """Tests for orbit.export.georef_export module."""
 
 import json
-import pytest
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
+
 import numpy as np
+import pytest
 
 from orbit.export.georef_export import (
-    export_georeferencing,
-    build_georef_data,
-    _matrix_to_list,
     GEOREF_FORMAT_VERSION,
+    _matrix_to_list,
+    build_georef_data,
+    export_georeferencing,
 )
 from orbit.utils.coordinate_transform import AffineTransformer, HomographyTransformer
-
 
 # ==== Test Fixtures ====
 

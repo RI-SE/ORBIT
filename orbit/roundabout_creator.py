@@ -6,15 +6,16 @@ created roundabouts.
 """
 
 import math
-from typing import List, Tuple, Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
-from orbit.models import Project, Road, Junction
-from orbit.models.polyline import Polyline, LineType, RoadMarkType
-from orbit.models.road import RoadType, LaneInfo
-from orbit.models.lane import Lane, LaneType as LaneTypeEnum
-from orbit.models.lane_section import LaneSection
+from orbit.models import Junction, Project, Road
 from orbit.models.connecting_road import ConnectingRoad
+from orbit.models.lane import Lane
+from orbit.models.lane import LaneType as LaneTypeEnum
 from orbit.models.lane_connection import LaneConnection
+from orbit.models.lane_section import LaneSection
+from orbit.models.polyline import LineType, Polyline, RoadMarkType
+from orbit.models.road import LaneInfo, RoadType
 
 
 def generate_ring_points(

@@ -1,10 +1,11 @@
 """Tests for orbit.export.lane_analyzer module."""
 
-import pytest
-import numpy as np
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 
-from orbit.export.lane_analyzer import LaneAnalyzer, BoundaryInfo
+import numpy as np
+import pytest
+
+from orbit.export.lane_analyzer import BoundaryInfo, LaneAnalyzer
 from orbit.models import LineType
 
 

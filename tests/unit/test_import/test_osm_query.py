@@ -1,10 +1,10 @@
 """Tests for orbit.import.osm_query module."""
 
 import importlib
-import json
 import urllib.error
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 # Import from orbit.import using importlib (import is a reserved keyword)
 osm_query = importlib.import_module('orbit.import.osm_query')
@@ -255,7 +255,7 @@ class TestExecuteQuery:
         mock_response.__enter__ = Mock(return_value=mock_response)
         mock_response.__exit__ = Mock(return_value=False)
 
-        with patch('urllib.request.urlopen', return_value=mock_response) as mock_urlopen:
+        with patch('urllib.request.urlopen', return_value=mock_response) as _mock_urlopen:
             with patch('urllib.request.Request') as mock_request:
                 mock_request.return_value = Mock()
                 client._execute_query('test query')

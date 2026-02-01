@@ -4,18 +4,22 @@ Elements tree widget for ORBIT.
 Displays hierarchical view of junctions and other project elements with management capabilities.
 """
 
-from typing import Optional
 
+from PyQt6.QtCore import QEvent, Qt, pyqtSignal
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
-    QMenu, QMessageBox, QLineEdit
+    QLineEdit,
+    QMenu,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTreeWidgetItemIterator,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QEvent
-from PyQt6.QtGui import QAction, QKeyEvent
 
-from orbit.models import Project, Junction, Signal, ParkingSpace
+from orbit.models import Junction, ParkingSpace, Project, Signal
 from orbit.utils.enum_formatting import format_snake_case
+
 from ..utils.message_helpers import ask_yes_no
 
 
@@ -288,7 +292,6 @@ class ElementsTreeWidget(QWidget):
 
     def create_signal_item(self, signal: Signal) -> QTreeWidgetItem:
         """Create a tree item for a signal."""
-        from orbit.models.signal import SignalType
 
         # Build display text
         display_name = signal.get_display_name()
@@ -309,7 +312,6 @@ class ElementsTreeWidget(QWidget):
 
     def create_object_item(self, obj) -> QTreeWidgetItem:
         """Create a tree item for an object."""
-        from orbit.models.object import RoadObject
 
         # Build display text
         display_name = obj.get_display_name()
@@ -537,12 +539,12 @@ class ElementsTreeWidget(QWidget):
 
         # Find the connecting road in junctions
         connecting_road = None
-        parent_junction = None
+        _parent_junction = None
         for junction in self.project.junctions:
             for cr in junction.connecting_roads:
                 if cr.id == connecting_road_id:
                     connecting_road = cr
-                    parent_junction = junction
+                    _parent_junction = junction
                     break
             if connecting_road:
                 break
@@ -698,8 +700,8 @@ class ElementsTreeWidget(QWidget):
                         conn_road_data = conn_road_item.data(0, Qt.ItemDataRole.UserRole)
                         if isinstance(conn_road_data, dict) and conn_road_data.get("id") == connecting_road_id:
                             # Found the connecting road, now find the lane
-                            for l in range(conn_road_item.childCount()):
-                                lane_item = conn_road_item.child(l)
+                            for lane_idx in range(conn_road_item.childCount()):
+                                lane_item = conn_road_item.child(lane_idx)
                                 lane_data = lane_item.data(0, Qt.ItemDataRole.UserRole)
                                 if isinstance(lane_data, dict) and lane_data.get("lane_id") == lane_id:
                                     # Expand parent items so selection is visible

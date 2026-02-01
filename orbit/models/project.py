@@ -5,13 +5,20 @@ Manages the complete project state including polylines, roads, junctions,
 and georeferencing data. Handles saving/loading to .orbit files.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass, field
-from pathlib import Path
 import json
+from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from orbit.utils.logging_config import get_logger
+
+from .junction import Junction, JunctionGroup
+from .object import RoadObject
+from .parking import ParkingSpace
+from .polyline import Polyline
+from .road import Road
+from .signal import Signal
 
 
 def _get_version() -> str:
@@ -21,12 +28,6 @@ def _get_version() -> str:
         return version("orbit")
     except Exception:
         return "0.5.0"
-from .polyline import Polyline
-from .road import Road
-from .junction import Junction, JunctionGroup
-from .signal import Signal
-from .object import RoadObject
-from .parking import ParkingSpace
 
 logger = get_logger(__name__)
 
@@ -110,9 +111,12 @@ class Project:
     country_code: str = 'se'  # Default to Sweden
     map_name: str = ''  # Name for OpenDrive export (defaults to image filename when loaded)
     openstreetmap_used: bool = False  # Flag for OpenStreetMap attribution
-    junction_offset_distance_meters: float = 8.0  # Distance to offset road endpoints from junction centers (meters)
-    roundabout_ring_offset_distance_meters: float = 4.0  # Distance to offset ring segment endpoints from roundabout junctions (meters)
-    roundabout_approach_offset_distance_meters: float = 8.0  # Distance to offset approach road endpoints from roundabout junctions (meters)
+    # Distance to offset road endpoints from junction centers (meters)
+    junction_offset_distance_meters: float = 8.0
+    # Distance to offset ring segment endpoints from roundabout junctions (meters)
+    roundabout_ring_offset_distance_meters: float = 4.0
+    # Distance to offset approach road endpoints from roundabout junctions (meters)
+    roundabout_approach_offset_distance_meters: float = 8.0
     georef_validation: Dict[str, Any] = field(default_factory=dict)
     uncertainty_grid_cache: Optional[List[List[float]]] = None  # Cached uncertainty grid
     uncertainty_grid_resolution: Tuple[int, int] = (50, 50)  # Grid resolution
@@ -552,11 +556,7 @@ class Project:
         Returns:
             Tuple of (road1, road2) if successful, None on failure
         """
-        from orbit.utils.geometry import (
-            split_polyline_at_index,
-            split_boundary_at_centerline_s,
-            calculate_path_length
-        )
+        from orbit.utils.geometry import split_boundary_at_centerline_s, split_polyline_at_index
 
         # Get road and centerline
         road = self.get_road(road_id)
@@ -718,9 +718,15 @@ class Project:
 
         # Update road 1 (original road)
         road.name = road1_name
+        new_boundary_polylines = [
+            self.get_polyline(nid)
+            for nid in new_boundary_ids
+            if self.get_polyline(nid)
+        ]
+        new_boundary_id_set = {nb.id for nb in new_boundary_polylines}
         road.polyline_ids = [polyline_id] + [
             bid for bid in road.polyline_ids
-            if bid != polyline_id and bid not in [nb.id for nb in [self.get_polyline(nid) for nid in new_boundary_ids if self.get_polyline(nid)]]
+            if bid != polyline_id and bid not in new_boundary_id_set
         ]
         road.lane_sections = sections_road1
         road.successor_id = road2.id
@@ -910,11 +916,8 @@ class Project:
             The merged road (road1 with updated data), or None on failure
         """
         import re
-        from orbit.utils.geometry import (
-            merge_polylines_at_junction,
-            calculate_path_length,
-            distance_between_points
-        )
+
+        from orbit.utils.geometry import calculate_path_length, distance_between_points, merge_polylines_at_junction
 
         # Get both roads
         road1 = self.get_road(road1_id)

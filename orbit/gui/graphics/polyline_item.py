@@ -7,11 +7,11 @@ Provides visual representation of polylines on the image view.
 import math
 from typing import List, Tuple
 
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsScene
-from PyQt6.QtCore import Qt, QPointF
-from PyQt6.QtGui import QPen, QColor, QBrush, QPolygonF
 
-from orbit.models import Polyline, LineType, RoadMarkType
+from orbit.models import LineType, Polyline, RoadMarkType
 
 
 class PolylineGraphicsItem:

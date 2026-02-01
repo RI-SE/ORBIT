@@ -5,14 +5,14 @@ Analyzes junction geometry to automatically generate connecting roads and lane l
 """
 
 import math
-from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 
-from orbit.models import Junction, Road, Polyline, ConnectingRoad, LaneConnection
-from orbit.utils.geometry import generate_simple_connection_path, generate_connection_path_geo
-
 # Type hint for circular import avoidance
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+from orbit.models import ConnectingRoad, Junction, LaneConnection, Polyline, Road
+from orbit.utils.geometry import generate_connection_path_geo, generate_simple_connection_path
+
 if TYPE_CHECKING:
     from orbit.utils.coordinate_transform import CoordinateTransformer
 
@@ -314,10 +314,10 @@ def analyze_junction_geometry(junction: Junction,
         # Get lane counts from road's last section (at junction)
         if road.lane_sections:
             section = road.lane_sections[-1] if at_junction == "end" else road.lane_sections[0]
-            left_count = len([l for l in section.lanes if l.id > 0])
-            right_count = len([l for l in section.lanes if l.id < 0])
+            left_count = len([lane for lane in section.lanes if lane.id > 0])
+            right_count = len([lane for lane in section.lanes if lane.id < 0])
             # Get lane width from first driving lane
-            lane_width = next((l.width for l in section.lanes if l.id != 0), 3.5)
+            lane_width = next((lane.width for lane in section.lanes if lane.id != 0), 3.5)
         else:
             # Fallback to lane_info if no sections
             if hasattr(road, 'lane_info') and road.lane_info:

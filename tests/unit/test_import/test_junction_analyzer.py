@@ -1,9 +1,11 @@
 """Tests for orbit.import.junction_analyzer module."""
 
-import math
-import pytest
-from typing import List, Dict
 import importlib
+import math
+
+import pytest
+
+from orbit.models import Junction, LineType, Polyline, Road
 
 # Import using importlib since 'import' is a reserved keyword
 junction_analyzer = importlib.import_module('orbit.import.junction_analyzer')
@@ -21,8 +23,6 @@ filter_unlikely_connections = junction_analyzer.filter_unlikely_connections
 generate_lane_links_for_connection = junction_analyzer.generate_lane_links_for_connection
 clear_cross_junction_links = junction_analyzer.clear_cross_junction_links
 generate_junction_connections = junction_analyzer.generate_junction_connections
-
-from orbit.models import Junction, Road, Polyline, LineType
 
 
 class TestNormalizeAngle:
@@ -214,8 +214,8 @@ class TestRoadEndpointInfo:
 
         # Heading east (0), right side is south (negative Y)
         # 1 right lane, offset = 0.5 * 3.5 / 0.1 = 17.5 pixels south
-        expected_x = 100.0
-        expected_y = 100.0 - 17.5  # South of centerline (image coords, Y increases down)
+        _expected_x = 100.0
+        _expected_y = 100.0 - 17.5  # South of centerline (image coords, Y increases down)
 
         # Actually in standard math coords with heading 0 (east), right is -pi/2 (south)
         # cos(-pi/2) = 0, sin(-pi/2) = -1

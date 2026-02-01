@@ -4,14 +4,12 @@ Unit tests for enum formatting utilities.
 Tests the format_snake_case and format_enum_name functions.
 """
 
-import pytest
-from enum import Enum, auto
+from enum import Enum
 
 from orbit.utils.enum_formatting import (
-    format_snake_case,
     format_enum_name,
+    format_snake_case,
 )
-
 
 # ============================================================================
 # Test Enums for Testing

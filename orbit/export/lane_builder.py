@@ -5,9 +5,11 @@ Handles creation of lane-related XML elements.
 """
 
 from typing import List, Optional
+
 from lxml import etree
 
 from orbit.models import Road, RoadMarkType
+
 from .lane_analyzer import BoundaryInfo
 
 
@@ -113,7 +115,7 @@ class LaneBuilder:
 
             # Left lanes (positive IDs)
             left_lanes = [lane for lane in section.lanes if lane.id > 0]
-            left_lanes.sort(key=lambda l: l.id)  # Sort ascending: 1, 2, 3...
+            left_lanes.sort(key=lambda lane: lane.id)  # Sort ascending: 1, 2, 3...
             if left_lanes:
                 left = etree.SubElement(lane_section, 'left')
                 for lane_obj in left_lanes:
@@ -133,7 +135,7 @@ class LaneBuilder:
 
             # Right lanes (negative IDs)
             right_lanes = [lane for lane in section.lanes if lane.id < 0]
-            right_lanes.sort(key=lambda l: l.id, reverse=True)  # Sort descending: -1, -2, -3...
+            right_lanes.sort(key=lambda lane: lane.id, reverse=True)  # Sort descending: -1, -2, -3...
             if right_lanes:
                 right = etree.SubElement(lane_section, 'right')
                 for lane_obj in right_lanes:

@@ -1,9 +1,9 @@
 """Tests for orbit.import.opendrive_coordinate_transform module."""
 
 import importlib
-import math
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 
 # Import from orbit.import using importlib (import is a reserved keyword)
 opendrive_coord = importlib.import_module('orbit.import.opendrive_coordinate_transform')

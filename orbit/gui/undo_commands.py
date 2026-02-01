@@ -6,14 +6,11 @@ Each command captures state using model to_dict()/from_dict() methods.
 """
 
 import copy
-from typing import Optional, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from PyQt6.QtGui import QUndoCommand
 
-from orbit.models import (
-    Polyline, Road, Junction, Signal, RoadObject, ParkingSpace,
-    ConnectingRoad, LaneConnection
-)
+from orbit.models import ConnectingRoad, Junction, LaneConnection, ParkingSpace, Polyline, Road, RoadObject, Signal
 
 if TYPE_CHECKING:
     from .main_window import MainWindow
@@ -1017,7 +1014,7 @@ class AddSignalCommand(QUndoCommand):
     """Command for adding a signal."""
 
     def __init__(self, main_window: 'MainWindow', signal: Signal):
-        super().__init__(f"Add Signal")
+        super().__init__("Add Signal")
         self.main_window = main_window
         self.signal_data = signal.to_dict()
         self.signal_id = signal.id

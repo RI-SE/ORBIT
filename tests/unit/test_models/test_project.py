@@ -4,16 +4,13 @@ Unit tests for Project model.
 Tests project creation, serialization, save/load, and element management.
 """
 
-import pytest
 import json
 from pathlib import Path
-from datetime import datetime
+
+import pytest
 
 from orbit import __version__
-from orbit.models import (
-    Project, ControlPoint, Polyline, LineType, RoadMarkType,
-    Road, RoadType, Junction
-)
+from orbit.models import ControlPoint, Junction, LineType, Polyline, Project, Road, RoadMarkType
 
 
 class TestProjectCreation:
@@ -485,7 +482,7 @@ class TestObjectManagement:
 
     def test_add_object(self, empty_project):
         """Test adding an object to project."""
-        from orbit.models.object import RoadObject, ObjectType
+        from orbit.models.object import ObjectType, RoadObject
 
         obj = RoadObject(
             position=(100.0, 200.0),
@@ -498,7 +495,7 @@ class TestObjectManagement:
 
     def test_get_object_by_id(self, empty_project):
         """Test retrieving object by ID."""
-        from orbit.models.object import RoadObject, ObjectType
+        from orbit.models.object import ObjectType, RoadObject
 
         obj = RoadObject(
             position=(100.0, 200.0),
@@ -517,7 +514,7 @@ class TestObjectManagement:
 
     def test_remove_object(self, empty_project):
         """Test removing an object from project."""
-        from orbit.models.object import RoadObject, ObjectType
+        from orbit.models.object import ObjectType, RoadObject
 
         obj = RoadObject(
             position=(100.0, 200.0),

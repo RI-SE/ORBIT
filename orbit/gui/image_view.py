@@ -5,33 +5,39 @@ Provides interactive image display with zoom, pan, and polyline drawing/editing.
 """
 
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
+from typing import Dict, List, Optional, Tuple
+
 import cv2
 import numpy as np
-
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsItem, QMenu, QMessageBox, QGraphicsPolygonItem, QGraphicsPathItem, QGraphicsRectItem, QGraphicsEllipseItem
-from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QLineF
-from PyQt6.QtGui import (
-    QPixmap, QImage, QPen, QColor, QBrush, QPainter,
-    QWheelEvent, QMouseEvent, QKeyEvent, QFont
+from PyQt6.QtCore import QLineF, QPointF, QRectF, Qt, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QFont, QImage, QKeyEvent, QMouseEvent, QPainter, QPen, QPixmap, QWheelEvent
+from PyQt6.QtWidgets import (
+    QGraphicsEllipseItem,
+    QGraphicsItem,
+    QGraphicsPathItem,
+    QGraphicsPixmapItem,
+    QGraphicsRectItem,
+    QGraphicsScene,
+    QGraphicsView,
+    QMenu,
+    QMessageBox,
 )
 
-from orbit.models import Polyline, Project, Junction, LineType, RoadMarkType, Road, Signal, RoadObject, ObjectType
-from orbit.utils.geometry import create_lane_polygon, calculate_directional_scale
-from orbit.utils.coordinate_transform import TransformAdjustment
-from .graphics.signal_graphics_item import SignalGraphicsItem
-from .graphics.object_graphics_item import ObjectGraphicsItem
-from .graphics.parking_item import ParkingGraphicsItem
-from .utils.message_helpers import show_warning, ask_yes_no
 from orbit.gui.graphics import (
-    PolylineGraphicsItem,
-    JunctionMarkerItem,
-    InteractiveLanePolygon,
-    LaneGraphicsItem,
-    RoadLanesGraphicsItem,
     ConnectingRoadGraphicsItem,
     ConnectingRoadLanesGraphicsItem,
+    InteractiveLanePolygon,
+    JunctionMarkerItem,
+    PolylineGraphicsItem,
+    RoadLanesGraphicsItem,
 )
+from orbit.models import Junction, LineType, ObjectType, Polyline, Project, Road, RoadObject, Signal
+from orbit.utils.coordinate_transform import TransformAdjustment
+
+from .graphics.object_graphics_item import ObjectGraphicsItem
+from .graphics.parking_item import ParkingGraphicsItem
+from .graphics.signal_graphics_item import SignalGraphicsItem
+from .utils.message_helpers import ask_yes_no, show_warning
 
 
 class ImageView(QGraphicsView):
@@ -40,7 +46,10 @@ class ImageView(QGraphicsView):
     # Signals
     polyline_added = pyqtSignal(object)  # Emits Polyline
     polyline_modified = pyqtSignal(str)  # Emits polyline ID
-    polyline_modified_for_undo = pyqtSignal(str, list, list, object, object)  # For undo: polyline_id, old_points, new_points, old_geo, new_geo
+    # For undo: polyline_id, old_points, new_points, old_geo, new_geo
+    polyline_modified_for_undo = pyqtSignal(
+        str, list, list, object, object
+    )
     polyline_deleted = pyqtSignal(str)  # Emits polyline ID
     polyline_edit_requested = pyqtSignal(str)  # Emits polyline ID for editing
     polyline_selected = pyqtSignal(str)  # Emits polyline ID when selected in view
@@ -75,7 +84,8 @@ class ImageView(QGraphicsView):
     mouse_moved = pyqtSignal(float, float)  # Emits x, y mouse position in scene coordinates
     adjustment_changed = pyqtSignal(object)  # Emits TransformAdjustment when user adjusts alignment
     area_delete_requested = pyqtSignal(dict)  # Emits dict of item IDs found in area selection
-    road_link_requested = pyqtSignal(str, str, str, str)  # dragged_road_id, target_road_id, dragged_contact, target_contact
+    # dragged_road_id, target_road_id, dragged_contact, target_contact
+    road_link_requested = pyqtSignal(str, str, str, str)
     road_unlink_requested = pyqtSignal(str, str)  # road_id, linked_road_id (for disconnect)
 
     def __init__(self, parent=None, verbose: bool = False):
@@ -345,8 +355,6 @@ class ImageView(QGraphicsView):
         junction = self.project.get_junction(junction_id) if self.project else None
         if junction:
             # Get current connecting road IDs from the junction
-            current_conn_road_ids = {cr.id for cr in junction.connecting_roads}
-
             # Find connecting road graphics that belong to this junction but are no longer valid
             orphaned_ids = []
             for conn_road_id in list(self.connecting_road_lanes_items.keys()):
@@ -417,7 +425,6 @@ class ImageView(QGraphicsView):
 
     def add_parking_graphics(self, parking, scale_factor: float = 0.0):
         """Add a parking space to the graphics scene."""
-        from orbit.models.parking import ParkingSpace
         item = ParkingGraphicsItem(parking, scale_factor)
         item.parking_changed = lambda p: self._on_parking_changed(p)
         self.parking_items[parking.id] = item
@@ -778,7 +785,6 @@ class ImageView(QGraphicsView):
 
     def add_control_point_graphics(self, control_point):
         """Add a control point marker to the graphics scene as a crosshair."""
-        from orbit.models import ControlPoint
 
         x, y = control_point.pixel_x, control_point.pixel_y
 
@@ -809,8 +815,8 @@ class ImageView(QGraphicsView):
 
         # Add label with CP name
         if control_point.name:
-            from PyQt6.QtWidgets import QGraphicsTextItem
             from PyQt6.QtGui import QFont
+            from PyQt6.QtWidgets import QGraphicsTextItem
             text_item = QGraphicsTextItem(control_point.name)
             text_item.setDefaultTextColor(QColor(0, 100, 255))  # Bright blue
             font = QFont()
@@ -1213,8 +1219,8 @@ class ImageView(QGraphicsView):
         Returns:
             Tuple of (text_item, bg_item)
         """
-        from PyQt6.QtWidgets import QGraphicsTextItem
         from PyQt6.QtGui import QFont
+        from PyQt6.QtWidgets import QGraphicsTextItem
 
         # Create text item
         text = self._format_soffset(soffset)
@@ -1906,8 +1912,8 @@ class ImageView(QGraphicsView):
         mid_y = (p1.y() + p2.y()) / 2
 
         # Create text item
-        from PyQt6.QtWidgets import QGraphicsTextItem
         from PyQt6.QtGui import QFont
+        from PyQt6.QtWidgets import QGraphicsTextItem
         text_item = QGraphicsTextItem(distance_text)
         text_item.setDefaultTextColor(QColor(255, 255, 255))
         font = QFont()
@@ -1961,7 +1967,11 @@ class ImageView(QGraphicsView):
                 from orbit.utils import create_transformer
 
                 # Create transformer
-                transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+                transformer = create_transformer(
+                    self.project.control_points,
+                    self.project.transform_method,
+                    use_validation=True,
+                )
 
                 if transformer:
                     # Convert both points to meters
@@ -2774,7 +2784,13 @@ class ImageView(QGraphicsView):
 
                     # Warn if within 5% of section length
                     if min_distance < section_length * 0.05:
-                        if not ask_yes_no(self, f"This will create a very small section ({min_distance:.1f} pixels).\n\nContinue anyway?", "Small Section Warning"):
+                        if not ask_yes_no(
+                            self,
+                            f"This will create a very small "
+                            f"section ({min_distance:.1f} "
+                            f"pixels).\n\nContinue anyway?",
+                            "Small Section Warning",
+                        ):
                             return
 
             # Emit signal for MainWindow to handle
@@ -3119,8 +3135,15 @@ class ImageView(QGraphicsView):
                                 polyline.geo_points.insert(insert_index, new_geo)
                             if polyline.elevations is not None:
                                 # Interpolate elevation from neighbours
-                                prev_e = polyline.elevations[insert_index - 1] if insert_index > 0 else 0.0
-                                next_e = polyline.elevations[insert_index] if insert_index < len(polyline.elevations) else prev_e
+                                prev_e = (
+                                    polyline.elevations[insert_index - 1]
+                                    if insert_index > 0 else 0.0
+                                )
+                                next_e = (
+                                    polyline.elevations[insert_index]
+                                    if insert_index < len(polyline.elevations)
+                                    else prev_e
+                                )
                                 polyline.elevations.insert(insert_index, (prev_e + next_e) / 2.0)
                             if polyline.s_offsets is not None:
                                 polyline.s_offsets.insert(insert_index, 0.0)  # Will be recalculated
@@ -3151,12 +3174,12 @@ class ImageView(QGraphicsView):
                         if segment_index >= 0:
                             # Find the connecting road in junctions
                             connecting_road = None
-                            parent_junction = None
+                            _parent_junction = None
                             for junction in self.project.junctions:
                                 for cr in junction.connecting_roads:
                                     if cr.id == conn_road_id:
                                         connecting_road = cr
-                                        parent_junction = junction
+                                        _parent_junction = junction
                                         break
                                 if connecting_road:
                                     break

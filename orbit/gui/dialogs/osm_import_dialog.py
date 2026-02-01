@@ -3,11 +3,19 @@ Dialog for OpenStreetMap import configuration.
 """
 
 from PyQt6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QLabel, QRadioButton,
-    QPushButton, QGroupBox, QDoubleSpinBox, QCheckBox, QTextBrowser,
-    QLineEdit, QFileDialog
+    QCheckBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QRadioButton,
+    QTextBrowser,
+    QVBoxLayout,
 )
-from PyQt6.QtCore import Qt
+
 from .base_dialog import BaseDialog
 
 

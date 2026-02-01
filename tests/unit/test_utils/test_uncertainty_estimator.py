@@ -1,12 +1,12 @@
 """Tests for orbit.utils.uncertainty_estimator module."""
 
 import math
-import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
+
 import numpy as np
+import pytest
 
 from orbit.utils.uncertainty_estimator import UncertaintyEstimator
-
 
 # ==== Test Fixtures ====
 
@@ -612,7 +612,6 @@ class TestCalibrateFromValidationPoints:
         quality = estimator.calibrate_from_validation_points()
 
         # Quality can be NaN if correlation fails (constant values), so check for finite or 0
-        import math
         assert quality == 0.0 or (0.0 <= quality <= 1.0) or math.isnan(quality)
 
 

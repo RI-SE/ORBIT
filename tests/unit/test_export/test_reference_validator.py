@@ -2,16 +2,16 @@
 
 import pytest
 
-from orbit.models.project import Project
-from orbit.models.polyline import Polyline, LineType
-from orbit.models.road import Road
-from orbit.models.junction import Junction, JunctionGroup
+from orbit.export.reference_validator import validate_references
 from orbit.models.connecting_road import ConnectingRoad
+from orbit.models.junction import Junction, JunctionGroup
 from orbit.models.lane_connection import LaneConnection
-from orbit.models.signal import Signal
 from orbit.models.object import RoadObject
 from orbit.models.parking import ParkingSpace
-from orbit.export.reference_validator import validate_references
+from orbit.models.polyline import LineType, Polyline
+from orbit.models.project import Project
+from orbit.models.road import Road
+from orbit.models.signal import Signal
 
 
 @pytest.fixture

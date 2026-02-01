@@ -11,11 +11,12 @@ Usage:
     image_path: Optional path to image file to load on startup
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
-from PyQt6.QtWidgets import QApplication
+
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication
 
 from orbit import __version__
 from orbit.gui.main_window import MainWindow

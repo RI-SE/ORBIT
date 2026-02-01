@@ -5,14 +5,14 @@ Provides tools to estimate and analyze uncertainty in georeferencing transformat
 helping users identify where to add control points and assess data quality.
 """
 
-from typing import List, Tuple, Dict, Optional, Callable
+import copy
+import math
+from typing import Callable, Dict, List, Optional, Tuple
+
 import numpy as np
 from scipy.spatial import ConvexHull, distance
-from scipy.interpolate import griddata
-import math
-import copy
 
-from .coordinate_transform import CoordinateTransformer, TransformMethod
+from .coordinate_transform import CoordinateTransformer
 
 
 class UncertaintyEstimator:
@@ -284,8 +284,8 @@ class UncertaintyEstimator:
             mx3, my3 = self.transformer.pixel_to_meters(x, y + offset)
 
             # Scale factors (meters per pixel)
-            scale_x = math.sqrt((mx2 - mx1)**2 + (my2 - my1)**2) / offset
-            scale_y = math.sqrt((mx3 - mx1)**2 + (my3 - my1)**2) / offset
+            _scale_x = math.sqrt((mx2 - mx1)**2 + (my2 - my1)**2) / offset
+            _scale_y = math.sqrt((mx3 - mx1)**2 + (my3 - my1)**2) / offset
 
             # Position uncertainty at this point
             pos_unc = self.estimate_position_uncertainty_at_point(x, y)
@@ -470,7 +470,12 @@ class UncertaintyEstimator:
             print(f"[DEBUG find_high_unc] Grid shape: {grid.shape}")
             print(f"[DEBUG find_high_unc] Grid min/max: {np.min(grid):.3f} / {np.max(grid):.3f}m")
             print(f"[DEBUG find_high_unc] Threshold: {threshold:.3f}m")
-            print(f"[DEBUG find_high_unc] Dividing into {region_cols}×{region_rows} = {region_cols*region_rows} regions")
+            total_regions = region_cols * region_rows
+            print(
+                f"[DEBUG find_high_unc] Dividing into "
+                f"{region_cols}x{region_rows} = "
+                f"{total_regions} regions"
+            )
             cells_above_threshold = np.sum(grid >= threshold)
             print(f"[DEBUG find_high_unc] Cells above threshold: {cells_above_threshold} / {grid_rows*grid_cols}")
 
@@ -508,7 +513,12 @@ class UncertaintyEstimator:
 
                     suggestions.append((x, y, max_unc))
                     if verbose:
-                        print(f"[DEBUG find_high_unc] Region ({region_row},{region_col}): max={max_unc:.3f}m at pixel ({x:.0f},{y:.0f})")
+                        print(
+                            f"[DEBUG find_high_unc] "
+                            f"Region ({region_row},{region_col}): "
+                            f"max={max_unc:.3f}m at "
+                            f"pixel ({x:.0f},{y:.0f})"
+                        )
 
         # Sort by uncertainty (descending) to prioritize worst areas
         suggestions.sort(key=lambda s: s[2], reverse=True)

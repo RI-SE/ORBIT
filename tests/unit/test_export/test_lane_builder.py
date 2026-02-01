@@ -1,14 +1,14 @@
 """Tests for orbit.export.lane_builder module."""
 
-import pytest
-from unittest.mock import Mock, MagicMock
 from dataclasses import dataclass
 from typing import Optional
-from lxml import etree
+from unittest.mock import Mock
+
+import pytest
 
 from orbit.export.lane_builder import LaneBuilder, convert_road_mark_type
 from orbit.models import RoadMarkType
-from orbit.models.lane import Lane, LaneType
+from orbit.models.lane import LaneType
 
 
 @dataclass

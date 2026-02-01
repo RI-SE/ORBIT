@@ -6,12 +6,12 @@ Implements clothoid (Euler spiral) fitting using Fresnel integrals for G2-contin
 curves suitable for OpenDRIVE road geometry.
 """
 
-import numpy as np
-from typing import List, Tuple, Optional
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+from typing import List, Optional, Tuple
+
+import numpy as np
 from scipy.optimize import least_squares, minimize
-from scipy.special import fresnel
 
 from orbit.utils.logging_config import get_logger
 
@@ -935,7 +935,11 @@ def simplify_polyline(points: List[Tuple[float, float]], tolerance: float = 1.0)
     if len(points) < 3:
         return points
 
-    def perpendicular_distance(point: Tuple[float, float], line_start: Tuple[float, float], line_end: Tuple[float, float]) -> float:
+    def perpendicular_distance(
+        point: Tuple[float, float],
+        line_start: Tuple[float, float],
+        line_end: Tuple[float, float],
+    ) -> float:
         """Calculate perpendicular distance from point to line."""
         p = np.array(point)
         p1 = np.array(line_start)

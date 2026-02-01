@@ -5,11 +5,11 @@ Provides a singleton manager that handles library discovery from both
 application and user directories, loading, and caching.
 """
 
-from pathlib import Path
-from typing import Optional, List, Dict
 import logging
+from pathlib import Path
+from typing import Dict, List, Optional
 
-from .sign_library import SignLibrary, SignDefinition
+from .sign_library import SignDefinition, SignLibrary
 
 logger = logging.getLogger(__name__)
 

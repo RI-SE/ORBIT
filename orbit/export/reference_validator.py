@@ -9,7 +9,6 @@ produce invalid OpenDRIVE output.
 from typing import List, Set
 
 from orbit.models.project import Project
-
 from orbit.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -35,8 +34,6 @@ def validate_references(project: Project) -> List[str]:
     road_ids: Set[str] = {r.id for r in project.roads}
     junction_ids: Set[str] = {j.id for j in project.junctions}
     signal_ids: Set[str] = {s.id for s in project.signals}
-    junction_group_ids: Set[str] = {jg.id for jg in project.junction_groups}
-
     # Build connecting road ID sets per junction
     connecting_road_ids: Set[str] = set()
     for junction in project.junctions:
@@ -124,7 +121,11 @@ def validate_references(project: Project) -> List[str]:
     # --- Signal → Road ---
     for signal in project.signals:
         if signal.road_id and signal.road_id not in road_ids:
-            warnings.append(f"Signal '{signal.name or signal.id}' (id={signal.id}): road_id '{signal.road_id}' not found in roads")
+            warnings.append(
+                f"Signal '{signal.name or signal.id}' "
+                f"(id={signal.id}): road_id "
+                f"'{signal.road_id}' not found in roads"
+            )
 
     # --- RoadObject → Road ---
     for obj in project.objects:

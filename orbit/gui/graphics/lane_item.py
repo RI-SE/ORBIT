@@ -4,18 +4,22 @@ Lane graphics items for ORBIT.
 Provides visual representation of lanes on the image view.
 """
 
-from typing import List, Tuple, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from PyQt6.QtWidgets import QGraphicsScene
 from PyQt6.QtCore import QPointF
-from PyQt6.QtGui import QPen, QColor, QBrush, QPolygonF
+from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
+from PyQt6.QtWidgets import QGraphicsScene
 
-from orbit.models import Road, Polyline, BoundaryMode
+from orbit.models import BoundaryMode, Polyline, Road
 from orbit.utils.geometry import (
-    create_lane_polygon, create_variable_width_lane_polygon,
-    create_polygon_from_boundaries, create_polynomial_width_lane_polygon,
-    calculate_directional_scale
+    calculate_directional_scale,
+    calculate_offset_polyline,
+    create_lane_polygon,
+    create_polygon_from_boundaries,
+    create_polynomial_width_lane_polygon,
+    create_variable_width_lane_polygon,
 )
+
 from .interactive_lane import InteractiveLanePolygon
 
 if TYPE_CHECKING:
@@ -180,7 +184,7 @@ class RoadLanesGraphicsItem:
             self.road.lane_sections[-1].s_end = s_coords[-1]
 
         if self.verbose:
-            print(f"  Creating section-based lane polygons:")
+            print("  Creating section-based lane polygons:")
             print(f"    Sections: {len(self.road.lane_sections)}")
 
         # For each section, create polygons for each lane
@@ -206,7 +210,11 @@ class RoadLanesGraphicsItem:
             section_centerline = [centerline_points[i] for i in section_point_indices]
 
             if self.verbose:
-                print(f"    Section {section.section_number}: {len(section_centerline)} points, {len(section.lanes)} lanes")
+                print(
+                    f"    Section {section.section_number}: "
+                    f"{len(section_centerline)} points, "
+                    f"{len(section.lanes)} lanes"
+                )
 
             # Calculate section s-coordinates for polynomial width evaluation
             section_s_values = [s_coords[i] - section.s_start for i in section_point_indices]
@@ -215,7 +223,7 @@ class RoadLanesGraphicsItem:
 
             # Create polygons for each lane in this section
             # Sort lanes by absolute ID for correct stacking
-            sorted_lanes = sorted(section.lanes, key=lambda l: abs(l.id))
+            sorted_lanes = sorted(section.lanes, key=lambda lane: abs(lane.id))
 
             for lane in sorted_lanes:
                 if lane.id == 0:
@@ -261,19 +269,19 @@ class RoadLanesGraphicsItem:
                     # Check if any lane uses polynomial width (b, c, d coefficients)
                     uses_polynomial = (
                         lane.width_b != 0.0 or lane.width_c != 0.0 or lane.width_d != 0.0 or
-                        any((l.width_b != 0.0 or l.width_c != 0.0 or l.width_d != 0.0)
-                            for l in sorted_lanes
-                            if l.id != 0 and
-                            ((lane.id > 0 and l.id > 0 and l.id < lane.id) or
-                             (lane.id < 0 and l.id < 0 and abs(l.id) < abs(lane.id))))
+                        any((sl.width_b != 0.0 or sl.width_c != 0.0 or sl.width_d != 0.0)
+                            for sl in sorted_lanes
+                            if sl.id != 0 and
+                            ((lane.id > 0 and sl.id > 0 and sl.id < lane.id) or
+                             (lane.id < 0 and sl.id < 0 and abs(sl.id) < abs(lane.id))))
                     )
 
                     # Check if any lane has simple variable width (width_end)
                     has_variable_width = lane.has_variable_width or \
-                        any(l.has_variable_width for l in sorted_lanes
-                            if l.id != 0 and
-                            ((lane.id > 0 and l.id > 0 and l.id < lane.id) or
-                             (lane.id < 0 and l.id < 0 and abs(l.id) < abs(lane.id))))
+                        any(sl.has_variable_width for sl in sorted_lanes
+                            if sl.id != 0 and
+                            ((lane.id > 0 and sl.id > 0 and sl.id < lane.id) or
+                             (lane.id < 0 and sl.id < 0 and abs(sl.id) < abs(lane.id))))
 
                     if uses_polynomial and section_length_m > 0:
                         # Use polynomial width evaluation at each point
@@ -395,28 +403,28 @@ class RoadLanesGraphicsItem:
 
         # Verbose output for debugging
         if self.verbose:
-            print(f"  Lane configuration:")
+            print("  Lane configuration:")
             print(f"    Left lanes:  {left_count}")
             print(f"    Right lanes: {right_count}")
             print(f"    Total lanes: {left_count + right_count}")
-            print(f"  Lane width:")
+            print("  Lane width:")
             print(f"    Configured: {lane_width_m:.3f} m")
 
             # Enhanced scale output
             if self.scale_factors:
                 scale_x, scale_y = self.scale_factors
-                print(f"  Scale from georeferencing:")
+                print("  Scale from georeferencing:")
                 print(f"    X (horizontal): {scale_x:.6f} m/px = {scale_x*100:.4f} cm/px")
                 print(f"    Y (vertical):   {scale_y:.6f} m/px = {scale_y*100:.4f} cm/px")
                 print(f"    Directional:    {scale:.6f} m/px = {scale*100:.4f} cm/px")
             else:
-                print(f"  Scale:")
+                print("  Scale:")
                 print(f"    {scale:.6f} m/px = {scale*100:.4f} cm/px")
-                print(f"    Source: default (no georef)")
+                print("    Source: default (no georef)")
 
-            print(f"  Calculated lane width in image:")
+            print("  Calculated lane width in image:")
             print(f"    {lane_width_px:.2f} pixels")
-            print(f"  Total road width in image:")
+            print("  Total road width in image:")
             total_width_px = (left_count + right_count) * lane_width_px
             print(f"    {total_width_px:.2f} pixels = {total_width_px * scale:.3f} m")
             print(f"{'='*60}\n")

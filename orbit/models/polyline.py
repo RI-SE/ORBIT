@@ -4,9 +4,9 @@ Polyline data model for ORBIT.
 Represents a polyline drawn on the image with pixel coordinates.
 """
 
-from typing import List, Tuple, Dict, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class LineType(Enum):

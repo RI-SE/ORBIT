@@ -4,7 +4,7 @@ Provides helper functions for common georeferencing operations to reduce
 code duplication across dialog classes.
 """
 
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from orbit.utils.logging_config import get_logger
 
@@ -34,7 +34,7 @@ def get_scale_factors(project: 'Project') -> Optional[Tuple[float, float]]:
         return None
 
     try:
-        from orbit.export import create_transformer, TransformMethod
+        from orbit.export import TransformMethod, create_transformer
 
         method = (TransformMethod.HOMOGRAPHY
                   if project.transform_method == 'homography'
@@ -62,7 +62,7 @@ def get_transformer(project: 'Project') -> Optional['CoordinateTransformer']:
         return None
 
     try:
-        from orbit.export import create_transformer, TransformMethod
+        from orbit.export import TransformMethod, create_transformer
 
         method = (TransformMethod.HOMOGRAPHY
                   if project.transform_method == 'homography'

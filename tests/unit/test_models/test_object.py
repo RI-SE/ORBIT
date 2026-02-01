@@ -4,11 +4,11 @@ Unit tests for RoadObject model and ObjectType enum.
 Tests the object model for roadside objects (lampposts, buildings, trees, etc.).
 """
 
+from typing import Tuple
+
 import pytest
-from typing import Tuple, List
 
 from orbit.models.object import ObjectType, RoadObject
-
 
 # ============================================================================
 # Test ObjectType Enum

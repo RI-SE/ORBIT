@@ -4,29 +4,34 @@ OpenDrive importer orchestrator for ORBIT.
 Coordinates the full OpenDrive import process: parse, transform, and create ORBIT objects.
 """
 
-from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Set, Tuple
-from enum import Enum
 import math
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Dict, List, Optional, Set, Tuple
 
-from orbit.models import Project, Road, Junction, Signal, RoadObject, Polyline, ControlPoint, ParkingSpace
-from orbit.models.polyline import LineType, RoadMarkType
-from orbit.models.road import RoadType, LaneInfo
-from orbit.models.lane import Lane, LaneType as ORBITLaneType
-from orbit.models.lane_section import LaneSection
-from orbit.models.junction import (
-    JunctionConnection, JunctionGroup, JunctionBoundary, JunctionBoundarySegment,
-    JunctionElevationGrid, JunctionElevationGridPoint
-)
+from orbit.models import ControlPoint, Junction, ParkingSpace, Polyline, Project, Road, RoadObject, Signal
 from orbit.models.connecting_road import ConnectingRoad
+from orbit.models.junction import (
+    JunctionBoundary,
+    JunctionBoundarySegment,
+    JunctionConnection,
+    JunctionElevationGrid,
+    JunctionElevationGridPoint,
+    JunctionGroup,
+)
+from orbit.models.lane import Lane
+from orbit.models.lane import LaneType as ORBITLaneType
 from orbit.models.lane_connection import LaneConnection
-from orbit.models.signal import SignalType, SpeedUnit
+from orbit.models.lane_section import LaneSection
 from orbit.models.object import ObjectType
 from orbit.models.parking import ParkingAccess, ParkingType
+from orbit.models.polyline import LineType, RoadMarkType
+from orbit.models.road import RoadType
+from orbit.models.signal import SignalType
 
-from .opendrive_parser import OpenDriveParser, OpenDriveData, ODRRoad, ODRLane, ODRSignal, ODRObject
-from .opendrive_geometry import GeometryConverter, calculate_s_offsets, sample_elevation_profile
 from .opendrive_coordinate_transform import OpenDriveCoordinateTransform, TransformMode, batch_metric_to_pixel
+from .opendrive_geometry import GeometryConverter, calculate_s_offsets, sample_elevation_profile
+from .opendrive_parser import ODRLane, ODRObject, ODRRoad, ODRSignal, OpenDriveData, OpenDriveParser
 
 
 class ImportMode(Enum):
@@ -192,7 +197,7 @@ class OpenDriveImporter:
                             pixel_y=py,
                             longitude=lon,
                             latitude=lat,
-                            name=f"Auto-generated from OpenDrive"
+                            name="Auto-generated from OpenDrive"
                         )
                         self.project.control_points.append(cp)
                         result.control_points_created += 1
@@ -809,17 +814,20 @@ class OpenDriveImporter:
 
             # Calculate where this section should start and end using fractional positions
             fraction_start = odr_section.s / road_length_meters if road_length_meters > 0 else 0.0
-            target_s_start = fraction_start * total_length_pixels
+            _target_s_start = fraction_start * total_length_pixels
 
             # Find the closest point for section start (always use actual point's s-coordinate)
             if i == 0:
                 # First section starts at beginning
                 s_start_pixels = 0.0
-                start_point_index = 0
+                _start_point_index = 0
             else:
                 # Start where previous section ended
                 s_start_pixels = orbit_sections[-1].s_end
-                start_point_index = orbit_sections[-1].end_point_index if orbit_sections[-1].end_point_index is not None else 0
+                prev_end = orbit_sections[-1].end_point_index
+                _start_point_index = (
+                    prev_end if prev_end is not None else 0
+                )
 
             # Find where this section should end
             end_point_index = None
@@ -965,7 +973,10 @@ class OpenDriveImporter:
 
         return lane
 
-    def _find_all_shared_points(self, road_id_1: str, road_id_2: str, tolerance: float = 10.0) -> List[Tuple[float, float]]:
+    def _find_all_shared_points(
+        self, road_id_1: str, road_id_2: str,
+        tolerance: float = 10.0,
+    ) -> List[Tuple[float, float]]:
         """
         Find all shared points between two roads.
 

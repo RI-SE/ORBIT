@@ -4,8 +4,8 @@ Junction data model for ORBIT.
 Represents an intersection or junction where multiple roads connect.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
 
 from .connecting_road import ConnectingRoad
 from .lane_connection import LaneConnection
@@ -354,7 +354,10 @@ class Junction:
         if self.geo_center_point and transformer:
             self.center_point = transformer.geo_to_pixel(self.geo_center_point[0], self.geo_center_point[1])
         if self.geo_roundabout_center and transformer:
-            self.roundabout_center = transformer.geo_to_pixel(self.geo_roundabout_center[0], self.geo_roundabout_center[1])
+            self.roundabout_center = transformer.geo_to_pixel(
+                self.geo_roundabout_center[0],
+                self.geo_roundabout_center[1],
+            )
 
     def add_road(self, road_id: str) -> None:
         """Add a road to this junction."""

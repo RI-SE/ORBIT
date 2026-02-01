@@ -4,9 +4,10 @@ Lane width polynomial fitting utilities.
 Fits cubic polynomials to explicit lane boundary polylines for OpenDRIVE export.
 """
 
-from typing import List, Tuple, Optional
-import numpy as np
 import math
+from typing import List, Optional, Tuple
+
+import numpy as np
 
 
 def fit_lane_width_polynomial(

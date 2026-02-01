@@ -5,33 +5,32 @@ Tests geometric calculations for offset polylines, perpendicular vectors,
 and polygon construction.
 """
 
-import pytest
 import math
-from typing import List, Tuple
+
+import pytest
 
 from orbit.utils.geometry import (
-    calculate_perpendicular,
-    offset_point,
-    calculate_offset_polyline,
-    create_lane_polygon,
-    normalize_angle,
-    distance_between_points,
-    calculate_path_length,
-    find_point_at_distance_along_path,
-    split_polyline_at_index,
-    create_variable_width_lane_polygon,
-    generate_arc_points,
-    arc_length,
-    fit_circle_to_points,
-    line_intersection,
     angle_between_vectors,
+    arc_length,
     calculate_directional_scale,
-    haversine_distance,
-    generate_simple_connection_path,
-    project_point_to_polyline,
+    calculate_offset_polyline,
+    calculate_path_length,
+    calculate_perpendicular,
+    create_lane_polygon,
+    create_variable_width_lane_polygon,
+    distance_between_points,
+    find_point_at_distance_along_path,
     find_point_on_polyline_at_s,
+    fit_circle_to_points,
+    generate_arc_points,
+    generate_simple_connection_path,
+    haversine_distance,
+    line_intersection,
+    normalize_angle,
+    offset_point,
+    project_point_to_polyline,
+    split_polyline_at_index,
 )
-
 
 # ============================================================================
 # Test Perpendicular Calculation
@@ -1131,8 +1130,8 @@ class TestCreatePolynomialWidthLanePolygon:
         s_values = [0.0, 50.0, 100.0]
 
         # Constant offset functions
-        inner_func = lambda s: 0.0  # Start at centerline
-        lane_func = lambda s: 3.5   # Constant 3.5m width
+        def inner_func(s): return 0.0  # Start at centerline
+        def lane_func(s): return 3.5   # Constant 3.5m width
 
         polygon = create_polynomial_width_lane_polygon(
             centerline, -1, inner_func, lane_func, s_values, is_left_lane=False
@@ -1147,8 +1146,8 @@ class TestCreatePolynomialWidthLanePolygon:
         centerline = [(0.0, 0.0), (100.0, 0.0)]
         s_values = [0.0, 100.0]
 
-        inner_func = lambda s: 0.0
-        lane_func = lambda s: 3.5
+        def inner_func(s): return 0.0
+        def lane_func(s): return 3.5
 
         polygon = create_polynomial_width_lane_polygon(
             centerline, 1, inner_func, lane_func, s_values, is_left_lane=True
@@ -1164,8 +1163,8 @@ class TestCreatePolynomialWidthLanePolygon:
         s_values = [0.0, 50.0, 100.0]
 
         # Width increases linearly from 2.5 to 4.5
-        inner_func = lambda s: 0.0
-        lane_func = lambda s: 2.5 + (s / 100.0) * 2.0
+        def inner_func(s): return 0.0
+        def lane_func(s): return 2.5 + (s / 100.0) * 2.0
 
         polygon = create_polynomial_width_lane_polygon(
             centerline, -1, inner_func, lane_func, s_values, is_left_lane=False

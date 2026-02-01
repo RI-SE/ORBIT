@@ -1,11 +1,10 @@
 """Tests for orbit.models.sign_library module."""
 
 import json
-import pytest
-from pathlib import Path
-from unittest.mock import patch, mock_open
 
-from orbit.models.sign_library import SignDefinition, SignCategory, SignLibrary
+import pytest
+
+from orbit.models.sign_library import SignCategory, SignDefinition, SignLibrary
 
 
 class TestSignDefinition:

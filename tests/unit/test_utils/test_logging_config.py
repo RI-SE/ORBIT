@@ -1,10 +1,8 @@
 """Tests for orbit.utils.logging_config module."""
 
 import logging
-import pytest
-from pathlib import Path
 
-from orbit.utils.logging_config import setup_logging, get_logger
+from orbit.utils.logging_config import get_logger, setup_logging
 
 
 class TestGetLogger:
@@ -185,7 +183,7 @@ class TestLoggingIntegration:
         """Child loggers inherit parent log level."""
         setup_logging(verbose=True)
 
-        parent_logger = logging.getLogger('orbit')
+        _parent_logger = logging.getLogger('orbit')
         child_logger = get_logger('orbit.models')
 
         # Child should have effective level from parent

@@ -5,7 +5,7 @@ Represents physical objects placed on the map with position, type, and propertie
 """
 
 from enum import Enum
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Dict, List, Optional, Tuple
 
 from orbit.utils.enum_formatting import format_enum_name
 
@@ -319,7 +319,9 @@ class RoadObject:
             return self.name
         return format_enum_name(self.type)
 
-    def calculate_s_t_position(self, centerline_points: List[Tuple[float, float]]) -> Tuple[Optional[float], Optional[float]]:
+    def calculate_s_t_position(
+        self, centerline_points: List[Tuple[float, float]],
+    ) -> Tuple[Optional[float], Optional[float]]:
         """
         Calculate s-coordinate and t-offset along road centerline.
 

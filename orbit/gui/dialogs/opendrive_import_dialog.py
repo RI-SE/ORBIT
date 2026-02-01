@@ -3,13 +3,21 @@ Dialog for OpenDrive import configuration.
 """
 
 from PyQt6.QtWidgets import (
-    QHBoxLayout, QLabel, QRadioButton,
-    QPushButton, QGroupBox, QDoubleSpinBox, QCheckBox, QTextBrowser,
-    QLineEdit, QFileDialog, QMessageBox, QVBoxLayout
+    QCheckBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QRadioButton,
+    QTextBrowser,
+    QVBoxLayout,
 )
-from PyQt6.QtCore import Qt
-from .base_dialog import BaseDialog
+
 from ..utils.message_helpers import show_warning
+from .base_dialog import BaseDialog
 
 
 class OpenDriveImportDialog(BaseDialog):

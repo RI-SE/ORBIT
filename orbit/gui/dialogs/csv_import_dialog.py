@@ -6,19 +6,26 @@ Allows importing control points from CSV files with flexible column detection.
 
 import csv
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 from pathlib import Path
+from typing import List, Optional, Tuple
 
-from PyQt6.QtWidgets import (
-    QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QFileDialog, QMessageBox,
-    QHeaderView, QCheckBox, QWidget, QVBoxLayout
-)
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QFileDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QWidget,
+)
 
-from orbit.models import Project, ControlPoint
+from orbit.models import Project
+
+from ..utils.message_helpers import show_error, show_info, show_warning
 from .base_dialog import BaseDialog
-from ..utils.message_helpers import show_error, show_warning, show_info
 
 
 @dataclass
@@ -135,7 +142,12 @@ def parse_csv_file(filepath: Path) -> Tuple[List[CSVControlPoint], str]:
                 point_name = row[columns['name']] if columns['name'] is not None else f"Point_{i}"
                 latitude = float(row[columns['latitude']])
                 longitude = float(row[columns['longitude']])
-                altitude = float(row[columns['altitude']]) if columns['altitude'] is not None and row[columns['altitude']] else None
+                altitude = (
+                    float(row[columns['altitude']])
+                    if columns['altitude'] is not None
+                    and row[columns['altitude']]
+                    else None
+                )
 
                 # Validate ranges
                 if not (-90 <= latitude <= 90):
@@ -174,7 +186,12 @@ def parse_csv_file(filepath: Path) -> Tuple[List[CSVControlPoint], str]:
 
             except (ValueError, IndexError) as e:
                 # Invalid numeric value or missing column
-                point_name = row[columns['name']] if columns['name'] is not None and len(row) > columns['name'] else f"Point_{i}"
+                point_name = (
+                    row[columns['name']]
+                    if columns['name'] is not None
+                    and len(row) > columns['name']
+                    else f"Point_{i}"
+                )
                 points.append(CSVControlPoint(
                     row_number=i,
                     point_name=point_name,

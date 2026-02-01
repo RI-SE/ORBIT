@@ -4,14 +4,15 @@ Lane boundary analysis for ORBIT.
 Calculates lateral offsets, matches boundaries to lanes, and suggests lane widths.
 """
 
-from typing import List, Tuple, Optional, Dict
-import numpy as np
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
 
-from orbit.utils.logging_config import get_logger
+import numpy as np
+
+from orbit.models import LineType, Polyline, Project, Road
 from orbit.utils.geometry import calculate_directional_scale
-from orbit.models import Road, Polyline, Project, LineType
+from orbit.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -91,7 +92,11 @@ class LaneAnalyzer:
                 std_offset = np.std(offsets)
 
                 if verbose:
-                    logger.debug(f"    Boundary {boundary.id[:8]}: avg_offset={avg_offset:.2f} px, std={std_offset:.2f} px")
+                    logger.debug(
+                        f"    Boundary {boundary.id[:8]}: "
+                        f"avg_offset={avg_offset:.2f} px, "
+                        f"std={std_offset:.2f} px"
+                    )
 
                 boundary_info = BoundaryInfo(
                     polyline_id=boundary.id,
@@ -161,7 +166,11 @@ class LaneAnalyzer:
                 logger.debug(f"      Point {idx}: boundary=({boundary_point[0]:.1f}, {boundary_point[1]:.1f})")
                 if best_segment:
                     seg_idx, seg_p1, seg_p2 = best_segment
-                    logger.debug(f"        Nearest centerline segment {seg_idx}: ({seg_p1[0]:.1f},{seg_p1[1]:.1f}) to ({seg_p2[0]:.1f},{seg_p2[1]:.1f})")
+                    logger.debug(
+                        f"        Nearest centerline segment {seg_idx}: "
+                        f"({seg_p1[0]:.1f},{seg_p1[1]:.1f}) to "
+                        f"({seg_p2[0]:.1f},{seg_p2[1]:.1f})"
+                    )
                     logger.debug(f"        Calculated offset: {signed_offset:.2f} px (actual dist={min_dist:.2f} px)")
 
         return offsets
@@ -252,9 +261,6 @@ class LaneAnalyzer:
 
         Modifies boundary_infos in place.
         """
-        # Expected lane width
-        lane_width = road.lane_info.lane_width
-
         # Separate left and right boundaries
         left_boundaries = [b for b in boundary_infos if b.avg_offset > 0.1]
         right_boundaries = [b for b in boundary_infos if b.avg_offset < -0.1]
@@ -436,7 +442,7 @@ class LaneAnalyzer:
             logger.debug(f"{'='*60}")
             logger.debug(f"LANE WIDTH MEASUREMENT: {road.name} (ID: {road.id[:8]}...)")
             logger.debug(f"{'='*60}")
-            logger.debug(f"  Boundary analysis:")
+            logger.debug("  Boundary analysis:")
             logger.debug(f"    Found {len(boundary_infos)} boundaries")
             logger.debug(f"    {len(widths_px)} have measured widths")
 
@@ -448,7 +454,7 @@ class LaneAnalyzer:
                 if info.measured_width is not None:
                     logger.debug(f"      Measured width: {info.measured_width:.2f} px")
 
-            logger.debug(f"  Scale calculation:")
+            logger.debug("  Scale calculation:")
             if self.scale_factors:
                 scale_x, scale_y = self.scale_factors
                 logger.debug(f"    Scale X (horizontal): {scale_x:.6f} m/px = {scale_x*100:.4f} cm/px")
@@ -457,8 +463,8 @@ class LaneAnalyzer:
             else:
                 logger.debug(f"    No georeferencing - scale: {scale:.6f} (placeholder)")
 
-            logger.debug(f"  Width measurements:")
-            logger.debug(f"    In pixels:")
+            logger.debug("  Width measurements:")
+            logger.debug("    In pixels:")
             for i, w_px in enumerate(widths_px):
                 logger.debug(f"      Width {i+1}: {w_px:.2f} px")
 
@@ -488,7 +494,7 @@ class LaneAnalyzer:
                     widths_m.append(width_m)
 
             if verbose and widths_m:
-                logger.debug(f"    In meters (using transformer for accurate conversion):")
+                logger.debug("    In meters (using transformer for accurate conversion):")
                 for i, w_m in enumerate(widths_m):
                     logger.debug(f"      Width {i+1}: {w_m:.3f} m (perspective-corrected)")
         else:
@@ -496,10 +502,10 @@ class LaneAnalyzer:
             widths_m = [w * scale for w in widths_px]
 
             if verbose:
-                logger.debug(f"    In meters (using scale factor approximation):")
+                logger.debug("    In meters (using scale factor approximation):")
                 for i, w_m in enumerate(widths_m):
                     logger.debug(f"      Width {i+1}: {w_m:.3f} m = {widths_px[i]:.2f} px × {scale:.6f} m/px")
-                logger.debug(f"  Summary:")
+                logger.debug("  Summary:")
                 logger.debug(f"    Average: {np.mean(widths_m):.3f} m")
                 logger.debug(f"    Min:     {np.min(widths_m):.3f} m")
                 logger.debug(f"    Max:     {np.max(widths_m):.3f} m")

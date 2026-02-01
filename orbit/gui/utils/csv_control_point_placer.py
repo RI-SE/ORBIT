@@ -4,18 +4,25 @@ CSV Control Point Placer dialog.
 Handles sequential placement of control points from CSV data on the image.
 """
 
-from typing import List, Optional, Tuple
 import math
+from typing import List, Optional, Tuple
 
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-    QPushButton, QLineEdit, QGroupBox, QMessageBox
-)
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+)
 
-from orbit.models import Project, ControlPoint
+from orbit.models import ControlPoint, Project
+
 from ..dialogs.csv_import_dialog import CSVControlPoint
-from .message_helpers import show_warning, ask_yes_no
+from .message_helpers import ask_yes_no, show_warning
 
 
 class CSVControlPointPlacer(QDialog):

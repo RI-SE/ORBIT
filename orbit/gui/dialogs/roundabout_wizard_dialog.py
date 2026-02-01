@@ -5,13 +5,24 @@ Allows users to manually create roundabouts by specifying geometry
 and configuration parameters.
 """
 
-from typing import Optional, List, Tuple
-from PyQt6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QLabel, QRadioButton,
-    QPushButton, QGroupBox, QDoubleSpinBox, QSpinBox, QCheckBox,
-    QListWidget, QListWidgetItem, QAbstractItemView, QMessageBox
-)
+from typing import List, Optional, Tuple
+
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QDoubleSpinBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QRadioButton,
+    QSpinBox,
+    QVBoxLayout,
+)
+
 from .base_dialog import BaseDialog, InfoIconLabel
 
 

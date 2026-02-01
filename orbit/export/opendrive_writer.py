@@ -4,25 +4,25 @@ OpenDrive XML writer for ORBIT.
 Generates ASAM OpenDrive format XML from annotated roads and junctions.
 """
 
-from typing import List, Dict, Optional, Tuple
+import math
 from datetime import datetime
 from pathlib import Path
-from lxml import etree
-import numpy as np
-import math
+from typing import List, Optional, Tuple
 
-from orbit.utils.logging_config import get_logger
-from orbit.models import Project, Road, Junction, Polyline, LineType
+from lxml import etree
+
+from orbit.models import Junction, Project, Road
 from orbit.models.connecting_road import ConnectingRoad
 from orbit.utils import CoordinateTransformer
+from orbit.utils.logging_config import get_logger
 
 from .curve_fitting import CurveFitter, GeometryElement, GeometryType
 from .lane_analyzer import LaneAnalyzer
 from .lane_builder import LaneBuilder
-from .signal_builder import SignalBuilder
 from .object_builder import ObjectBuilder
 from .parking_builder import ParkingBuilder
 from .reference_validator import validate_references
+from .signal_builder import SignalBuilder
 
 logger = get_logger(__name__)
 
@@ -697,9 +697,9 @@ class OpenDriveWriter:
             # Start: (0, 0) with tangent (1, 0) - aligned with u-axis
             # End: (end_u, end_v) with tangent (end_tangent_u, end_tangent_v)
             from orbit.utils.geometry import (
-                calculate_bezier_control_points,
                 bezier_to_parampoly3,
-                calculate_hermite_parampoly3
+                calculate_bezier_control_points,
+                calculate_hermite_parampoly3,
             )
 
             # Try Bezier control point calculation first
@@ -797,7 +797,7 @@ class OpenDriveWriter:
         elev.set('d', '0.0')
 
         # Add lateral profile (no superelevation)
-        lateral = etree.SubElement(road_elem, 'lateralProfile')
+        etree.SubElement(road_elem, 'lateralProfile')
 
         # Add lanes (simplified - no boundary analysis for connecting roads)
         lanes = self._create_connecting_road_lanes(connecting_road, road_length)
@@ -824,7 +824,6 @@ class OpenDriveWriter:
         Returns:
             Lanes XML element
         """
-        from .lane_builder import convert_road_mark_type
 
         lanes = etree.Element('lanes')
 
@@ -842,7 +841,7 @@ class OpenDriveWriter:
 
         # Left lanes (positive IDs: 1, 2, 3...)
         left_lanes = [lane_obj for lane_obj in connecting_road.lanes if lane_obj.id > 0]
-        left_lanes.sort(key=lambda l: l.id)  # Sort ascending: 1, 2, 3...
+        left_lanes.sort(key=lambda lane: lane.id)  # Sort ascending: 1, 2, 3...
         if left_lanes:
             left = etree.SubElement(lane_section, 'left')
             for lane_obj in left_lanes:
@@ -865,7 +864,7 @@ class OpenDriveWriter:
 
         # Right lanes (negative IDs: -1, -2, -3...)
         right_lanes = [lane_obj for lane_obj in connecting_road.lanes if lane_obj.id < 0]
-        right_lanes.sort(key=lambda l: l.id, reverse=True)  # Sort descending: -1, -2, -3...
+        right_lanes.sort(key=lambda lane: lane.id, reverse=True)  # Sort descending: -1, -2, -3...
         if right_lanes:
             right = etree.SubElement(lane_section, 'right')
             for lane_obj in right_lanes:
@@ -944,7 +943,7 @@ class OpenDriveWriter:
             geometry.set('length', f'{geom.length:.4f}')
 
             if geom.geom_type == GeometryType.LINE:
-                line = etree.SubElement(geometry, 'line')
+                etree.SubElement(geometry, 'line')
             elif geom.geom_type == GeometryType.ARC:
                 arc = etree.SubElement(geometry, 'arc')
                 arc.set('curvature', f'{geom.curvature:.8f}')

@@ -1,9 +1,15 @@
 """Tests for orbit.import.roundabout_handler module."""
 
-import math
-import pytest
-from typing import Dict, Set
 import importlib
+import math
+
+import pytest
+
+from orbit.models import Junction, Polyline, Road
+from orbit.models.lane import Lane
+from orbit.models.lane_section import LaneSection
+from orbit.models.polyline import LineType
+from orbit.models.road import LaneInfo, RoadType
 
 # Import using importlib since 'import' is a reserved keyword
 roundabout_handler = importlib.import_module('orbit.import.roundabout_handler')
@@ -25,11 +31,6 @@ osm_parser = importlib.import_module('orbit.import.osm_parser')
 OSMData = osm_parser.OSMData
 OSMWay = osm_parser.OSMWay
 OSMNode = osm_parser.OSMNode
-
-from orbit.models import Road
-from orbit.models.road import RoadType, LaneInfo
-from orbit.models.lane import Lane
-from orbit.models.lane_section import LaneSection
 
 
 class TestConnectionPoint:
@@ -608,8 +609,6 @@ create_roundabout_junctions = roundabout_handler.create_roundabout_junctions
 _create_single_ring_road = roundabout_handler._create_single_ring_road
 _create_ring_lane_section = roundabout_handler._create_ring_lane_section
 
-from orbit.models import Junction, Polyline
-from orbit.models.polyline import LineType
 
 
 class MockTransformer:

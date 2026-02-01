@@ -5,17 +5,19 @@ Provides visual representation of connecting roads (junction paths) on the image
 """
 
 import math
-from typing import List, Tuple, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsScene
-from PyQt6.QtCore import Qt, QPointF
-from PyQt6.QtGui import QPen, QColor, QBrush, QPolygonF
 
 from orbit.utils.geometry import calculate_directional_scale
+
 from .interactive_lane import InteractiveLanePolygon
 
 if TYPE_CHECKING:
     from orbit.models.connecting_road import ConnectingRoad
+
     from ..image_view import ImageView
 
 

@@ -4,11 +4,10 @@ Mappings between OpenStreetMap tags and ORBIT/OpenDrive constructs.
 
 from typing import Optional
 
-from orbit.models.signal import SignalType
-from orbit.models.object import ObjectType
 from orbit.models.lane import LaneType
-from orbit.models.parking import ParkingType, ParkingAccess
-
+from orbit.models.object import ObjectType
+from orbit.models.parking import ParkingAccess, ParkingType
+from orbit.models.signal import SignalType
 
 # OSM highway types to OpenDrive road types
 OSM_TO_OPENDRIVE_ROAD_TYPE = {

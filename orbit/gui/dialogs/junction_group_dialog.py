@@ -4,18 +4,27 @@ Junction Groups dialog for ORBIT.
 Allows editing of junction groups (roundabouts, complex junctions).
 """
 
-from typing import Optional, List
+from typing import Optional
 
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLineEdit, QComboBox, QPushButton,
-    QListWidget, QLabel, QMessageBox,
-    QListWidgetItem, QGroupBox, QDialogButtonBox
-)
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QVBoxLayout,
+)
 
 from orbit.models import Project
 from orbit.models.junction import JunctionGroup
+
 from .base_dialog import InfoIconLabel
 
 

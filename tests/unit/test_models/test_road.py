@@ -4,13 +4,10 @@ Unit tests for Road model.
 Tests road creation, polyline management, lane sections, and serialization.
 """
 
-import pytest
-from typing import List
 
-from orbit.models import (
-    Road, RoadType, LaneInfo, Lane, LaneType, LaneSection,
-    Polyline, LineType, RoadMarkType
-)
+import pytest
+
+from orbit.models import Lane, LaneInfo, LaneSection, LaneType, Road, RoadType
 
 
 class TestRoadCreation:
@@ -463,7 +460,7 @@ class TestSectionBoundaryManagement:
 
     def test_split_section_at_point(self):
         """Test splitting a section at a point index."""
-        from orbit.models import Lane, LaneType, LaneSection
+        from orbit.models import LaneSection, LaneType
         road = Road()
         # Create a section with 3 lanes
         section = LaneSection(
@@ -650,7 +647,7 @@ class TestRoadMissingCoverage:
 
     def test_get_lane_from_specific_section(self):
         """Test get_lane with specific section number."""
-        from orbit.models import Lane, LaneSection
+        from orbit.models import LaneSection
         road = Road()
         road.lane_sections = [
             LaneSection(
@@ -679,7 +676,7 @@ class TestRoadMissingCoverage:
 
     def test_get_lane_section_not_found(self):
         """Test get_lane returns None when section not found."""
-        from orbit.models import Lane, LaneSection
+        from orbit.models import LaneSection
         road = Road()
         road.lane_sections = [
             LaneSection(
@@ -695,7 +692,7 @@ class TestRoadMissingCoverage:
 
     def test_get_lane_not_found_in_section(self):
         """Test get_lane returns None when lane not in specified section."""
-        from orbit.models import Lane, LaneSection
+        from orbit.models import LaneSection
         road = Road()
         road.lane_sections = [
             LaneSection(
@@ -839,7 +836,7 @@ class TestRoadMissingCoverage:
 
     def test_distribute_lane_sections_for_split(self):
         """Test distribute_lane_sections_for_split method."""
-        from orbit.models import Lane, LaneSection
+        from orbit.models import LaneSection
         road = Road()
         road.lane_sections = [
             LaneSection(
@@ -878,7 +875,7 @@ class TestRoadMissingCoverage:
 
     def test_distribute_lane_sections_section_before_split(self):
         """Test section entirely before split goes to road1."""
-        from orbit.models import Lane, LaneSection
+        from orbit.models import LaneSection
         road = Road()
         road.lane_sections = [
             LaneSection(
@@ -902,7 +899,7 @@ class TestRoadMissingCoverage:
 
     def test_distribute_lane_sections_section_after_split(self):
         """Test section entirely after split goes to road2 with adjusted coords."""
-        from orbit.models import Lane, LaneSection
+        from orbit.models import LaneSection
         road = Road()
         road.lane_sections = [
             LaneSection(
@@ -928,7 +925,7 @@ class TestRoadMissingCoverage:
 
     def test_distribute_lane_sections_empty_road1(self):
         """Test default section created when no sections for road1."""
-        from orbit.models import Lane, LaneSection
+        from orbit.models import LaneSection
         road = Road()
         road.lane_sections = [
             LaneSection(
@@ -946,7 +943,7 @@ class TestRoadMissingCoverage:
 
     def test_distribute_lane_sections_empty_road2(self):
         """Test default section created when no sections for road2."""
-        from orbit.models import Lane, LaneSection
+        from orbit.models import LaneSection
         road = Road()
         road.lane_sections = [
             LaneSection(

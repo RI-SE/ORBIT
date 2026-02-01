@@ -1,9 +1,8 @@
 """Tests for orbit.import.opendrive_parser module."""
 
 import importlib
+
 import pytest
-from pathlib import Path
-import tempfile
 
 # Import from orbit.import using importlib (import is a reserved keyword)
 opendrive_parser = importlib.import_module('orbit.import.opendrive_parser')
@@ -1217,7 +1216,8 @@ class TestParseJunctionBoundary:
     <junction id="100" name="Test Junction">
         <boundary>
             <segment type="lane" roadId="1" boundaryLane="-2" sStart="0.0" sEnd="50.0"/>
-            <segment type="joint" roadId="1" contactPoint="end" jointLaneStart="-2" jointLaneEnd="-1" transitionLength="5.0"/>
+            <segment type="joint" roadId="1" contactPoint="end"
+                     jointLaneStart="-2" jointLaneEnd="-1" transitionLength="5.0"/>
         </boundary>
     </junction>
 </OpenDRIVE>'''

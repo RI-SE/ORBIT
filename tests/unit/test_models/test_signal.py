@@ -4,12 +4,12 @@ Unit tests for Signal model and SignalType enum.
 Tests the signal model for traffic signs and signals.
 """
 
-import pytest
 import math
 from typing import Tuple
 
-from orbit.models.signal import SignalType, SpeedUnit, Signal
+import pytest
 
+from orbit.models.signal import Signal, SignalType, SpeedUnit
 
 # ============================================================================
 # Test SignalType Enum

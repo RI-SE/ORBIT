@@ -5,7 +5,7 @@ This module provides semantic type aliases that improve code readability
 and maintainability by giving meaningful names to commonly used type patterns.
 """
 
-from typing import List, Tuple, Dict, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 # Geometric types
 Point2D = Tuple[float, float]
@@ -27,6 +27,9 @@ JsonDict = Dict[str, Any]
 # Entity identification
 EntityID = str
 """Unique identifier for entities (roads, polylines, junctions, etc.)."""
+
+if TYPE_CHECKING:
+    from orbit.utils.coordinate_transform import CoordinateTransformer
 
 # Optional types (common patterns)
 OptionalTransformer = Optional['CoordinateTransformer']

@@ -4,18 +4,25 @@ Lane connection dialog for ORBIT.
 Allows editing of lane-to-lane connections within a junction.
 """
 
-from typing import Optional, List
+from typing import List
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QTableWidget, QTableWidgetItem, QHeaderView,
-    QPushButton, QComboBox, QSpinBox, QLabel, QMessageBox
+    QComboBox,
+    QDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QTableWidget,
+    QVBoxLayout,
 )
-from PyQt6.QtCore import Qt
 
-from orbit.models import Junction, Project, LaneConnection
+from orbit.models import Junction, LaneConnection, Project
+
 from .base_dialog import BaseDialog, InfoIconLabel
-
 
 # Valid turn types for the dropdown
 TURN_TYPES = ['straight', 'left', 'right', 'uturn', 'merge', 'diverge', 'unknown']
@@ -434,7 +441,7 @@ class LaneConnectionDialog(BaseDialog):
             result = QMessageBox.warning(
                 self,
                 "Validation Warnings",
-                f"Some connections have issues:\n\n" +
+                "Some connections have issues:\n\n" +
                 "\n".join(errors[:5]) +
                 (f"\n... and {len(errors)-5} more" if len(errors) > 5 else "") +
                 "\n\nSave anyway?",
