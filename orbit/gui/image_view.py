@@ -67,6 +67,7 @@ class ImageView(QGraphicsView):
     road_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index for splitting road
     section_modified = pyqtSignal(str)  # Emits road ID
     lane_segment_clicked = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id
+    connecting_road_modified = pyqtSignal(str)  # Emits connecting road ID
     connecting_road_lane_clicked = pyqtSignal(str, int)  # Emits connecting_road_id, lane_id
     lane_edit_requested = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id (for double-click)
     connecting_road_lane_edit_requested = pyqtSignal(str, int)  # Emits connecting_road_id, lane_id (for double-click)
@@ -3064,8 +3065,7 @@ class ImageView(QGraphicsView):
                                 # Update lane graphics
                                 if conn_road_id in self.connecting_road_lanes_items:
                                     self.connecting_road_lanes_items[conn_road_id].update_graphics()
-                                # Emit modification signal
-                                # TODO: Add connecting_road_modified signal if needed
+                                self.connecting_road_modified.emit(conn_road_id)
                                 return
 
                 # Check if clicking on a junction to drag
@@ -3501,7 +3501,7 @@ class ImageView(QGraphicsView):
                 item = self.connecting_road_centerline_items[self.drag_connecting_road_id]
                 item.selected_point_index = -1
                 item.update_graphics()
-                # TODO: Emit connecting_road_modified signal if needed
+                self.connecting_road_modified.emit(self.drag_connecting_road_id)
             self.drag_connecting_road_id = None
             self.drag_point_index = -1
         else:

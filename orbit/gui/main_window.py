@@ -105,6 +105,7 @@ class MainWindow(QMainWindow):
         self.image_view.road_split_requested.connect(self.on_road_split_requested)
         self.image_view.section_modified.connect(self.on_section_modified)
         self.image_view.lane_segment_clicked.connect(self.on_lane_segment_clicked)
+        self.image_view.connecting_road_modified.connect(self.on_connecting_road_modified)
         self.image_view.connecting_road_lane_clicked.connect(self.on_connecting_road_lane_clicked_in_view)
         self.image_view.lane_edit_requested.connect(self.on_lane_edit_requested)
         self.image_view.connecting_road_lane_edit_requested.connect(self.on_connecting_road_lane_edit_requested)
