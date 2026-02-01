@@ -4,8 +4,9 @@ version = "0.5.0"
 description = "OpenDrive Road Builder from Imagery Tool"
 readme = "README.md"
 requires-python = ">=3.10"
+license = {text = "GPL-3.0"}
 authors = [
-    { name = "ORBIT Contributors" }
+    {name = "RISE Research Institutes of Sweden"},
 ]
 
 dependencies = [

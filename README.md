@@ -1,20 +1,17 @@
-<p align="center">
-  <img src="docs/orbit_logo_t.png" alt="ORBIT Logo" width="200"/>
-</p>
+<div align="center">
+  <img src="./docs/orbit_logo_t.png" alt="ORBIT logo" width="200"/>
+</div>
 
-<h1 align="center">ORBIT</h1>
+# ORBIT - OpenDrive Road Builder from Imagery Tool
 
-<p align="center">
-  <strong>OpenDrive Road Builder from Imagery Tool</strong><br>
-  A visual tool for creating ASAM OpenDRIVE road networks from aerial and satellite imagery.
-</p>
+[![CI](https://github.com/RI-SE/ORBIT/actions/workflows/ci.yml/badge.svg)](https://github.com/RI-SE/ORBIT/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-0.5.0-blue" alt="Version"/>
-  <img src="https://img.shields.io/badge/python-3.10+-green" alt="Python"/>
-  <img src="https://img.shields.io/badge/OpenDRIVE-1.8-orange" alt="OpenDRIVE"/>
-  <img src="https://img.shields.io/badge/license-GPL%203.0-lightgrey" alt="License"/>
-</p>
+A visual tool for creating ASAM OpenDRIVE 1.8 road networks from aerial and satellite imagery.
+
+> [!NOTE]
+> This open source project is maintained by [RISE Research Institutes of Sweden](https://ri.se/). See [LICENSE](LICENSE) file for open source license information.
 
 ---
 
@@ -136,10 +133,11 @@ orbit --xodr_schema /path/to/OpenDRIVE_Core.xsd
 
 ```
 orbit/
-├── models/       # Data models (Road, Polyline, Junction, Lane, Signal, etc.)
+├── models/       # Data models (Road, Polyline, Junction, ParkingSpace, Signal, etc.)
 ├── gui/          # PyQt6 GUI (MainWindow, ImageView, dialogs, widgets)
 ├── export/       # OpenDRIVE XML generation (writers, builders)
 ├── import_/      # OSM and OpenDRIVE importers
+├── signs/        # Traffic sign libraries (country-specific)
 └── utils/        # Coordinate transforms, geometry utilities
 ```
 
@@ -149,9 +147,10 @@ Projects save as `.orbit` JSON files containing:
 - Image path and metadata
 - Polylines (pixel coordinates)
 - Roads with lane sections
-- Junctions with connections
+- Junctions with connections and junction groups
 - Control points for georeferencing
 - Signals and roadside objects
+- Parking spaces
 
 ---
 
@@ -181,4 +180,17 @@ See [Developer Guide](docs/DEV_GUIDE.md) for architecture details.
 
 ## License
 
-GPL 3.0 License — See [LICENSE](LICENSE) for details.
+ORBIT is licensed under the [GNU General Public License v3.0 (GPL-3.0)](LICENSE).
+
+## Acknowledgement
+<br><div align="center">
+  <img src="docs/synergies.svg" alt="Synergies logo" width="200"/>
+</div>
+
+This package is developed as part of the [SYNERGIES](https://synergies-ccam.eu/) project.
+
+<br><div align="center">
+  <img src="docs/funded_by_eu.svg" alt="Funded by EU" width="200"/>
+</div>
+
+Funded by the European Union. Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or European Climate, Infrastructure and Environment Executive Agency (CINEA). Neither the European Union nor the granting authority can be held responsible for them.
