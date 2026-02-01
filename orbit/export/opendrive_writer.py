@@ -182,6 +182,12 @@ class OpenDriveWriter:
         self.junction_numeric_ids = {}
         for idx, junction in enumerate(self.project.junctions):
             if junction.is_valid():
+                # Skip non-virtual junctions with no lane connections (nothing to export)
+                if junction.junction_type != "virtual" and not junction.lane_connections:
+                    logger.warning(
+                        f"Junction {junction.id} has no lane connections, skipping export"
+                    )
+                    continue
                 try:
                     self.junction_numeric_ids[junction.id] = int(junction.id)
                 except (ValueError, TypeError):
@@ -885,6 +891,16 @@ class OpenDriveWriter:
         lane.set('id', str(lane_obj.id))
         lane.set('type', lane_obj.lane_type.value)
         lane.set('level', 'true' if lane_obj.level else 'false')
+
+        # Lane link (connect to same lane ID on predecessor/successor road if not explicitly set)
+        if lane_obj.id != 0:  # Non-center lanes
+            link = etree.SubElement(lane, 'link')
+            pred_id = lane_obj.predecessor_id if lane_obj.predecessor_id is not None else lane_obj.id
+            succ_id = lane_obj.successor_id if lane_obj.successor_id is not None else lane_obj.id
+            pred = etree.SubElement(link, 'predecessor')
+            pred.set('id', str(pred_id))
+            succ = etree.SubElement(link, 'successor')
+            succ.set('id', str(succ_id))
 
         # Calculate width polynomial coefficients
         # OpenDRIVE: width(ds) = a + b*ds + c*ds² + d*ds³
