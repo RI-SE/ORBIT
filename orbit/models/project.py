@@ -1467,6 +1467,7 @@ class Project:
         project = cls.from_dict(data)
         # Clean up data integrity issues from older versions
         project.cleanup_junction_connected_road_ids()
+        project.cleanup_empty_junctions()
         project.clear_cross_junction_road_links()
         return project
 
@@ -1524,6 +1525,31 @@ class Project:
                 f"Cleaned {removed} invalid entry/entries from junction connected_road_ids"
             )
         return removed
+
+    def cleanup_empty_junctions(self) -> int:
+        """
+        Remove junctions that have no usable content.
+
+        A non-virtual junction is considered empty if it has fewer than 2
+        connected roads or has no lane connections. Such junctions produce
+        empty <junction> elements in OpenDRIVE export.
+
+        Returns:
+            Number of junctions removed
+        """
+        to_remove = []
+        for junction in self.junctions:
+            if junction.junction_type == "virtual":
+                continue
+            if len(junction.connected_road_ids) < 2 or not junction.lane_connections:
+                to_remove.append(junction.id)
+
+        for junction_id in to_remove:
+            self.remove_junction(junction_id)
+
+        if to_remove:
+            logger.info(f"Removed {len(to_remove)} empty junction(s): {to_remove}")
+        return len(to_remove)
 
     def clear_cross_junction_road_links(self) -> int:
         """
