@@ -326,6 +326,12 @@ class DeleteRoadCommand(QUndoCommand):
                 self.main_window.image_view.remove_polyline_graphics(pid)
                 self.main_window.project.remove_polyline(pid)
 
+        # Remove connecting road graphics that will be orphaned
+        for junction in self.main_window.project.junctions:
+            for cr in junction.connecting_roads:
+                if cr.predecessor_road_id == self.road_id or cr.successor_road_id == self.road_id:
+                    self.main_window.image_view.remove_connecting_road_graphics(cr.id)
+
         # Remove lane graphics
         self.main_window.image_view.remove_road_lanes(self.road_id)
         # Remove road from project
@@ -353,17 +359,20 @@ class DeleteRoadCommand(QUndoCommand):
                 setattr(ref_road, field_name, self.road_id)
 
         # Restore removed junction connecting_roads and lane_connections
+        scale_factors = self.main_window.get_current_scale()
         for junction_id, item_type, data in self.removed_junction_items:
             junction = self.main_window.project.get_junction(junction_id)
             if junction:
                 if item_type == 'connecting_road':
-                    junction.connecting_roads.append(ConnectingRoad.from_dict(data))
+                    cr = ConnectingRoad.from_dict(data)
+                    junction.connecting_roads.append(cr)
+                    self.main_window.image_view.add_connecting_road_graphics(
+                        cr, scale_factors)
                 elif item_type == 'lane_connection':
                     junction.lane_connections.append(LaneConnection.from_dict(data))
 
         # Restore lane graphics if road has centerline
         if road.centerline_id:
-            scale_factors = self.main_window.get_current_scale()
             self.main_window.image_view.add_road_lanes_graphics(road, scale_factors)
 
         self.main_window._refresh_trees()

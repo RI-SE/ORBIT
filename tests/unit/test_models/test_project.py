@@ -1316,7 +1316,8 @@ class TestRemapJunctionsAfterRoadSplit:
         junction.connected_road_ids = [road1.id]
         empty_project.add_junction(junction)
 
-        empty_project._remap_junctions_after_road_split(road1.id, road2.id, None)
+        empty_project._remap_junctions_after_road_split(
+            road1.id, road2.id, None, successor_junction_id=junction.id)
 
         assert road2.id in junction.connected_road_ids
         assert road1.id not in junction.connected_road_ids
@@ -1339,7 +1340,8 @@ class TestRemapJunctionsAfterRoadSplit:
         junction.exit_roads = [road1.id]
         empty_project.add_junction(junction)
 
-        empty_project._remap_junctions_after_road_split(road1.id, road2.id, None)
+        empty_project._remap_junctions_after_road_split(
+            road1.id, road2.id, None, successor_junction_id=junction.id)
 
         assert road2.id in junction.entry_roads
         assert road2.id in junction.exit_roads

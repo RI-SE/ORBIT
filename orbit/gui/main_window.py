@@ -1684,6 +1684,12 @@ class MainWindow(QMainWindow):
         # Remove lane graphics
         self.image_view.remove_road_lanes(road_id)
 
+        # Remove connecting road graphics that will be orphaned
+        for junction in self.project.junctions:
+            for cr in junction.connecting_roads:
+                if cr.predecessor_road_id == road_id or cr.successor_road_id == road_id:
+                    self.image_view.remove_connecting_road_graphics(cr.id)
+
         # Remove assigned polylines and their graphics
         for polyline_id in list(road.polyline_ids):
             self.image_view.remove_polyline_graphics(polyline_id)
@@ -3535,6 +3541,11 @@ class MainWindow(QMainWindow):
             road = self.project.get_road(cmd.road_id)
             if road:
                 self.image_view.remove_road_lanes(cmd.road_id)
+                # Remove connecting road graphics that will be orphaned
+                for junction in self.project.junctions:
+                    for cr in junction.connecting_roads:
+                        if cr.predecessor_road_id == cmd.road_id or cr.successor_road_id == cmd.road_id:
+                            self.image_view.remove_connecting_road_graphics(cr.id)
                 for pid in list(road.polyline_ids):
                     self.image_view.remove_polyline_graphics(pid)
                     self.project.remove_polyline(pid)

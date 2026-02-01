@@ -363,13 +363,16 @@ class Junction:
 
     def remove_road(self, road_id: str) -> None:
         """Remove a road from this junction and clean up all references."""
-        if road_id in self.connected_road_ids:
-            self.connected_road_ids.remove(road_id)
-            # Also remove any connections involving this road
-            self.connections = [
-                conn for conn in self.connections
-                if conn.incoming_road_id != road_id and conn.connecting_road_id != road_id
-            ]
+        if road_id not in self.connected_road_ids:
+            return
+
+        self.connected_road_ids.remove(road_id)
+
+        # Remove any connections involving this road
+        self.connections = [
+            conn for conn in self.connections
+            if conn.incoming_road_id != road_id and conn.connecting_road_id != road_id
+        ]
 
         # Remove connecting roads that reference the deleted road
         self.connecting_roads = [

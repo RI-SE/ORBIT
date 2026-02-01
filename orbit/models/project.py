@@ -726,7 +726,10 @@ class Project:
         # Handle junction remapping
         # If the original road was connected to a junction, we need to update the junction
         # to point to road2 instead (since road2 now has the "end" that was connected)
-        self._remap_junctions_after_road_split(road.id, road2.id, original_junction_id)
+        self._remap_junctions_after_road_split(
+            road.id, road2.id, original_junction_id,
+            successor_junction_id=original_successor_junction_id
+        )
 
         logger.info(f"Split road '{original_name}' into '{road1_name}' and '{road2_name}'")
 
@@ -736,19 +739,24 @@ class Project:
         self,
         original_road_id: str,
         new_road_id: str,
-        original_junction_id: Optional[str]
+        original_junction_id: Optional[str],
+        successor_junction_id: Optional[str] = None
     ) -> None:
         """
         Update junction references after a road split.
 
         When a road is split, the "end" of the original road becomes the "end" of
-        the new road (road2). Any junctions that were connected to the original
-        road's end need to be updated to reference the new road instead.
+        the new road (road2). Only junctions at the successor end need to be
+        updated to reference the new road.
+
+        Uses connecting road contact points to determine which end of the
+        original road each junction is at when successor_junction_id is unknown.
 
         Args:
             original_road_id: ID of the original road (now road1, the first segment)
             new_road_id: ID of the new road (road2, the second segment)
             original_junction_id: The junction_id that was on the original road (if any)
+            successor_junction_id: Junction at the successor end to remap (if any)
         """
         road2 = self.get_road(new_road_id)
         if not road2:
@@ -763,8 +771,39 @@ class Project:
             if road1:
                 road1.junction_id = None
 
-        # Update all junctions that reference the original road
+        # Build set of junctions known to be at the successor (end) of the road
+        target_junction_ids = set()
+        if original_junction_id:
+            target_junction_ids.add(original_junction_id)
+        if successor_junction_id:
+            target_junction_ids.add(successor_junction_id)
+
         for junction in self.junctions:
+            # Skip junctions that don't reference this road at all
+            references_road = (
+                original_road_id in junction.connected_road_ids
+                or original_road_id in junction.entry_roads
+                or original_road_id in junction.exit_roads
+                or any(cr.predecessor_road_id == original_road_id
+                       or cr.successor_road_id == original_road_id
+                       for cr in junction.connecting_roads)
+            )
+            if not references_road:
+                continue
+
+            # If we have explicit target junctions, only remap those
+            if target_junction_ids:
+                if junction.id not in target_junction_ids:
+                    continue
+            else:
+                # No explicit targets — use connecting road contact points
+                # to determine if this junction is at the END of the original
+                # road (road2 takes over the end portion after split).
+                junction_at_end = self._junction_at_road_end(
+                    junction, original_road_id)
+                if not junction_at_end:
+                    continue
+
             remapped = False
 
             # Update connected_road_ids
@@ -813,6 +852,34 @@ class Project:
 
             if remapped:
                 logger.info(f"Remapped junction '{junction.name}' to reference new road {new_road_id}")
+
+    @staticmethod
+    def _junction_at_road_end(junction, road_id: str) -> bool:
+        """Check if a junction connects to the END of a road using contact points.
+
+        Examines connecting road contact points to determine which end of the
+        road touches the junction. Returns True if the junction is at the road's
+        end (successor side), False otherwise.
+
+        If no connecting roads reference the road, returns False (conservative:
+        don't remap when uncertain).
+        """
+        for cr in junction.connecting_roads:
+            if cr.successor_road_id == road_id:
+                # contact_point_end tells which end of the successor road
+                # connects to this junction
+                if cr.contact_point_end == 'end':
+                    return True
+                elif cr.contact_point_end == 'start':
+                    return False
+            if cr.predecessor_road_id == road_id:
+                # contact_point_start tells which end of the predecessor road
+                # connects to this junction
+                if cr.contact_point_start == 'end':
+                    return True
+                elif cr.contact_point_start == 'start':
+                    return False
+        return False
 
     def merge_consecutive_roads(
         self,
