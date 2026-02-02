@@ -221,7 +221,8 @@ class OpenDriveWriter:
                 for idx, connecting_road in enumerate(junction.connecting_roads):
                     conn_road_elem = self._create_connecting_road(
                         connecting_road,
-                        junction_numeric_id
+                        junction_numeric_id,
+                        junction.lane_connections
                     )
                     if conn_road_elem is not None:
                         root.append(conn_road_elem)
@@ -606,13 +607,15 @@ class OpenDriveWriter:
         return road_elem
 
     def _create_connecting_road(self, connecting_road: ConnectingRoad,
-                               junction_numeric_id: int) -> Optional[etree.Element]:
+                               junction_numeric_id: int,
+                               lane_connections=None) -> Optional[etree.Element]:
         """
         Create a road element for a junction connecting road.
 
         Args:
             connecting_road: ConnectingRoad object with path and lane configuration
             junction_numeric_id: Numeric ID of the junction this road belongs to
+            lane_connections: Junction lane connections for deriving lane link IDs
 
         Returns:
             Road XML element with junction="<junction_id>", or None if invalid
@@ -631,6 +634,10 @@ class OpenDriveWriter:
             ]
         else:
             path_meters = self.transformer.pixels_to_meters_batch(connecting_road.path)
+
+        # Snap CR endpoints to connected road endpoints for topological correctness.
+        # Small pixel-level misalignment can cause visible gaps in the export.
+        path_meters = self._snap_cr_endpoints_to_roads(connecting_road, path_meters)
 
         # Check if connecting road has ParamPoly3D geometry
         if connecting_road.geometry_type == "parampoly3":
@@ -800,15 +807,92 @@ class OpenDriveWriter:
         etree.SubElement(road_elem, 'lateralProfile')
 
         # Add lanes (simplified - no boundary analysis for connecting roads)
-        lanes = self._create_connecting_road_lanes(connecting_road, road_length)
+        # Build lane link map from junction connections for this CR:
+        # cr_lane_id → (predecessor_lane_id, successor_lane_id)
+        cr_lane_link_map = {}
+        if lane_connections:
+            for lc in lane_connections:
+                if lc.connecting_road_id == connecting_road.id and lc.connecting_lane_id is not None:
+                    cr_lane_link_map[lc.connecting_lane_id] = (
+                        lc.from_lane_id, lc.to_lane_id
+                    )
+
+        lanes = self._create_connecting_road_lanes(
+            connecting_road, road_length, cr_lane_link_map
+        )
         road_elem.append(lanes)
 
         # No signals or objects for connecting roads
 
         return road_elem
 
+    def _snap_cr_endpoints_to_roads(
+        self,
+        connecting_road: ConnectingRoad,
+        path_meters: list,
+    ) -> list:
+        """Snap connecting road endpoints to the connected road endpoints in meters.
+
+        Looks up predecessor/successor road centerline endpoints, converts them
+        to meters using the same source (geo_points or pixel) that the road
+        export uses, and replaces path_meters[0] / path_meters[-1] so the
+        exported geometry is topologically connected.
+
+        Args:
+            connecting_road: The connecting road being exported.
+            path_meters: Path points already converted to meters.
+
+        Returns:
+            path_meters with snapped first/last points (may be the same list).
+        """
+        if len(path_meters) < 2:
+            return path_meters
+
+        # Snap start to predecessor road endpoint
+        pred_road = self.road_map.get(connecting_road.predecessor_road_id)
+        if pred_road and pred_road.centerline_id:
+            snap_pt = self._get_road_endpoint_meters(
+                pred_road.centerline_id, connecting_road.contact_point_start
+            )
+            if snap_pt is not None:
+                path_meters[0] = snap_pt
+
+        # Snap end to successor road endpoint
+        succ_road = self.road_map.get(connecting_road.successor_road_id)
+        if succ_road and succ_road.centerline_id:
+            snap_pt = self._get_road_endpoint_meters(
+                succ_road.centerline_id, connecting_road.contact_point_end
+            )
+            if snap_pt is not None:
+                path_meters[-1] = snap_pt
+
+        return path_meters
+
+    def _get_road_endpoint_meters(
+        self, centerline_id: str, contact_point: str
+    ) -> Optional[tuple]:
+        """Get a road centerline endpoint in meters, matching the export source.
+
+        Uses geo_points when available (same as _create_road), otherwise
+        converts from pixel coordinates.
+        """
+        polyline = self.polyline_map.get(centerline_id)
+        if not polyline or len(polyline.points) < 2:
+            return None
+
+        use_end = (contact_point == "end")
+
+        if polyline.geo_points:
+            idx = -1 if use_end else 0
+            lon, lat = polyline.geo_points[idx]
+            return self.transformer.latlon_to_meters(lat, lon)
+        else:
+            idx = -1 if use_end else 0
+            return self.transformer.pixels_to_meters_batch([polyline.points[idx]])[0]
+
     def _create_connecting_road_lanes(self, connecting_road: ConnectingRoad,
-                                     road_length: float) -> etree.Element:
+                                     road_length: float,
+                                     cr_lane_link_map: dict = None) -> etree.Element:
         """
         Create lanes element for a connecting road using individual Lane objects.
 
@@ -820,6 +904,8 @@ class OpenDriveWriter:
         Args:
             connecting_road: ConnectingRoad with lane configuration
             road_length: Total length of the road in meters
+            cr_lane_link_map: Mapping from CR lane ID to (predecessor_lane_id,
+                successor_lane_id) derived from junction lane connections
 
         Returns:
             Lanes XML element
@@ -845,7 +931,7 @@ class OpenDriveWriter:
         if left_lanes:
             left = etree.SubElement(lane_section, 'left')
             for lane_obj in left_lanes:
-                lane = self._create_connecting_lane_element(lane_obj, road_length)
+                lane = self._create_connecting_lane_element(lane_obj, road_length, cr_lane_link_map)
                 left.append(lane)
 
         # Center lane (always required)
@@ -868,18 +954,21 @@ class OpenDriveWriter:
         if right_lanes:
             right = etree.SubElement(lane_section, 'right')
             for lane_obj in right_lanes:
-                lane = self._create_connecting_lane_element(lane_obj, road_length)
+                lane = self._create_connecting_lane_element(lane_obj, road_length, cr_lane_link_map)
                 right.append(lane)
 
         return lanes
 
-    def _create_connecting_lane_element(self, lane_obj, road_length: float) -> etree.Element:
+    def _create_connecting_lane_element(self, lane_obj, road_length: float,
+                                       cr_lane_link_map: dict = None) -> etree.Element:
         """
         Create a single lane element for a connecting road.
 
         Args:
             lane_obj: Lane object with width and road mark properties
             road_length: Total road length for polynomial width calculation
+            cr_lane_link_map: Mapping from CR lane ID to (predecessor_lane_id,
+                successor_lane_id) derived from junction lane connections
 
         Returns:
             Lane XML element
@@ -891,11 +980,18 @@ class OpenDriveWriter:
         lane.set('type', lane_obj.lane_type.value)
         lane.set('level', 'true' if lane_obj.level else 'false')
 
-        # Lane link (connect to same lane ID on predecessor/successor road if not explicitly set)
+        # Lane link: use junction lane connections when available, then explicit
+        # Lane.predecessor_id/successor_id, then fall back to lane's own ID.
         if lane_obj.id != 0:  # Non-center lanes
             link = etree.SubElement(lane, 'link')
-            pred_id = lane_obj.predecessor_id if lane_obj.predecessor_id is not None else lane_obj.id
-            succ_id = lane_obj.successor_id if lane_obj.successor_id is not None else lane_obj.id
+
+            # Check junction lane connections first
+            if cr_lane_link_map and lane_obj.id in cr_lane_link_map:
+                pred_id, succ_id = cr_lane_link_map[lane_obj.id]
+            else:
+                pred_id = lane_obj.predecessor_id if lane_obj.predecessor_id is not None else lane_obj.id
+                succ_id = lane_obj.successor_id if lane_obj.successor_id is not None else lane_obj.id
+
             pred = etree.SubElement(link, 'predecessor')
             pred.set('id', str(pred_id))
             succ = etree.SubElement(link, 'successor')

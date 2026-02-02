@@ -485,6 +485,40 @@ class Project:
             if not jg.id:
                 jg.id = self.next_id('junction_group')
 
+    def link_lane_connections_to_connecting_roads(self) -> int:
+        """
+        Match lane connections to their connecting roads by from/to road IDs.
+
+        ConnectingRoads and LaneConnections are often created before IDs are
+        assigned, so connecting_road_id and connecting_lane_id may be empty.
+        This method links them after IDs have been assigned.
+
+        Returns:
+            Number of lane connections that were linked
+        """
+        linked = 0
+        for junction in self.junctions:
+            for lc in junction.lane_connections:
+                if lc.connecting_road_id:
+                    continue  # Already linked
+
+                for cr in junction.connecting_roads:
+                    if (cr.predecessor_road_id == lc.from_road_id and
+                            cr.successor_road_id == lc.to_road_id):
+                        lc.connecting_road_id = cr.id
+
+                        # Set connecting_lane_id: pick the lane on the CR
+                        # that matches the direction (right = negative,
+                        # left = positive).
+                        if lc.connecting_lane_id is None:
+                            lc.connecting_lane_id = (
+                                -1 if lc.from_lane_id < 0 else 1
+                            )
+                        linked += 1
+                        break
+
+        return linked
+
     def add_polyline(self, polyline: Polyline) -> None:
         """Add a polyline to the project. Auto-assigns ID if empty."""
         if not polyline.id:

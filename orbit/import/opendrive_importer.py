@@ -396,8 +396,14 @@ class OpenDriveImporter:
 
         # Convert metric points to geo coords for storage as source of truth
         geo_points = None
-        if self.orbit_transformer:
-            # Use orbit transformer to convert from meters to lat/lon
+        if self.coord_transform and self.coord_transform.opendrive_geo_reference:
+            # Use coord_transform which applies header offset and correct projection
+            geo_points = []
+            for x_m, y_m in points_metric:
+                lon, lat = self.coord_transform._metric_to_latlon(x_m, y_m)
+                geo_points.append((lon, lat))  # Store as (lon, lat)
+        elif self.orbit_transformer:
+            # Fallback for imports without geoReference
             geo_points = []
             for x_m, y_m in points_metric:
                 lat, lon = self.orbit_transformer.meters_to_latlon(x_m, y_m)
@@ -527,7 +533,14 @@ class OpenDriveImporter:
 
         # Convert metric points to geo coords for storage as source of truth
         geo_points = None
-        if self.orbit_transformer and points_metric:
+        if self.coord_transform and self.coord_transform.opendrive_geo_reference and points_metric:
+            # Use coord_transform which applies header offset and correct projection
+            geo_points = []
+            for x_m, y_m in points_metric:
+                lon, lat = self.coord_transform._metric_to_latlon(x_m, y_m)
+                geo_points.append((lon, lat))  # Store as (lon, lat)
+        elif self.orbit_transformer and points_metric:
+            # Fallback for imports without geoReference
             geo_points = []
             for x_m, y_m in points_metric:
                 lat, lon = self.orbit_transformer.meters_to_latlon(x_m, y_m)
