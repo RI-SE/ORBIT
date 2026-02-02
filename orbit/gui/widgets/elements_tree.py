@@ -217,8 +217,9 @@ class ElementsTreeWidget(QWidget):
                 succ_id_short = succ_road.id[:8]
                 successor_name = f"{succ_road.name} ({succ_id_short})" if succ_road.name else f"Road {succ_id_short}"
 
-        # Display text showing which roads are connected
-        text = f"{predecessor_name} → {successor_name}"
+        # Display text showing connecting road ID and which roads are connected
+        conn_id_short = conn_road.id[:8] if len(conn_road.id) > 8 else conn_road.id
+        text = f"[{conn_id_short}] {predecessor_name} → {successor_name}"
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {
@@ -415,6 +416,12 @@ class ElementsTreeWidget(QWidget):
             edit_action.triggered.connect(lambda: self.edit_connecting_road(data["id"]))
             menu.addAction(edit_action)
 
+            lane_conn_action = QAction("Edit Lane Connections", self)
+            cr_id = data["id"]
+            lane_conn_action.triggered.connect(
+                lambda: self._edit_lane_connections_for_connecting_road(cr_id))
+            menu.addAction(lane_conn_action)
+
         elif data["type"] == "connecting_road_lane":
             # Connecting road lane context menu
             edit_action = QAction("Edit Lane Properties", self)
@@ -532,6 +539,27 @@ class ElementsTreeWidget(QWidget):
             if result:
                 self.connecting_road_modified.emit(connecting_road_id)
                 self.refresh_tree()
+
+    def _find_junction_for_connecting_road(self, connecting_road_id: str):
+        """Find the parent junction that contains a connecting road.
+
+        Args:
+            connecting_road_id: ID of the connecting road
+
+        Returns:
+            Junction object or None if not found
+        """
+        for junction in self.project.junctions:
+            for cr in junction.connecting_roads:
+                if cr.id == connecting_road_id:
+                    return junction
+        return None
+
+    def _edit_lane_connections_for_connecting_road(self, connecting_road_id: str):
+        """Open lane connections dialog for the junction containing a connecting road."""
+        junction = self._find_junction_for_connecting_road(connecting_road_id)
+        if junction:
+            self.edit_lane_connections(junction.id)
 
     def edit_connecting_road_lane(self, connecting_road_id: str, lane_id: int):
         """Edit a connecting road lane's properties."""

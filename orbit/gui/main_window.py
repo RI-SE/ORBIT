@@ -2387,6 +2387,43 @@ class MainWindow(QMainWindow):
             scale_factors = self.get_current_scale()
             self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
 
+        # Snap endpoints of polyline-type connecting roads
+        for junction in self.project.junctions:
+            for conn_road in junction.connecting_roads:
+                if conn_road.geometry_type == "parampoly3":
+                    continue  # Already handled above
+                if (conn_road.predecessor_road_id != affected_road.id and
+                        conn_road.successor_road_id != affected_road.id):
+                    continue
+                if not conn_road.path or len(conn_road.path) < 2:
+                    continue
+
+                pred_road = self.project.get_road(conn_road.predecessor_road_id)
+                succ_road = self.project.get_road(conn_road.successor_road_id)
+                if not pred_road or not succ_road:
+                    continue
+
+                pred_polyline = self.project.get_polyline(pred_road.centerline_id)
+                succ_polyline = self.project.get_polyline(succ_road.centerline_id)
+                if not pred_polyline or not succ_polyline:
+                    continue
+
+                # Snap start to predecessor endpoint
+                if conn_road.contact_point_start == "end":
+                    conn_road.path[0] = pred_polyline.points[-1]
+                else:
+                    conn_road.path[0] = pred_polyline.points[0]
+
+                # Snap end to successor endpoint
+                if conn_road.contact_point_end == "end":
+                    conn_road.path[-1] = succ_polyline.points[-1]
+                else:
+                    conn_road.path[-1] = succ_polyline.points[0]
+
+                # Update graphics
+                scale_factors = self.get_current_scale()
+                self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
+
     def on_polyline_selected_in_tree(self, polyline_id):
         """Handle polyline selection from tree."""
         # Clear connecting road selection
