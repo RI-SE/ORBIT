@@ -12,9 +12,9 @@ Example usage:
     px, py = georef.geo_to_pixel(12.945, 57.720)
 """
 
-from .transformer import GeoTransformer
-from .models import ControlPoint
 from .io import load_georef, save_georef
+from .models import ControlPoint
+from .transformer import GeoTransformer
 
 __version__ = "0.1.0"
 

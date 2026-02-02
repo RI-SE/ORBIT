@@ -7,9 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
-from orbit_georef import GeoTransformer, ControlPoint, load_georef, save_georef
-
+from orbit_georef import ControlPoint, GeoTransformer, load_georef, save_georef
 
 # Sample control points (roughly Gothenburg, Sweden area)
 SAMPLE_CONTROL_POINTS = [
@@ -171,10 +169,22 @@ class TestIO:
             "image_size": [1000, 800],
             "transform_method": "homography",
             "control_points": [
-                {"pixel_x": 100, "pixel_y": 100, "longitude": 11.97, "latitude": 57.71, "name": "GCP1", "is_validation": False},
-                {"pixel_x": 900, "pixel_y": 100, "longitude": 11.98, "latitude": 57.71, "name": "GCP2", "is_validation": False},
-                {"pixel_x": 100, "pixel_y": 700, "longitude": 11.97, "latitude": 57.70, "name": "GCP3", "is_validation": False},
-                {"pixel_x": 900, "pixel_y": 700, "longitude": 11.98, "latitude": 57.70, "name": "GCP4", "is_validation": False},
+                {
+                    "pixel_x": 100, "pixel_y": 100, "longitude": 11.97,
+                    "latitude": 57.71, "name": "GCP1", "is_validation": False,
+                },
+                {
+                    "pixel_x": 900, "pixel_y": 100, "longitude": 11.98,
+                    "latitude": 57.71, "name": "GCP2", "is_validation": False,
+                },
+                {
+                    "pixel_x": 100, "pixel_y": 700, "longitude": 11.97,
+                    "latitude": 57.70, "name": "GCP3", "is_validation": False,
+                },
+                {
+                    "pixel_x": 900, "pixel_y": 700, "longitude": 11.98,
+                    "latitude": 57.70, "name": "GCP4", "is_validation": False,
+                },
             ],
             "reference_point": {"longitude": 11.975, "latitude": 57.705},
             "transformation_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],

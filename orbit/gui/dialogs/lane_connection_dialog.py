@@ -4,7 +4,7 @@ Lane connection dialog for ORBIT.
 Allows editing of lane-to-lane connections within a junction.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -737,7 +737,7 @@ class LaneConnectionDialog(BaseDialog):
         """Get average lane width for a road in meters."""
         if road.lane_sections:
             section = road.lane_sections[-1]
-            widths = [l.width for l in section.lanes if l.id != 0 and l.width > 0]
+            widths = [lane.width for lane in section.lanes if lane.id != 0 and lane.width > 0]
             if widths:
                 return sum(widths) / len(widths)
         if hasattr(road, "lane_info") and road.lane_info:

@@ -467,8 +467,8 @@ class OpenDriveImporter:
             )
             # Sync road.lane_info from imported lane sections
             first_section = road.lane_sections[0]
-            road.lane_info.left_count = sum(1 for l in first_section.lanes if l.id > 0)
-            road.lane_info.right_count = sum(1 for l in first_section.lanes if l.id < 0)
+            road.lane_info.left_count = sum(1 for lane in first_section.lanes if lane.id > 0)
+            road.lane_info.right_count = sum(1 for lane in first_section.lanes if lane.id < 0)
             for lane in first_section.lanes:
                 if lane.id != 0 and lane.width > 0:
                     road.lane_info.lane_width = lane.width
