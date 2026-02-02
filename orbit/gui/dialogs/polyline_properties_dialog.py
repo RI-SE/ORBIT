@@ -4,19 +4,15 @@ Polyline properties dialog for ORBIT.
 Allows editing of polyline line type and road mark type.
 """
 
-from typing import Optional
 
-from PyQt6.QtWidgets import (
-    QDialog, QHBoxLayout,
-    QComboBox, QLabel, QGroupBox, QPushButton, QTextEdit, QVBoxLayout
-)
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushButton, QTextEdit, QVBoxLayout
 
-from orbit.models import Polyline, LineType, RoadMarkType
-from .base_dialog import BaseDialog
-from ..utils.message_helpers import show_info
+from orbit.models import LineType, Polyline, RoadMarkType
+
 from ..utils import set_combo_by_data
+from ..utils.message_helpers import show_info
+from .base_dialog import BaseDialog
 
 
 class PolylinePropertiesDialog(BaseDialog):
@@ -141,11 +137,22 @@ class PolylinePropertiesDialog(BaseDialog):
 
             lines.append(line)
 
-        lines.append("-" * (55 if (has_s_offsets and has_elevations) else 42 if (has_s_offsets or has_elevations) else 30))
+        if has_s_offsets and has_elevations:
+            sep_len = 55
+        elif has_s_offsets or has_elevations:
+            sep_len = 42
+        else:
+            sep_len = 30
+        lines.append("-" * sep_len)
         lines.append(f"Total: {len(self.polyline.points)} points")
 
         if has_elevations:
-            lines.append(f"Elevation range: {min(self.polyline.elevations):.2f}m to {max(self.polyline.elevations):.2f}m")
+            elev_min = min(self.polyline.elevations)
+            elev_max = max(self.polyline.elevations)
+            lines.append(
+                f"Elevation range: {elev_min:.2f}m to "
+                f"{elev_max:.2f}m"
+            )
 
         self.points_text.setPlainText("\n".join(lines))
 

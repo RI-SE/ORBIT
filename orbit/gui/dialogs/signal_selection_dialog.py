@@ -4,18 +4,28 @@ Dialog for selecting signal type when placing a new signal.
 Supports library-based sign selection with categories and custom OpenDRIVE codes.
 """
 
-from typing import Optional, List, Tuple
-from PyQt6.QtWidgets import (
-    QHBoxLayout, QVBoxLayout, QGroupBox, QPushButton, QTreeWidget,
-    QTreeWidgetItem, QComboBox, QLineEdit, QCheckBox, QLabel,
-    QWidget, QSplitter, QFrame
-)
-from PyQt6.QtGui import QIcon, QPixmap
-from PyQt6.QtCore import Qt
+from typing import List, Optional, Tuple
 
-from orbit.models.signal import SignalType, SpeedUnit
-from orbit.models.sign_library import SignLibrary, SignDefinition
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+)
+
+from orbit.models.sign_library import SignDefinition, SignLibrary
 from orbit.models.sign_library_manager import SignLibraryManager
+from orbit.models.signal import SignalType, SpeedUnit
+
 from ..graphics.signal_graphics import create_signal_pixmap
 from .base_dialog import BaseDialog
 

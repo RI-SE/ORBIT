@@ -4,11 +4,11 @@ Interactive lane polygon for ORBIT.
 Provides clickable, hoverable lane polygons for the image view.
 """
 
-from typing import List, TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsPolygonItem
-from PyQt6.QtCore import Qt, QPointF
-from PyQt6.QtGui import QPen, QColor, QBrush, QPolygonF
 
 if TYPE_CHECKING:
     from ..image_view import ImageView

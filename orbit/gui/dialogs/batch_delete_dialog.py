@@ -7,13 +7,10 @@ the user to deselect individual items before confirming.
 
 from typing import Dict, List
 
-from PyQt6.QtWidgets import (
-    QTreeWidget, QTreeWidgetItem, QDialogButtonBox, QLabel
-)
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QDialogButtonBox, QLabel, QTreeWidget, QTreeWidgetItem
 
 from .base_dialog import BaseDialog
-
 
 # Display names for item categories
 _CATEGORY_LABELS = {

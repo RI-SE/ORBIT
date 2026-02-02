@@ -4,21 +4,22 @@ Unit tests for curve fitting.
 Tests fitting polylines to geometric elements (lines, arcs) for OpenDrive export.
 """
 
-import pytest
 import math
 from typing import List, Tuple
 
-from orbit.export.curve_fitting import (
-    CurveFitter, GeometryElement, GeometryType,
-    simplify_polyline
-)
+import pytest
 
+from orbit.export.curve_fitting import CurveFitter, GeometryType, simplify_polyline
 
 # ============================================================================
 # Helper Functions
 # ============================================================================
 
-def create_line_points(start: Tuple[float, float], end: Tuple[float, float], num_points: int = 10) -> List[Tuple[float, float]]:
+def create_line_points(
+    start: Tuple[float, float],
+    end: Tuple[float, float],
+    num_points: int = 10,
+) -> List[Tuple[float, float]]:
     """Create evenly spaced points along a line."""
     x1, y1 = start
     x2, y2 = end
@@ -31,7 +32,13 @@ def create_line_points(start: Tuple[float, float], end: Tuple[float, float], num
     return points
 
 
-def create_arc_points(center: Tuple[float, float], radius: float, start_angle: float, end_angle: float, num_points: int = 20) -> List[Tuple[float, float]]:
+def create_arc_points(
+    center: Tuple[float, float],
+    radius: float,
+    start_angle: float,
+    end_angle: float,
+    num_points: int = 20,
+) -> List[Tuple[float, float]]:
     """Create points along a circular arc."""
     cx, cy = center
     points = []
@@ -184,7 +191,7 @@ class TestArcFitting:
         arc_elements = [e for e in elements if e.geom_type == GeometryType.ARC]
         if arc_elements:
             # If arc fitted, curvature should be 1/radius
-            expected_curvature = 1.0 / 50.0
+            _expected_curvature = 1.0 / 50.0
             assert arc_elements[0].curvature != 0.0
 
     def test_fit_arc_semicircle(self):
@@ -833,7 +840,7 @@ class TestArcElementCreation:
         points = [(0, 0), (10, 0), (20, 0)]
         fitter = CurveFitter()
 
-        element = fitter._create_arc_element(points, 0, 2)
+        _element = fitter._create_arc_element(points, 0, 2)
 
         # May return None or fallback
         # Just ensure no exception is raised
@@ -890,7 +897,7 @@ class TestIsLine:
 
         result = fitter._is_line([(0, 0), (100, 50)])
 
-        assert result == True
+        assert result == True  # noqa: E712 - numpy bool, identity check fails
 
     def test_is_line_single_point(self):
         """Test that single point is a line."""
@@ -898,7 +905,7 @@ class TestIsLine:
 
         result = fitter._is_line([(5, 5)])
 
-        assert result == True
+        assert result == True  # noqa: E712 - numpy bool, identity check fails
 
     def test_is_line_horizontal(self):
         """Test horizontal line detection."""
@@ -907,7 +914,7 @@ class TestIsLine:
 
         result = fitter._is_line(points)
 
-        assert result == True
+        assert result == True  # noqa: E712 - numpy bool, identity check fails
 
     def test_is_line_vertical(self):
         """Test vertical line detection."""
@@ -916,7 +923,7 @@ class TestIsLine:
 
         result = fitter._is_line(points)
 
-        assert result == True
+        assert result == True  # noqa: E712 - numpy bool, identity check fails
 
     def test_is_line_with_deviation(self):
         """Test line detection with point deviation."""
@@ -925,8 +932,8 @@ class TestIsLine:
         fitter_strict = CurveFitter(line_tolerance=0.1)
         fitter_loose = CurveFitter(line_tolerance=5.0)
 
-        assert fitter_strict._is_line(points) == False
-        assert fitter_loose._is_line(points) == True
+        assert fitter_strict._is_line(points) == False  # noqa: E712 - numpy bool
+        assert fitter_loose._is_line(points) == True  # noqa: E712 - numpy bool
 
 
 # ============================================================================

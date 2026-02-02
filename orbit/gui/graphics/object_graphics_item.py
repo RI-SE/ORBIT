@@ -2,16 +2,23 @@
 Graphics item for displaying roadside objects on the map.
 """
 
-from PyQt6.QtWidgets import QGraphicsItemGroup, QGraphicsPathItem, QGraphicsItem
-from PyQt6.QtGui import QPen, QColor, QPainter, QBrush
-from PyQt6.QtCore import Qt, QPointF
-from orbit.models.object import RoadObject, ObjectType
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QBrush, QColor, QPen
+from PyQt6.QtWidgets import QGraphicsItemGroup, QGraphicsPathItem
+
+from orbit.models.object import ObjectType, RoadObject
+
 from .object_graphics import (
-    get_object_color, create_lamppost_path, create_guardrail_path,
-    create_polygon_path, create_building_path, create_tree_circle_path,
-    create_cone_path, create_bush_path, draw_dimension_label, rotate_path
+    create_building_path,
+    create_cone_path,
+    create_guardrail_path,
+    create_lamppost_path,
+    create_polygon_path,
+    create_tree_circle_path,
+    draw_dimension_label,
+    get_object_color,
+    rotate_path,
 )
-from typing import Optional
 
 
 class ObjectGraphicsItem(QGraphicsItemGroup):
@@ -177,7 +184,7 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
 
     def _update_selection_highlight(self, base_path):
         """Update selection highlight to match object shape."""
-        from PyQt6.QtGui import QPainterPath, QPainterPathStroker
+        from PyQt6.QtGui import QPainterPathStroker
 
         # Create a slightly larger version of the shape for selection
         stroker = QPainterPathStroker()

@@ -1,8 +1,8 @@
 """Tests for orbit.export.signal_builder module."""
 
-import math
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, patch
 from lxml import etree
 
 from orbit.export.signal_builder import SignalBuilder

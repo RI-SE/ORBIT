@@ -9,13 +9,12 @@ tools for pixel↔geo coordinate conversion.
 import json
 from importlib.metadata import version as get_package_version
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Any, Dict, List, Optional, Tuple
 
-from orbit.models.project import Project, ControlPoint
+from orbit.models.project import Project
 from orbit.utils.coordinate_transform import (
-    CoordinateTransformer,
-    TransformMethod,
     AffineTransformer,
+    CoordinateTransformer,
     HomographyTransformer,
 )
 from orbit.utils.logging_config import get_logger

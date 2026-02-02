@@ -1,10 +1,14 @@
 """Tests for orbit.import.opendrive_importer module."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from dataclasses import dataclass
-import math
 import importlib
+from unittest.mock import Mock
+
+import pytest
+
+from orbit.models import Polyline, Project, Road
+from orbit.models.lane import LaneType as ORBITLaneType
+from orbit.models.polyline import LineType, RoadMarkType
+from orbit.models.road import RoadType
 
 # Import using importlib since 'import' is a reserved keyword
 opendrive_importer = importlib.import_module('orbit.import.opendrive_importer')
@@ -15,11 +19,6 @@ ImportMode = opendrive_importer.ImportMode
 ImportOptions = opendrive_importer.ImportOptions
 ImportResult = opendrive_importer.ImportResult
 OpenDriveImporter = opendrive_importer.OpenDriveImporter
-
-from orbit.models import Project, Road, Polyline, Junction
-from orbit.models.lane import Lane, LaneType as ORBITLaneType
-from orbit.models.polyline import LineType, RoadMarkType
-from orbit.models.road import RoadType
 
 
 class TestImportMode:
@@ -669,7 +668,7 @@ class TestCalculatePositionFromST:
         mock_road.geometry = [mock_geom]
 
         # s=50, t=5 (5m to the left)
-        result = importer._calculate_position_from_st(50.0, 5.0, mock_road)
+        _result = importer._calculate_position_from_st(50.0, 5.0, mock_road)
 
         # Should be called with offset applied
         assert importer.coord_transform.metric_to_pixel.called
@@ -684,7 +683,7 @@ class TestCalculatePositionFromST:
         assert result is None
 
 
-class TestImportResult:
+class TestImportResultAdditional:
     """Additional tests for ImportResult."""
 
     def test_total_imported(self):
@@ -973,7 +972,7 @@ class TestImportFromFile:
         importer.imported_odr_road_ids.add("old_road")
 
         # Import (will fail but should clear state first)
-        result = importer.import_from_file("/nonexistent/file.xodr")
+        _result = importer.import_from_file("/nonexistent/file.xodr")
 
         # State should be cleared
         assert "old_road" not in importer.odr_road_to_orbit

@@ -6,14 +6,11 @@ Each command captures state using model to_dict()/from_dict() methods.
 """
 
 import copy
-from typing import Optional, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from PyQt6.QtGui import QUndoCommand
 
-from orbit.models import (
-    Polyline, Road, Junction, Signal, RoadObject, ParkingSpace,
-    ConnectingRoad, LaneConnection
-)
+from orbit.models import ConnectingRoad, Junction, LaneConnection, ParkingSpace, Polyline, Road, RoadObject, Signal
 
 if TYPE_CHECKING:
     from .main_window import MainWindow
@@ -220,6 +217,193 @@ class ModifyPolylineCommand(QUndoCommand):
         self.new_points = other.new_points
         self.new_geo_points = other.new_geo_points
         return True
+
+
+class LinkRoadsCommand(QUndoCommand):
+    """Command for linking two roads as predecessor/successor.
+
+    Sets bidirectional connection (A.successor = B, B.predecessor = A)
+    and snaps endpoint coordinates to match. Captures state of both
+    roads for full undo support.
+    """
+
+    def __init__(self, main_window: 'MainWindow',
+                 road_a_id: str, road_b_id: str,
+                 a_contact: str, b_contact: str):
+        super().__init__("Link Roads")
+        self.main_window = main_window
+        self.road_a_id = road_a_id
+        self.road_b_id = road_b_id
+        self.a_contact = a_contact  # "start" or "end" — which end of road A
+        self.b_contact = b_contact  # "start" or "end" — which end of road B
+        self._first_redo = True
+
+        # Capture old state of both roads
+        road_a = main_window.project.get_road(road_a_id)
+        road_b = main_window.project.get_road(road_b_id)
+        self.old_a_data = road_a.to_dict() if road_a else None
+        self.old_b_data = road_b.to_dict() if road_b else None
+
+        # Capture old centerline points for coordinate snap undo
+        self.old_a_cl_points = None
+        self.old_b_cl_points = None
+        if road_a and road_a.centerline_id:
+            cl_a = main_window.project.get_polyline(road_a.centerline_id)
+            if cl_a:
+                self.old_a_cl_points = list(cl_a.points)
+        if road_b and road_b.centerline_id:
+            cl_b = main_window.project.get_polyline(road_b.centerline_id)
+            if cl_b:
+                self.old_b_cl_points = list(cl_b.points)
+
+    def redo(self):
+        """Set bidirectional connection and snap coordinates."""
+        if self._first_redo:
+            self._first_redo = False
+            return
+
+        road_a = self.main_window.project.get_road(self.road_a_id)
+        road_b = self.main_window.project.get_road(self.road_b_id)
+        if not road_a or not road_b:
+            return
+
+        self._apply_link(road_a, road_b)
+        self.main_window.project.enforce_road_link_coordinates(self.road_a_id)
+        self._refresh_graphics(road_a)
+        self._refresh_graphics(road_b)
+        self.main_window._refresh_trees()
+
+    def undo(self):
+        """Restore both roads to their pre-link state."""
+        road_a = self.main_window.project.get_road(self.road_a_id)
+        road_b = self.main_window.project.get_road(self.road_b_id)
+        if not road_a or not road_b:
+            return
+
+        # Restore road A link fields from old data
+        if self.old_a_data:
+            old_a = Road.from_dict(self.old_a_data)
+            road_a.predecessor_id = old_a.predecessor_id
+            road_a.predecessor_contact = old_a.predecessor_contact
+            road_a.successor_id = old_a.successor_id
+            road_a.successor_contact = old_a.successor_contact
+
+        # Restore road B link fields from old data
+        if self.old_b_data:
+            old_b = Road.from_dict(self.old_b_data)
+            road_b.predecessor_id = old_b.predecessor_id
+            road_b.predecessor_contact = old_b.predecessor_contact
+            road_b.successor_id = old_b.successor_id
+            road_b.successor_contact = old_b.successor_contact
+
+        # Restore centerline points
+        if self.old_a_cl_points and road_a.centerline_id:
+            cl_a = self.main_window.project.get_polyline(road_a.centerline_id)
+            if cl_a:
+                cl_a.points = list(self.old_a_cl_points)
+        if self.old_b_cl_points and road_b.centerline_id:
+            cl_b = self.main_window.project.get_polyline(road_b.centerline_id)
+            if cl_b:
+                cl_b.points = list(self.old_b_cl_points)
+
+        self._refresh_graphics(road_a)
+        self._refresh_graphics(road_b)
+        self.main_window._refresh_trees()
+
+    def _apply_link(self, road_a: Road, road_b: Road):
+        """Set the bidirectional connection fields."""
+        if self.a_contact == "end":
+            road_a.successor_id = road_b.id
+            road_a.successor_contact = self.b_contact
+        else:
+            road_a.predecessor_id = road_b.id
+            road_a.predecessor_contact = self.b_contact
+
+        if self.b_contact == "start":
+            road_b.predecessor_id = road_a.id
+            road_b.predecessor_contact = self.a_contact
+        else:
+            road_b.successor_id = road_a.id
+            road_b.successor_contact = self.a_contact
+
+    def _refresh_graphics(self, road: Road):
+        """Refresh polyline and lane graphics for a road."""
+        if road.centerline_id and road.centerline_id in self.main_window.image_view.polyline_items:
+            self.main_window.image_view.polyline_items[road.centerline_id].update_graphics()
+        if road.id in self.main_window.image_view.road_lanes_items:
+            cl = self.main_window.project.get_polyline(road.centerline_id)
+            if cl:
+                road.update_section_boundaries(cl.points)
+            self.main_window.image_view.road_lanes_items[road.id].update_graphics()
+
+
+class UnlinkRoadsCommand(QUndoCommand):
+    """Command for unlinking two connected roads.
+
+    Clears the predecessor/successor link between two roads.
+    Captures state of both roads for full undo support.
+    """
+
+    def __init__(self, main_window: 'MainWindow',
+                 road_id: str, linked_road_id: str):
+        super().__init__("Disconnect Roads")
+        self.main_window = main_window
+        self.road_id = road_id
+        self.linked_road_id = linked_road_id
+        self._first_redo = True
+
+        # Capture old state of both roads
+        road = main_window.project.get_road(road_id)
+        linked = main_window.project.get_road(linked_road_id)
+        self.old_road_data = road.to_dict() if road else None
+        self.old_linked_data = linked.to_dict() if linked else None
+
+    def redo(self):
+        """Clear the connection between the two roads."""
+        if self._first_redo:
+            self._first_redo = False
+            return
+
+        self._clear_link()
+        self.main_window._refresh_trees()
+
+    def undo(self):
+        """Restore the connection between the two roads."""
+        road = self.main_window.project.get_road(self.road_id)
+        linked = self.main_window.project.get_road(self.linked_road_id)
+
+        if road and self.old_road_data:
+            old = Road.from_dict(self.old_road_data)
+            road.predecessor_id = old.predecessor_id
+            road.predecessor_contact = old.predecessor_contact
+            road.successor_id = old.successor_id
+            road.successor_contact = old.successor_contact
+
+        if linked and self.old_linked_data:
+            old = Road.from_dict(self.old_linked_data)
+            linked.predecessor_id = old.predecessor_id
+            linked.predecessor_contact = old.predecessor_contact
+            linked.successor_id = old.successor_id
+            linked.successor_contact = old.successor_contact
+
+        self.main_window._refresh_trees()
+
+    def _clear_link(self):
+        """Clear the bidirectional link between the two roads."""
+        road = self.main_window.project.get_road(self.road_id)
+        linked = self.main_window.project.get_road(self.linked_road_id)
+
+        if road:
+            if road.predecessor_id == self.linked_road_id:
+                road.predecessor_id = None
+            if road.successor_id == self.linked_road_id:
+                road.successor_id = None
+
+        if linked:
+            if linked.predecessor_id == self.road_id:
+                linked.predecessor_id = None
+            if linked.successor_id == self.road_id:
+                linked.successor_id = None
 
 
 class AddRoadCommand(QUndoCommand):
@@ -830,7 +1014,7 @@ class AddSignalCommand(QUndoCommand):
     """Command for adding a signal."""
 
     def __init__(self, main_window: 'MainWindow', signal: Signal):
-        super().__init__(f"Add Signal")
+        super().__init__("Add Signal")
         self.main_window = main_window
         self.signal_data = signal.to_dict()
         self.signal_id = signal.id

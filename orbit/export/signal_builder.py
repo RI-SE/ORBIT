@@ -5,11 +5,12 @@ Handles creation of signal-related XML elements.
 """
 
 from typing import List, Optional
+
 from lxml import etree
 
 from orbit.models import Road, Signal
-from orbit.models.signal import SignalType, SpeedUnit
 from orbit.models.sign_library_manager import SignLibraryManager
+from orbit.models.signal import SignalType, SpeedUnit
 
 
 class SignalBuilder:

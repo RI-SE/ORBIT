@@ -5,12 +5,11 @@ Creates visual representations of objects (buildings, trees, lampposts, etc.)
 with appropriate shapes, colors, and dimension labels.
 """
 
-from PyQt6.QtGui import QPainterPath, QColor, QFont, QPainter, QPolygonF
-from PyQt6.QtCore import Qt, QPointF, QRectF
-from orbit.models.object import RoadObject, ObjectType
-import math
-from typing import Tuple, Optional
 
+from PyQt6.QtCore import QPointF, QRectF
+from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath
+
+from orbit.models.object import ObjectType, RoadObject
 
 # Color scheme (30% opacity = 77 alpha, consistent with lanes/parking)
 COLORS = {

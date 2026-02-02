@@ -4,18 +4,22 @@ Elements tree widget for ORBIT.
 Displays hierarchical view of junctions and other project elements with management capabilities.
 """
 
-from typing import Optional
 
+from PyQt6.QtCore import QEvent, Qt, pyqtSignal
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
-    QMenu, QMessageBox, QLineEdit
+    QLineEdit,
+    QMenu,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTreeWidgetItemIterator,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QEvent
-from PyQt6.QtGui import QAction, QKeyEvent
 
-from orbit.models import Project, Junction, Signal, ParkingSpace
+from orbit.models import Junction, ParkingSpace, Project, Signal
 from orbit.utils.enum_formatting import format_snake_case
+
 from ..utils.message_helpers import ask_yes_no
 
 
@@ -213,8 +217,9 @@ class ElementsTreeWidget(QWidget):
                 succ_id_short = succ_road.id[:8]
                 successor_name = f"{succ_road.name} ({succ_id_short})" if succ_road.name else f"Road {succ_id_short}"
 
-        # Display text showing which roads are connected
-        text = f"{predecessor_name} → {successor_name}"
+        # Display text showing connecting road ID and which roads are connected
+        conn_id_short = conn_road.id[:8] if len(conn_road.id) > 8 else conn_road.id
+        text = f"[{conn_id_short}] {predecessor_name} → {successor_name}"
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {
@@ -288,7 +293,6 @@ class ElementsTreeWidget(QWidget):
 
     def create_signal_item(self, signal: Signal) -> QTreeWidgetItem:
         """Create a tree item for a signal."""
-        from orbit.models.signal import SignalType
 
         # Build display text
         display_name = signal.get_display_name()
@@ -309,7 +313,6 @@ class ElementsTreeWidget(QWidget):
 
     def create_object_item(self, obj) -> QTreeWidgetItem:
         """Create a tree item for an object."""
-        from orbit.models.object import RoadObject
 
         # Build display text
         display_name = obj.get_display_name()
@@ -412,6 +415,12 @@ class ElementsTreeWidget(QWidget):
             edit_action = QAction("Edit Connecting Road", self)
             edit_action.triggered.connect(lambda: self.edit_connecting_road(data["id"]))
             menu.addAction(edit_action)
+
+            lane_conn_action = QAction("Edit Lane Connections", self)
+            cr_id = data["id"]
+            lane_conn_action.triggered.connect(
+                lambda: self._edit_lane_connections_for_connecting_road(cr_id))
+            menu.addAction(lane_conn_action)
 
         elif data["type"] == "connecting_road_lane":
             # Connecting road lane context menu
@@ -531,18 +540,39 @@ class ElementsTreeWidget(QWidget):
                 self.connecting_road_modified.emit(connecting_road_id)
                 self.refresh_tree()
 
+    def _find_junction_for_connecting_road(self, connecting_road_id: str):
+        """Find the parent junction that contains a connecting road.
+
+        Args:
+            connecting_road_id: ID of the connecting road
+
+        Returns:
+            Junction object or None if not found
+        """
+        for junction in self.project.junctions:
+            for cr in junction.connecting_roads:
+                if cr.id == connecting_road_id:
+                    return junction
+        return None
+
+    def _edit_lane_connections_for_connecting_road(self, connecting_road_id: str):
+        """Open lane connections dialog for the junction containing a connecting road."""
+        junction = self._find_junction_for_connecting_road(connecting_road_id)
+        if junction:
+            self.edit_lane_connections(junction.id)
+
     def edit_connecting_road_lane(self, connecting_road_id: str, lane_id: int):
         """Edit a connecting road lane's properties."""
         from ..dialogs.lane_properties_dialog import LanePropertiesDialog
 
         # Find the connecting road in junctions
         connecting_road = None
-        parent_junction = None
+        _parent_junction = None
         for junction in self.project.junctions:
             for cr in junction.connecting_roads:
                 if cr.id == connecting_road_id:
                     connecting_road = cr
-                    parent_junction = junction
+                    _parent_junction = junction
                     break
             if connecting_road:
                 break
@@ -698,8 +728,8 @@ class ElementsTreeWidget(QWidget):
                         conn_road_data = conn_road_item.data(0, Qt.ItemDataRole.UserRole)
                         if isinstance(conn_road_data, dict) and conn_road_data.get("id") == connecting_road_id:
                             # Found the connecting road, now find the lane
-                            for l in range(conn_road_item.childCount()):
-                                lane_item = conn_road_item.child(l)
+                            for lane_idx in range(conn_road_item.childCount()):
+                                lane_item = conn_road_item.child(lane_idx)
                                 lane_data = lane_item.data(0, Qt.ItemDataRole.UserRole)
                                 if isinstance(lane_data, dict) and lane_data.get("lane_id") == lane_id:
                                     # Expand parent items so selection is visible

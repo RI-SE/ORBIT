@@ -6,7 +6,7 @@ Supports both point-based (single space) and polygon-based (lot outline) represe
 """
 
 from enum import Enum
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class ParkingAccess(Enum):
@@ -249,7 +249,9 @@ class ParkingSpace:
 
         return space
 
-    def calculate_s_t_position(self, centerline_points: List[Tuple[float, float]]) -> Tuple[Optional[float], Optional[float]]:
+    def calculate_s_t_position(
+        self, centerline_points: List[Tuple[float, float]],
+    ) -> Tuple[Optional[float], Optional[float]]:
         """
         Calculate s-coordinate and t-offset along road centerline.
 

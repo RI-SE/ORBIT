@@ -5,12 +5,12 @@ Converts OpenDrive planView geometry elements (line, arc, spiral, poly3, paramPo
 into polyline points suitable for ORBIT.
 """
 
-from typing import List, Tuple, Optional
 import math
-import numpy as np
-from scipy import integrate
-from .opendrive_parser import GeometryElement, GeometryType
+from typing import List, Optional, Tuple
+
 from orbit.models import GeometrySegment
+
+from .opendrive_parser import GeometryElement, GeometryType
 
 
 class GeometryConverter:
@@ -52,12 +52,12 @@ class GeometryConverter:
             geom_points, conversion_msg = self._convert_single_geometry(geom)
 
             # Add points, avoiding duplicates at boundaries
-            skip_first = False
+            _skip_first = False
             if points and geom_points:
                 # Skip first point of new geometry if it matches last point
                 if self._points_match(points[-1], geom_points[0]):
                     geom_points = geom_points[1:]
-                    skip_first = True
+                    _skip_first = True
                     # Adjust start_index since we're reusing the last point
                     start_index = len(points) - 1
 

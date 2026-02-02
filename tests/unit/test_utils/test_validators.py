@@ -4,16 +4,13 @@ Unit tests for validation utilities.
 Tests the ValidationResult class and validation helper functions.
 """
 
-import pytest
-from typing import List, Tuple
 
 from orbit.utils.validators import (
     ValidationResult,
     has_minimum_points,
-    validate_point_list,
     is_valid_id,
+    validate_point_list,
 )
-
 
 # ============================================================================
 # Test ValidationResult Class

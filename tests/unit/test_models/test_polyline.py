@@ -6,7 +6,7 @@ Tests polyline creation, point manipulation, serialization, and validation.
 
 import pytest
 
-from orbit.models import Polyline, LineType, RoadMarkType
+from orbit.models import LineType, Polyline, RoadMarkType
 
 
 class TestPolylineCreation:

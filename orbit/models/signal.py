@@ -4,8 +4,8 @@ Signal model for traffic signs and signals.
 Represents traffic signals placed on the map with position, type, and properties.
 """
 
-from enum import Enum, auto
-from typing import Optional, Tuple, List
+from enum import Enum
+from typing import List, Optional, Tuple
 
 from orbit.utils.enum_formatting import format_enum_name
 

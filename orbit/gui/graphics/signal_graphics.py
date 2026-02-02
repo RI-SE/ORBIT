@@ -4,8 +4,9 @@ Placeholder graphics generator for traffic signals.
 Creates simple placeholder icons that can be replaced with actual sign images later.
 """
 
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QPen, QFont, QPainterPath
-from PyQt6.QtCore import Qt, QPointF
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
+
 from orbit.models.signal import SignalType
 
 

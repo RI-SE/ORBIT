@@ -1,12 +1,13 @@
 """Tests for orbit.export.object_builder module."""
 
 import math
-import pytest
 from unittest.mock import Mock
+
+import pytest
 from lxml import etree
 
 from orbit.export.object_builder import ObjectBuilder
-from orbit.models.object import RoadObject, ObjectType
+from orbit.models.object import ObjectType, RoadObject
 
 
 class TestObjectBuilderInit:

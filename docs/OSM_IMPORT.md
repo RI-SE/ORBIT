@@ -333,7 +333,7 @@ After import, you'll see:
 
 ### OSMImporter Class
 ```python
-from import import OSMImporter, ImportOptions, ImportMode, DetailLevel
+from orbit.import_ import OSMImporter, ImportOptions, ImportMode, DetailLevel
 
 # Create importer
 importer = OSMImporter(project, transformer, image_width, image_height)
@@ -361,7 +361,7 @@ else:
 
 ### calculate_bbox_from_image
 ```python
-from import.osm_to_orbit import calculate_bbox_from_image
+from orbit.import_.osm_to_orbit import calculate_bbox_from_image
 
 bbox = calculate_bbox_from_image(
     image_width=2048,
@@ -430,6 +430,6 @@ For issues or questions:
 
 ---
 
-**Last Updated**: 2026-01
-**Version**: 0.4.0
+**Last Updated**: 2026-02
+**Version**: 0.5.0
 **Status**: Production Ready

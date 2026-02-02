@@ -4,22 +4,18 @@ Unit tests for Junction model and related classes.
 Tests Junction, JunctionGroup, JunctionConnection, and boundary-related classes.
 """
 
-import pytest
-import uuid
-from typing import Dict, Any
 
+from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.junction import (
     Junction,
-    JunctionGroup,
-    JunctionConnection,
     JunctionBoundary,
     JunctionBoundarySegment,
+    JunctionConnection,
     JunctionElevationGrid,
     JunctionElevationGridPoint,
+    JunctionGroup,
 )
-from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.lane_connection import LaneConnection
-
 
 # ============================================================================
 # Test JunctionBoundarySegment

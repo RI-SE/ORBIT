@@ -4,22 +4,30 @@ Export preview dialog for ORBIT.
 Shows transformation information and export options before generating OpenDrive.
 """
 
-from typing import Optional
 from pathlib import Path
+from typing import Optional
 
-from PyQt6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout,
-    QPushButton, QGroupBox, QLabel, QDialogButtonBox,
-    QTextEdit, QDoubleSpinBox, QFileDialog, QMessageBox,
-    QLineEdit, QCheckBox
-)
 from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+)
 
-from orbit.models import Project
 from orbit.export import CoordinateTransformer, create_transformer, export_to_opendrive, validate_opendrive_file
 from orbit.export.reference_validator import validate_references
+from orbit.models import Project
+
+from ..utils.message_helpers import show_error, show_info, show_warning
 from .base_dialog import BaseDialog
-from ..utils.message_helpers import show_error, show_warning, show_info
 
 
 class ExportDialog(BaseDialog):
@@ -179,12 +187,20 @@ class ExportDialog(BaseDialog):
         # Check georeferencing
         if self.project.has_georeferencing():
             # Create transformer using project's method
-            self.transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+            self.transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+                use_validation=True,
+            )
 
             if self.transformer:
+                method = self.project.transform_method.upper()
                 self.georef_status_label.setText(
-                    f"<b style='color: green;'>✓ Georeferencing Active ({self.project.transform_method.upper()})</b><br>"
-                    "Project has sufficient control points for coordinate transformation."
+                    f"<b style='color: green;'>"
+                    f"✓ Georeferencing Active ({method})"
+                    f"</b><br>"
+                    "Project has sufficient control points "
+                    "for coordinate transformation."
                 )
                 self.georef_status_label.setStyleSheet("color: green;")
 
@@ -280,10 +296,18 @@ class ExportDialog(BaseDialog):
 
         if roads_without_centerline:
             road_list = "\n• ".join(roads_without_centerline)
-            show_error(self, f"The following roads do not have a road reference line assigned:\n\n• {road_list}\n\n"
-                "Every road must have exactly one road reference line for OpenDRIVE export.\n\n"
-                "Please edit each road's properties to select a road reference line, or\n"
-                "mark one of the road's polylines as a road reference line (double-click the polyline).", "Invalid Road Configuration")
+            show_error(
+                self,
+                f"The following roads do not have a road reference "
+                f"line assigned:\n\n• {road_list}\n\n"
+                "Every road must have exactly one road reference "
+                "line for OpenDRIVE export.\n\n"
+                "Please edit each road's properties to select a "
+                "road reference line, or\n"
+                "mark one of the road's polylines as a road "
+                "reference line (double-click the polyline).",
+                "Invalid Road Configuration",
+            )
             return
 
         # Show progress message

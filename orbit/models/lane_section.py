@@ -5,8 +5,8 @@ Represents a lane section in OpenDRIVE format - a segment of a road with
 a fixed number of lanes.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
 
 from .lane import Lane
 
@@ -51,7 +51,10 @@ class LaneSection:
         """
         return self.s_start <= s < self.s_end
 
-    def split_at_s(self, s: float, new_section_number: int, split_point_index: Optional[int] = None) -> Tuple['LaneSection', 'LaneSection']:
+    def split_at_s(
+        self, s: float, new_section_number: int,
+        split_point_index: Optional[int] = None,
+    ) -> Tuple['LaneSection', 'LaneSection']:
         """
         Split this section at the given s-coordinate.
 
@@ -106,14 +109,14 @@ class LaneSection:
     def add_lane(self, lane: Lane) -> None:
         """Add a lane to this section."""
         # Remove existing lane with same ID if present
-        self.lanes = [l for l in self.lanes if l.id != lane.id]
+        self.lanes = [existing for existing in self.lanes if existing.id != lane.id]
         self.lanes.append(lane)
         # Sort lanes by ID for consistent ordering
-        self.lanes.sort(key=lambda l: l.id)
+        self.lanes.sort(key=lambda lane: lane.id)
 
     def remove_lane(self, lane_id: int) -> None:
         """Remove a lane by ID."""
-        self.lanes = [l for l in self.lanes if l.id != lane_id]
+        self.lanes = [lane for lane in self.lanes if lane.id != lane_id]
 
     def get_lane(self, lane_id: int) -> Optional[Lane]:
         """Get a lane by ID."""
@@ -128,7 +131,7 @@ class LaneSection:
 
         Returns lanes in order: [2, 1, 0, -1, -2] (left to right)
         """
-        return sorted(self.lanes, key=lambda l: -l.id)
+        return sorted(self.lanes, key=lambda lane: -lane.id)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -157,4 +160,8 @@ class LaneSection:
         )
 
     def __repr__(self) -> str:
-        return f"LaneSection(num={self.section_number}, s=[{self.s_start:.1f}, {self.s_end:.1f}], lanes={len(self.lanes)})"
+        return (
+            f"LaneSection(num={self.section_number}, "
+            f"s=[{self.s_start:.1f}, {self.s_end:.1f}], "
+            f"lanes={len(self.lanes)})"
+        )

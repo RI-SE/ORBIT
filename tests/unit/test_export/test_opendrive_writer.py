@@ -1,21 +1,17 @@
 """Tests for orbit.export.opendrive_writer module."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from lxml import etree
-import math
-from pathlib import Path
+from unittest.mock import Mock, patch
 
-from orbit.export.opendrive_writer import (
-    OpenDriveWriter,
-    export_to_opendrive,
-    validate_opendrive_file
-)
+import pytest
+from lxml import etree
+
 from orbit.export.curve_fitting import CurveFitter, GeometryElement, GeometryType
-from orbit.models import Project, Road, Polyline, Junction, LineType
-from orbit.models.lane import Lane, LaneType as ModelLaneType
-from orbit.models.junction import LaneConnection
+from orbit.export.opendrive_writer import OpenDriveWriter, export_to_opendrive, validate_opendrive_file
+from orbit.models import Junction, LineType, Polyline, Project, Road
 from orbit.models.connecting_road import ConnectingRoad
+from orbit.models.junction import LaneConnection
+from orbit.models.lane import Lane
+from orbit.models.lane import LaneType as ModelLaneType
 from orbit.models.road import RoadType
 
 

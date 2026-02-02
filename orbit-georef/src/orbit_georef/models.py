@@ -3,7 +3,6 @@ Data models for orbit-georef.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass

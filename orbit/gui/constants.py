@@ -6,7 +6,6 @@ the GUI to ensure consistency and easy maintenance.
 
 from PyQt6.QtGui import QColor
 
-
 # =============================================================================
 # OPACITY VALUES
 # =============================================================================

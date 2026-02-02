@@ -5,11 +5,11 @@ Provides data classes for representing sign libraries loaded from JSON manifests
 Libraries contain categories and sign definitions with OpenDRIVE mappings.
 """
 
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Optional, List, Dict, Any
 import json
 import logging
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +228,10 @@ class SignLibrary:
                     sign_id = f"{sign_data['id']}-{value}"
                     image_filename = image_template.replace('{value}', str(value)) if image_template else None
                     od_subtype = str(opendrive.get('subtype', '-1')).replace('{value}', str(value))
-                    od_de_subtype = str(opendrive_de.get('subtype', '')).replace('{value}', str(value)) if opendrive_de else ''
+                    od_de_subtype = (
+                        str(opendrive_de.get('subtype', '')).replace('{value}', str(value))
+                        if opendrive_de else ''
+                    )
                     country_id = identifiers.get('country', '').replace('{value}', str(value))
                     osm_id = identifiers.get('osm', '').replace('{value}', str(value))
 

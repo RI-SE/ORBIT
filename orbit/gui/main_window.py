@@ -7,24 +7,28 @@ Provides the main GUI with menus, toolbar, status bar, and central view.
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtWidgets import (
-    QMainWindow, QFileDialog, QMessageBox, QDockWidget,
-    QListWidget, QToolBar, QWidget, QVBoxLayout, QPushButton,
-    QLabel, QDialog
-)
-from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QAction, QKeySequence, QUndoStack
+from PyQt6.QtWidgets import (
+    QDialog,
+    QDockWidget,
+    QFileDialog,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QToolBar,
+)
 
-from orbit.utils.logging_config import get_logger
-from orbit.models import Project, LineType
-from .image_view import ImageView
-
-from .widgets.road_tree import RoadTreeWidget
-from .widgets.elements_tree import ElementsTreeWidget
-from .widgets.adjustment_panel import AdjustmentPanel
+from orbit.models import LineType, Project
 from orbit.utils.coordinate_transform import TransformAdjustment
-from .utils.message_helpers import show_error, show_warning, show_info, ask_yes_no
+from orbit.utils.logging_config import get_logger
+
+from .image_view import ImageView
+from .utils.message_helpers import ask_yes_no, show_error, show_info, show_warning
 from .utils.scale_utils import get_transformer
+from .widgets.adjustment_panel import AdjustmentPanel
+from .widgets.elements_tree import ElementsTreeWidget
+from .widgets.road_tree import RoadTreeWidget
 
 logger = get_logger(__name__)
 
@@ -111,6 +115,8 @@ class MainWindow(QMainWindow):
         self.image_view.connecting_road_lane_edit_requested.connect(self.on_connecting_road_lane_edit_requested)
         self.image_view.point_picked.connect(self.on_point_picked)
         self.image_view.area_delete_requested.connect(self.on_area_delete_requested)
+        self.image_view.road_link_requested.connect(self.on_road_link_requested)
+        self.image_view.road_unlink_requested.connect(self.on_road_unlink_requested)
 
         # Status bar with permanent widgets
         self.setup_statusbar()
@@ -255,7 +261,10 @@ class MainWindow(QMainWindow):
         self.toggle_soffsets_action.triggered.connect(self.toggle_soffset_visibility)
 
         self.toggle_junction_debug_action = QAction("Show &Junction Debug", self)
-        self.toggle_junction_debug_action.setStatusTip("Show debug visualization for junction connections (endpoints, headings, paths)")
+        self.toggle_junction_debug_action.setStatusTip(
+            "Show debug visualization for junction connections "
+            "(endpoints, headings, paths)"
+        )
         self.toggle_junction_debug_action.setCheckable(True)
         self.toggle_junction_debug_action.setChecked(False)  # Hidden by default
         self.toggle_junction_debug_action.triggered.connect(self.toggle_junction_debug_visibility)
@@ -680,7 +689,11 @@ class MainWindow(QMainWindow):
             # Update georef validation in project if we have control points
             if self.project.has_georeferencing():
                 from orbit.export import create_transformer
-                transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+                transformer = create_transformer(
+                    self.project.control_points,
+                    self.project.transform_method,
+                    use_validation=True,
+                )
                 if transformer:
                     # Update stored validation results
                     training_points = [cp for cp in self.project.control_points if not cp.is_validation]
@@ -722,7 +735,7 @@ class MainWindow(QMainWindow):
 
     def export_georeferencing(self):
         """Export georeferencing parameters to JSON file."""
-        from orbit.export import export_georeferencing, create_transformer
+        from orbit.export import create_transformer, export_georeferencing
 
         # Check if we have enough control points
         if len(self.project.control_points) < 3:
@@ -748,7 +761,11 @@ class MainWindow(QMainWindow):
             )
             return
 
-        transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+        transformer = create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            use_validation=True,
+        )
         if not transformer:
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
@@ -790,9 +807,10 @@ class MainWindow(QMainWindow):
 
     def import_osm_data(self):
         """Import road network data from OpenStreetMap (API or file)."""
-        from .dialogs.osm_import_dialog import OSMImportDialog
         # Import from the 'import' module using importlib (since 'import' is a Python keyword)
         import importlib
+
+        from .dialogs.osm_import_dialog import OSMImportDialog
         osm_import_module = importlib.import_module('orbit.import')
         osm_parser_module = importlib.import_module('orbit.import.osm_parser')
         OSMImporter = osm_import_module.OSMImporter
@@ -801,9 +819,10 @@ class MainWindow(QMainWindow):
         DetailLevel = osm_import_module.DetailLevel
         OSMParser = osm_parser_module.OSMParser
         calculate_bbox_from_image = importlib.import_module('orbit.import.osm_to_orbit').calculate_bbox_from_image
-        from orbit.export import create_transformer
-        from PyQt6.QtWidgets import QProgressDialog
         from PyQt6.QtCore import QCoreApplication
+        from PyQt6.QtWidgets import QProgressDialog
+
+        from orbit.export import create_transformer
 
         # Check if georeferencing is set up
         if len(self.project.control_points) < 3:
@@ -818,7 +837,11 @@ class MainWindow(QMainWindow):
             return
 
         # Create coordinate transformer
-        transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+        transformer = create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            use_validation=True,
+        )
         if not transformer:
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
@@ -911,7 +934,7 @@ class MainWindow(QMainWindow):
                 if source_type == 'file':
                     msg = f"Successfully imported from {Path(file_path).name}:\n\n"
                 else:
-                    msg = f"Successfully imported:\n\n"
+                    msg = "Successfully imported:\n\n"
 
                 msg += f"• {result.roads_imported} roads\n"
                 if result.junctions_imported > 0:
@@ -967,16 +990,18 @@ class MainWindow(QMainWindow):
 
     def import_opendrive_file(self):
         """Import road network from OpenDrive file."""
-        from .dialogs.opendrive_import_dialog import OpenDriveImportDialog
-        from .dialogs.import_report_dialog import show_opendrive_import_report
         import importlib
+
+        from .dialogs.import_report_dialog import show_opendrive_import_report
+        from .dialogs.opendrive_import_dialog import OpenDriveImportDialog
         opendrive_import_module = importlib.import_module('orbit.import.opendrive_importer')
         OpenDriveImporter = opendrive_import_module.OpenDriveImporter
         ImportOptions = opendrive_import_module.ImportOptions
         ImportMode = opendrive_import_module.ImportMode
-        from orbit.export import create_transformer
-        from PyQt6.QtWidgets import QProgressDialog
         from PyQt6.QtCore import QCoreApplication
+        from PyQt6.QtWidgets import QProgressDialog
+
+        from orbit.export import create_transformer
 
         # Check if image is loaded
         if not self.image_view.image_item:
@@ -991,7 +1016,11 @@ class MainWindow(QMainWindow):
         transformer = None
         has_georeferencing = len(self.project.control_points) >= 3
         if has_georeferencing:
-            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+            transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+                use_validation=True,
+            )
 
         # Show import dialog
         dialog = OpenDriveImportDialog(has_georeferencing, self.verbose, self)
@@ -1092,7 +1121,6 @@ class MainWindow(QMainWindow):
     def group_to_road(self):
         """Group selected polylines into a road."""
         from .dialogs.properties_dialog import RoadPropertiesDialog
-        from orbit.models import LineType
 
         # Get selected polylines from image view
         selected_polyline_id = self.image_view.selected_polyline_id
@@ -1154,8 +1182,9 @@ class MainWindow(QMainWindow):
 
     def create_roundabout(self):
         """Open the roundabout creation wizard."""
-        from .dialogs import RoundaboutWizardDialog
         from orbit.roundabout_creator import create_roundabout_from_params
+
+        from .dialogs import RoundaboutWizardDialog
 
         # Get available roads for approach selection
         available_roads = [
@@ -1274,7 +1303,11 @@ class MainWindow(QMainWindow):
                 self.image_view.set_parking_mode(True, parking_type, access_type, is_polygon_mode)
                 self.add_parking_action.setChecked(True)
                 if is_polygon_mode:
-                    self.statusBar().showMessage("Click to add polygon points. Double-click or press Enter to finish. Escape to cancel.")
+                    self.statusBar().showMessage(
+                        "Click to add polygon points. "
+                        "Double-click or press Enter to finish. "
+                        "Escape to cancel."
+                    )
                 else:
                     self.statusBar().showMessage("Click on the map to place parking space")
         else:
@@ -1320,7 +1353,10 @@ class MainWindow(QMainWindow):
                 self.add_junction_action.setChecked(False)
                 self.image_view.set_junction_mode(False)
 
-            self.statusBar().showMessage("Show scale mode: Right-click points to display local scale factor. Left-click to pan.")
+            self.statusBar().showMessage(
+                "Show scale mode: Right-click points to display "
+                "local scale factor. Left-click to pan."
+            )
         else:
             self.statusBar().showMessage("Ready")
 
@@ -1425,7 +1461,11 @@ class MainWindow(QMainWindow):
                 # Use cached transformer for performance
                 if self._cached_transformer is None:
                     from orbit.export import create_transformer
-                    self._cached_transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+                    self._cached_transformer = create_transformer(
+                        self.project.control_points,
+                        self.project.transform_method,
+                        use_validation=True,
+                    )
 
                 if self._cached_transformer:
                     lon, lat = self._cached_transformer.pixel_to_geo(x, y)
@@ -1460,7 +1500,11 @@ class MainWindow(QMainWindow):
                           f"Geo=(Lon={cp.longitude:.6f}, Lat={cp.latitude:.6f}) "
                           f"Type={'GVP' if cp.is_validation else 'GCP'}")
 
-            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+            transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+                use_validation=True,
+            )
 
             if transformer is None:
                 self.scale_label.setText("Scale: N/A (transform failed)")
@@ -1472,19 +1516,27 @@ class MainWindow(QMainWindow):
             avg_scale_x, avg_scale_y = transformer.get_scale_factor()
 
             if self.verbose:
-                logger.debug(f"Scale factors from transformation:")
+                logger.debug("Scale factors from transformation:")
                 logger.debug(f"  X (horizontal): {avg_scale_x:.6f} m/px = {avg_scale_x*100:.4f} cm/px")
                 logger.debug(f"  Y (vertical):   {avg_scale_y:.6f} m/px = {avg_scale_y*100:.4f} cm/px")
 
                 # Compute and display reprojection error
                 reproj_error = transformer.compute_reprojection_error()
                 if reproj_error:
-                    logger.debug(f"  Reprojection RMSE: {reproj_error['rmse_meters']:.3f} meters ({reproj_error['rmse_pixels']:.2f} pixels)")
+                    logger.debug(
+                        f"  Reprojection RMSE: "
+                        f"{reproj_error['rmse_meters']:.3f} meters "
+                        f"({reproj_error['rmse_pixels']:.2f} pixels)"
+                    )
 
                 # Compute and display validation error if validation points exist
                 val_error = transformer.compute_validation_error()
                 if val_error:
-                    logger.debug(f"  Validation RMSE: {val_error['rmse_meters']:.3f} meters ({val_error['rmse_pixels']:.2f} pixels)")
+                    logger.debug(
+                        f"  Validation RMSE: "
+                        f"{val_error['rmse_meters']:.3f} meters "
+                        f"({val_error['rmse_pixels']:.2f} pixels)"
+                    )
 
                 logger.debug("="*60)
 
@@ -1741,6 +1793,77 @@ class MainWindow(QMainWindow):
             self._refresh_trees()
             self.statusBar().showMessage("Road properties updated")
 
+    def on_road_link_requested(self, road_a_id: str, road_b_id: str,
+                               a_contact: str, b_contact: str):
+        """Handle road link request from snap-connect in image view."""
+        from .undo_commands import LinkRoadsCommand
+
+        road_a = self.project.get_road(road_a_id)
+        road_b = self.project.get_road(road_b_id)
+        if not road_a or not road_b:
+            return
+
+        cmd = LinkRoadsCommand(self, road_a_id, road_b_id, a_contact, b_contact)
+        self.undo_stack.push(cmd)
+
+        # Apply the link (first redo is skipped by the command)
+        if a_contact == "end":
+            road_a.successor_id = road_b.id
+            road_a.successor_contact = b_contact
+        else:
+            road_a.predecessor_id = road_b.id
+            road_a.predecessor_contact = b_contact
+
+        if b_contact == "start":
+            road_b.predecessor_id = road_a.id
+            road_b.predecessor_contact = a_contact
+        else:
+            road_b.successor_id = road_a.id
+            road_b.successor_contact = a_contact
+
+        # Snap coordinates
+        self.project.enforce_road_link_coordinates(road_a_id)
+
+        # Refresh graphics for both roads
+        for road in (road_a, road_b):
+            if road.centerline_id and road.centerline_id in self.image_view.polyline_items:
+                self.image_view.polyline_items[road.centerline_id].update_graphics()
+            if road.id in self.image_view.road_lanes_items:
+                cl = self.project.get_polyline(road.centerline_id)
+                if cl:
+                    road.update_section_boundaries(cl.points)
+                self.image_view.road_lanes_items[road.id].update_graphics()
+
+        self._refresh_trees()
+        road_b_name = road_b.name or f"Road {road_b.id}"
+        self.statusBar().showMessage(f"Connected to '{road_b_name}'")
+
+    def on_road_unlink_requested(self, road_id: str, linked_road_id: str):
+        """Handle road unlink request from context menu."""
+        from .undo_commands import UnlinkRoadsCommand
+
+        road = self.project.get_road(road_id)
+        linked = self.project.get_road(linked_road_id)
+        if not road or not linked:
+            return
+
+        cmd = UnlinkRoadsCommand(self, road_id, linked_road_id)
+        self.undo_stack.push(cmd)
+
+        # Apply the unlink (first redo is skipped by the command)
+        if road.predecessor_id == linked_road_id:
+            road.predecessor_id = None
+        if road.successor_id == linked_road_id:
+            road.successor_id = None
+        if linked.predecessor_id == road_id:
+            linked.predecessor_id = None
+        if linked.successor_id == road_id:
+            linked.successor_id = None
+
+        self._refresh_trees()
+        linked_name = linked.name or f"Road {linked.id}"
+        self.statusBar().showMessage(f"Disconnected from '{linked_name}'")
+
     def toggle_lane_visibility(self):
         """Toggle visibility of lane graphics."""
         visible = self.toggle_lanes_action.isChecked()
@@ -1919,10 +2042,15 @@ class MainWindow(QMainWindow):
         try:
             from orbit.utils import create_transformer
             from orbit.utils.uncertainty_estimator import UncertaintyEstimator
+
             from .graphics.uncertainty_overlay import UncertaintyOverlay
 
             # Create transformer
-            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+            transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+                use_validation=True,
+            )
 
             if not transformer:
                 show_warning(self, "Failed to create coordinate transformer.", "Transform Error")
@@ -1987,7 +2115,11 @@ class MainWindow(QMainWindow):
 
         try:
             from orbit.export import create_transformer
-            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+            transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+                use_validation=True,
+            )
             if transformer:
                 return transformer.get_scale_factor()
         except Exception:
@@ -2016,7 +2148,11 @@ class MainWindow(QMainWindow):
         # Get or create transformer
         from orbit.export import create_transformer
         try:
-            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+            transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+                use_validation=True,
+            )
             if not transformer:
                 return
         except Exception:
@@ -2141,9 +2277,9 @@ class MainWindow(QMainWindow):
         Args:
             polyline_id: ID of the modified polyline
         """
-        from orbit.models import LineType
-        from orbit.utils.geometry import generate_simple_connection_path
         import math
+
+        from orbit.utils.geometry import generate_simple_connection_path
 
         # Get the modified polyline
         polyline = self.project.get_polyline(polyline_id)
@@ -2251,6 +2387,43 @@ class MainWindow(QMainWindow):
             scale_factors = self.get_current_scale()
             self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
 
+        # Snap endpoints of polyline-type connecting roads
+        for junction in self.project.junctions:
+            for conn_road in junction.connecting_roads:
+                if conn_road.geometry_type == "parampoly3":
+                    continue  # Already handled above
+                if (conn_road.predecessor_road_id != affected_road.id and
+                        conn_road.successor_road_id != affected_road.id):
+                    continue
+                if not conn_road.path or len(conn_road.path) < 2:
+                    continue
+
+                pred_road = self.project.get_road(conn_road.predecessor_road_id)
+                succ_road = self.project.get_road(conn_road.successor_road_id)
+                if not pred_road or not succ_road:
+                    continue
+
+                pred_polyline = self.project.get_polyline(pred_road.centerline_id)
+                succ_polyline = self.project.get_polyline(succ_road.centerline_id)
+                if not pred_polyline or not succ_polyline:
+                    continue
+
+                # Snap start to predecessor endpoint
+                if conn_road.contact_point_start == "end":
+                    conn_road.path[0] = pred_polyline.points[-1]
+                else:
+                    conn_road.path[0] = pred_polyline.points[0]
+
+                # Snap end to successor endpoint
+                if conn_road.contact_point_end == "end":
+                    conn_road.path[-1] = succ_polyline.points[-1]
+                else:
+                    conn_road.path[-1] = succ_polyline.points[0]
+
+                # Update graphics
+                scale_factors = self.get_current_scale()
+                self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
+
     def on_polyline_selected_in_tree(self, polyline_id):
         """Handle polyline selection from tree."""
         # Clear connecting road selection
@@ -2319,7 +2492,10 @@ class MainWindow(QMainWindow):
             self.undo_stack.push(cmd)
 
             self.update_elements_tree()
-            self.statusBar().showMessage(f"Added junction: {result.name}. Click to add another or press Escape to finish.")
+            self.statusBar().showMessage(
+                f"Added junction: {result.name}. "
+                f"Click to add another or press Escape to finish."
+            )
 
     def on_junction_modified(self, junction_id):
         """Handle junction modified signal (legacy, for non-undo modifications)."""
@@ -2443,8 +2619,9 @@ class MainWindow(QMainWindow):
 
     def on_signal_placement_requested(self, x: float, y: float):
         """Handle signal placement request - show selection dialog."""
-        from .dialogs.signal_selection_dialog import SignalSelectionDialog
         from orbit.models.signal import Signal, SignalType
+
+        from .dialogs.signal_selection_dialog import SignalSelectionDialog
 
         # Show dialog to select signal type with enabled libraries from project
         enabled_libs = self.project.enabled_sign_libraries if self.project else ['se']
@@ -2503,7 +2680,10 @@ class MainWindow(QMainWindow):
                 self.undo_stack.push(cmd)
 
                 self.update_elements_tree()
-                self.statusBar().showMessage(f"Added signal: {signal.get_display_name()}. Click to add another or press Escape to finish.")
+                self.statusBar().showMessage(
+                    f"Added signal: {signal.get_display_name()}. "
+                    f"Click to add another or press Escape to finish."
+                )
 
     def on_signal_added(self, signal):
         """Handle signal added signal (legacy, for non-undo additions)."""
@@ -2680,7 +2860,10 @@ class MainWindow(QMainWindow):
         self.undo_stack.push(cmd)
 
         self.update_elements_tree()
-        self.statusBar().showMessage(f"Added object: {obj.get_display_name()}. Click to add another or toggle off to finish.")
+        self.statusBar().showMessage(
+            f"Added object: {obj.get_display_name()}. "
+            f"Click to add another or toggle off to finish."
+        )
 
     def on_parking_placement_requested(self, x: float, y: float, parking_type, access_type):
         """Handle parking placement request from ImageView."""
@@ -2727,7 +2910,10 @@ class MainWindow(QMainWindow):
         self.undo_stack.push(cmd)
 
         self.update_elements_tree()
-        self.statusBar().showMessage(f"Added parking: {parking.get_display_name()}. Click to add another or toggle off to finish.")
+        self.statusBar().showMessage(
+            f"Added parking: {parking.get_display_name()}. "
+            f"Click to add another or toggle off to finish."
+        )
 
     def on_parking_polygon_completed(self, points: list, parking_type, access_type):
         """Handle parking polygon completion from ImageView."""
@@ -2789,11 +2975,13 @@ class MainWindow(QMainWindow):
         self.undo_stack.push(cmd)
 
         self.update_elements_tree()
-        self.statusBar().showMessage(f"Added parking area: {parking.get_display_name()}. Draw another or toggle off to finish.")
+        self.statusBar().showMessage(
+            f"Added parking area: {parking.get_display_name()}. "
+            f"Draw another or toggle off to finish."
+        )
 
     def on_object_added(self, obj):
         """Handle object added signal (for guardrails)."""
-        from orbit.models import RoadObject
 
         # Find closest road and assign
         closest_road_id = self.project.find_closest_road(obj.position)
@@ -2836,7 +3024,7 @@ class MainWindow(QMainWindow):
         self.undo_stack.push(cmd)
 
         self.update_elements_tree()
-        self.statusBar().showMessage(f"Guardrail added. Click and drag to add another or toggle off to finish.")
+        self.statusBar().showMessage("Guardrail added. Click and drag to add another or toggle off to finish.")
 
     def on_object_modified(self, object_id):
         """Handle object modified signal (legacy, for non-undo modifications)."""
@@ -2924,7 +3112,12 @@ class MainWindow(QMainWindow):
             # Refresh lane graphics to show new section polygons
             self.update_affected_road_lanes()
         else:
-            show_warning(self, "Failed to split lane section. The point may be outside section boundaries.", "Split Failed")
+            show_warning(
+                self,
+                "Failed to split lane section. The point may be "
+                "outside section boundaries.",
+                "Split Failed",
+            )
 
     def on_road_split_requested(self, road_id: str, polyline_id: str, point_index: int):
         """
@@ -3219,12 +3412,12 @@ class MainWindow(QMainWindow):
 
         # Find the connecting road in junctions
         connecting_road = None
-        parent_junction = None
+        _parent_junction = None
         for junction in self.project.junctions:
             for cr in junction.connecting_roads:
                 if cr.id == connecting_road_id:
                     connecting_road = cr
-                    parent_junction = junction
+                    _parent_junction = junction
                     break
             if connecting_road:
                 break
@@ -3270,8 +3463,9 @@ class MainWindow(QMainWindow):
 
     def show_about(self):
         """Show about dialog with logo."""
-        from PyQt6.QtGui import QPixmap
         from pathlib import Path
+
+        from PyQt6.QtGui import QPixmap
 
         # Create custom message box with logo
         msg_box = QMessageBox(self)
@@ -3488,8 +3682,11 @@ class MainWindow(QMainWindow):
         """
         from .dialogs.batch_delete_dialog import BatchDeleteDialog
         from .undo_commands import (
-            DeleteRoadCommand, DeleteJunctionCommand,
-            DeleteSignalCommand, DeleteObjectCommand, DeleteParkingCommand,
+            DeleteJunctionCommand,
+            DeleteObjectCommand,
+            DeleteParkingCommand,
+            DeleteRoadCommand,
+            DeleteSignalCommand,
         )
 
         info = self._build_batch_delete_info(selected)

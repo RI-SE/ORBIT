@@ -4,11 +4,12 @@ Dialog for selecting object type when placing a new object.
 
 from typing import Optional
 
-from PyQt6.QtWidgets import (QHBoxLayout, QGroupBox,
-                            QPushButton, QLabel, QGridLayout)
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
+from PyQt6.QtGui import QIcon, QPainter, QPixmap
+from PyQt6.QtWidgets import QGridLayout, QGroupBox, QHBoxLayout, QPushButton
+
 from orbit.models.object import ObjectType
+
 from .base_dialog import BaseDialog
 
 
@@ -168,8 +169,8 @@ class ObjectSelectionDialog(BaseDialog):
 
         elif object_type == ObjectType.TREE_CONIFER:
             # Triangle (cone from top)
-            from PyQt6.QtGui import QPolygonF
             from PyQt6.QtCore import QPointF
+            from PyQt6.QtGui import QPolygonF
             poly = QPolygonF([
                 QPointF(center, margin + 5),
                 QPointF(margin + 8, size - margin - 5),

@@ -4,9 +4,7 @@ Dialog for displaying import results and statistics.
 Reusable for both OSM and OpenDrive imports.
 """
 
-from PyQt6.QtWidgets import (
-    QHBoxLayout, QPushButton, QTextBrowser, QDialogButtonBox
-)
+from PyQt6.QtWidgets import QDialogButtonBox, QPushButton, QTextBrowser
 
 from .base_dialog import BaseDialog
 

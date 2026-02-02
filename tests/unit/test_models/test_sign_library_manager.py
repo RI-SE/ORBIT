@@ -1,16 +1,9 @@
 """Tests for orbit.models.sign_library_manager module."""
 
 import json
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
-from orbit.models.sign_library_manager import (
-    SignLibraryManager,
-    get_legacy_library_mapping,
-    LEGACY_SIGNAL_TYPE_MAPPING
-)
-from orbit.models.sign_library import SignLibrary
+from orbit.models.sign_library_manager import LEGACY_SIGNAL_TYPE_MAPPING, SignLibraryManager, get_legacy_library_mapping
 
 
 class TestSignLibraryManagerSingleton:

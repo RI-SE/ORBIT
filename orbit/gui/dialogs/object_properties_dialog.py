@@ -2,14 +2,13 @@
 Dialog for editing object properties.
 """
 
-from PyQt6.QtWidgets import (QHBoxLayout, QFormLayout,
-                            QLineEdit, QDoubleSpinBox, QComboBox, QPushButton,
-                            QLabel, QGroupBox, QCheckBox, QVBoxLayout)
-from PyQt6.QtCore import Qt
-from orbit.models.object import RoadObject, ObjectType
+from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QLabel, QLineEdit, QVBoxLayout
+
+from orbit.models.object import ObjectType, RoadObject
 from orbit.utils.enum_formatting import format_enum_name, format_snake_case
+
+from ..utils import format_with_metric, get_scale_factors
 from .base_dialog import BaseDialog, InfoIconLabel
-from ..utils import get_scale_factors, format_with_metric
 
 
 class ObjectPropertiesDialog(BaseDialog):
@@ -132,8 +131,6 @@ class ObjectPropertiesDialog(BaseDialog):
         """Set up dimensions section based on object type."""
         dims_group = QGroupBox("Dimensions")
         dims_layout = QFormLayout()
-
-        dims = self.obj.dimensions
 
         if self.obj.type == ObjectType.LAMPPOST:
             self.radius_spin = QDoubleSpinBox()

@@ -4,14 +4,14 @@ Road data model for ORBIT.
 Represents a road composed of one or more polylines with associated properties.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+import math
 from dataclasses import dataclass, field
 from enum import Enum
-import math
+from typing import Any, Dict, List, Optional, Tuple
 
 from .lane import Lane, LaneType
-from .polyline import RoadMarkType
 from .lane_section import LaneSection
+from .polyline import RoadMarkType
 
 
 class RoadType(Enum):
@@ -87,12 +87,14 @@ class Road:
     successor_junction_id: Optional[str] = None  # Junction ID if successor is a junction
     # Elevation profile: list of (s, a, b, c, d) tuples for polynomial elevation(ds) = a + b*ds + c*ds² + d*ds³
     elevation_profile: List[Tuple[float, float, float, float, float]] = field(default_factory=list)
-    # Superelevation (lateral profile): list of (s, a, b, c, d) tuples for polynomial superelevation(ds) = a + b*ds + c*ds² + d*ds³
-    # Value represents the cross slope (positive = tilted to left, negative = tilted to right)
+    # Superelevation (lateral profile): (s, a, b, c, d) tuples
+    # for polynomial superelevation(ds) = a + b*ds + c*ds^2 + d*ds^3
+    # Value represents cross slope (positive=left, negative=right)
     superelevation_profile: List[Tuple[float, float, float, float, float]] = field(default_factory=list)
-    # Lane offset: list of (s, a, b, c, d) tuples shifting center lane from reference line
+    # Lane offset: (s, a, b, c, d) tuples shifting center lane
     lane_offset: List[Tuple[float, float, float, float, float]] = field(default_factory=list)
-    # Surface CRG (OpenCRG) data: list of dicts with file, s_start, s_end, orientation, mode, purpose, s_offset, t_offset, z_offset, z_scale, h_offset
+    # Surface CRG (OpenCRG) data: list of dicts with file,
+    # s_start, s_end, orientation, mode, purpose, etc.
     surface_crg: List[Dict[str, Any]] = field(default_factory=list)
 
     def add_polyline(self, polyline_id: str) -> None:
@@ -246,7 +248,10 @@ class Road:
                 return section
         return None
 
-    def get_section_containing_point(self, point_index: int, centerline_points: List[Tuple[float, float]]) -> Optional[LaneSection]:
+    def get_section_containing_point(
+        self, point_index: int,
+        centerline_points: List[Tuple[float, float]],
+    ) -> Optional[LaneSection]:
         """
         Get the lane section that contains the given point index.
 
@@ -298,9 +303,9 @@ class Road:
             return False
 
         # Check if split point is too close to boundaries (warn threshold: 5%)
-        section_length = section_to_split.get_length_pixels()
-        distance_from_start = s - section_to_split.s_start
-        distance_from_end = section_to_split.s_end - s
+        _section_length = section_to_split.get_length_pixels()
+        _distance_from_start = s - section_to_split.s_start
+        _distance_from_end = section_to_split.s_end - s
 
         # Calculate new section number for the second section
         new_section_number = section_to_split.section_number + 1
@@ -387,7 +392,11 @@ class Road:
                     s_end=section.s_end - split_s,
                     single_side=section.single_side,
                     lanes=section._duplicate_lanes(),
-                    end_point_index=section.end_point_index - split_point_index if section.end_point_index is not None else None
+                    end_point_index=(
+                        section.end_point_index - split_point_index
+                        if section.end_point_index is not None
+                        else None
+                    )
                 )
                 if section2.end_point_index is not None and section2.end_point_index < 0:
                     section2.end_point_index = None

@@ -4,9 +4,9 @@ Lane data model for ORBIT.
 Represents a lane in a road with OpenDRIVE-compliant properties.
 """
 
-from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 from .polyline import RoadMarkType
 

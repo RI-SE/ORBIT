@@ -4,11 +4,18 @@ Base dialog class for ORBIT.
 Provides common functionality and structure for property editing dialogs.
 """
 
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QDialogButtonBox,
-    QLabel, QToolButton, QWidget
-)
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class InfoIconLabel(QWidget):

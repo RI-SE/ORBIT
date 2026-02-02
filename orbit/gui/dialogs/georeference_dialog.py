@@ -5,24 +5,38 @@ Allows adding and managing control points for coordinate transformation.
 Supports both training (GCP) and validation (GVP) points.
 """
 
-from typing import Optional, List
-from pathlib import Path
+from typing import TYPE_CHECKING, Optional
+
 import numpy as np
-
-from PyQt6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QFormLayout,
-    QPushButton, QGroupBox, QTableWidget, QTableWidgetItem,
-    QLabel, QDialogButtonBox, QDoubleSpinBox, QMessageBox,
-    QHeaderView, QComboBox, QTextEdit, QCheckBox, QProgressBar,
-    QApplication
-)
-from PyQt6.QtCore import Qt, pyqtSignal, QEvent
+from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+)
 
+from orbit.models import ControlPoint, Project
 from orbit.utils.logging_config import get_logger
-from orbit.models import Project, ControlPoint
+
+from ..utils.message_helpers import ask_yes_no, show_error, show_info, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
-from ..utils.message_helpers import show_error, show_warning, show_info, ask_yes_no
+
+if TYPE_CHECKING:
+    from orbit.gui.utils.csv_control_point_placer import CSVControlPointPlacer
 
 logger = get_logger(__name__)
 
@@ -499,7 +513,6 @@ class GeoreferenceDialog(BaseDialog):
 
         training_count = len(training_points)
         validation_count = len(validation_points)
-        total_count = len(self.project.control_points)
 
         # Determine minimum required based on method
         min_required = 4 if self.project.transform_method == 'homography' else 3
@@ -538,7 +551,11 @@ class GeoreferenceDialog(BaseDialog):
         self.analyze_gcp_btn.setEnabled(len(training_points) >= 4)
 
         # Create transformer
-        transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+        transformer = create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            use_validation=True,
+        )
 
         if not transformer:
             self.validation_text.setText("Failed to create transformer.")
@@ -588,7 +605,7 @@ class GeoreferenceDialog(BaseDialog):
 
         # Scale info
         scale_x, scale_y = transformer.get_scale_factor()
-        report.append(f"SCALE FACTORS:")
+        report.append("SCALE FACTORS:")
         report.append(f"  X: {scale_x * 100:.2f} cm/px  |  Y: {scale_y * 100:.2f} cm/px")
         report.append("")
 
@@ -701,7 +718,11 @@ class GeoreferenceDialog(BaseDialog):
             image_height = pixmap.height()
 
             # Create transformer
-            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+            transformer = create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            use_validation=True,
+        )
 
             if not transformer:
                 self.uncertainty_text.setPlainText("Failed to create transformation.")
@@ -776,7 +797,12 @@ class GeoreferenceDialog(BaseDialog):
         min_required = 4 if self.project.transform_method == 'homography' else 3
 
         if len(training_points) < min_required:
-            show_warning(self, f"Need at least {min_required} training points (GCPs) for bootstrap analysis.", "Not Enough Points")
+            show_warning(
+                self,
+                f"Need at least {min_required} training points "
+                f"(GCPs) for bootstrap analysis.",
+                "Not Enough Points",
+            )
             return
 
         try:
@@ -794,7 +820,11 @@ class GeoreferenceDialog(BaseDialog):
             image_height = pixmap.height()
 
             # Create transformer
-            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+            transformer = create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            use_validation=True,
+        )
 
             if not transformer:
                 show_warning(self, "Failed to create transformation.", "Transform Error")
@@ -854,7 +884,12 @@ class GeoreferenceDialog(BaseDialog):
         min_required = 4 if self.project.transform_method == 'homography' else 3
 
         if len(training_points) < min_required:
-            show_warning(self, f"Need at least {min_required} training points (GCPs) for Monte Carlo analysis.", "Not Enough Points")
+            show_warning(
+                self,
+                f"Need at least {min_required} training points "
+                f"(GCPs) for Monte Carlo analysis.",
+                "Not Enough Points",
+            )
             return
 
         try:
@@ -872,7 +907,11 @@ class GeoreferenceDialog(BaseDialog):
             image_height = pixmap.height()
 
             # Create transformer
-            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+            transformer = create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            use_validation=True,
+        )
 
             if not transformer:
                 show_warning(self, "Failed to create transformation.", "Transform Error")
@@ -966,7 +1005,11 @@ class GeoreferenceDialog(BaseDialog):
             image_height = pixmap.height()
 
             # Create transformer
-            transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+            transformer = create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            use_validation=True,
+        )
 
             if not transformer:
                 show_warning(self, "Failed to create transformation.", "Transform Error")
@@ -981,10 +1024,23 @@ class GeoreferenceDialog(BaseDialog):
                 import numpy as np
                 estimator._cached_grid = np.array(self.project.uncertainty_grid_cache)
                 if self.verbose:
-                    print(f"[DEBUG] Loaded cached grid shape: {estimator._cached_grid.shape}")
-                    print(f"[DEBUG] Cached grid min/max: {np.min(estimator._cached_grid):.3f} / {np.max(estimator._cached_grid):.3f}m")
+                    print(
+                        f"[DEBUG] Loaded cached grid shape: "
+                        f"{estimator._cached_grid.shape}"
+                    )
+                    grid = estimator._cached_grid
+                    print(
+                        f"[DEBUG] Cached grid min/max: "
+                        f"{np.min(grid):.3f} / "
+                        f"{np.max(grid):.3f}m"
+                    )
             else:
-                show_warning(self, "Run Monte Carlo or Bootstrap analysis first to generate uncertainty estimates.", "No Uncertainty Data")
+                show_warning(
+                    self,
+                    "Run Monte Carlo or Bootstrap analysis first "
+                    "to generate uncertainty estimates.",
+                    "No Uncertainty Data",
+                )
                 return
 
             # Find suggestions using configured threshold
@@ -993,7 +1049,12 @@ class GeoreferenceDialog(BaseDialog):
             # Debug: Check what's in the grid
             if self.verbose:
                 stats = estimator.get_uncertainty_statistics()
-                print(f"[DEBUG] Grid stats - Mean: {stats['mean']:.3f}m, Max: {stats['max']:.3f}m, Min: {stats.get('min', 'N/A')}")
+                print(
+                    f"[DEBUG] Grid stats - "
+                    f"Mean: {stats['mean']:.3f}m, "
+                    f"Max: {stats['max']:.3f}m, "
+                    f"Min: {stats.get('min', 'N/A')}"
+                )
                 print(f"[DEBUG] Threshold: {threshold:.3f}m")
 
             suggestions = estimator.find_high_uncertainty_regions(threshold=threshold, verbose=self.verbose)
@@ -1038,7 +1099,7 @@ class GeoreferenceDialog(BaseDialog):
     def show_gcp_analysis(self):
         """Show detailed GCP quality analysis dialog."""
         from orbit.utils import create_transformer
-        from orbit.utils.gcp_analyzer import analyze_control_points, format_analysis_report
+        from orbit.utils.gcp_analyzer import analyze_control_points
 
         training_points = [cp for cp in self.project.control_points if not cp.is_validation]
         if len(training_points) < 4:
@@ -1046,7 +1107,11 @@ class GeoreferenceDialog(BaseDialog):
             return
 
         # Create transformer
-        transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+        transformer = create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            use_validation=True,
+        )
 
         if not transformer:
             show_warning(self, "Failed to create transformation for analysis.", "Transform Error")
@@ -1092,7 +1157,6 @@ class GCPAnalysisDialog(BaseDialog):
 
     def setup_ui(self):
         """Setup the dialog UI."""
-        from orbit.utils.gcp_analyzer import GCPAnalysisResult
 
         # Summary section
         summary_group = QGroupBox("Summary")

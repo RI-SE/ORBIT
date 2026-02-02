@@ -80,19 +80,28 @@ uv run python -m pytest tests/ -v
 
 ```
 orbit/
-├── models/           # Data classes (Road, Polyline, Junction, etc.)
+├── models/           # Data classes (Road, Polyline, Junction, ParkingSpace,
+│                     #   ConnectingRoad, JunctionGroup, SignLibrary, etc.)
 ├── gui/              # PyQt6 GUI components
 │   ├── graphics/     # QGraphicsItem subclasses
-│   └── widgets/      # Tree widgets
+│   ├── widgets/      # Tree widgets
+│   └── dialogs/      # Property dialogs
 ├── export/           # OpenDRIVE XML generation
 │   ├── opendrive_writer.py
 │   ├── lane_builder.py
+│   ├── lane_analyzer.py
 │   ├── signal_builder.py
-│   └── object_builder.py
-├── import/           # OSM and OpenDRIVE import
+│   ├── object_builder.py
+│   ├── parking_builder.py
+│   ├── reference_validator.py
+│   └── georef_export.py
+├── import_/          # OSM and OpenDRIVE import
 │   ├── osm_importer.py
 │   ├── opendrive_importer.py
 │   └── junction_analyzer.py
+├── signs/            # Traffic sign libraries (country-specific)
+│                     #   Manifest-based libraries with sign images and
+│                     #   OpenDRIVE type mappings
 └── utils/            # Coordinate transforms, geometry, logging
 ```
 
@@ -113,7 +122,7 @@ orbit/
 ```
 
 1. **User Interaction**: `ImageView` handles mouse/keyboard events, creates/modifies graphics items
-2. **Data Storage**: `Project` holds all data (polylines, roads, junctions, control points)
+2. **Data Storage**: `Project` holds all data (polylines, roads, junctions, control points, signals, objects, parking spaces, junction groups)
 3. **UI Updates**: Qt signals propagate changes to tree widgets and other UI components
 4. **Export**: `OpenDriveWriter` transforms pixel data to metric coordinates and generates XML
 
@@ -140,6 +149,8 @@ class Project:
     control_points: List[ControlPoint]
     signals: List[Signal]
     objects: List[RoadObject]
+    junction_groups: List[JunctionGroup]
+    parking_spaces: List[ParkingSpace]
     image_path: Optional[str]
     metadata: dict  # version, created, modified
 ```
@@ -211,7 +222,7 @@ class Lane:
 
 ### Junction
 
-Intersection where multiple roads meet.
+Intersection where multiple roads meet. Supports OpenDRIVE 1.8 features including boundary definition and elevation grids.
 
 ```python
 @dataclass
@@ -219,12 +230,182 @@ class Junction:
     id: str
     name: str
     center_point: Optional[Tuple[float, float]]
+    geo_center_point: Optional[Tuple[float, float]]
     connected_road_ids: List[str]
+    connections: List[JunctionConnection]
     connecting_roads: List[ConnectingRoad]
     lane_connections: List[LaneConnection]
     junction_type: str  # "default" or "virtual"
+    # V1.8 features
+    boundary: Optional[JunctionBoundary]
+    elevation_grid: Optional[JunctionElevationGrid]
+    # Roundabout fields
     is_roundabout: bool
+    roundabout_center: Optional[Tuple[float, float]]
+    geo_roundabout_center: Optional[Tuple[float, float]]
+    roundabout_radius: Optional[float]
+    roundabout_lane_count: int
+    roundabout_clockwise: bool
+    entry_roads: List[str]
+    exit_roads: List[str]
 ```
+
+**JunctionBoundary** (`models/junction.py`): Defines the junction area as a counter-clockwise loop of boundary segments. Each `JunctionBoundarySegment` is either a `lane` type (references a road's lane between s-coordinates) or a `joint` type (connects boundary segments at contact points).
+
+**JunctionElevationGrid** (`models/junction.py`): OpenDRIVE 1.8 elevation grid for junction surfaces. Contains a list of `JunctionElevationGridPoint` entries with center, left, and right z-values at a configurable grid spacing.
+
+### ConnectingRoad
+
+Path geometry through a junction, linking an incoming road to an outgoing road (`models/connecting_road.py`).
+
+```python
+@dataclass
+class ConnectingRoad:
+    id: str
+    path: List[Tuple[float, float]]          # Pixel coordinates
+    geo_path: Optional[List[Tuple[float, float]]]  # Geographic (lon, lat)
+    predecessor_road_id: str
+    successor_road_id: str
+    # Lane configuration
+    lane_count_left: int   # Default 0
+    lane_count_right: int  # Default 1
+    lane_width: float      # Default 3.5m
+    lane_width_start: Optional[float]
+    lane_width_end: Optional[float]
+    lanes: List[Lane]
+    # Contact points
+    contact_point_start: str  # "start" or "end"
+    contact_point_end: str    # "start" or "end"
+    # ParamPoly3D geometry
+    geometry_type: str  # "parampoly3" or "polyline"
+    aU, bU, cU, dU: float  # u(p) polynomial coefficients
+    aV, bV, cV, dV: float  # v(p) polynomial coefficients
+    p_range: float
+    tangent_scale: float
+    stored_start_heading: Optional[float]
+    stored_end_heading: Optional[float]
+```
+
+The ParamPoly3D coefficients define smooth curves through junctions. They are computed from road endpoints and headings, with `tangent_scale` controlling curvature.
+
+### LaneConnection
+
+Lane-level mapping through a junction (`models/lane_connection.py`).
+
+```python
+@dataclass
+class LaneConnection:
+    id: str
+    from_road_id: str
+    from_lane_id: int   # OpenDRIVE convention: 0=center, -N=right, +N=left
+    to_road_id: str
+    to_lane_id: int
+    connecting_road_id: Optional[str]
+    connecting_lane_id: Optional[int]
+    turn_type: str      # 'straight', 'left', 'right', 'uturn', 'merge', 'diverge', 'unknown'
+```
+
+### JunctionGroup
+
+Groups multiple junctions into a logical unit, an OpenDRIVE 1.8 feature (`models/junction.py`).
+
+```python
+@dataclass
+class JunctionGroup:
+    id: str
+    name: Optional[str]
+    group_type: str  # 'roundabout', 'complexJunction', 'highwayInterchange', 'unknown'
+    junction_ids: List[str]
+```
+
+### ParkingSpace
+
+Parking space or lot definition (`models/parking.py`).
+
+```python
+class ParkingType(Enum):
+    SURFACE = "surface"
+    UNDERGROUND = "underground"
+    MULTI_STOREY = "multi_storey"
+    ROOFTOP = "rooftop"
+    STREET = "street"
+    CARPORTS = "carports"
+
+class ParkingAccess(Enum):
+    STANDARD = "standard"
+    WOMEN = "women"
+    HANDICAPPED = "handicapped"
+    DISABLED = "disabled"
+    RESERVED = "reserved"
+    COMPANY = "company"
+    PERMIT = "permit"
+    PRIVATE = "private"
+    CUSTOMERS = "customers"
+    RESIDENTS = "residents"
+
+@dataclass
+class ParkingSpace:
+    id: str
+    position: Tuple[float, float]           # Pixel coordinates
+    geo_position: Optional[Tuple[float, float]]  # Geographic (lon, lat)
+    access: ParkingAccess
+    parking_type: ParkingType
+    road_id: Optional[str]
+    name: str
+    width: float       # Meters (default 2.5)
+    length: float      # Meters (default 5.0)
+    orientation: float  # Degrees (default 0.0)
+    capacity: Optional[int]
+    # Polygon outline
+    points: List[Tuple[float, float]]              # Pixel polygon
+    geo_points: Optional[List[Tuple[float, float]]] # Geographic polygon
+    # Road-relative coordinates (for export)
+    s_position: Optional[float]
+    t_offset: Optional[float]
+```
+
+The `s_position` and `t_offset` fields are calculated relative to the assigned road's centerline for OpenDRIVE export positioning.
+
+### SignLibrary & SignLibraryManager
+
+Country-specific traffic sign libraries (`models/sign_library.py`, `models/sign_library_manager.py`).
+
+```python
+@dataclass
+class SignDefinition:
+    id: str              # Sign ID within library (e.g., "B1", "C31-50")
+    name: str
+    category_id: str
+    library_id: str
+    image_filename: Optional[str]
+    default_width: float   # Meters
+    default_height: float  # Meters
+    # OpenDRIVE type mappings
+    opendrive_type: str
+    opendrive_subtype: str
+    opendrive_de_type: str     # German VzKat type
+    opendrive_de_subtype: str  # German VzKat subtype
+    country_id: str
+    osm_id: str
+    is_template: bool      # Parameterized sign (e.g., speed limit value)
+    template_value: Optional[int]
+
+@dataclass
+class SignLibrary:
+    id: str            # e.g., "se", "de", "us"
+    name: str
+    version: str
+    country_code: str  # ISO 3166-1
+    categories: List[SignCategory]
+    signs: List[SignDefinition]
+    base_path: Path    # Path to library directory
+```
+
+**SignLibraryManager** is a singleton that discovers and loads sign libraries from two locations:
+- **App signs path**: `orbit/signs/` (shipped with the application)
+- **User signs path**: `~/.orbit/signs/` (user-installed libraries)
+
+Libraries are discovered via `manifest.json` files in each library directory.
 
 ### ControlPoint
 
@@ -397,10 +578,10 @@ junction = Junction(
 
 ### Automatic Generation
 
-The `JunctionAnalyzer` (`import/junction_analyzer.py`) can automatically generate connecting roads and lane connections based on road geometry:
+The `JunctionAnalyzer` (`import_/junction_analyzer.py`) can automatically generate connecting roads and lane connections based on road geometry:
 
 ```python
-from orbit.import.junction_analyzer import analyze_junction_geometry
+from orbit.import_.junction_analyzer import analyze_junction_geometry
 
 geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
 # Returns road angles, suggested connections, etc.
@@ -461,7 +642,7 @@ Custom `QGraphicsItem` subclasses in `gui/graphics/`:
 
 ### Adding a New Dialog
 
-1. Create `gui/my_dialog.py`:
+1. Create `gui/dialogs/my_dialog.py`:
 
 ```python
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox
@@ -528,15 +709,17 @@ success = writer.write(output_path)
 
 ### Export Process
 
-1. **Create header** with geoReference (PROJ4 string)
-2. **For each road**:
+1. **Validate references** via `ReferenceValidator`
+2. **Create header** with geoReference (PROJ4 string)
+3. **For each road**:
    - Convert centerline to meters
-   - Fit geometry (lines/arcs) via `CurveFitter`
+   - Fit geometry (lines/arcs/clothoids) via `CurveFitter`
    - Calculate road length
    - Export lane sections via `LaneBuilder`
    - Export signals via `SignalBuilder`
    - Export objects via `ObjectBuilder`
-3. **For each junction**:
+   - Export parking via `ParkingBuilder`
+4. **For each junction**:
    - Export connecting roads
    - Export lane connections
 
@@ -544,11 +727,68 @@ success = writer.write(output_path)
 
 Export logic is split into focused builders:
 
-| Class | Responsibility |
-|-------|----------------|
-| `LaneBuilder` | `<lanes>` element with sections |
-| `SignalBuilder` | `<signals>` element |
-| `ObjectBuilder` | `<objects>` element |
+| Class | File | Responsibility |
+|-------|------|----------------|
+| `LaneBuilder` | `lane_builder.py` | `<lanes>` element with sections |
+| `SignalBuilder` | `signal_builder.py` | `<signals>` element |
+| `ObjectBuilder` | `object_builder.py` | `<objects>` element |
+| `ParkingBuilder` | `parking_builder.py` | `<object>` elements for parking spaces |
+| `LaneAnalyzer` | `lane_analyzer.py` | Analyzes boundary geometry for lane widths |
+
+### ParkingBuilder
+
+Creates OpenDRIVE `<object>` XML elements for parking spaces (`export/parking_builder.py`).
+
+- Maps pixel-space parking positions to road s/t coordinates using centerline length ratios
+- Creates `<parkingSpace>` child elements with access and restriction attributes
+- Supports polygon outlines via `<cornerLocal>` elements in the parking space's local coordinate system
+
+### LaneAnalyzer
+
+Analyzes lane boundaries relative to centerlines to determine measured lane widths (`export/lane_analyzer.py`).
+
+```python
+analyzer = LaneAnalyzer(project, right_hand_traffic=True, transformer=transformer)
+boundary_infos, warnings = analyzer.analyze_road(road)
+widths = analyzer.suggest_lane_widths(road)
+# Returns {'average': 3.4, 'min': 3.1, 'max': 3.7, 'std': 0.2} in meters
+```
+
+Key capabilities:
+- Calculates signed perpendicular offsets from boundary points to centerline
+- Assigns boundaries to lane IDs based on lateral position
+- Measures width between consecutive boundaries
+- Validates assignments against expected lane counts
+
+### ReferenceValidator
+
+Validates all cross-references in a project before export (`export/reference_validator.py`).
+
+```python
+from orbit.export.reference_validator import validate_references
+
+warnings = validate_references(project)
+# Returns list of human-readable warning strings, empty if all valid
+```
+
+Checks references across all entity types: roads, junctions, connecting roads, lane connections, signals, objects, parking spaces, junction groups, and lane boundary polylines.
+
+### GeorefExporter
+
+Exports georeferencing parameters to a portable JSON format (`export/georef_export.py`).
+
+```python
+from orbit.export.georef_export import export_georeferencing
+
+success = export_georeferencing(project, output_path, transformer, image_size)
+```
+
+The exported JSON includes:
+- Control points (pixel and geographic coordinates)
+- Transformation matrices (forward and inverse)
+- Scale factors (meters per pixel)
+- Reprojection and validation error statistics
+- Transform method (affine or homography)
 
 ### Geometry Fitting
 
@@ -575,7 +815,7 @@ With `preserve_geometry=True`, each polyline segment becomes a separate line ele
 Imports road networks from OpenStreetMap via Overpass API:
 
 ```python
-from orbit.import.osm_importer import OSMImporter
+from orbit.import_.osm_importer import OSMImporter
 
 importer = OSMImporter(project, transformer)
 stats = importer.import_from_bbox(
@@ -596,7 +836,7 @@ stats = importer.import_from_bbox(
 Round-trip import from existing OpenDRIVE files:
 
 ```python
-from orbit.import.opendrive_importer import import_opendrive
+from orbit.import_.opendrive_importer import import_opendrive
 
 project = import_opendrive(xodr_path, transformer)
 ```
@@ -641,6 +881,13 @@ def from_dict(cls, data):
 1. Create builder method or class in `export/`
 2. Call from `OpenDriveWriter._create_road()` or similar
 3. Test with OpenDRIVE validator
+
+### Adding a Parking Type or Access Category
+
+1. Add enum value to `ParkingType` or `ParkingAccess` in `models/parking.py`
+2. The parking dialog (`gui/dialogs/`) automatically picks up new enum values
+3. Update `ParkingBuilder` in `export/parking_builder.py` if the new type requires special XML attributes
+4. Add tests in `tests/unit/test_models/`
 
 ### Debugging Tips
 
@@ -787,9 +1034,19 @@ For GUI changes, test manually:
 | `run_orbit.py` | Entry point (provides `orbit` command) |
 | `models/project.py` | Project container, save/load |
 | `models/road.py` | Road with lane sections |
+| `models/parking.py` | ParkingSpace, ParkingType, ParkingAccess |
+| `models/connecting_road.py` | ConnectingRoad with ParamPoly3D geometry |
+| `models/junction.py` | Junction, JunctionGroup, JunctionBoundary |
+| `models/sign_library.py` | SignDefinition, SignLibrary, SignCategory |
+| `models/sign_library_manager.py` | SignLibraryManager (singleton loader) |
+| `models/lane_connection.py` | LaneConnection |
 | `gui/image_view.py` | Main drawing canvas |
 | `gui/main_window.py` | Application window |
 | `export/opendrive_writer.py` | XML generation |
+| `export/parking_builder.py` | Parking space XML export |
+| `export/lane_analyzer.py` | Lane width analysis from boundaries |
+| `export/reference_validator.py` | Cross-reference validation |
+| `export/georef_export.py` | Georeferencing JSON export |
 | `utils/coordinate_transform.py` | Pixel ↔ meter conversion |
 
 ### Common Operations
@@ -809,6 +1066,10 @@ lane = road.get_lane(lane_id=-1, section_number=1)
 
 # Split section at point
 road.split_section_at_point(point_index, centerline.points)
+
+# Validate project references before export
+from orbit.export.reference_validator import validate_references
+warnings = validate_references(project)
 ```
 
 ### OpenDRIVE Lane IDs

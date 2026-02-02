@@ -78,7 +78,7 @@ class TestLaneIDConventions:
 
         # Create list and sort by ID descending (left to right)
         lanes = [right_lane, center_lane, left_lane]
-        lanes_sorted = sorted(lanes, key=lambda l: l.id, reverse=True)
+        lanes_sorted = sorted(lanes, key=lambda lane: lane.id, reverse=True)
 
         assert lanes_sorted[0].id == 1  # Leftmost
         assert lanes_sorted[1].id == 0  # Center
@@ -311,7 +311,7 @@ class TestLaneComparison:
         ]
 
         # Sort descending (left to right)
-        sorted_lanes = sorted(lanes, key=lambda l: l.id, reverse=True)
+        sorted_lanes = sorted(lanes, key=lambda lane: lane.id, reverse=True)
 
         assert sorted_lanes[0].id == 2  # Leftmost
         assert sorted_lanes[1].id == 1
@@ -329,9 +329,9 @@ class TestLaneComparison:
             Lane(id=2),
         ]
 
-        left_lanes = [l for l in lanes if l.id > 0]
-        center_lanes = [l for l in lanes if l.id == 0]
-        right_lanes = [l for l in lanes if l.id < 0]
+        left_lanes = [lane for lane in lanes if lane.id > 0]
+        center_lanes = [lane for lane in lanes if lane.id == 0]
+        right_lanes = [lane for lane in lanes if lane.id < 0]
 
         assert len(left_lanes) == 2
         assert len(center_lanes) == 1

@@ -4,15 +4,13 @@ Unit tests for Project model.
 Tests project creation, serialization, save/load, and element management.
 """
 
-import pytest
 import json
 from pathlib import Path
-from datetime import datetime
 
-from orbit.models import (
-    Project, ControlPoint, Polyline, LineType, RoadMarkType,
-    Road, RoadType, Junction
-)
+import pytest
+
+from orbit import __version__
+from orbit.models import ControlPoint, Junction, LineType, Polyline, Project, Road, RoadMarkType
 
 
 class TestProjectCreation:
@@ -35,7 +33,7 @@ class TestProjectCreation:
         assert 'version' in empty_project.metadata
         assert 'created' in empty_project.metadata
         assert 'modified' in empty_project.metadata
-        assert empty_project.metadata['version'] == '0.4.0'
+        assert empty_project.metadata['version'] == __version__
 
     def test_project_with_initial_data(self, sample_project: Project):
         """Test creating project with initial data."""
@@ -352,7 +350,7 @@ class TestProjectClear:
         sample_project.clear()
 
         # Version should stay the same
-        assert sample_project.metadata['version'] == '0.4.0'
+        assert sample_project.metadata['version'] == __version__
         # Created timestamp should be updated
         assert sample_project.metadata['created'] != old_created
 
@@ -484,7 +482,7 @@ class TestObjectManagement:
 
     def test_add_object(self, empty_project):
         """Test adding an object to project."""
-        from orbit.models.object import RoadObject, ObjectType
+        from orbit.models.object import ObjectType, RoadObject
 
         obj = RoadObject(
             position=(100.0, 200.0),
@@ -497,7 +495,7 @@ class TestObjectManagement:
 
     def test_get_object_by_id(self, empty_project):
         """Test retrieving object by ID."""
-        from orbit.models.object import RoadObject, ObjectType
+        from orbit.models.object import ObjectType, RoadObject
 
         obj = RoadObject(
             position=(100.0, 200.0),
@@ -516,7 +514,7 @@ class TestObjectManagement:
 
     def test_remove_object(self, empty_project):
         """Test removing an object from project."""
-        from orbit.models.object import RoadObject, ObjectType
+        from orbit.models.object import ObjectType, RoadObject
 
         obj = RoadObject(
             position=(100.0, 200.0),
@@ -1441,3 +1439,206 @@ class TestRemapJunctionsAfterRoadMerge:
         empty_project._remap_junctions_after_road_merge(road1.id, road2.id)
 
         assert lane_conn.from_road_id == road1.id
+
+
+class TestFindNearbyRoadEndpoints:
+    """Test find_nearby_road_endpoints method."""
+
+    def _make_road(self, project, start, end, road_name="Road"):
+        """Helper to create a road with a 2-point centerline."""
+        cl = Polyline(line_type=LineType.CENTERLINE)
+        cl.add_point(start[0], start[1])
+        cl.add_point(end[0], end[1])
+        project.add_polyline(cl)
+        road = Road(name=road_name, centerline_id=cl.id, polyline_ids=[cl.id])
+        project.add_road(road)
+        return road
+
+    def test_finds_nearby_start(self, empty_project):
+        """Test detection of a nearby start point."""
+        road = self._make_road(empty_project, (100, 100), (300, 100))
+        results = empty_project.find_nearby_road_endpoints((105, 100))
+        assert len(results) == 1
+        assert results[0][0] == road.id
+        assert results[0][2] == 0  # start point
+
+    def test_finds_nearby_end(self, empty_project):
+        """Test detection of a nearby end point."""
+        road = self._make_road(empty_project, (100, 100), (300, 100))
+        results = empty_project.find_nearby_road_endpoints((295, 100))
+        assert len(results) == 1
+        assert results[0][0] == road.id
+        assert results[0][2] == -1  # end point
+
+    def test_excludes_specified_road(self, empty_project):
+        """Test that the excluded road is not returned."""
+        road = self._make_road(empty_project, (100, 100), (300, 100))
+        results = empty_project.find_nearby_road_endpoints(
+            (105, 100), exclude_road_id=road.id)
+        assert len(results) == 0
+
+    def test_skips_junction_roads(self, empty_project):
+        """Test that roads with junction_id are skipped."""
+        road = self._make_road(empty_project, (100, 100), (300, 100))
+        road.junction_id = "some_junction"
+        results = empty_project.find_nearby_road_endpoints((105, 100))
+        assert len(results) == 0
+
+    def test_respects_tolerance(self, empty_project):
+        """Test that points outside tolerance are not returned."""
+        self._make_road(empty_project, (100, 100), (300, 100))
+        # 25 pixels away, default tolerance is 20
+        results = empty_project.find_nearby_road_endpoints((125, 100))
+        assert len(results) == 0
+
+    def test_sorted_by_distance(self, empty_project):
+        """Test that results are sorted closest-first."""
+        self._make_road(empty_project, (100, 100), (300, 100), "Road A")
+        self._make_road(empty_project, (110, 100), (400, 100), "Road B")
+        results = empty_project.find_nearby_road_endpoints((105, 100))
+        assert len(results) == 2
+        assert results[0][4] <= results[1][4]  # first is closer
+
+    def test_no_roads_returns_empty(self, empty_project):
+        """Test empty project returns no results."""
+        results = empty_project.find_nearby_road_endpoints((100, 100))
+        assert results == []
+
+    def test_skips_roads_without_centerline(self, empty_project):
+        """Test that roads without a centerline are skipped."""
+        road = Road(name="No CL", polyline_ids=[])
+        empty_project.add_road(road)
+        results = empty_project.find_nearby_road_endpoints((0, 0))
+        assert results == []
+
+    def test_self_connection_excluded(self, empty_project):
+        """Test excluding self-road prevents self-connection suggestions."""
+        road = self._make_road(empty_project, (100, 100), (120, 100))
+        # Point near start, exclude self
+        results = empty_project.find_nearby_road_endpoints(
+            (120, 100), exclude_road_id=road.id)
+        assert len(results) == 0
+
+
+class TestEnforceRoadLinkCoordinates:
+    """Test enforce_road_link_coordinates method."""
+
+    def _make_road(self, project, start, end, road_name="Road"):
+        """Helper to create a road with a 2-point centerline."""
+        cl = Polyline(line_type=LineType.CENTERLINE)
+        cl.add_point(start[0], start[1])
+        cl.add_point(end[0], end[1])
+        project.add_polyline(cl)
+        road = Road(name=road_name, centerline_id=cl.id, polyline_ids=[cl.id])
+        project.add_road(road)
+        return road
+
+    def test_snaps_start_to_predecessor_end(self, empty_project):
+        """Test that road start is snapped to predecessor's end."""
+        road_a = self._make_road(empty_project, (0, 0), (100, 0), "A")
+        road_b = self._make_road(empty_project, (105, 5), (200, 0), "B")
+
+        road_b.predecessor_id = road_a.id
+        road_b.predecessor_contact = "end"
+
+        changed = empty_project.enforce_road_link_coordinates(road_b.id)
+
+        assert changed is True
+        cl_b = empty_project.get_polyline(road_b.centerline_id)
+        assert cl_b.points[0] == (100.0, 0.0)
+
+    def test_snaps_end_to_successor_start(self, empty_project):
+        """Test that road end is snapped to successor's start."""
+        road_a = self._make_road(empty_project, (0, 0), (95, 5), "A")
+        road_b = self._make_road(empty_project, (100, 0), (200, 0), "B")
+
+        road_a.successor_id = road_b.id
+        road_a.successor_contact = "start"
+
+        changed = empty_project.enforce_road_link_coordinates(road_a.id)
+
+        assert changed is True
+        cl_a = empty_project.get_polyline(road_a.centerline_id)
+        assert cl_a.points[-1] == (100.0, 0.0)
+
+    def test_no_change_when_already_aligned(self, empty_project):
+        """Test returns False when endpoints already match."""
+        road_a = self._make_road(empty_project, (0, 0), (100, 0), "A")
+        road_b = self._make_road(empty_project, (100, 0), (200, 0), "B")
+
+        road_b.predecessor_id = road_a.id
+        road_b.predecessor_contact = "end"
+
+        changed = empty_project.enforce_road_link_coordinates(road_b.id)
+        assert changed is False
+
+    def test_no_change_without_links(self, empty_project):
+        """Test returns False when road has no predecessor/successor."""
+        road = self._make_road(empty_project, (0, 0), (100, 0))
+        changed = empty_project.enforce_road_link_coordinates(road.id)
+        assert changed is False
+
+    def test_skips_junction_linked_predecessor(self, empty_project):
+        """Test that junction-linked predecessors are not enforced."""
+        road_a = self._make_road(empty_project, (0, 0), (100, 0), "A")
+        road_b = self._make_road(empty_project, (105, 5), (200, 0), "B")
+
+        road_b.predecessor_id = road_a.id
+        road_b.predecessor_contact = "end"
+        road_b.predecessor_junction_id = "some_junction"
+
+        changed = empty_project.enforce_road_link_coordinates(road_b.id)
+        assert changed is False
+        cl_b = empty_project.get_polyline(road_b.centerline_id)
+        assert cl_b.points[0] == (105.0, 5.0)  # unchanged
+
+    def test_predecessor_contact_start(self, empty_project):
+        """Test predecessor_contact='start' uses predecessor's first point."""
+        road_a = self._make_road(empty_project, (50, 0), (100, 0), "A")
+        road_b = self._make_road(empty_project, (55, 5), (200, 0), "B")
+
+        road_b.predecessor_id = road_a.id
+        road_b.predecessor_contact = "start"
+
+        changed = empty_project.enforce_road_link_coordinates(road_b.id)
+
+        assert changed is True
+        cl_b = empty_project.get_polyline(road_b.centerline_id)
+        assert cl_b.points[0] == (50.0, 0.0)
+
+    def test_successor_contact_end(self, empty_project):
+        """Test successor_contact='end' uses successor's last point."""
+        road_a = self._make_road(empty_project, (0, 0), (95, 5), "A")
+        road_b = self._make_road(empty_project, (100, 0), (200, 0), "B")
+
+        road_a.successor_id = road_b.id
+        road_a.successor_contact = "end"
+
+        changed = empty_project.enforce_road_link_coordinates(road_a.id)
+
+        assert changed is True
+        cl_a = empty_project.get_polyline(road_a.centerline_id)
+        assert cl_a.points[-1] == (200.0, 0.0)
+
+    def test_nonexistent_road_returns_false(self, empty_project):
+        """Test with non-existent road ID."""
+        changed = empty_project.enforce_road_link_coordinates("nonexistent")
+        assert changed is False
+
+    def test_both_ends_enforced(self, empty_project):
+        """Test that both predecessor and successor are enforced together."""
+        road_a = self._make_road(empty_project, (0, 0), (100, 0), "A")
+        road_b = self._make_road(empty_project, (105, 5), (195, 5), "B")
+        road_c = self._make_road(empty_project, (200, 0), (300, 0), "C")
+
+        road_b.predecessor_id = road_a.id
+        road_b.predecessor_contact = "end"
+        road_b.successor_id = road_c.id
+        road_b.successor_contact = "start"
+
+        changed = empty_project.enforce_road_link_coordinates(road_b.id)
+
+        assert changed is True
+        cl_b = empty_project.get_polyline(road_b.centerline_id)
+        assert cl_b.points[0] == (100.0, 0.0)
+        assert cl_b.points[-1] == (200.0, 0.0)

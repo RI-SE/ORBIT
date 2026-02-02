@@ -4,12 +4,13 @@ Object XML builder for OpenDRIVE export.
 Handles creation of road object-related XML elements (barriers, poles, vegetation, etc.).
 """
 
-from typing import List, Optional, Callable
+from typing import List, Optional
+
 import numpy as np
 from lxml import etree
 
 from orbit.models import Road
-from orbit.models.object import RoadObject, ObjectType
+from orbit.models.object import ObjectType, RoadObject
 
 
 class ObjectBuilder:

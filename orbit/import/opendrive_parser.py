@@ -5,10 +5,10 @@ Parses ASAM OpenDrive format XML files and extracts road network data.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, Tuple
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
+
 from lxml import etree
-import math
 
 
 class GeometryType(Enum):

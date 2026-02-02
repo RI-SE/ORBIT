@@ -5,11 +5,12 @@ Handles creation of parking space-related XML elements.
 """
 
 from typing import List, Optional
+
 import numpy as np
 from lxml import etree
 
 from orbit.models import Road
-from orbit.models.parking import ParkingSpace, ParkingAccess
+from orbit.models.parking import ParkingSpace
 
 
 class ParkingBuilder:

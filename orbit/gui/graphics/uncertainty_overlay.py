@@ -5,11 +5,10 @@ Displays a color-coded heat map showing position uncertainty across the image,
 with optional markers suggesting optimal GCP placement locations.
 """
 
-from typing import List, Tuple
-from PyQt6.QtWidgets import QGraphicsItem
-from PyQt6.QtGui import QPixmap, QImage, QPainter, QColor, QPen, QFont
-from PyQt6.QtCore import QRectF, Qt
 import numpy as np
+from PyQt6.QtCore import QRectF, Qt
+from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
+from PyQt6.QtWidgets import QGraphicsItem
 
 from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 

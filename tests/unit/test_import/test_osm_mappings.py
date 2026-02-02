@@ -1,7 +1,11 @@
 """Tests for orbit.import.osm_mappings module."""
 
 import importlib
-import pytest
+
+from orbit.models.lane import LaneType
+from orbit.models.object import ObjectType
+from orbit.models.parking import ParkingAccess, ParkingType
+from orbit.models.signal import SignalType
 
 # Import from orbit.import using importlib (import is a reserved keyword)
 osm_mappings = importlib.import_module('orbit.import.osm_mappings')
@@ -30,10 +34,6 @@ DEFAULT_SPEED_LIMITS = osm_mappings.DEFAULT_SPEED_LIMITS
 OSM_SIGN_TO_SIGNAL_TYPE = osm_mappings.OSM_SIGN_TO_SIGNAL_TYPE
 OSM_HIGHWAY_SIGN_TYPES = osm_mappings.OSM_HIGHWAY_SIGN_TYPES
 OSM_SURFACE_TO_MATERIAL = osm_mappings.OSM_SURFACE_TO_MATERIAL
-from orbit.models.signal import SignalType
-from orbit.models.object import ObjectType
-from orbit.models.lane import LaneType
-from orbit.models.parking import ParkingType, ParkingAccess
 
 
 class TestParseMaxspeed:
@@ -599,7 +599,7 @@ class TestGetSurfaceMaterial:
     def test_none_value(self):
         """None value returns None (guard)."""
         # The function checks for empty, not None, but let's test it
-        result = get_surface_material(None) if False else None  # Would raise if called with None
+        _result = get_surface_material(None) if False else None  # Would raise if called with None
         assert True  # Skip - function doesn't handle None input
 
     def test_asphalt(self):

@@ -8,13 +8,14 @@ Supports:
 - Interactive rotation via rotation handle
 """
 
-from PyQt6.QtWidgets import QGraphicsItemGroup, QGraphicsPathItem, QGraphicsEllipseItem
-from PyQt6.QtGui import QPen, QColor, QBrush, QPainterPath, QCursor
-from PyQt6.QtCore import Qt, QPointF, QRectF
-from orbit.models.parking import ParkingSpace, ParkingAccess, ParkingType
-from typing import Optional, List, Tuple
 import math
+from typing import List, Optional, Tuple
 
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QBrush, QColor, QPainterPath, QPen
+from PyQt6.QtWidgets import QGraphicsEllipseItem, QGraphicsItemGroup, QGraphicsPathItem
+
+from orbit.models.parking import ParkingAccess, ParkingSpace
 
 # Color mapping by access type (30% opacity = 77 alpha, consistent with lanes)
 ACCESS_COLORS = {

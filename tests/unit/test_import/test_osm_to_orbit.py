@@ -1,17 +1,16 @@
 """Tests for orbit.import.osm_to_orbit module."""
 
 import importlib
-import math
-import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 
-from orbit.models import Road, Junction, Signal, RoadObject, ParkingSpace
-from orbit.models.polyline import Polyline, LineType, RoadMarkType
-from orbit.models.road import RoadType
+import pytest
+
+from orbit.models import Junction, Road
 from orbit.models.lane import Lane, LaneType
 from orbit.models.lane_section import LaneSection
-from orbit.models.signal import SignalType
 from orbit.models.object import ObjectType
+from orbit.models.polyline import LineType, Polyline
+from orbit.models.signal import SignalType
 
 # Import the module using importlib since 'import' is a reserved keyword
 osm_to_orbit = importlib.import_module('orbit.import.osm_to_orbit')
@@ -798,8 +797,8 @@ class TestCreateRoadFromOsm:
         road, _ = result
 
         # Check that lanes are only on right side for one-way
-        driving_lanes = [l for l in road.lane_sections[0].lanes if l.lane_type == LaneType.DRIVING]
-        assert all(l.id < 0 for l in driving_lanes)  # All negative IDs (right side)
+        driving_lanes = [lane for lane in road.lane_sections[0].lanes if lane.lane_type == LaneType.DRIVING]
+        assert all(lane.id < 0 for lane in driving_lanes)  # All negative IDs (right side)
 
     def test_parses_speed_limit(self, mock_osm_way, mock_transformer):
         """Parses maxspeed tag."""
@@ -840,7 +839,7 @@ class TestCreateRoadFromOsm:
         road, _ = result
         assert "Bicycle Path" in road.name
         # Check for biking lane
-        biking_lanes = [l for l in road.lane_sections[0].lanes if l.lane_type == LaneType.BIKING]
+        biking_lanes = [lane for lane in road.lane_sections[0].lanes if lane.lane_type == LaneType.BIKING]
         assert len(biking_lanes) == 2  # Left and right
 
 
@@ -956,7 +955,7 @@ class TestCreateObjectFromOsm:
         with patch.object(osm_to_orbit, 'get_object_type_from_osm', return_value=ObjectType.GUARDRAIL):
             with patch.object(osm_to_orbit, 'isinstance', side_effect=lambda x, t: t == osm_parser.OSMWay):
                 # Since we're using Mock, need to handle isinstance differently
-                result = osm_to_orbit.create_object_from_osm(way, mock_transformer)
+                _result = osm_to_orbit.create_object_from_osm(way, mock_transformer)
 
         # The mock doesn't pass isinstance check, so result may be None
         # This is expected behavior - the test validates the skip path
@@ -972,7 +971,7 @@ class TestCreateObjectFromOsm:
 
         with patch.object(osm_to_orbit, 'get_object_type_from_osm', return_value=ObjectType.BUILDING):
             # Test expects the way to pass as OSMWay, but Mock won't
-            result = osm_to_orbit.create_object_from_osm(way, mock_transformer)
+            _result = osm_to_orbit.create_object_from_osm(way, mock_transformer)
 
 
 # ==== Tests for create_parking_from_osm ====

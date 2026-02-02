@@ -17,15 +17,18 @@ Homography transformation (8 parameters):
 - Uses DLT (Direct Linear Transform) with SVD
 """
 
-import numpy as np
 import math
-from typing import List, Tuple, Optional, Dict, Union
+from dataclasses import dataclass
 from enum import Enum, auto
-from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 from pyproj import Proj
 
 from .logging_config import get_logger
+
+if TYPE_CHECKING:
+    from orbit.models.project import ControlPoint
 
 logger = get_logger(__name__)
 
@@ -787,7 +790,7 @@ class HomographyTransformer(CoordinateTransformer):
 
         Includes coordinate normalization for numerical stability.
         """
-        n = len(self.training_points)
+        _n = len(self.training_points)
 
         # Convert geo coordinates to local metric system
         ground_points = np.array([

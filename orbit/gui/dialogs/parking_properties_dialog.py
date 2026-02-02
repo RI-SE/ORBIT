@@ -2,14 +2,11 @@
 Dialog for editing parking space properties.
 """
 
-from PyQt6.QtWidgets import (QFormLayout,
-                            QLineEdit, QDoubleSpinBox, QComboBox, QSpinBox,
-                            QLabel, QTextEdit)
-from PyQt6.QtCore import Qt
-from orbit.models.parking import ParkingSpace, ParkingAccess, ParkingType
-from orbit.utils.enum_formatting import format_enum_name
+from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QSpinBox
+
+from orbit.models.parking import ParkingAccess, ParkingSpace, ParkingType
+
 from .base_dialog import BaseDialog
-from ..utils import get_scale_factors, format_with_metric
 
 
 class ParkingPropertiesDialog(BaseDialog):

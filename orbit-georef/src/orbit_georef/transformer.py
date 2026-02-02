@@ -6,7 +6,7 @@ Can use precomputed matrices from exported JSON or recompute from control points
 """
 
 import math
-from typing import List, Tuple, Optional, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -291,8 +291,6 @@ def _compute_homography(
     ref_lat: float,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Compute homography transformation matrices from control points."""
-    n = len(control_points)
-
     # Convert geo coordinates to local metric system
     R = 6371000.0
     ref_lat_rad = math.radians(ref_lat)
@@ -377,7 +375,6 @@ def _compute_scale(
 
         # Create temporary transformer-like calculation
         def pixel_to_meters(px, py, matrix, ref_lat, ref_lon):
-            R = 6371000.0
             pixel_homo = np.array([px, py, 1.0])
             ground_homo = matrix @ pixel_homo
             return ground_homo[0] / ground_homo[2], ground_homo[1] / ground_homo[2]

@@ -5,21 +5,24 @@ Handles the complex logic of converting OSM roundabouts to segmented roads
 with proper junctions at each entry/exit point.
 """
 
-from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Optional, Set
 import math
-import uuid
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
-from orbit.models import Road, Junction
-from orbit.models.polyline import Polyline, LineType, RoadMarkType
-from orbit.models.road import RoadType, LaneInfo
-from orbit.models.lane import Lane, LaneType as LaneTypeEnum
-from orbit.models.lane_section import LaneSection
+from orbit.models import Junction, Road
 from orbit.models.connecting_road import ConnectingRoad
+from orbit.models.lane import Lane
+from orbit.models.lane import LaneType as LaneTypeEnum
 from orbit.models.lane_connection import LaneConnection
-
-from .osm_parser import OSMData, OSMWay, OSMNode
+from orbit.models.lane_section import LaneSection
+from orbit.models.polyline import LineType, Polyline, RoadMarkType
+from orbit.models.road import LaneInfo, RoadType
 from orbit.utils.geometry import generate_simple_connection_path
+
+from .osm_parser import OSMData, OSMWay
+
+if TYPE_CHECKING:
+    from orbit.utils.coordinate_transform import CoordinateTransformer
 
 
 @dataclass
@@ -960,7 +963,7 @@ def create_roundabout_connectors(
     if junction_index >= len(roundabout.connection_points):
         return [], []
 
-    cp = roundabout.connection_points[junction_index]
+    _cp = roundabout.connection_points[junction_index]
     n_segments = len(ring_segments)
 
     # Identify ring roads at this junction

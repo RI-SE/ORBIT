@@ -4,10 +4,11 @@ Unit tests for LaneSection model.
 Tests lane section creation, splitting, lane management, and serialization.
 """
 
-import pytest
 from typing import List
 
-from orbit.models import LaneSection, Lane, LaneType, RoadMarkType
+import pytest
+
+from orbit.models import Lane, LaneSection, LaneType
 
 
 class TestLaneSectionCreation:

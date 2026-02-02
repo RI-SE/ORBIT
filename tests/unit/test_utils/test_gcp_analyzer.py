@@ -1,19 +1,17 @@
 """Tests for orbit.utils.gcp_analyzer module."""
 
-import math
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-import numpy as np
 
 from orbit.utils.gcp_analyzer import (
-    PointAnalysis,
     GCPAnalysisResult,
-    analyze_control_points,
+    PointAnalysis,
     _calculate_correlation,
     _generate_recommendations,
+    analyze_control_points,
     format_analysis_report,
 )
-
 
 # ==== Test Fixtures ====
 

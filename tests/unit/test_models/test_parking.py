@@ -4,12 +4,11 @@ Unit tests for ParkingSpace model and parking enums.
 Tests the parking model for OpenDRIVE parking areas.
 """
 
+from typing import Tuple
+
 import pytest
-import math
-from typing import Tuple, List
 
-from orbit.models.parking import ParkingAccess, ParkingType, ParkingSpace
-
+from orbit.models.parking import ParkingAccess, ParkingSpace, ParkingType
 
 # ============================================================================
 # Test ParkingAccess Enum

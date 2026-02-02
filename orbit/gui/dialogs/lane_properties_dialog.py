@@ -4,21 +4,37 @@ Lane properties dialog for ORBIT.
 Allows editing of individual lane properties.
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from PyQt6.QtWidgets import (
-    QDialog, QGroupBox, QFormLayout, QSpinBox,
-    QComboBox, QLabel, QDoubleSpinBox, QCheckBox, QWidget, QHBoxLayout, QToolButton,
-    QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, QHeaderView,
-    QScrollArea, QFrame, QMessageBox
-)
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDoubleSpinBox,
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
-from orbit.models import Lane, LaneType, RoadMarkType, Project, LineType
-from orbit.utils.lane_fitting import evaluate_fit_quality
+from orbit.models import Lane, LaneType, LineType, Project, RoadMarkType
 from orbit.utils import format_enum_name
-from .base_dialog import BaseDialog, InfoIconLabel
+from orbit.utils.lane_fitting import evaluate_fit_quality
+
 from ..utils import set_combo_by_data
+from .base_dialog import BaseDialog, InfoIconLabel
 
 if TYPE_CHECKING:
     from orbit.models.connecting_road import ConnectingRoad
@@ -216,7 +232,7 @@ class LanePropertiesDialog(BaseDialog):
             if self.lane.id == -1 or self.lane.id == 1:
                 inner_info.setText("Inner boundary: Road centerline")
             else:
-                inner_info.setText(f"Inner boundary: Adjacent lane's outer edge")
+                inner_info.setText("Inner boundary: Adjacent lane's outer edge")
             inner_info.setStyleSheet("QLabel { color: gray; font-style: italic; }")
             boundary_layout.addRow("", inner_info)
 
@@ -538,7 +554,13 @@ class LanePropertiesDialog(BaseDialog):
             row = self.materials_table.rowCount()
             self.materials_table.insertRow(row)
             # Unpack tuple: (s_offset, friction, roughness, surface)
-            s_offset, friction, roughness, surface = material[:4] if len(material) >= 4 else (material[0], material[1] if len(material) > 1 else 0.8, material[2] if len(material) > 2 else 0.01, "asphalt")
+            if len(material) >= 4:
+                s_offset, friction, roughness, surface = material[:4]
+            else:
+                s_offset = material[0]
+                friction = material[1] if len(material) > 1 else 0.8
+                roughness = material[2] if len(material) > 2 else 0.01
+                surface = "asphalt"
             self.materials_table.setItem(row, 0, QTableWidgetItem(str(s_offset)))
             self.materials_table.setItem(row, 1, QTableWidgetItem(str(friction)))
             self.materials_table.setItem(row, 2, QTableWidgetItem(str(roughness)))
@@ -551,7 +573,12 @@ class LanePropertiesDialog(BaseDialog):
             row = self.heights_table.rowCount()
             self.heights_table.insertRow(row)
             # Unpack tuple: (s_offset, inner, outer)
-            s_offset, inner, outer = height[:3] if len(height) >= 3 else (height[0], height[1] if len(height) > 1 else 0.0, 0.0)
+            if len(height) >= 3:
+                s_offset, inner, outer = height[:3]
+            else:
+                s_offset = height[0]
+                inner = height[1] if len(height) > 1 else 0.0
+                outer = 0.0
             self.heights_table.setItem(row, 0, QTableWidgetItem(str(s_offset)))
             self.heights_table.setItem(row, 1, QTableWidgetItem(str(inner)))
             self.heights_table.setItem(row, 2, QTableWidgetItem(str(outer)))
@@ -561,10 +588,14 @@ class LanePropertiesDialog(BaseDialog):
         materials = []
         for row in range(self.materials_table.rowCount()):
             try:
-                s_offset = float(self.materials_table.item(row, 0).text()) if self.materials_table.item(row, 0) else 0.0
-                friction = float(self.materials_table.item(row, 1).text()) if self.materials_table.item(row, 1) else 0.8
-                roughness = float(self.materials_table.item(row, 2).text()) if self.materials_table.item(row, 2) else 0.01
-                surface = self.materials_table.item(row, 3).text() if self.materials_table.item(row, 3) else "asphalt"
+                item0 = self.materials_table.item(row, 0)
+                item1 = self.materials_table.item(row, 1)
+                item2 = self.materials_table.item(row, 2)
+                item3 = self.materials_table.item(row, 3)
+                s_offset = float(item0.text()) if item0 else 0.0
+                friction = float(item1.text()) if item1 else 0.8
+                roughness = float(item2.text()) if item2 else 0.01
+                surface = item3.text() if item3 else "asphalt"
                 materials.append((s_offset, friction, roughness, surface))
             except ValueError:
                 continue
@@ -849,7 +880,7 @@ class LanePropertiesDialog(BaseDialog):
         scale_info = f"Scale: {scale:.6f} m/px" if scale != 1.0 else "Scale: 1.0 (no georeferencing)"
 
         # Create custom dialog with checkbox
-        from PyQt6.QtWidgets import QDialog, QDialogButtonBox
+        from PyQt6.QtWidgets import QDialogButtonBox
         confirm_dialog = QDialog(self)
         confirm_dialog.setWindowTitle("Fit Polynomial")
         dialog_layout = QVBoxLayout(confirm_dialog)

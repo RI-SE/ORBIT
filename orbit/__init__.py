@@ -13,37 +13,35 @@ Subpackages:
 """
 
 # Re-export main components for convenience
+from orbit.export import CoordinateTransformer, CurveFitter, OpenDriveWriter
+from orbit.gui import ImageView, MainWindow
 from orbit.models import (
-    Project, ControlPoint,
-    Polyline, LineType, RoadMarkType,
-    Road, RoadType, LaneInfo,
-    Lane, LaneType, LaneSection,
-    Junction, JunctionConnection,
-    Signal, SignalType, SpeedUnit,
-    RoadObject, ObjectType
+    ControlPoint,
+    Junction,
+    JunctionConnection,
+    Lane,
+    LaneInfo,
+    LaneSection,
+    LaneType,
+    LineType,
+    ObjectType,
+    Polyline,
+    Project,
+    Road,
+    RoadMarkType,
+    RoadObject,
+    RoadType,
+    Signal,
+    SignalType,
+    SpeedUnit,
 )
-
-from orbit.gui import (
-    MainWindow,
-    ImageView
-)
-
-from orbit.export import (
-    OpenDriveWriter,
-    CoordinateTransformer,
-    CurveFitter
-)
-
-from orbit.utils import (
-    create_transformer,
-    TransformMethod
-)
+from orbit.utils import TransformMethod, create_transformer
 
 try:
     from importlib.metadata import version as _get_version
     __version__ = _get_version("orbit")
 except Exception:
-    __version__ = "0.3.1"  # fallback if not installed
+    __version__ = "0.5.0"  # fallback if not installed
 
 __all__ = [
     # Version

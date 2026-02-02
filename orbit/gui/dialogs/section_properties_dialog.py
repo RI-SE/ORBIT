@@ -4,17 +4,15 @@ Section properties dialog for ORBIT.
 Allows editing of lane section properties.
 """
 
-from typing import Optional, List, Tuple
 import math
+from typing import List, Optional, Tuple
 
-from PyQt6.QtWidgets import (
-    QDialog, QFormLayout, QPushButton, QLabel, QComboBox, QGroupBox
-)
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QComboBox, QDialog, QLabel
 
-from orbit.models import LaneSection
 from orbit.export import CoordinateTransformer
-from .base_dialog import BaseDialog, InfoIconLabel
+from orbit.models import LaneSection
+
+from .base_dialog import BaseDialog
 
 
 class SectionPropertiesDialog(BaseDialog):
@@ -183,7 +181,7 @@ class SectionPropertiesDialog(BaseDialog):
             info_layout.addRow("Coverage:", percentage_label)
 
         # Number of lanes (read-only)
-        num_lanes = len([l for l in self.section.lanes if l.id != 0])  # Exclude center lane
+        num_lanes = len([lane for lane in self.section.lanes if lane.id != 0])  # Exclude center lane
         lanes_label = QLabel(f"{num_lanes} lanes")
         info_layout.addRow("Lanes in Section:", lanes_label)
 

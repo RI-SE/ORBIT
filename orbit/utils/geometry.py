@@ -6,7 +6,7 @@ perpendicular vectors, polygon construction, and junction path generation.
 """
 
 import math
-from typing import List, Tuple, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from orbit.utils.coordinate_transform import CoordinateTransformer

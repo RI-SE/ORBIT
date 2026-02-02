@@ -4,8 +4,9 @@ Unit tests for ConnectingRoad model.
 Tests connecting road creation, geometry calculations, and serialization.
 """
 
-import pytest
 import math
+
+import pytest
 
 from orbit.models import ConnectingRoad
 
@@ -741,7 +742,6 @@ class TestConnectingRoadLaneSerialization:
 
     def test_lanes_deserialization(self):
         """Test that lanes are deserialized."""
-        from orbit.models import Lane, LaneType
         data = {
             'id': 'test',
             'path': [[0, 0], [100, 100]],

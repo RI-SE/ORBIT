@@ -5,9 +5,9 @@ Represents a road that exists only within a junction, providing the geometric
 path for vehicles traversing the junction.
 """
 
-from typing import List, Tuple, Dict, Any, Optional
-from dataclasses import dataclass, field
 import math
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
 
 from .lane import Lane, LaneType
 from .polyline import RoadMarkType
@@ -237,8 +237,9 @@ class ConnectingRoad:
             }
         """
         from orbit.utils.geometry import (
-            create_lane_polygon, create_variable_width_lane_polygon,
-            create_polynomial_width_lane_polygon
+            create_lane_polygon,
+            create_polynomial_width_lane_polygon,
+            create_variable_width_lane_polygon,
         )
 
         if len(self.path) < 2:
@@ -300,10 +301,10 @@ class ConnectingRoad:
                     s_values,
                     is_left_lane=False
                 )
-            elif lane.has_variable_width or any(l.has_variable_width for l in inner_lanes):
+            elif lane.has_variable_width or any(il.has_variable_width for il in inner_lanes):
                 # Use linear interpolation (start/end width)
-                inner_offset_start = sum(l.width / scale for l in inner_lanes)
-                inner_offset_end = sum(l.get_width_at_end() / scale for l in inner_lanes)
+                inner_offset_start = sum(il.width / scale for il in inner_lanes)
+                inner_offset_end = sum(il.get_width_at_end() / scale for il in inner_lanes)
                 outer_offset_start = inner_offset_start + lane.width / scale
                 outer_offset_end = inner_offset_end + lane.get_width_at_end() / scale
 
@@ -316,7 +317,7 @@ class ConnectingRoad:
                 )
             else:
                 # Constant width
-                inner_offset = sum(l.width / scale for l in inner_lanes)
+                inner_offset = sum(il.width / scale for il in inner_lanes)
                 outer_offset = inner_offset + lane.width / scale
 
                 polygon_points = create_lane_polygon(
@@ -360,10 +361,10 @@ class ConnectingRoad:
                     s_values,
                     is_left_lane=True
                 )
-            elif lane.has_variable_width or any(l.has_variable_width for l in inner_lanes):
+            elif lane.has_variable_width or any(il.has_variable_width for il in inner_lanes):
                 # Use linear interpolation with negative offsets for left lanes
-                inner_offset_start = -sum(l.width / scale for l in inner_lanes)
-                inner_offset_end = -sum(l.get_width_at_end() / scale for l in inner_lanes)
+                inner_offset_start = -sum(il.width / scale for il in inner_lanes)
+                inner_offset_end = -sum(il.get_width_at_end() / scale for il in inner_lanes)
                 outer_offset_start = inner_offset_start - lane.width / scale
                 outer_offset_end = inner_offset_end - lane.get_width_at_end() / scale
 
@@ -376,7 +377,7 @@ class ConnectingRoad:
                 )
             else:
                 # Constant width with negative offsets for left lanes
-                inner_offset = -sum(l.width / scale for l in inner_lanes)
+                inner_offset = -sum(il.width / scale for il in inner_lanes)
                 outer_offset = inner_offset - lane.width / scale
 
                 polygon_points = create_lane_polygon(

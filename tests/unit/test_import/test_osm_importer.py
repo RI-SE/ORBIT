@@ -1,8 +1,11 @@
 """Tests for orbit.import.osm_importer module."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
 import importlib
+from unittest.mock import Mock, patch
+
+import pytest
+
+from orbit.models import Project
 
 # Import using importlib since 'import' is a reserved keyword
 osm_importer = importlib.import_module('orbit.import.osm_importer')
@@ -15,8 +18,6 @@ ImportOptions = osm_importer.ImportOptions
 ImportResult = osm_importer.ImportResult
 OSMImporter = osm_importer.OSMImporter
 OverpassAPIError = osm_query.OverpassAPIError
-
-from orbit.models import Project
 
 
 class TestImportMode:
@@ -499,7 +500,7 @@ class TestOSMImporterImportModes:
     def project_with_data(self):
         """Create project with existing data."""
         project = Project()
-        from orbit.models import Road, Polyline
+        from orbit.models import Polyline, Road
         from orbit.models.polyline import LineType
 
         polyline = Polyline()
@@ -551,7 +552,7 @@ class TestOSMImporterImportModes:
             image_height=800
         )
 
-        initial_road_count = len(project_with_data.roads)
+        _initial_road_count = len(project_with_data.roads)
 
         options = ImportOptions(import_mode=ImportMode.ADD)
 
@@ -561,7 +562,7 @@ class TestOSMImporterImportModes:
             with patch.object(osm_importer, 'OverpassAPIClient') as mock_client:
                 mock_client.return_value.query_bbox.return_value = {'elements': []}
 
-                result = importer.import_osm_data(options)
+                _result = importer.import_osm_data(options)
 
         # Existing data should still be there
         # (In ADD mode, we don't clear)
@@ -673,7 +674,7 @@ class TestOSMImporterDetailLevels:
             with patch.object(osm_importer, 'OverpassAPIClient') as mock_client:
                 mock_client.return_value.query_bbox.side_effect = OverpassAPIError("Test error")
 
-                result = importer.import_osm_data(options)
+                _result = importer.import_osm_data(options)
 
                 # Check that query_bbox was called with 'moderate'
                 mock_client.return_value.query_bbox.assert_called_once()
@@ -696,7 +697,7 @@ class TestOSMImporterDetailLevels:
             with patch.object(osm_importer, 'OverpassAPIClient') as mock_client:
                 mock_client.return_value.query_bbox.side_effect = OverpassAPIError("Test error")
 
-                result = importer.import_osm_data(options)
+                _result = importer.import_osm_data(options)
 
                 # Check that query_bbox was called with 'full'
                 mock_client.return_value.query_bbox.assert_called_once()
@@ -734,7 +735,7 @@ class TestOSMImporterTimeoutOption:
             with patch.object(osm_importer, 'OverpassAPIClient') as mock_client:
                 mock_client.return_value.query_bbox.side_effect = OverpassAPIError("Test")
 
-                result = importer.import_osm_data(options)
+                _result = importer.import_osm_data(options)
 
                 # Check client was initialized with timeout=120
                 mock_client.assert_called_once_with(timeout=120)

@@ -5,19 +5,20 @@ Tests affine and homography transformations, error calculations,
 and georeferencing with real control points.
 """
 
-import pytest
 import csv
 from pathlib import Path
 from typing import List
 
+import pytest
 from pyproj import Proj
 
 from orbit.models import ControlPoint
 from orbit.utils.coordinate_transform import (
-    create_transformer, TransformMethod,
-    AffineTransformer, HomographyTransformer
+    AffineTransformer,
+    HomographyTransformer,
+    TransformMethod,
+    create_transformer,
 )
-
 
 # ============================================================================
 # Helper Functions
@@ -157,7 +158,11 @@ class TestTransformerCreation:
 class TestTransformerWithValidation:
     """Test transformers with validation points."""
 
-    def test_create_transformer_separates_validation_points(self, sample_control_points: List[ControlPoint], validation_control_point: ControlPoint):
+    def test_create_transformer_separates_validation_points(
+        self,
+        sample_control_points: List[ControlPoint],
+        validation_control_point: ControlPoint,
+    ):
         """Test that validation points are separated from training."""
         all_points = sample_control_points + [validation_control_point]
 
@@ -171,7 +176,11 @@ class TestTransformerWithValidation:
         assert len(transformer.training_points) == 3
         assert len(transformer.validation_points) == 1
 
-    def test_validation_disabled_uses_all_points(self, sample_control_points: List[ControlPoint], validation_control_point: ControlPoint):
+    def test_validation_disabled_uses_all_points(
+        self,
+        sample_control_points: List[ControlPoint],
+        validation_control_point: ControlPoint,
+    ):
         """Test that use_validation=False uses all points for training."""
         all_points = sample_control_points + [validation_control_point]
 
@@ -367,7 +376,11 @@ class TestReprojectionError:
 class TestValidationError:
     """Test validation error calculations."""
 
-    def test_compute_validation_error_with_gvp(self, sample_control_points: List[ControlPoint], validation_control_point: ControlPoint):
+    def test_compute_validation_error_with_gvp(
+        self,
+        sample_control_points: List[ControlPoint],
+        validation_control_point: ControlPoint,
+    ):
         """Test computing validation error with validation points."""
         all_points = sample_control_points + [validation_control_point]
 
@@ -603,7 +616,6 @@ class TestTransformAdjustment:
 
     def test_apply_to_point_rotation(self):
         """Test applying rotation to a point around pivot."""
-        import math
         from orbit.utils.coordinate_transform import TransformAdjustment
         # 90 degrees counter-clockwise around origin
         adj = TransformAdjustment(rotation=90.0, pivot_x=0.0, pivot_y=0.0)
@@ -669,6 +681,7 @@ class TestTransformAdjustment:
     def test_get_adjustment_matrix_identity(self):
         """Test that identity adjustment produces identity matrix."""
         import numpy as np
+
         from orbit.utils.coordinate_transform import TransformAdjustment
         adj = TransformAdjustment()
         M = adj.get_adjustment_matrix()
@@ -713,7 +726,6 @@ class TestMetricConversions:
 
     def test_latlon_to_meters_without_reference_raises(self, sample_control_points: List[ControlPoint]):
         """Test that latlon_to_meters raises if reference not set."""
-        from orbit.utils.coordinate_transform import CoordinateTransformer
         # Create a minimal subclass for testing
         transformer = create_transformer(
             sample_control_points,
@@ -959,7 +971,11 @@ class TestTransformationInfo:
         assert info['num_training_points'] == 3
         assert info['num_validation_points'] == 0
 
-    def test_get_transformation_info_with_errors(self, sample_control_points: List[ControlPoint], validation_control_point: ControlPoint):
+    def test_get_transformation_info_with_errors(
+        self,
+        sample_control_points: List[ControlPoint],
+        validation_control_point: ControlPoint,
+    ):
         """Test that transformation info includes error metrics."""
         all_points = sample_control_points + [validation_control_point]
         transformer = create_transformer(

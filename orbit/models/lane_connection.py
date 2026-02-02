@@ -5,8 +5,8 @@ Represents a lane-level connection within a junction, mapping specific lanes
 from an incoming road to an outgoing road.
 """
 
-from typing import Dict, Any, Optional, Tuple, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass

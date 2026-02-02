@@ -2,7 +2,7 @@
 
 Complete guide for creating OpenDRIVE road networks from aerial imagery using ORBIT.
 
-**Version**: 0.4.0 | **OpenDRIVE**: 1.8
+**Version**: 0.5.0 | **OpenDRIVE**: 1.8
 
 ---
 
@@ -14,10 +14,16 @@ Complete guide for creating OpenDRIVE road networks from aerial imagery using OR
 - [Creating Roads](#creating-roads)
 - [Lane Sections](#lane-sections)
 - [Junctions](#junctions)
+- [Connecting Roads](#connecting-roads)
+- [Junction Groups](#junction-groups)
+- [Lane Connections](#lane-connections)
+- [Signals & Objects](#signals--objects)
+- [Parking Spaces](#parking-spaces)
 - [Georeferencing](#georeferencing)
 - [Import Features](#import-features)
 - [Export to OpenDRIVE](#export-to-opendrive)
 - [View Controls](#view-controls)
+- [Preferences](#preferences)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Troubleshooting](#troubleshooting)
 - [Best Practices](#best-practices)
@@ -114,6 +120,15 @@ New polylines default to **Lane Boundary**. Change type via double-click.
 | Delete point | Right-click on point |
 | Delete polyline | Select + Delete key |
 
+### Batch Delete
+
+For deleting multiple items at once:
+
+1. Use area selection to select multiple items on the canvas
+2. Press **Delete** or use Edit → Delete Selected
+3. A confirmation dialog appears showing all items to be deleted in a tree view
+4. Review and confirm to delete
+
 ### Polyline Properties
 
 Double-click a polyline to edit:
@@ -149,9 +164,9 @@ Roads group polylines and define lane configuration.
 - **Speed Limit**: In km/h (0 = no limit)
 
 **Centerline Selection**:
-- ✅ Green: Exactly one centerline (correct)
-- ⚠️ Orange: No centerline (needs one)
-- ❌ Red: Multiple centerlines (only one allowed)
+- Green: Exactly one centerline (correct)
+- Orange: No centerline (needs one)
+- Red: Multiple centerlines (only one allowed)
 
 **Lane Configuration**:
 - **Left/Right Lanes**: Number of lanes in each direction
@@ -222,6 +237,7 @@ Junctions handle intersections where multiple roads meet.
 - **Move junction**: Click and drag the marker
 - **Edit junction**: Double-click the marker
 - **Delete junction**: Select + Delete key
+- **Merge Selected Roads**: Roads → Merge Selected Roads (merges roads that share a junction endpoint)
 
 ### Junction Types
 
@@ -230,13 +246,143 @@ Junctions handle intersections where multiple roads meet.
 
 ### Roundabout Wizard
 
-Create roundabouts via Tools → Create Roundabout:
+Create roundabouts via Tools → Create Roundabout (**Ctrl+Shift+R**):
 
 - **Center Point**: Click "Pick on Map" or enter coordinates
 - **Radius**: Inner and outer radius
 - **Lanes**: Number of circular lanes
 - **Traffic Direction**: Clockwise or counter-clockwise
 - **Approach Roads**: Select connecting roads
+
+---
+
+## Connecting Roads
+
+Connecting roads define the paths vehicles take through junctions. Each connecting road links an incoming road to an outgoing road with its own geometry.
+
+### What Are Connecting Roads?
+
+In OpenDRIVE, junctions contain short road segments (connecting roads) that describe each valid path through the intersection. For example, a T-junction might have connecting roads for left-turn, right-turn, and through movements.
+
+### Editing Connecting Roads
+
+1. In the Elements tree, expand a junction to see its connecting roads
+2. Right-click a connecting road → **Edit Properties**
+3. Configure:
+   - **Lane Configuration**: Left and right lane counts
+   - **Contact Points**: Start/end contact point for predecessor and successor roads
+   - **Geometry Type**: ParamPoly3D (smooth curve) or Polyline
+   - **Tangent Scale**: Adjusts the curvature of ParamPoly3D geometry (higher values produce wider curves)
+
+### ParamPoly3D Geometry
+
+Connecting roads use parametric cubic polynomials (ParamPoly3D) for smooth curves through junctions. The geometry is defined by polynomial coefficients (aU, bU, cU, dU, aV, bV, cV, dV) that are typically computed automatically from the road endpoints and headings.
+
+Use the **Tangent Scale** slider to adjust how tightly the connecting road curves between its endpoints.
+
+---
+
+## Junction Groups
+
+Junction groups combine multiple junctions into a logical unit, as defined in OpenDRIVE 1.8.
+
+### Creating Junction Groups
+
+1. Go to **Edit → Junction Groups**
+2. Click "Add Group"
+3. Set group properties:
+   - **Name**: Descriptive name
+   - **Group Type**: One of:
+     - `roundabout` — for roundabout junctions
+     - `complexJunction` — for complex multi-junction intersections
+     - `highwayInterchange` — for highway interchange structures
+4. Assign junctions to the group from the available junctions list
+
+---
+
+## Lane Connections
+
+Lane connections define the lane-level mappings through junctions — which incoming lane connects to which outgoing lane.
+
+### Editing Lane Connections
+
+1. Right-click a junction in the Elements tree → **Edit Lane Connections**
+2. The connection table shows:
+   - **From Road / Lane**: Incoming road and lane ID
+   - **To Road / Lane**: Outgoing road and lane ID
+   - **Connecting Road**: The connecting road providing the geometry
+   - **Turn Type**: straight, left, right, uturn, merge, or diverge
+   - **Priority**: Connection priority value
+3. Use **Auto-Generate** to automatically create lane connections based on road geometry and lane counts
+
+---
+
+## Signals & Objects
+
+### Signals (Traffic Signs)
+
+Place traffic signs from country-specific sign libraries.
+
+**Adding a Signal**:
+1. Press **Ctrl+T** or Tools → Add Signal
+2. Click on the map to place the signal
+3. In the signal dialog:
+   - Select from the **sign library** (organized by category)
+   - Set signal properties (value, orientation, width, height)
+   - Assign to a road
+4. Click OK
+
+**Editing/Removing**:
+- Double-click a signal to edit properties
+- Right-click → Edit Properties or Remove
+
+### Objects (Road Furniture)
+
+Place physical objects along roads.
+
+**Adding an Object**:
+1. Press **Ctrl+Alt+O** or Tools → Add Object
+2. Click on the map to place the object
+3. Select object type:
+   - Lamppost
+   - Guardrail
+   - Building
+   - Trees
+   - Bush
+4. Set properties (dimensions, orientation, road assignment)
+5. Click OK
+
+**Editing/Removing**:
+- Double-click an object to edit properties
+- Right-click → Edit Properties or Remove
+
+---
+
+## Parking Spaces
+
+### Adding Parking
+
+1. Press **Ctrl+Shift+P** or Tools → Add Parking
+2. Choose drawing mode:
+   - **Single space**: Click to place an individual parking space
+   - **Polygon area**: Multi-click to draw a parking lot outline, double-click to finish
+
+### Parking Properties
+
+**Type** (ParkingType):
+- Surface, Underground, Multi-storey, Rooftop, Street, Carports
+
+**Access** (ParkingAccess):
+- Standard, Handicapped, Private, Reserved, Permit, Company, Customers, Residents, Women
+
+**Dimensions and Layout**:
+- **Capacity**: Number of parking spaces (for lots)
+- **Width**: Space width in meters (default 2.5m)
+- **Length**: Space length in meters (default 5.0m)
+- **Orientation**: Angle in degrees
+
+**Road Assignment**:
+- Assign to a road for s/t coordinate calculation in OpenDRIVE export
 
 ---
 
@@ -253,12 +399,14 @@ Georeferencing converts pixel coordinates to real-world geographic coordinates.
 
 ### Adding Control Points
 
-1. Go to **Tools → Georeferencing**
+1. Go to **Tools → Georeferencing** (Ctrl+Shift+G)
 2. Click "Pick Point on Image"
 3. Click on a distinctive feature
 4. Enter latitude/longitude coordinates
 5. Click "Add Control Point"
 6. Repeat (minimum 3 points required)
+
+**CSV Import**: Import control points from a CSV file with columns for pixel coordinates and geographic coordinates.
 
 ### Control Point Placement
 
@@ -286,6 +434,12 @@ For quality assessment:
 - Enable View → Uncertainty Overlay to visualize
 - Use "Suggest GCP Locations" for optimal placement
 
+### Additional Georeferencing Tools
+
+- **Adjust Alignment** (Ctrl+Shift+A): Fine-tune image alignment using arrow keys for incremental adjustments
+- **Measure Distance** (Ctrl+M): Measure real-world distances between two points on the image
+- **Show Scale Factor** (Ctrl+K): Display the current meters-per-pixel scale factor
+
 See the [Georeferencing Guide](GEOREFERENCING.md) for complete details.
 
 ---
@@ -307,6 +461,9 @@ Import road networks from OSM via Overpass API.
    - Detail Level: Moderate or Full
    - Lane Width: Default when not in OSM
 3. Click Import
+4. Review the **import report dialog** showing:
+   - Statistics (roads, junctions, signals imported)
+   - Warnings and geometry conversion notes
 
 See the [OSM Import Guide](OSM_IMPORT.md) for details.
 
@@ -314,9 +471,13 @@ See the [OSM Import Guide](OSM_IMPORT.md) for details.
 
 Import existing .xodr files for round-trip editing:
 
-1. File → Import OpenDRIVE
+1. File → Import OpenDRIVE (Ctrl+Shift+O)
 2. Select .xodr file
-3. Review imported elements
+3. Review the **import dialog** with options and preview
+4. Check the import report for:
+   - Number of roads, junctions, signals, objects imported
+   - Geometry type conversions performed
+   - Any warnings about unsupported elements
 
 ---
 
@@ -327,13 +488,30 @@ Import existing .xodr files for round-trip editing:
 1. Press **Ctrl+E** or File → Export to OpenDrive
 2. Review the Export Dialog:
    - Project Summary: counts of elements
-   - Georeferencing Status: ✓ Active (green) required
+   - Georeferencing Status: Active (green) required
    - Transformation Info: control points, RMS error, scale
 3. Set export options:
    - **Preserve Geometry**: Keep all polyline points (default)
-   - **Curve Fitting**: Enable line/arc fitting tolerances
+   - **Curve Fitting**: Enable line/arc fitting with configurable tolerances:
+     - **Line tolerance**: Maximum deviation for line segments (meters)
+     - **Arc tolerance**: Maximum deviation for arc segments (meters)
+     - **Clothoid tolerance**: Maximum deviation for clothoid segments (meters)
+   - **Enable Clothoids**: Toggle clothoid (Euler spiral) fitting
+   - **XSD Validation**: Toggle schema validation against ASAM XSD (requires `--xodr_schema` flag)
 4. Click "Browse" to select output location
 5. Click "Export"
+
+### Export Georeferencing
+
+Export georeferencing parameters separately:
+
+1. File → Export Georeferencing
+2. Select output location for the JSON file
+3. The export includes:
+   - Control points (pixel and geographic coordinates)
+   - Transformation matrices (forward and inverse)
+   - Scale factors (meters per pixel)
+   - Reprojection error statistics
 
 ### Schema Validation
 
@@ -353,6 +531,7 @@ The generated .xodr file includes:
 - Lane widths and road marks
 - Junction connections
 - Signals and objects
+- Parking spaces
 - Geographic reference (PROJ4)
 
 ---
@@ -370,6 +549,38 @@ The generated .xodr file includes:
 | Fit to window | Ctrl + 0 |
 | Reset view | Ctrl + R |
 
+### Overlays
+
+| Overlay | Menu | Description |
+|---------|------|-------------|
+| Show Lanes | View → Show Lanes (Ctrl+L) | Display lane polygons for all roads |
+| Show S-Offsets | View → Show S-Offsets | Display s-coordinate markers along roads |
+| Show Junction Debug | View → Show Junction Debug | Show junction geometry debug information |
+| Show Uncertainty Overlay | View → Show Uncertainty Overlay | Visualize georeferencing uncertainty across the image |
+
+---
+
+## Preferences
+
+Access via **Edit → Preferences**.
+
+### General
+
+- **Map Name**: Name used in the OpenDRIVE header
+- **Transformation Method**: Affine or Homography
+- **Traffic Side**: Right-hand or left-hand traffic
+- **Country Code**: ISO country code for sign library and export
+
+### Junction Offsets
+
+- **Junction Offset Distance**: Distance to trim roads at junctions
+- **Roundabout Ring Offset**: Offset for roundabout ring road generation
+- **Roundabout Approach Offset**: Offset for roundabout approach roads
+
+### Sign Library
+
+- **Active Library**: Select the sign library to use (based on country)
+
 ---
 
 ## Keyboard Shortcuts
@@ -385,12 +596,15 @@ The generated .xodr file includes:
 | Ctrl+I | Load Image |
 | Ctrl+E | Export to OpenDrive |
 | Ctrl+Shift+I | Import OSM Data |
+| Ctrl+Shift+O | Import from OpenDRIVE |
 | Ctrl+Q | Quit |
 
 ### Editing
 
 | Shortcut | Action |
 |----------|--------|
+| Ctrl+Z | Undo |
+| Ctrl+Y | Redo |
 | Delete | Delete selected item |
 | Esc | Cancel current operation |
 
@@ -403,6 +617,19 @@ The generated .xodr file includes:
 | Esc | Cancel polyline |
 | Ctrl+G | Group to road |
 | Ctrl+J | Add junction |
+| Ctrl+Shift+R | Create roundabout |
+| Ctrl+T | Add signal |
+| Ctrl+Alt+O | Add object |
+| Ctrl+Shift+P | Add parking |
+
+### Georeferencing
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+Shift+G | Control points (Georeferencing) |
+| Ctrl+Shift+A | Adjust alignment |
+| Ctrl+M | Measure distance |
+| Ctrl+K | Show scale factor |
 
 ### View
 
@@ -412,6 +639,7 @@ The generated .xodr file includes:
 | Ctrl + - | Zoom out |
 | Ctrl+0 | Fit to window |
 | Ctrl+R | Reset view |
+| Ctrl+L | Show lanes |
 
 ---
 
@@ -486,4 +714,4 @@ The generated .xodr file includes:
 
 ---
 
-**Last Updated**: 2026-01
+**Last Updated**: 2026-02

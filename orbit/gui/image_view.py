@@ -5,33 +5,39 @@ Provides interactive image display with zoom, pan, and polyline drawing/editing.
 """
 
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
+from typing import Dict, List, Optional, Tuple
+
 import cv2
 import numpy as np
-
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsItem, QMenu, QMessageBox, QGraphicsPolygonItem, QGraphicsPathItem, QGraphicsRectItem
-from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QLineF
-from PyQt6.QtGui import (
-    QPixmap, QImage, QPen, QColor, QBrush, QPainter,
-    QWheelEvent, QMouseEvent, QKeyEvent, QFont
+from PyQt6.QtCore import QLineF, QPointF, QRectF, Qt, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QFont, QImage, QKeyEvent, QMouseEvent, QPainter, QPen, QPixmap, QWheelEvent
+from PyQt6.QtWidgets import (
+    QGraphicsEllipseItem,
+    QGraphicsItem,
+    QGraphicsPathItem,
+    QGraphicsPixmapItem,
+    QGraphicsRectItem,
+    QGraphicsScene,
+    QGraphicsView,
+    QMenu,
+    QMessageBox,
 )
 
-from orbit.models import Polyline, Project, Junction, LineType, RoadMarkType, Road, Signal, RoadObject, ObjectType
-from orbit.utils.geometry import create_lane_polygon, calculate_directional_scale
-from orbit.utils.coordinate_transform import TransformAdjustment
-from .graphics.signal_graphics_item import SignalGraphicsItem
-from .graphics.object_graphics_item import ObjectGraphicsItem
-from .graphics.parking_item import ParkingGraphicsItem
-from .utils.message_helpers import show_warning, ask_yes_no
 from orbit.gui.graphics import (
-    PolylineGraphicsItem,
-    JunctionMarkerItem,
-    InteractiveLanePolygon,
-    LaneGraphicsItem,
-    RoadLanesGraphicsItem,
     ConnectingRoadGraphicsItem,
     ConnectingRoadLanesGraphicsItem,
+    InteractiveLanePolygon,
+    JunctionMarkerItem,
+    PolylineGraphicsItem,
+    RoadLanesGraphicsItem,
 )
+from orbit.models import Junction, LineType, ObjectType, Polyline, Project, Road, RoadObject, Signal
+from orbit.utils.coordinate_transform import TransformAdjustment
+
+from .graphics.object_graphics_item import ObjectGraphicsItem
+from .graphics.parking_item import ParkingGraphicsItem
+from .graphics.signal_graphics_item import SignalGraphicsItem
+from .utils.message_helpers import ask_yes_no, show_warning
 
 
 class ImageView(QGraphicsView):
@@ -40,7 +46,10 @@ class ImageView(QGraphicsView):
     # Signals
     polyline_added = pyqtSignal(object)  # Emits Polyline
     polyline_modified = pyqtSignal(str)  # Emits polyline ID
-    polyline_modified_for_undo = pyqtSignal(str, list, list, object, object)  # For undo: polyline_id, old_points, new_points, old_geo, new_geo
+    # For undo: polyline_id, old_points, new_points, old_geo, new_geo
+    polyline_modified_for_undo = pyqtSignal(
+        str, list, list, object, object
+    )
     polyline_deleted = pyqtSignal(str)  # Emits polyline ID
     polyline_edit_requested = pyqtSignal(str)  # Emits polyline ID for editing
     polyline_selected = pyqtSignal(str)  # Emits polyline ID when selected in view
@@ -75,6 +84,9 @@ class ImageView(QGraphicsView):
     mouse_moved = pyqtSignal(float, float)  # Emits x, y mouse position in scene coordinates
     adjustment_changed = pyqtSignal(object)  # Emits TransformAdjustment when user adjusts alignment
     area_delete_requested = pyqtSignal(dict)  # Emits dict of item IDs found in area selection
+    # dragged_road_id, target_road_id, dragged_contact, target_contact
+    road_link_requested = pyqtSignal(str, str, str, str)
+    road_unlink_requested = pyqtSignal(str, str)  # road_id, linked_road_id (for disconnect)
 
     def __init__(self, parent=None, verbose: bool = False):
         super().__init__(parent)
@@ -159,6 +171,11 @@ class ImageView(QGraphicsView):
         self.dragging_connecting_road_point = False
         self.drag_connecting_road_id: Optional[str] = None
         # drag_point_index is also used for connecting road point dragging
+
+        # Endpoint snap state (for road connection during drag)
+        self._dragging_endpoint = False  # True if drag_point_index is 0 or last
+        self._snap_target: Optional[tuple] = None  # (road_id, polyline_id, point_index, point_coords)
+        self._snap_indicator: Optional[QGraphicsEllipseItem] = None  # Visual ring on target
 
         # Area selection state (Alt+drag rubber-band)
         self._area_selecting = False
@@ -338,8 +355,6 @@ class ImageView(QGraphicsView):
         junction = self.project.get_junction(junction_id) if self.project else None
         if junction:
             # Get current connecting road IDs from the junction
-            current_conn_road_ids = {cr.id for cr in junction.connecting_roads}
-
             # Find connecting road graphics that belong to this junction but are no longer valid
             orphaned_ids = []
             for conn_road_id in list(self.connecting_road_lanes_items.keys()):
@@ -410,7 +425,6 @@ class ImageView(QGraphicsView):
 
     def add_parking_graphics(self, parking, scale_factor: float = 0.0):
         """Add a parking space to the graphics scene."""
-        from orbit.models.parking import ParkingSpace
         item = ParkingGraphicsItem(parking, scale_factor)
         item.parking_changed = lambda p: self._on_parking_changed(p)
         self.parking_items[parking.id] = item
@@ -771,7 +785,6 @@ class ImageView(QGraphicsView):
 
     def add_control_point_graphics(self, control_point):
         """Add a control point marker to the graphics scene as a crosshair."""
-        from orbit.models import ControlPoint
 
         x, y = control_point.pixel_x, control_point.pixel_y
 
@@ -802,8 +815,8 @@ class ImageView(QGraphicsView):
 
         # Add label with CP name
         if control_point.name:
-            from PyQt6.QtWidgets import QGraphicsTextItem
             from PyQt6.QtGui import QFont
+            from PyQt6.QtWidgets import QGraphicsTextItem
             text_item = QGraphicsTextItem(control_point.name)
             text_item.setDefaultTextColor(QColor(0, 100, 255))  # Bright blue
             font = QFont()
@@ -1206,8 +1219,8 @@ class ImageView(QGraphicsView):
         Returns:
             Tuple of (text_item, bg_item)
         """
-        from PyQt6.QtWidgets import QGraphicsTextItem
         from PyQt6.QtGui import QFont
+        from PyQt6.QtWidgets import QGraphicsTextItem
 
         # Create text item
         text = self._format_soffset(soffset)
@@ -1899,8 +1912,8 @@ class ImageView(QGraphicsView):
         mid_y = (p1.y() + p2.y()) / 2
 
         # Create text item
-        from PyQt6.QtWidgets import QGraphicsTextItem
         from PyQt6.QtGui import QFont
+        from PyQt6.QtWidgets import QGraphicsTextItem
         text_item = QGraphicsTextItem(distance_text)
         text_item.setDefaultTextColor(QColor(255, 255, 255))
         font = QFont()
@@ -1954,7 +1967,11 @@ class ImageView(QGraphicsView):
                 from orbit.utils import create_transformer
 
                 # Create transformer
-                transformer = create_transformer(self.project.control_points, self.project.transform_method, use_validation=True)
+                transformer = create_transformer(
+                    self.project.control_points,
+                    self.project.transform_method,
+                    use_validation=True,
+                )
 
                 if transformer:
                     # Convert both points to meters
@@ -2697,7 +2714,8 @@ class ImageView(QGraphicsView):
 
     def _show_centerline_point_menu(self, view_pos, polyline_id: str, point_index: int):
         """
-        Show context menu for centerline point with Delete, Split Section, and Split Road options.
+        Show context menu for centerline point with Delete, Split Section,
+        Split Road, and Disconnect options.
 
         Args:
             view_pos: Position in view coordinates
@@ -2724,11 +2742,34 @@ class ImageView(QGraphicsView):
             # Cannot split at first or last point (would create empty road)
             split_road_action.setEnabled(False)
 
+        # Add disconnect option for connected endpoints
+        disconnect_action = None
+        linked_road_id = None
+        if road and self.project:
+            is_start = (point_index == 0)
+            is_end = (point_index == polyline.point_count() - 1)
+            if is_start and road.predecessor_id and not road.predecessor_junction_id:
+                linked = self.project.get_road(road.predecessor_id)
+                if linked:
+                    linked_name = linked.name or f"Road {linked.id}"
+                    menu.addSeparator()
+                    disconnect_action = menu.addAction(f"Disconnect from '{linked_name}'")
+                    linked_road_id = road.predecessor_id
+            elif is_end and road.successor_id and not road.successor_junction_id:
+                linked = self.project.get_road(road.successor_id)
+                if linked:
+                    linked_name = linked.name or f"Road {linked.id}"
+                    menu.addSeparator()
+                    disconnect_action = menu.addAction(f"Disconnect from '{linked_name}'")
+                    linked_road_id = road.successor_id
+
         # Show menu and get selected action
         action = menu.exec(self.mapToGlobal(view_pos))
 
         if action == delete_action:
             self._delete_point(polyline_id, point_index)
+        elif disconnect_action and action == disconnect_action and road and linked_road_id:
+            self.road_unlink_requested.emit(road.id, linked_road_id)
         elif action == split_section_action and road:
             # Warn if creating a small section
             s_coords = road.calculate_centerline_s_coordinates(polyline.points)
@@ -2743,7 +2784,13 @@ class ImageView(QGraphicsView):
 
                     # Warn if within 5% of section length
                     if min_distance < section_length * 0.05:
-                        if not ask_yes_no(self, f"This will create a very small section ({min_distance:.1f} pixels).\n\nContinue anyway?", "Small Section Warning"):
+                        if not ask_yes_no(
+                            self,
+                            f"This will create a very small "
+                            f"section ({min_distance:.1f} "
+                            f"pixels).\n\nContinue anyway?",
+                            "Small Section Warning",
+                        ):
                             return
 
             # Emit signal for MainWindow to handle
@@ -2787,6 +2834,79 @@ class ImageView(QGraphicsView):
             if road.centerline_id == polyline_id:
                 return road
         return None
+
+    def _show_snap_indicator(self, x: float, y: float) -> None:
+        """Show or update the snap indicator ring at the given position."""
+        radius = 12
+        if self._snap_indicator is None:
+            self._snap_indicator = QGraphicsEllipseItem(
+                x - radius, y - radius, radius * 2, radius * 2)
+            pen = QPen(QColor(0, 255, 100), 2.5)
+            pen.setCosmetic(True)
+            self._snap_indicator.setPen(pen)
+            self._snap_indicator.setBrush(QBrush(QColor(0, 255, 100, 50)))
+            self._snap_indicator.setZValue(100)
+            self.scene.addItem(self._snap_indicator)
+        else:
+            self._snap_indicator.setRect(
+                x - radius, y - radius, radius * 2, radius * 2)
+
+    def _remove_snap_indicator(self) -> None:
+        """Remove the snap indicator ring from the scene."""
+        if self._snap_indicator is not None:
+            if self._snap_indicator.scene() == self.scene:
+                self.scene.removeItem(self._snap_indicator)
+            self._snap_indicator = None
+
+    def _offer_road_connection(self) -> None:
+        """Show a dialog to connect the dragged road to the snap target."""
+        if not self._snap_target or not self.project or not self.drag_polyline_id:
+            return
+
+        target_road_id, _target_poly_id, target_point_index, _target_coords = self._snap_target
+        dragged_road = self._find_road_by_centerline(self.drag_polyline_id)
+        target_road = self.project.get_road(target_road_id)
+        if not dragged_road or not target_road:
+            return
+
+        # Determine which end of the dragged road was moved
+        polyline = self.project.get_polyline(self.drag_polyline_id)
+        if not polyline:
+            return
+        dragged_is_start = (self.drag_point_index == 0)
+        dragged_contact = "start" if dragged_is_start else "end"
+
+        # Target contact: point_index 0 = "start", -1 = "end"
+        target_contact = "start" if target_point_index == 0 else "end"
+
+        # Check if a connection already exists on this end
+        if dragged_is_start and dragged_road.predecessor_id:
+            return  # Already has a predecessor
+        if not dragged_is_start and dragged_road.successor_id:
+            return  # Already has a successor
+
+        # Check if the target end is already connected
+        if target_contact == "start" and target_road.predecessor_id:
+            return
+        if target_contact == "end" and target_road.successor_id:
+            return
+
+        # Don't offer self-connection
+        if dragged_road.id == target_road.id:
+            return
+
+        target_name = target_road.name or f"Road {target_road.id}"
+        reply = QMessageBox.question(
+            self,
+            "Connect Roads",
+            f"Connect to '{target_name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.road_link_requested.emit(
+                dragged_road.id, target_road.id, dragged_contact, target_contact)
 
     def _delete_point(self, polyline_id: str, point_index: int):
         """
@@ -3015,8 +3135,15 @@ class ImageView(QGraphicsView):
                                 polyline.geo_points.insert(insert_index, new_geo)
                             if polyline.elevations is not None:
                                 # Interpolate elevation from neighbours
-                                prev_e = polyline.elevations[insert_index - 1] if insert_index > 0 else 0.0
-                                next_e = polyline.elevations[insert_index] if insert_index < len(polyline.elevations) else prev_e
+                                prev_e = (
+                                    polyline.elevations[insert_index - 1]
+                                    if insert_index > 0 else 0.0
+                                )
+                                next_e = (
+                                    polyline.elevations[insert_index]
+                                    if insert_index < len(polyline.elevations)
+                                    else prev_e
+                                )
                                 polyline.elevations.insert(insert_index, (prev_e + next_e) / 2.0)
                             if polyline.s_offsets is not None:
                                 polyline.s_offsets.insert(insert_index, 0.0)  # Will be recalculated
@@ -3047,12 +3174,12 @@ class ImageView(QGraphicsView):
                         if segment_index >= 0:
                             # Find the connecting road in junctions
                             connecting_road = None
-                            parent_junction = None
+                            _parent_junction = None
                             for junction in self.project.junctions:
                                 for cr in junction.connecting_roads:
                                     if cr.id == conn_road_id:
                                         connecting_road = cr
-                                        parent_junction = junction
+                                        _parent_junction = junction
                                         break
                                 if connecting_road:
                                     break
@@ -3097,6 +3224,11 @@ class ImageView(QGraphicsView):
                         polyline = item.polyline
                         self._drag_start_points = list(polyline.points)
                         self._drag_start_geo_points = list(polyline.geo_points) if polyline.geo_points else None
+                        # Detect endpoint drag for snap-connect feature
+                        is_endpoint = (point_index == 0 or
+                                       point_index == polyline.point_count() - 1)
+                        is_centerline = (polyline.line_type == LineType.CENTERLINE)
+                        self._dragging_endpoint = is_endpoint and is_centerline
                         return
 
                 # Check if clicking on a connecting road point to drag
@@ -3349,7 +3481,25 @@ class ImageView(QGraphicsView):
             item.update_graphics()
         elif self.dragging_point and self.drag_polyline_id:
             item = self.polyline_items[self.drag_polyline_id]
-            item.polyline.update_point(self.drag_point_index, scene_pos.x(), scene_pos.y())
+            drag_x, drag_y = scene_pos.x(), scene_pos.y()
+
+            # Endpoint snap detection
+            if self._dragging_endpoint and self.project:
+                road = self._find_road_by_centerline(self.drag_polyline_id)
+                exclude_id = road.id if road else None
+                nearby = self.project.find_nearby_road_endpoints(
+                    (drag_x, drag_y), exclude_road_id=exclude_id, tolerance=20.0)
+                if nearby:
+                    target = nearby[0]  # closest
+                    self._snap_target = (target[0], target[1], target[2], target[3])
+                    tx, ty = target[3]
+                    drag_x, drag_y = tx, ty  # snap position
+                    self._show_snap_indicator(tx, ty)
+                else:
+                    self._snap_target = None
+                    self._remove_snap_indicator()
+
+            item.polyline.update_point(self.drag_point_index, drag_x, drag_y)
             item.update_graphics()
         elif self.dragging_connecting_road_point and self.drag_connecting_road_id:
             # Dragging a connecting road point
@@ -3493,6 +3643,14 @@ class ImageView(QGraphicsView):
                 # Update s-offset labels after point drag
                 if self.soffsets_visible:
                     self._update_soffset_labels(self.drag_polyline_id)
+
+                # Post-drag road connection suggestion
+                if self._dragging_endpoint and self._snap_target and self.project:
+                    self._offer_road_connection()
+
+            self._dragging_endpoint = False
+            self._snap_target = None
+            self._remove_snap_indicator()
             self.drag_polyline_id = None
             self.drag_point_index = -1
         elif self.dragging_connecting_road_point:

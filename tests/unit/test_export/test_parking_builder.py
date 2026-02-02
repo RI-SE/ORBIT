@@ -1,11 +1,11 @@
 """Tests for orbit.export.parking_builder module."""
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, MagicMock
-from lxml import etree
 
 from orbit.export.parking_builder import ParkingBuilder
-from orbit.models.parking import ParkingSpace, ParkingAccess, ParkingType
+from orbit.models.parking import ParkingAccess, ParkingSpace
 
 
 class TestParkingBuilderInit:

@@ -6,9 +6,9 @@ Provides visual representation of junctions on the image view.
 
 from typing import List, Optional
 
-from PyQt6.QtWidgets import QGraphicsScene, QGraphicsTextItem
 from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QGraphicsScene, QGraphicsTextItem
 
 from orbit.models import Junction
 

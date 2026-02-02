@@ -1,6 +1,6 @@
 # Validation and Uncertainty Analysis: Technical Guide
 
-**Status**: Production Ready | **Version**: 0.4.0 | **Date**: 2026-01
+**Status**: Production Ready | **Version**: 0.5.0 | **Date**: 2026-02
 
 ## Overview
 
@@ -1235,7 +1235,7 @@ Bilinear interpolation from cache = <1ms
 
 ---
 
-**Document Version**: 0.4.0
-**Last Updated**: 2026-01
+**Document Version**: 0.5.0
+**Last Updated**: 2026-02
 **Authors**: ORBIT Development Team
 **Status**: Production Ready

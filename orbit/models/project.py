@@ -5,19 +5,29 @@ Manages the complete project state including polylines, roads, junctions,
 and georeferencing data. Handles saving/loading to .orbit files.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass, field
-from pathlib import Path
 import json
+from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from orbit.utils.logging_config import get_logger
-from .polyline import Polyline
-from .road import Road
+
 from .junction import Junction, JunctionGroup
-from .signal import Signal
 from .object import RoadObject
 from .parking import ParkingSpace
+from .polyline import Polyline
+from .road import Road
+from .signal import Signal
+
+
+def _get_version() -> str:
+    """Get package version from importlib.metadata, with fallback."""
+    try:
+        from importlib.metadata import version
+        return version("orbit")
+    except Exception:
+        return "0.5.0"
 
 logger = get_logger(__name__)
 
@@ -101,9 +111,12 @@ class Project:
     country_code: str = 'se'  # Default to Sweden
     map_name: str = ''  # Name for OpenDrive export (defaults to image filename when loaded)
     openstreetmap_used: bool = False  # Flag for OpenStreetMap attribution
-    junction_offset_distance_meters: float = 8.0  # Distance to offset road endpoints from junction centers (meters)
-    roundabout_ring_offset_distance_meters: float = 4.0  # Distance to offset ring segment endpoints from roundabout junctions (meters)
-    roundabout_approach_offset_distance_meters: float = 8.0  # Distance to offset approach road endpoints from roundabout junctions (meters)
+    # Distance to offset road endpoints from junction centers (meters)
+    junction_offset_distance_meters: float = 8.0
+    # Distance to offset ring segment endpoints from roundabout junctions (meters)
+    roundabout_ring_offset_distance_meters: float = 4.0
+    # Distance to offset approach road endpoints from roundabout junctions (meters)
+    roundabout_approach_offset_distance_meters: float = 8.0
     georef_validation: Dict[str, Any] = field(default_factory=dict)
     uncertainty_grid_cache: Optional[List[List[float]]] = None  # Cached uncertainty grid
     uncertainty_grid_resolution: Tuple[int, int] = (50, 50)  # Grid resolution
@@ -133,7 +146,7 @@ class Project:
         """Initialize metadata if not provided."""
         if not self.metadata:
             self.metadata = {
-                'version': '0.4.0',
+                'version': _get_version(),
                 'created': datetime.now().isoformat(),
                 'modified': datetime.now().isoformat()
             }
@@ -428,7 +441,7 @@ class Project:
             jg.junction_ids = _remap_list(jg.junction_ids, junction_remap)
 
         # Update version
-        self.metadata['version'] = '0.4.0'
+        self.metadata['version'] = _get_version()
 
         logger.info(
             f"Migration complete: {len(polyline_remap)} polylines, "
@@ -543,11 +556,7 @@ class Project:
         Returns:
             Tuple of (road1, road2) if successful, None on failure
         """
-        from orbit.utils.geometry import (
-            split_polyline_at_index,
-            split_boundary_at_centerline_s,
-            calculate_path_length
-        )
+        from orbit.utils.geometry import split_boundary_at_centerline_s, split_polyline_at_index
 
         # Get road and centerline
         road = self.get_road(road_id)
@@ -709,9 +718,15 @@ class Project:
 
         # Update road 1 (original road)
         road.name = road1_name
+        new_boundary_polylines = [
+            self.get_polyline(nid)
+            for nid in new_boundary_ids
+            if self.get_polyline(nid)
+        ]
+        new_boundary_id_set = {nb.id for nb in new_boundary_polylines}
         road.polyline_ids = [polyline_id] + [
             bid for bid in road.polyline_ids
-            if bid != polyline_id and bid not in [nb.id for nb in [self.get_polyline(nid) for nid in new_boundary_ids if self.get_polyline(nid)]]
+            if bid != polyline_id and bid not in new_boundary_id_set
         ]
         road.lane_sections = sections_road1
         road.successor_id = road2.id
@@ -901,11 +916,8 @@ class Project:
             The merged road (road1 with updated data), or None on failure
         """
         import re
-        from orbit.utils.geometry import (
-            merge_polylines_at_junction,
-            calculate_path_length,
-            distance_between_points
-        )
+
+        from orbit.utils.geometry import calculate_path_length, distance_between_points, merge_polylines_at_junction
 
         # Get both roads
         road1 = self.get_road(road1_id)
@@ -1209,6 +1221,111 @@ class Project:
                 return parking
         return None
 
+    def find_nearby_road_endpoints(
+        self,
+        position: Tuple[float, float],
+        exclude_road_id: Optional[str] = None,
+        tolerance: float = 20.0
+    ) -> List[Tuple[str, str, int, Tuple[float, float], float]]:
+        """Find road centerline endpoints near a position.
+
+        Only checks first/last points of each road's centerline polyline.
+        Skips roads connected via junctions (junction_id set) and
+        roads without a centerline.
+
+        Args:
+            position: (x, y) pixel coordinates to search near
+            exclude_road_id: Road ID to exclude from results (e.g. the road being dragged)
+            tolerance: Maximum distance in pixels to consider "nearby"
+
+        Returns:
+            List of (road_id, polyline_id, point_index, point_coords, distance)
+            sorted by distance. point_index is 0 (start) or -1 (end).
+        """
+        px, py = position
+        results = []
+
+        for road in self.roads:
+            if road.id == exclude_road_id:
+                continue
+            if road.junction_id:
+                continue  # Skip connecting roads inside junctions
+            if not road.centerline_id:
+                continue
+
+            centerline = self.get_polyline(road.centerline_id)
+            if not centerline or len(centerline.points) < 2:
+                continue
+
+            # Check start point
+            sx, sy = centerline.points[0]
+            dist = ((px - sx) ** 2 + (py - sy) ** 2) ** 0.5
+            if dist <= tolerance:
+                results.append((road.id, road.centerline_id, 0, (sx, sy), dist))
+
+            # Check end point
+            ex, ey = centerline.points[-1]
+            dist = ((px - ex) ** 2 + (py - ey) ** 2) ** 0.5
+            if dist <= tolerance:
+                results.append((road.id, road.centerline_id, -1, (ex, ey), dist))
+
+        results.sort(key=lambda r: r[4])
+        return results
+
+    def enforce_road_link_coordinates(self, road_id: str) -> bool:
+        """Snap a road's endpoints to match its connected roads' endpoints.
+
+        Uses predecessor_contact/successor_contact to determine which
+        endpoint on each connected road to align with.
+
+        Args:
+            road_id: ID of the road whose endpoints should be enforced
+
+        Returns:
+            True if any coordinates were changed, False otherwise
+        """
+        road = self.get_road(road_id)
+        if not road or not road.centerline_id:
+            return False
+
+        centerline = self.get_polyline(road.centerline_id)
+        if not centerline or len(centerline.points) < 2:
+            return False
+
+        changed = False
+
+        # Enforce predecessor link
+        if road.predecessor_id and not road.predecessor_junction_id:
+            pred = self.get_road(road.predecessor_id)
+            if pred and pred.centerline_id:
+                pred_cl = self.get_polyline(pred.centerline_id)
+                if pred_cl and len(pred_cl.points) >= 2:
+                    # Which end of predecessor connects?
+                    pred_point = (pred_cl.points[-1]
+                                  if road.predecessor_contact == "end"
+                                  else pred_cl.points[0])
+                    # This road's start connects to predecessor
+                    if centerline.points[0] != pred_point:
+                        centerline.points[0] = pred_point
+                        changed = True
+
+        # Enforce successor link
+        if road.successor_id and not road.successor_junction_id:
+            succ = self.get_road(road.successor_id)
+            if succ and succ.centerline_id:
+                succ_cl = self.get_polyline(succ.centerline_id)
+                if succ_cl and len(succ_cl.points) >= 2:
+                    # Which end of successor connects?
+                    succ_point = (succ_cl.points[0]
+                                  if road.successor_contact == "start"
+                                  else succ_cl.points[-1])
+                    # This road's end connects to successor
+                    if centerline.points[-1] != succ_point:
+                        centerline.points[-1] = succ_point
+                        changed = True
+
+        return changed
+
     def find_closest_road(self, position: Tuple[float, float]) -> Optional[str]:
         """
         Find the road closest to a given position.
@@ -1372,7 +1489,7 @@ class Project:
             # by providing empty lists for new fields (connecting_roads, lane_connections)
             # Polyline.from_dict() handles osm_node_ids (optional field, defaults to None)
             # UUID→integer ID migration is handled by _migrate_uuid_ids() after construction
-            metadata['version'] = '0.4.0'
+            metadata['version'] = _get_version()
             data['metadata'] = metadata
 
         image_path = data.get('image_path')
@@ -1483,7 +1600,7 @@ class Project:
         self.control_points.clear()
         self.image_path = None
         self.metadata = {
-            'version': '0.4.0',
+            'version': _get_version(),
             'created': datetime.now().isoformat(),
             'modified': datetime.now().isoformat()
         }

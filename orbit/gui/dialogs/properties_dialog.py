@@ -6,17 +6,32 @@ Allows editing of road properties including lanes, speed, type, etc.
 
 from typing import Optional
 
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox,
-    QPushButton, QGroupBox, QLabel, QDialogButtonBox, QCheckBox,
-    QToolButton, QWidget, QTableWidget, QTableWidgetItem, QHeaderView,
-    QScrollArea, QFrame
-)
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
-from orbit.models import Road, RoadType, LaneInfo, Project, LineType
+from orbit.models import LineType, Project, Road, RoadType
 from orbit.utils import format_enum_name
+
 from ..utils import set_combo_by_data
 from .base_dialog import InfoIconLabel
 
@@ -24,7 +39,13 @@ from .base_dialog import InfoIconLabel
 class RoadPropertiesDialog(QDialog):
     """Dialog for editing road properties."""
 
-    def __init__(self, road: Optional[Road] = None, project: Optional[Project] = None, parent=None, verbose: bool = False):
+    def __init__(
+        self,
+        road: Optional[Road] = None,
+        project: Optional[Project] = None,
+        parent=None,
+        verbose: bool = False,
+    ):
         super().__init__(parent)
 
         self.road = road if road else Road(id=project.next_id('road') if project else "")
@@ -555,6 +576,9 @@ class RoadPropertiesDialog(QDialog):
             self.road.successor_id = self.successor_combo.currentData()
             self.road.successor_contact = self.successor_contact_combo.currentData()
 
+            # Enforce endpoint coordinate alignment with connected roads
+            self.project.enforce_road_link_coordinates(self.road.id)
+
         # Lane info
         old_left_count = self.road.lane_info.left_count
         old_right_count = self.road.lane_info.right_count
@@ -598,18 +622,32 @@ class RoadPropertiesDialog(QDialog):
                 "<b style='color: #ff6600;'>⚠ Warning: No road reference lines found among road's polylines.</b><br>"
                 "Mark one polyline as a road reference line (double-click the polyline)."
             )
-            self.centerline_warning_label.setStyleSheet("QLabel { padding: 5px; background-color: #fff3cd; border-radius: 3px; }")
+            self.centerline_warning_label.setStyleSheet(
+                "QLabel { padding: 5px; "
+                "background-color: #fff3cd; border-radius: 3px; }"
+            )
         elif centerline_count == 1:
             self.centerline_warning_label.setText(
-                "<b style='color: #28a745;'>✓ Good: Exactly one road reference line found.</b>"
+                "<b style='color: #28a745;'>"
+                "✓ Good: Exactly one road reference line found."
+                "</b>"
             )
-            self.centerline_warning_label.setStyleSheet("QLabel { padding: 5px; background-color: #d4edda; border-radius: 3px; }")
+            self.centerline_warning_label.setStyleSheet(
+                "QLabel { padding: 5px; "
+                "background-color: #d4edda; border-radius: 3px; }"
+            )
         else:  # centerline_count > 1
             self.centerline_warning_label.setText(
-                f"<b style='color: #dc3545;'>✗ Error: {centerline_count} road reference lines found, but only 1 is allowed.</b><br>"
-                "Change extra road reference lines to lane boundaries (double-click polylines)."
+                f"<b style='color: #dc3545;'>"
+                f"✗ Error: {centerline_count} road reference lines "
+                f"found, but only 1 is allowed.</b><br>"
+                "Change extra road reference lines to lane "
+                "boundaries (double-click polylines)."
             )
-            self.centerline_warning_label.setStyleSheet("QLabel { padding: 5px; background-color: #f8d7da; border-radius: 3px; }")
+            self.centerline_warning_label.setStyleSheet(
+                "QLabel { padding: 5px; "
+                "background-color: #f8d7da; border-radius: 3px; }"
+            )
 
     def update_total_lanes(self):
         """Update the total lanes display."""
@@ -704,7 +742,13 @@ class RoadPropertiesDialog(QDialog):
         return self.road
 
     @classmethod
-    def edit_road(cls, road: Road, project: Optional[Project] = None, parent=None, verbose: bool = False) -> Optional[Road]:
+    def edit_road(
+        cls,
+        road: Road,
+        project: Optional[Project] = None,
+        parent=None,
+        verbose: bool = False,
+    ) -> Optional[Road]:
         """
         Show dialog to edit a road's properties.
 
