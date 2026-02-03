@@ -682,6 +682,26 @@ class OpenDriveWriter:
             else:
                 end_heading = 0.0
 
+            # Override CR headings with actual connected road headings
+            # for C1 (tangent) continuity at junction connections.
+            # The stored headings come from junction analysis and may differ
+            # from the road centerline tangent, causing lane-edge gaps.
+            pred_road = self.road_map.get(connecting_road.predecessor_road_id)
+            if pred_road and pred_road.centerline_id:
+                road_hdg = self._get_road_heading_at_contact_meters(
+                    pred_road.centerline_id, connecting_road.contact_point_start
+                )
+                if road_hdg is not None:
+                    start_heading = road_hdg
+
+            succ_road = self.road_map.get(connecting_road.successor_road_id)
+            if succ_road and succ_road.centerline_id:
+                road_hdg = self._get_road_heading_at_contact_meters(
+                    succ_road.centerline_id, connecting_road.contact_point_end
+                )
+                if road_hdg is not None:
+                    end_heading = road_hdg
+
             # Transform end point from global to local u/v coordinates
             # Local frame: origin at start_point, u-axis along start_heading, v-axis 90° CCW
             dx_global = end_point_meters[0] - start_point_meters[0]

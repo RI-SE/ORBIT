@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <OpenDRIVE xmlns="http://code.asam.net/simulation/standard/opendrive_schema">
-  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-02-03T15:23:17.918608" north="6375277.0348" south="6375189.0226" east="320826.7133" west="320628.5245" vendor="ORBIT by RISE Research Institutes of Sweden">
+  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-02-03T17:43:50.358340" north="6375277.0348" south="6375189.0226" east="320826.7133" west="320628.5245" vendor="ORBIT by RISE Research Institutes of Sweden">
     <geoReference>+proj=utm +zone=33 +north +ellps=WGS84 +datum=WGS84 +units=m +no_defs</geoReference>
     <userData code="tool">Produced by ORBIT (https://github.com/fwrise/ORBIT)</userData>
     <userData code="license">Licensed under the Open Database License (https://opendatacommons.org/licenses/odbl/1-0/)</userData>
@@ -643,8 +643,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320707.3842" y="6375269.6605" hdg="-2.765625" length="9.3730">
-        <paramPoly3 aU="0.0000000000" bU="13.8009948986" cU="-14.4858022906" dU="9.5626287292" aV="0.0000000000" bV="0.0000000000" cV="4.4636431461" dV="-2.0477596981" pRange="normalized"/>
+      <geometry s="0.0000" x="320707.3842" y="6375269.6605" hdg="-2.860793" length="9.3730">
+        <paramPoly3 aU="0.0000000000" bU="13.8009948986" cU="-12.7927599993" dU="7.5998442733" aV="0.0000000000" bV="0.0000000000" cV="1.4308262316" dV="1.8177392191" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -684,8 +684,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320706.4143" y="6375273.0235" hdg="-2.766984" length="16.1779">
-        <paramPoly3 aU="0.0000000000" bU="23.6295403322" cU="-23.6350813295" dU="15.7545976398" aV="0.0000000000" bV="0.0000000000" cV="1.6095846288" dV="-1.2559308319" pRange="normalized"/>
+      <geometry s="0.0000" x="320706.4143" y="6375273.0235" hdg="-2.860793" length="16.1779">
+        <paramPoly3 aU="0.0000000000" bU="23.6295403322" cU="-23.9375780280" dU="15.9547194952" aV="0.0000000000" bV="0.0000000000" cV="6.2028900008" dV="-4.3755408811" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -717,8 +717,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320695.4979" y="6375246.9816" hdg="-1.261258" length="3.9192">
-        <paramPoly3 aU="0.0000000000" bU="5.8396301298" cU="-5.6935204793" dU="3.7469128964" aV="0.0000000000" bV="0.0000000000" cV="-1.3660368026" dV="1.3436779768" pRange="normalized"/>
+      <geometry s="0.0000" x="320695.4979" y="6375246.9816" hdg="-1.498208" length="3.9192">
+        <paramPoly3 aU="0.0000000000" bU="5.8396301298" cU="-5.7380259900" dU="3.6878902016" aV="0.0000000000" bV="0.0000000000" cV="0.5208082938" dV="0.3712999420" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -758,8 +758,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320685.8412" y="6375254.0311" hdg="-0.963070" length="15.2796">
-        <paramPoly3 aU="0.0000000000" bU="21.7294612982" cU="-21.7133211705" dU="14.4522794327" aV="0.0000000000" bV="0.0000000000" cV="-0.4187178725" dV="-0.3009635442" pRange="normalized"/>
+      <geometry s="0.0000" x="320685.8412" y="6375254.0311" hdg="-0.824440" length="15.2796">
+        <paramPoly3 aU="0.0000000000" bU="21.7294612982" cU="-21.5547577837" dU="14.0554586321" aV="0.0000000000" bV="0.0000000000" cV="-1.8040344063" dV="-0.9080849120" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -791,8 +791,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320697.9826" y="6375240.5384" hdg="-1.037402" length="4.7014">
-        <paramPoly3 aU="0.0000000000" bU="7.0202027041" cU="-6.9102153968" dU="4.5368450618" aV="0.0000000000" bV="0.0000000000" cV="-0.0318262742" dV="0.5891536691" pRange="normalized"/>
+      <geometry s="0.0000" x="320697.9826" y="6375240.5384" hdg="-1.120147" length="4.7014">
+        <paramPoly3 aU="0.0000000000" bU="7.0202027041" cU="-6.8935008176" dU="4.4581681712" aV="0.0000000000" bV="0.0000000000" cV="0.4474894516" dV="0.4919952186" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -832,8 +832,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320694.7758" y="6375238.9868" hdg="-1.043821" length="13.8364">
-        <paramPoly3 aU="0.0000000000" bU="20.7100852067" cU="-19.9477986142" dU="12.8358631765" aV="0.0000000000" bV="0.0000000000" cV="0.2817830559" dV="-2.6725854040" pRange="normalized"/>
+      <geometry s="0.0000" x="320694.7758" y="6375238.9868" hdg="-1.120147" length="13.8364">
+        <paramPoly3 aU="0.0000000000" bU="20.7100852067" cU="-19.7024724266" dU="12.7332507231" aV="0.0000000000" bV="0.0000000000" cV="2.9209499876" dV="-4.2679032883" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -865,8 +865,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320716.0611" y="6375229.9697" hdg="0.255285" length="7.7869">
-        <paramPoly3 aU="0.0000000000" bU="11.5666675290" cU="-11.2196872423" dU="7.3605864884" aV="0.0000000000" bV="0.0000000000" cV="-3.5553045460" dV="3.3215143807" pRange="normalized"/>
+      <geometry s="0.0000" x="320716.0611" y="6375229.9697" hdg="-0.014247" length="7.7869">
+        <paramPoly3 aU="0.0000000000" bU="11.5666675290" cU="-10.9208307690" dU="6.8457066793" aV="0.0000000000" bV="0.0000000000" cV="0.1447310021" dV="1.6822939926" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -906,8 +906,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320711.0484" y="6375220.7512" hdg="0.712521" length="16.1510">
-        <paramPoly3 aU="0.0000000000" bU="24.1744222454" cU="-24.7330298303" dU="16.3190841536" aV="0.0000000000" bV="0.0000000000" cV="-5.1696287097" dV="1.8018538341" pRange="normalized"/>
+      <geometry s="0.0000" x="320711.0484" y="6375220.7512" hdg="0.693982" length="16.1510">
+        <paramPoly3 aU="0.0000000000" bU="24.1744222454" cU="-24.4331756226" dU="16.0789532519" aV="0.0000000000" bV="0.0000000000" cV="-3.7443099888" dV="0.6692806861" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -939,8 +939,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320726.8100" y="6375233.3124" hdg="0.504688" length="7.8505">
-        <paramPoly3 aU="0.0000000000" bU="11.6230111904" cU="-11.9758028073" dU="7.8629856477" aV="0.0000000000" bV="0.0000000000" cV="2.8420654611" dV="-0.9344658319" pRange="normalized"/>
+      <geometry s="0.0000" x="320726.8100" y="6375233.3124" hdg="0.465276" length="7.8505">
+        <paramPoly3 aU="0.0000000000" bU="11.6230111904" cU="-10.3642474656" dU="6.1704348789" aV="0.0000000000" bV="0.0000000000" cV="-0.2221389892" dV="2.4241741461" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -980,8 +980,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320728.3803" y="6375230.1845" hdg="0.507039" length="14.5421">
-        <paramPoly3 aU="0.0000000000" bU="20.8345881980" cU="-20.3774398691" dU="13.4080727727" aV="0.0000000000" bV="0.0000000000" cV="2.1982484515" dV="-3.0229407011" pRange="normalized"/>
+      <geometry s="0.0000" x="320728.3803" y="6375230.1845" hdg="0.465276" length="14.5421">
+        <paramPoly3 aU="0.0000000000" bU="20.8345881980" cU="-20.6372029429" dU="13.6901777118" aV="0.0000000000" bV="0.0000000000" cV="2.1722500378" dV="-2.4173384744" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -1013,8 +1013,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320735.5380" y="6375254.9484" hdg="1.818737" length="9.1767">
-        <paramPoly3 aU="0.0000000000" bU="13.5612141007" cU="-13.6430115708" dU="8.9832382792" aV="0.0000000000" bV="0.0000000000" cV="1.7425737508" dV="-0.1612495785" pRange="normalized"/>
+      <geometry s="0.0000" x="320735.5380" y="6375254.9484" hdg="1.701425" length="9.1767">
+        <paramPoly3 aU="0.0000000000" bU="13.5612141007" cU="-12.4424471377" dU="7.5364091101" aV="0.0000000000" bV="0.0000000000" cV="0.3174241237" dV="2.2948855363" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -1054,8 +1054,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320744.7438" y="6375254.5965" hdg="2.784192" length="15.4549">
-        <paramPoly3 aU="0.0000000000" bU="22.4792429292" cU="-21.2633760430" dU="12.2343216096" aV="0.0000000000" bV="0.0000000000" cV="-4.7299220240" dV="-1.8789719457" pRange="normalized"/>
+      <geometry s="0.0000" x="320744.7438" y="6375254.5965" hdg="2.633584" length="15.4549">
+        <paramPoly3 aU="0.0000000000" bU="22.4792429292" cU="-23.2490120147" dU="15.0592995249" aV="0.0000000000" bV="0.0000000000" cV="-5.9580371478" dV="1.4420245376" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
