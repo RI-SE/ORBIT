@@ -1,0 +1,6696 @@
+{
+  "metadata": {
+    "version": "0.5.0",
+    "created": "2026-02-03T11:29:53.461231",
+    "modified": "2026-02-03T12:27:37.156491"
+  },
+  "image_path": "/home/fredrik/fwrise/ORBIT/examples/SaroRound/SaroRound_firstframe.png",
+  "polylines": [
+    {
+      "id": "1",
+      "points": [
+        [
+          2189.1505066192044,
+          406.3011333740172
+        ],
+        [
+          2169.276151246504,
+          360.8850635528919
+        ],
+        [
+          2153.6034284864936,
+          313.5393226767101
+        ],
+        [
+          2132.489669383685,
+          229.08428626547507
+        ],
+        [
+          2127.69108776941,
+          112.28680977402841
+        ],
+        [
+          2137.2882509979595,
+          -41.267801882762576
+        ],
+        [
+          2158.402010100768,
+          -142.03801578253166
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none",
+      "geo_points": [
+        [
+          12.00893523836926,
+          57.484121423808034
+        ],
+        [
+          12.008942726701997,
+          57.484095068592225
+        ],
+        [
+          12.00894615670628,
+          57.48406772909393
+        ],
+        [
+          12.008947750792565,
+          57.484018847480904
+        ],
+        [
+          12.008928585143353,
+          57.48395028431134
+        ],
+        [
+          12.008888907890716,
+          57.4838597547737
+        ],
+        [
+          12.008849894036915,
+          57.4838000741822
+        ]
+      ],
+      "osm_node_ids": [
+        1609681001,
+        1609680995,
+        1609680978,
+        1609680975,
+        1609680954,
+        1609680930,
+        1609680907
+      ]
+    },
+    {
+      "id": "3",
+      "points": [
+        [
+          2473.0195651365184,
+          1136.3971833049013
+        ],
+        [
+          2542.144931294551,
+          1092.8958752916565
+        ],
+        [
+          2815.3689001174653,
+          976.6937511466876
+        ],
+        [
+          2941.8802383532443,
+          944.5742922163603
+        ],
+        [
+          3123.1555520193956,
+          924.2538181992144
+        ],
+        [
+          3276.8999008881237,
+          917.6988265807803
+        ],
+        [
+          3499.173707585936,
+          940.939251409774
+        ],
+        [
+          3704.7620810731887,
+          965.9674012256135
+        ],
+        [
+          4038.470745284382,
+          1014.8318841993953
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none",
+      "geo_points": [
+        [
+          12.008842289738727,
+          57.48450750702895
+        ],
+        [
+          12.00878253971086,
+          57.48449171871012
+        ],
+        [
+          12.008560402469215,
+          57.484455295413966
+        ],
+        [
+          12.008463834045626,
+          57.48444843002625
+        ],
+        [
+          12.008329822195515,
+          57.48445068974807
+        ],
+        [
+          12.008217731017824,
+          57.48445781582819
+        ],
+        [
+          12.008066748612617,
+          57.48448309968554
+        ],
+        [
+          12.007930217557169,
+          57.48450782714071
+        ],
+        [
+          12.007715860834384,
+          57.484550961723706
+        ]
+      ],
+      "osm_node_ids": [
+        1609681137,
+        1609681132,
+        1609681119,
+        1609681105,
+        1609681101,
+        1609681099,
+        1609681103,
+        1609681114,
+        1609681121,
+        1609681135
+      ]
+    },
+    {
+      "id": "5",
+      "points": [
+        [
+          379.6344527637254,
+          1043.7977938767735
+        ],
+        [
+          18.29933538405103,
+          1052.8954111312155
+        ],
+        [
+          -223.83431295909747,
+          1057.09595352504
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none",
+      "geo_points": [
+        [
+          12.01051296706374,
+          57.4843124221459
+        ],
+        [
+          12.010829510275505,
+          57.48428883314539
+        ],
+        [
+          12.011046156844714,
+          57.48427167068153
+        ]
+      ],
+      "osm_node_ids": [
+        1609681034,
+        1609681030,
+        1609681024
+      ]
+    },
+    {
+      "id": "6",
+      "points": [
+        [
+          4003.3121538764167,
+          995.7628176730415
+        ],
+        [
+          3691.6520978363205,
+          946.3024263703111
+        ],
+        [
+          3372.8411418488417,
+          898.0338517254778
+        ],
+        [
+          3076.257566531144,
+          879.0243760320188
+        ],
+        [
+          2941.2247391914007,
+          873.7803827372716
+        ],
+        [
+          2772.7614545976435,
+          863.9478953096203
+        ],
+        [
+          2645.594617200021,
+          835.7614313503535
+        ],
+        [
+          2532.8487613629536,
+          772.1780126515423
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none",
+      "geo_points": [
+        [
+          12.00773939935497,
+          57.484539429065656
+        ],
+        [
+          12.007938358586253,
+          57.484497665932516
+        ],
+        [
+          12.008148652693801,
+          57.48445465439103
+        ],
+        [
+          12.008356429595308,
+          57.48442593751251
+        ],
+        [
+          12.008447449642002,
+          57.48441559748853
+        ],
+        [
+          12.008565270008647,
+          57.48440000647824
+        ],
+        [
+          12.008649973102713,
+          57.48437809317706
+        ],
+        [
+          12.00869651896388,
+          57.484343515524806
+        ]
+      ],
+      "osm_node_ids": [
+        1609681135,
+        1609681115,
+        1609681091,
+        1609681085,
+        1609681077,
+        1609681066,
+        1609681052,
+        1609681044,
+        1609681015
+      ]
+    },
+    {
+      "id": "15",
+      "points": [
+        [
+          1412.3027396080838,
+          731.3420400732309
+        ],
+        [
+          1367.880482359191,
+          753.5531686976772
+        ],
+        [
+          1303.0254815247677,
+          783.0231204971734
+        ],
+        [
+          1146.2973794564261,
+          853.6125839887479
+        ],
+        [
+          950.6050052182012,
+          920.2979221009845
+        ],
+        [
+          708.0198152157916,
+          985.7209038315339
+        ],
+        [
+          378.20340833660833,
+          1031.7557978149766
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none",
+      "geo_points": [
+        [
+          12.009617590077324,
+          57.48422904035215
+        ],
+        [
+          12.009657333554557,
+          57.484237325030556
+        ],
+        [
+          12.009714512471811,
+          57.48424776865941
+        ],
+        [
+          12.009851710498669,
+          57.48427254398517
+        ],
+        [
+          12.010020811727413,
+          57.48429216424851
+        ],
+        [
+          12.010229611769464,
+          57.484307503108056
+        ],
+        [
+          12.010513997806664,
+          57.484305986968806
+        ]
+      ],
+      "osm_node_ids": [
+        1609680997,
+        1609681000,
+        1609681011,
+        1609681017,
+        1609681028,
+        1609681036,
+        1609681034
+      ]
+    },
+    {
+      "id": "21",
+      "points": [
+        [
+          2360.3684000111266,
+          1189.7149175736185
+        ],
+        [
+          2383.8572165993874,
+          1168.9538870061588
+        ],
+        [
+          2442.1738986764653,
+          1086.8320137172705
+        ],
+        [
+          2477.2767622823694,
+          996.5238706581022
+        ],
+        [
+          2487.9294308431117,
+          902.8218115646533
+        ],
+        [
+          2474.2711420821256,
+          810.4962978597775
+        ],
+        [
+          2437.5609940196773,
+          723.831103357218
+        ],
+        [
+          2424.423228368944,
+          706.1068245709133
+        ]
+      ],
+      "color": [
+        255,
+        165,
+        0
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "solid",
+      "osm_node_ids": [
+        1609681137,
+        1609681133,
+        1609681116,
+        1609681095,
+        1609681087,
+        1609681065,
+        1609681043,
+        1609681015
+      ]
+    },
+    {
+      "id": "22",
+      "points": [
+        [
+          2324.139898865919,
+          598.9135011063103
+        ],
+        [
+          2310.067055001558,
+          586.9526562820619
+        ]
+      ],
+      "color": [
+        255,
+        165,
+        0
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "solid",
+      "osm_node_ids": [
+        1609681015,
+        1609681001
+      ]
+    },
+    {
+      "id": "23",
+      "points": [
+        [
+          2234.8219778256057,
+          545.0822511690619
+        ],
+        [
+          2190.9022351087056,
+          522.5135771551165
+        ],
+        [
+          2068.8535344452007,
+          491.70205049759045
+        ],
+        [
+          1942.1844672104403,
+          487.8395806048249
+        ],
+        [
+          1818.7731859023504,
+          510.77638129365073
+        ],
+        [
+          1773.6647598259788,
+          529.981511764457
+        ]
+      ],
+      "color": [
+        255,
+        165,
+        0
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "solid",
+      "osm_node_ids": [
+        1609681001,
+        1609680996,
+        1609680982,
+        1609680979,
+        1609680980,
+        1609680984
+      ]
+    },
+    {
+      "id": "24",
+      "points": [
+        [
+          1645.708776188267,
+          602.0446340852942
+        ],
+        [
+          1630.7128204399064,
+          612.8255456670505
+        ]
+      ],
+      "color": [
+        255,
+        165,
+        0
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "solid",
+      "osm_node_ids": [
+        1609680984,
+        1609680997
+      ]
+    },
+    {
+      "id": "25",
+      "points": [
+        [
+          1569.971124348175,
+          678.1237161153298
+        ],
+        [
+          1542.4964667981226,
+          710.2531371755792
+        ],
+        [
+          1495.5742613800824,
+          812.5810778771944
+        ],
+        [
+          1481.0810710016804,
+          922.7205511089734
+        ],
+        [
+          1500.8806266902416,
+          1033.3527647490178
+        ],
+        [
+          1520.807202340271,
+          1071.3247091743838
+        ]
+      ],
+      "color": [
+        255,
+        165,
+        0
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "solid",
+      "osm_node_ids": [
+        1609680997,
+        1609681002,
+        1609681019,
+        1609681050,
+        1609681081,
+        1609681093
+      ]
+    },
+    {
+      "id": "26",
+      "points": [
+        [
+          1604.1904020366087,
+          1191.979739672678
+        ],
+        [
+          1611.0993628480066,
+          1199.759696263285
+        ],
+        [
+          1680.5832066647854,
+          1253.1475353072756
+        ],
+        [
+          1761.4113228455221,
+          1294.9609127068566
+        ],
+        [
+          1850.5282027940075,
+          1323.0918513897702
+        ],
+        [
+          1945.142516997126,
+          1336.6830596009436
+        ],
+        [
+          1945.142516997126,
+          1336.6830596009436
+        ],
+        [
+          2041.5750515866098,
+          1334.6244826611312
+        ],
+        [
+          2136.0011291435317,
+          1317.2492718206279
+        ],
+        [
+          2225.0331589957914,
+          1284.7571500778427
+        ],
+        [
+          2241.0150905294427,
+          1275.5420679596054
+        ]
+      ],
+      "color": [
+        255,
+        165,
+        0
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "solid",
+      "osm_node_ids": [
+        1609681093,
+        1609681109,
+        1609681134,
+        1609681136,
+        1609681139,
+        1609681150,
+        1609681150,
+        1609681154,
+        1609681152,
+        1609681148,
+        1609681137
+      ]
+    },
+    {
+      "id": "28",
+      "points": [
+        [
+          -194.29721094872633,
+          1107.841794842547
+        ],
+        [
+          187.80678662726493,
+          1086.5017442615012
+        ],
+        [
+          673.8531383750303,
+          1053.3871530823674
+        ],
+        [
+          955.0622788058553,
+          1029.7891832560044
+        ],
+        [
+          1172.4816000274857,
+          1018.1536859782411
+        ],
+        [
+          1304.4433320683952,
+          1032.4111799033783
+        ],
+        [
+          1396.5924291176218,
+          1052.5908028609538
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none",
+      "geo_points": [
+        [
+          12.011017583622154,
+          57.484301265850625
+        ],
+        [
+          12.010680010557968,
+          57.484319934224736
+        ],
+        [
+          12.01025988055376,
+          57.484340166990116
+        ],
+        [
+          12.010022730485453,
+          57.48434923653925
+        ],
+        [
+          12.009844488410266,
+          57.484359327212154
+        ],
+        [
+          12.009740616385685,
+          57.48437606921404
+        ],
+        [
+          12.009673266756408,
+          57.484392706374976
+        ]
+      ]
+    },
+    {
+      "id": "29",
+      "points": [
+        [
+          2108.4967613123113,
+          -154.51432797964594
+        ],
+        [
+          2093.141300146632,
+          -86.37446905694493
+        ],
+        [
+          2061.4793140813545,
+          105.99421447008014
+        ],
+        [
+          2027.5900074140502,
+          224.9673123446599
+        ],
+        [
+          1991.537553512662,
+          306.4458581617963
+        ],
+        [
+          1933.9933948603218,
+          382.4648002160748
+        ]
+      ],
+      "color": [
+        0,
+        255,
+        255
+      ],
+      "closed": false,
+      "line_type": "centerline",
+      "road_mark_type": "none",
+      "geo_points": [
+        [
+          12.008893850321336,
+          57.4837878715855
+        ],
+        [
+          12.008920470881609,
+          57.48382737347998
+        ],
+        [
+          12.008984214342144,
+          57.48393952086385
+        ],
+        [
+          12.009035035115364,
+          57.484007740057585
+        ],
+        [
+          12.009079836518316,
+          57.484052532915854
+        ],
+        [
+          12.009140150761864,
+          57.48409116144613
+        ]
+      ],
+      "osm_node_ids": [
+        1609680908,
+        1609680925,
+        1609680950,
+        1609680968,
+        1609680977,
+        1609680984
+      ]
+    }
+  ],
+  "roads": [
+    {
+      "id": "1",
+      "name": "Valldav\u00e4gen (seg 1/2)",
+      "polyline_ids": [
+        "1"
+      ],
+      "centerline_id": "1",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.25,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 560.2095257394581,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "broken",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null,
+              "materials": [
+                [
+                  0.0,
+                  0.9,
+                  0.01,
+                  "asphalt"
+                ]
+              ]
+            }
+          ],
+          "end_point_index": 6
+        }
+      ],
+      "speed_limit": 50.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "3",
+      "name": "S\u00e4r\u00f6leden",
+      "polyline_ids": [
+        "3"
+      ],
+      "centerline_id": "3",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.5,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 1613.260784850791,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "broken",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null,
+              "materials": [
+                [
+                  0.0,
+                  0.9,
+                  0.01,
+                  "asphalt"
+                ]
+              ]
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": "6",
+      "successor_contact": "start"
+    },
+    {
+      "id": "5",
+      "name": "S\u00e4r\u00f6leden (seg 1/2)",
+      "polyline_ids": [
+        "5"
+      ],
+      "centerline_id": "5",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.5,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 603.6197093275,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "broken",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null,
+              "materials": [
+                [
+                  0.0,
+                  0.9,
+                  0.01,
+                  "asphalt"
+                ]
+              ]
+            }
+          ],
+          "end_point_index": 2
+        }
+      ],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": "15",
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "6",
+      "name": "S\u00e4r\u00f6leden",
+      "polyline_ids": [
+        "6"
+      ],
+      "centerline_id": "6",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.5,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 1498.7735455681855,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "broken",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null,
+              "materials": [
+                [
+                  0.0,
+                  0.9,
+                  0.01,
+                  "asphalt"
+                ]
+              ]
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": "3",
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "15",
+      "name": "S\u00e4r\u00f6leden",
+      "polyline_ids": [
+        "15"
+      ],
+      "centerline_id": "15",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.5,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 1083.8017405729838,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "broken",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null,
+              "materials": [
+                [
+                  0.0,
+                  0.9,
+                  0.01,
+                  "asphalt"
+                ]
+              ]
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": "5",
+      "successor_contact": "start"
+    },
+    {
+      "id": "21",
+      "name": "S\u00e4r\u00f6leden Ring 1",
+      "polyline_ids": [
+        "21"
+      ],
+      "centerline_id": "21",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.5,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 532.7788214189646,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "solid",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 7
+        }
+      ],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "22",
+      "name": "S\u00e4r\u00f6leden Ring 2",
+      "polyline_ids": [
+        "22"
+      ],
+      "centerline_id": "22",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.5,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 18.469075324456046,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "solid",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 1
+        }
+      ],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "23",
+      "name": "S\u00e4r\u00f6leden Ring 3",
+      "polyline_ids": [
+        "23"
+      ],
+      "centerline_id": "23",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.5,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 476.5360937653139,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "solid",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 5
+        }
+      ],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "24",
+      "name": "S\u00e4r\u00f6leden Ring 4",
+      "polyline_ids": [
+        "24"
+      ],
+      "centerline_id": "24",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.5,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 18.46907532445613,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "solid",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 1
+        }
+      ],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "25",
+      "name": "S\u00e4r\u00f6leden Ring 5",
+      "polyline_ids": [
+        "25"
+      ],
+      "centerline_id": "25",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.5,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 421.20963592526067,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "solid",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 5
+        }
+      ],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "26",
+      "name": "S\u00e4r\u00f6leden Ring 6",
+      "polyline_ids": [
+        "26"
+      ],
+      "centerline_id": "26",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.5,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 683.7604121778888,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "solid",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "end_point_index": 10
+        }
+      ],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "45",
+      "name": "S\u00e4r\u00f6leden (seg 2/2)",
+      "polyline_ids": [
+        "28"
+      ],
+      "centerline_id": "28",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.5,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 1596.863001655156,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "broken",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null,
+              "materials": [
+                [
+                  0.0,
+                  0.9,
+                  0.01,
+                  "asphalt"
+                ]
+              ]
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "speed_limit": 70.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    },
+    {
+      "id": "46",
+      "name": "Valldav\u00e4gen (seg 2/2)",
+      "polyline_ids": [
+        "29"
+      ],
+      "centerline_id": "29",
+      "road_type": "rural",
+      "lane_info": {
+        "left_count": 0,
+        "right_count": 1,
+        "lane_width": 3.25,
+        "lane_widths": null
+      },
+      "lane_sections": [
+        {
+          "section_number": 1,
+          "s_start": 0.0,
+          "s_end": 572.9521904105013,
+          "single_side": null,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "broken",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null,
+              "materials": [
+                [
+                  0.0,
+                  0.9,
+                  0.01,
+                  "asphalt"
+                ]
+              ]
+            }
+          ],
+          "end_point_index": null
+        }
+      ],
+      "speed_limit": 50.0,
+      "junction_id": null,
+      "predecessor_id": null,
+      "predecessor_contact": "end",
+      "successor_id": null,
+      "successor_contact": "start"
+    }
+  ],
+  "junctions": [
+    {
+      "id": "1",
+      "name": "S\u00e4r\u00f6leden Entry 1",
+      "center_point": [
+        2305.014798574765,
+        1238.6402351655497
+      ],
+      "connected_road_ids": [
+        "26",
+        "21",
+        "3"
+      ],
+      "connections": [],
+      "junction_type": "default",
+      "connecting_roads": [
+        {
+          "id": "27",
+          "path": [
+            [
+              2241.0150905294427,
+              1275.5420679596054
+            ],
+            [
+              2250.19554550567,
+              1269.8548758225138
+            ],
+            [
+              2262.653499692629,
+              1261.582207056423
+            ],
+            [
+              2277.421563138128,
+              1251.4197133390142
+            ],
+            [
+              2293.532345863933,
+              1240.0630462542154
+            ],
+            [
+              2310.0184579132415,
+              1228.2078574551147
+            ],
+            [
+              2325.9125093162056,
+              1216.5497985501036
+            ],
+            [
+              2340.2471101086303,
+              1205.7845211827143
+            ],
+            [
+              2352.054870326575,
+              1196.6076769783022
+            ],
+            [
+              2360.3684000111266,
+              1189.7149175736185
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.5,
+          "lane_width_start": 3.5,
+          "lane_width_end": 3.5,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "predecessor_road_id": "26",
+          "successor_road_id": "21",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": 0.0,
+          "bU": 75.0000000000002,
+          "cU": 215.3116483404719,
+          "dU": -144.0434144958663,
+          "aV": 0.0,
+          "bV": 4.849454171562684e-13,
+          "cV": -29.245587789951085,
+          "dV": 14.510731306456606,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.009044471942172,
+              57.484555807650814
+            ],
+            [
+              12.00903674779727,
+              57.48455379328176
+            ],
+            [
+              12.009026169473117,
+              57.48455080482084
+            ],
+            [
+              12.009013560282028,
+              57.48454709653364
+            ],
+            [
+              12.008999745320024,
+              57.484542923142264
+            ],
+            [
+              12.008985552809307,
+              57.4845385402733
+            ],
+            [
+              12.008971814848366,
+              57.48453420472283
+            ],
+            [
+              12.008959367564001,
+              57.48453017453707
+            ],
+            [
+              12.008949050658009,
+              57.48452670890622
+            ],
+            [
+              12.008941706341561,
+              57.48452406786945
+            ]
+          ],
+          "stored_start_heading": -0.5230312136289337,
+          "stored_end_heading": -0.7238309772877896
+        },
+        {
+          "id": "28",
+          "path": [
+            [
+              2241.0150905294427,
+              1275.5420679596054
+            ],
+            [
+              2254.630786243317,
+              1267.6764602565777
+            ],
+            [
+              2268.090378191363,
+              1259.8710961892384
+            ],
+            [
+              2281.393866373581,
+              1252.1259757575885
+            ],
+            [
+              2294.5412507899728,
+              1244.4410989616279
+            ],
+            [
+              2307.5325314405363,
+              1236.8164658013563
+            ],
+            [
+              2320.367708325272,
+              1229.2520762767736
+            ],
+            [
+              2333.0467814441795,
+              1221.7479303878795
+            ],
+            [
+              2345.56975079726,
+              1214.3040281346753
+            ],
+            [
+              2357.936616384513,
+              1206.92036951716
+            ],
+            [
+              2370.1473782059375,
+              1199.5969545353332
+            ],
+            [
+              2382.2020362615353,
+              1192.3337831891956
+            ],
+            [
+              2394.100590551305,
+              1185.1308554787472
+            ],
+            [
+              2405.843041075247,
+              1177.9881714039877
+            ],
+            [
+              2417.429387833361,
+              1170.9057309649174
+            ],
+            [
+              2428.859630825648,
+              1163.883534161536
+            ],
+            [
+              2440.133770052107,
+              1156.9215809938437
+            ],
+            [
+              2451.2518055127384,
+              1150.0198714618405
+            ],
+            [
+              2462.213737207542,
+              1143.1784055655264
+            ],
+            [
+              2473.0195651365184,
+              1136.3971833049013
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.5,
+          "lane_width_start": 3.5,
+          "lane_width_end": 3.5,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "predecessor_road_id": "26",
+          "successor_road_id": "3",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": 0.0,
+          "bU": 300.33301136568787,
+          "cU": -29.84139826802766,
+          "dU": 0.0,
+          "aV": 0.0,
+          "bV": 2.842170943040401e-14,
+          "cV": -4.654289108110859,
+          "dV": 0.0,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.009044471942172,
+              57.484555807650814
+            ],
+            [
+              12.009033106946015,
+              57.4845530792874
+            ],
+            [
+              12.009021860234695,
+              57.48455036683046
+            ],
+            [
+              12.009010731944892,
+              57.484547670300906
+            ],
+            [
+              12.008999722212964,
+              57.4845449897196
+            ],
+            [
+              12.008988831174952,
+              57.48454232510736
+            ],
+            [
+              12.008978058966557,
+              57.484539676484985
+            ],
+            [
+              12.00896740572316,
+              57.484537043873196
+            ],
+            [
+              12.008956871579809,
+              57.484534427292715
+            ],
+            [
+              12.008946456671222,
+              57.484531826764176
+            ],
+            [
+              12.008936161131784,
+              57.48452924230821
+            ],
+            [
+              12.008925985095543,
+              57.48452667394538
+            ],
+            [
+              12.008915928696213,
+              57.48452412169625
+            ],
+            [
+              12.008905992067172,
+              57.48452158558128
+            ],
+            [
+              12.008896175341459,
+              57.484519065620916
+            ],
+            [
+              12.008886478651766,
+              57.48451656183559
+            ],
+            [
+              12.008876902130455,
+              57.484514074245645
+            ],
+            [
+              12.008867445909535,
+              57.48451160287141
+            ],
+            [
+              12.008858110120674,
+              57.48450914773314
+            ],
+            [
+              12.008848894895195,
+              57.48450670885109
+            ]
+          ],
+          "stored_start_heading": -0.5230312136289337,
+          "stored_end_heading": -0.500470858781007
+        }
+      ],
+      "lane_connections": [
+        {
+          "id": "1",
+          "from_road_id": "26",
+          "from_lane_id": -1,
+          "to_road_id": "21",
+          "to_lane_id": -1,
+          "turn_type": "straight",
+          "priority": 0,
+          "connecting_road_id": "27",
+          "connecting_lane_id": -1
+        },
+        {
+          "id": "2",
+          "from_road_id": "26",
+          "from_lane_id": -1,
+          "to_road_id": "3",
+          "to_lane_id": -1,
+          "turn_type": "right",
+          "priority": 0,
+          "connecting_road_id": "28",
+          "connecting_lane_id": -1
+        }
+      ],
+      "is_roundabout": true,
+      "roundabout_lane_count": 1,
+      "roundabout_clockwise": false,
+      "entry_roads": [],
+      "exit_roads": [
+        "3"
+      ],
+      "roundabout_center": [
+        1993.2800181573048,
+        953.2426934251281
+      ],
+      "roundabout_radius": 460.0275689694547
+    },
+    {
+      "id": "2",
+      "name": "S\u00e4r\u00f6leden Entry 2",
+      "center_point": [
+        2380.431274323363,
+        646.7568804033034
+      ],
+      "connected_road_ids": [
+        "21",
+        "22",
+        "6"
+      ],
+      "connections": [],
+      "junction_type": "default",
+      "connecting_roads": [
+        {
+          "id": "29",
+          "path": [
+            [
+              2424.423228368944,
+              706.1068245709133
+            ],
+            [
+              2417.690426488856,
+              697.6741272350487
+            ],
+            [
+              2407.9585905870563,
+              686.3447417032252
+            ],
+            [
+              2396.040543441324,
+              672.9874981194406
+            ],
+            [
+              2382.7491077979666,
+              658.4712265063162
+            ],
+            [
+              2368.8971064267466,
+              643.6647569711259
+            ],
+            [
+              2355.29736208138,
+              629.436919563861
+            ],
+            [
+              2342.7626975357166,
+              616.6565444083467
+            ],
+            [
+              2332.1059355419625,
+              606.1924615713922
+            ],
+            [
+              2324.139898865919,
+              598.9135011063103
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.5,
+          "lane_width_start": 3.5,
+          "lane_width_end": 3.5,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "predecessor_road_id": "21",
+          "successor_road_id": "22",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": -0.0,
+          "bU": 74.9999999999997,
+          "cU": 214.44712211294498,
+          "dU": -143.6144640543455,
+          "aV": 0.0,
+          "bV": 1.545430450278218e-13,
+          "cV": -33.211323394540614,
+          "dV": 16.478403291850803,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.008804885869788,
+              57.48429485106065
+            ],
+            [
+              12.008808450469775,
+              57.48429006501839
+            ],
+            [
+              12.008813783568119,
+              57.48428356592958
+            ],
+            [
+              12.008820437018562,
+              57.484275844077146
+            ],
+            [
+              12.008827959199992,
+              57.484267394196934
+            ],
+            [
+              12.00883589263054,
+              57.484258717828375
+            ],
+            [
+              12.008843772635679,
+              57.48425032450811
+            ],
+            [
+              12.008851127107818,
+              57.48424273176411
+            ],
+            [
+              12.008857477402184,
+              57.48423646386098
+            ],
+            [
+              12.00886234041,
+              57.48423204925373
+            ]
+          ],
+          "stored_start_heading": -2.2086609126210446,
+          "stored_end_heading": -2.437142833565324
+        },
+        {
+          "id": "30",
+          "path": [
+            [
+              2532.8487613629536,
+              772.1780126515423
+            ],
+            [
+              2530.8331643161787,
+              770.8873971437396
+            ],
+            [
+              2527.8210028330973,
+              768.7269406014514
+            ],
+            [
+              2523.8122769137103,
+              765.696643024678
+            ],
+            [
+              2518.8069865580173,
+              761.7965044134195
+            ],
+            [
+              2512.8051317660193,
+              757.0265247676757
+            ],
+            [
+              2505.8067125377142,
+              751.3867040874464
+            ],
+            [
+              2497.8117288731037,
+              744.8770423727321
+            ],
+            [
+              2488.820180772187,
+              737.4975396235326
+            ],
+            [
+              2478.8320682349654,
+              729.2481958398478
+            ],
+            [
+              2467.8473912614368,
+              720.1290110216776
+            ],
+            [
+              2455.8661498516026,
+              710.1399851690222
+            ],
+            [
+              2442.8883440054633,
+              699.2811182818816
+            ],
+            [
+              2428.913973723017,
+              687.5524103602556
+            ],
+            [
+              2413.9430390042653,
+              674.9538614041446
+            ],
+            [
+              2397.975539849208,
+              661.4854714135483
+            ],
+            [
+              2381.0114762578446,
+              647.1472403884666
+            ],
+            [
+              2363.0508482301752,
+              631.9391683288998
+            ],
+            [
+              2344.0936557662003,
+              615.8612552348476
+            ],
+            [
+              2324.139898865919,
+              598.9135011063103
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.5,
+          "lane_width_start": 3.5,
+          "lane_width_end": 3.5,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "predecessor_road_id": "6",
+          "successor_road_id": "22",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": -0.0,
+          "bU": 33.097423047356315,
+          "cU": 233.8065558791193,
+          "dU": 0.0,
+          "aV": 0.0,
+          "bV": -5.684341886080802e-14,
+          "cV": 48.39675897236765,
+          "dV": 0.0,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.008734752625832,
+              57.48433606547386
+            ],
+            [
+              12.008736030392658,
+              57.484335276260985
+            ],
+            [
+              12.008737894738442,
+              57.484333980940335
+            ],
+            [
+              12.008740346936833,
+              57.484332178530025
+            ],
+            [
+              12.008743388702856,
+              57.48432986766756
+            ],
+            [
+              12.00874702219605,
+              57.484327046607376
+            ],
+            [
+              12.008751250024458,
+              57.484323713217464
+            ],
+            [
+              12.008756075249446,
+              57.48431986497541
+            ],
+            [
+              12.00876150139143,
+              57.48431549896361
+            ],
+            [
+              12.008767532436455,
+              57.484310611863705
+            ],
+            [
+              12.008774172843726,
+              57.48430519995026
+            ],
+            [
+              12.008781427554064,
+              57.48429925908367
+            ],
+            [
+              12.008789301999334,
+              57.48429278470213
+            ],
+            [
+              12.008797802112879,
+              57.4842857718128
+            ],
+            [
+              12.008806934341012,
+              57.48427821498212
+            ],
+            [
+              12.00881670565558,
+              57.48427010832511
+            ],
+            [
+              12.008827123567672,
+              57.484261445493736
+            ],
+            [
+              12.008838196142506,
+              57.484252219664214
+            ],
+            [
+              12.00884993201556,
+              57.48424242352336
+            ],
+            [
+              12.00886234041,
+              57.48423204925373
+            ]
+          ],
+          "stored_start_heading": -2.512583489148651,
+          "stored_end_heading": -2.437142833565324
+        }
+      ],
+      "lane_connections": [
+        {
+          "id": "3",
+          "from_road_id": "21",
+          "from_lane_id": -1,
+          "to_road_id": "22",
+          "to_lane_id": -1,
+          "turn_type": "straight",
+          "priority": 0,
+          "connecting_road_id": "29",
+          "connecting_lane_id": -1
+        },
+        {
+          "id": "4",
+          "from_road_id": "6",
+          "from_lane_id": -1,
+          "to_road_id": "22",
+          "to_lane_id": -1,
+          "turn_type": "right",
+          "priority": 0,
+          "connecting_road_id": "30",
+          "connecting_lane_id": -1
+        }
+      ],
+      "is_roundabout": true,
+      "roundabout_lane_count": 1,
+      "roundabout_clockwise": false,
+      "entry_roads": [
+        "6"
+      ],
+      "exit_roads": [],
+      "roundabout_center": [
+        1993.2800181573048,
+        953.2426934251281
+      ],
+      "roundabout_radius": 460.0275689694547
+    },
+    {
+      "id": "3",
+      "name": "S\u00e4r\u00f6leden Entry 3",
+      "center_point": [
+        2300.530599156971,
+        578.8473955664747
+      ],
+      "connected_road_ids": [
+        "22",
+        "23",
+        "1"
+      ],
+      "connections": [],
+      "junction_type": "default",
+      "connecting_roads": [
+        {
+          "id": "31",
+          "path": [
+            [
+              2310.067055001558,
+              586.9526562820619
+            ],
+            [
+              2303.2016112293386,
+              581.6288142038846
+            ],
+            [
+              2295.450888597747,
+              576.4557551567449
+            ],
+            [
+              2287.0341008761025,
+              571.4408123200059
+            ],
+            [
+              2278.1704618111835,
+              566.5913188157336
+            ],
+            [
+              2269.0791851662257,
+              561.9146077839999
+            ],
+            [
+              2259.979484681683,
+              557.4180123524324
+            ],
+            [
+              2251.0905741301995,
+              553.1088656814044
+            ],
+            [
+              2242.631667261557,
+              548.9945009147589
+            ],
+            [
+              2234.8219778256057,
+              545.0822511690619
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.5,
+          "lane_width_start": 3.5,
+          "lane_width_end": 3.5,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "predecessor_road_id": "22",
+          "successor_road_id": "23",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": -0.0,
+          "bU": 74.99999999999986,
+          "cU": 30.32185258965918,
+          "dU": -20.871623569332485,
+          "aV": 0.0,
+          "bV": 3.3573144264664734e-13,
+          "cV": -33.395890804640295,
+          "dV": 16.569979775630504,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.008871127631979,
+              57.48422469704179
+            ],
+            [
+              12.008875523015627,
+              57.484221368399616
+            ],
+            [
+              12.008880652652094,
+              57.48421804295464
+            ],
+            [
+              12.00888634684006,
+              57.48421474188762
+            ],
+            [
+              12.008892435152765,
+              57.484211486565705
+            ],
+            [
+              12.008898746388283,
+              57.484208298540814
+            ],
+            [
+              12.008905108549337,
+              57.484205199544235
+            ],
+            [
+              12.008911348853006,
+              57.484202211477395
+            ],
+            [
+              12.008917293770818,
+              57.48419935639875
+            ],
+            [
+              12.008922769099527,
+              57.484196656506654
+            ]
+          ],
+          "stored_start_heading": -2.437142833565324,
+          "stored_end_heading": -2.6669172731062254
+        },
+        {
+          "id": "32",
+          "path": [
+            [
+              2310.067055001558,
+              586.9526562820619
+            ],
+            [
+              2306.479043059082,
+              583.3886906399914
+            ],
+            [
+              2301.81958140421,
+              577.9524302882047
+            ],
+            [
+              2296.22222636762,
+              570.8582085456119
+            ],
+            [
+              2289.82053427999,
+              562.3203587311228
+            ],
+            [
+              2282.748061471996,
+              552.5532141636471
+            ],
+            [
+              2275.138364274315,
+              541.7711081620944
+            ],
+            [
+              2267.124999017623,
+              530.1883740453749
+            ],
+            [
+              2258.8415220325987,
+              518.0193451323983
+            ],
+            [
+              2250.4214896499184,
+              505.4783547420743
+            ],
+            [
+              2241.998458200258,
+              492.77973619331283
+            ],
+            [
+              2233.705984014295,
+              480.1378228050236
+            ],
+            [
+              2225.6776234227073,
+              467.76694789611656
+            ],
+            [
+              2218.0469327561705,
+              455.8814447855014
+            ],
+            [
+              2210.947468345362,
+              444.69564679208804
+            ],
+            [
+              2204.512786520959,
+              434.42388723478626
+            ],
+            [
+              2198.8764436136375,
+              425.28049943250585
+            ],
+            [
+              2194.171995954076,
+              417.47981670415663
+            ],
+            [
+              2190.5329998729494,
+              411.23617236864834
+            ],
+            [
+              2188.0930117009366,
+              406.76389974489103
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.375,
+          "lane_width_start": 3.5,
+          "lane_width_end": 3.25,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null,
+              "width_end": 3.25
+            }
+          ],
+          "predecessor_road_id": "22",
+          "successor_road_id": "1",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": -0.0,
+          "bU": 74.99999999999986,
+          "cU": 409.6460156862368,
+          "dU": -275.01281235184877,
+          "aV": 0.0,
+          "bV": 3.3573144264664734e-13,
+          "cV": 146.12631822745354,
+          "dV": -87.82044132574812,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.008871127631979,
+              57.48422469704179
+            ],
+            [
+              12.008873275089929,
+              57.484222549275856
+            ],
+            [
+              12.008875913388597,
+              57.484219333674616
+            ],
+            [
+              12.00887898080178,
+              57.48421516869175
+            ],
+            [
+              12.008882415622386,
+              57.4842101723892
+            ],
+            [
+              12.008886155931584,
+              57.484204462912615
+            ],
+            [
+              12.008890139400119,
+              57.48419815890463
+            ],
+            [
+              12.00889430312167,
+              57.48419137985669
+            ],
+            [
+              12.008898583478457,
+              57.484184246399444
+            ],
+            [
+              12.008902916039748,
+              57.48417688053053
+            ],
+            [
+              12.008907235494185,
+              57.48416940577852
+            ],
+            [
+              12.008911475616951,
+              57.4841619473012
+            ],
+            [
+              12.008915569273139,
+              57.48415463191562
+            ],
+            [
+              12.008919448458526,
+              57.48414758805796
+            ],
+            [
+              12.008923044379088,
+              57.48414094567054
+            ],
+            [
+              12.008926287570366,
+              57.484134836013844
+            ],
+            [
+              12.00892910805765,
+              57.48412939140182
+            ],
+            [
+              12.008931435557567,
+              57.4841247448589
+            ],
+            [
+              12.008933199721305,
+              57.4841210296984
+            ],
+            [
+              12.008934330419098,
+              57.48411837902245
+            ]
+          ],
+          "stored_start_heading": -2.437142833565324,
+          "stored_end_heading": -2.043143736361379
+        }
+      ],
+      "lane_connections": [
+        {
+          "id": "5",
+          "from_road_id": "22",
+          "from_lane_id": -1,
+          "to_road_id": "23",
+          "to_lane_id": -1,
+          "turn_type": "straight",
+          "priority": 0,
+          "connecting_road_id": "31",
+          "connecting_lane_id": -1
+        },
+        {
+          "id": "6",
+          "from_road_id": "22",
+          "from_lane_id": -1,
+          "to_road_id": "1",
+          "to_lane_id": -1,
+          "turn_type": "right",
+          "priority": 0,
+          "connecting_road_id": "32",
+          "connecting_lane_id": -1
+        }
+      ],
+      "is_roundabout": true,
+      "roundabout_lane_count": 1,
+      "roundabout_clockwise": false,
+      "entry_roads": [],
+      "exit_roads": [
+        "1"
+      ],
+      "roundabout_center": [
+        1993.2800181573048,
+        953.2426934251281
+      ],
+      "roundabout_radius": 460.0275689694547
+    },
+    {
+      "id": "4",
+      "name": "S\u00e4r\u00f6leden Entry 4",
+      "center_point": [
+        1705.6925991817086,
+        558.9209877582691
+      ],
+      "connected_road_ids": [
+        "23",
+        "24",
+        "46"
+      ],
+      "connections": [],
+      "junction_type": "default",
+      "connecting_roads": [
+        {
+          "id": "33",
+          "path": [
+            [
+              1773.6647598259788,
+              529.981511764457
+            ],
+            [
+              1763.8868210323492,
+              534.5516622934745
+            ],
+            [
+              1750.5790946208751,
+              541.3439065529027
+            ],
+            [
+              1734.7786974919168,
+              549.7741539857275
+            ],
+            [
+              1717.5227465519904,
+              559.2583140564298
+            ],
+            [
+              1699.8483586946868,
+              569.2122961830496
+            ],
+            [
+              1682.7926508293444,
+              579.0520097988756
+            ],
+            [
+              1667.3927398546493,
+              588.1933643598217
+            ],
+            [
+              1654.6857426715903,
+              596.0522693074125
+            ],
+            [
+              1645.708776188267,
+              602.0446340852942
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.5,
+          "lane_width_start": 3.5,
+          "lane_width_end": 3.5,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "predecessor_road_id": "23",
+          "successor_road_id": "24",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": 0.0,
+          "bU": 74.99999999999989,
+          "cU": 214.69795445544023,
+          "dU": -143.73891909183902,
+          "aV": -0.0,
+          "bV": 2.6645352591003757e-14,
+          "cV": -32.11358323666761,
+          "dV": 15.933739509073519,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.009293335328726,
+              57.48415056590218
+            ],
+            [
+              12.009302069725383,
+              57.484152231587984
+            ],
+            [
+              12.009314037744506,
+              57.484154808948375
+            ],
+            [
+              12.009328293184423,
+              57.48415806605034
+            ],
+            [
+              12.009343891023647,
+              57.484161771159414
+            ],
+            [
+              12.009359888562432,
+              57.4841656930494
+            ],
+            [
+              12.009375346088088,
+              57.48416960119539
+            ],
+            [
+              12.00938932706688,
+              57.48417326585059
+            ],
+            [
+              12.009400897866321,
+              57.48417645800784
+            ],
+            [
+              12.009409127011786,
+              57.484178949246804
+            ]
+          ],
+          "stored_start_heading": 2.739082828450197,
+          "stored_end_heading": 2.5182804013682514
+        },
+        {
+          "id": "34",
+          "path": [
+            [
+              1933.9933948603218,
+              382.4648002160748
+            ],
+            [
+              1931.1534544829285,
+              385.7698120390725
+            ],
+            [
+              1926.9431880733619,
+              389.99169292190794
+            ],
+            [
+              1921.3625956316218,
+              395.1304428645811
+            ],
+            [
+              1914.4116771577098,
+              401.1860618670922
+            ],
+            [
+              1906.0904326516247,
+              408.1585499294411
+            ],
+            [
+              1896.3988621133662,
+              416.04790705162765
+            ],
+            [
+              1885.3369655429344,
+              424.85413323365214
+            ],
+            [
+              1872.9047429403304,
+              434.57722847551435
+            ],
+            [
+              1859.1021943055532,
+              445.21719277721456
+            ],
+            [
+              1843.929319638603,
+              456.77402613875233
+            ],
+            [
+              1827.3861189394797,
+              469.247728560128
+            ],
+            [
+              1809.4725922081834,
+              482.6383000413415
+            ],
+            [
+              1790.1887394447142,
+              496.9457405823927
+            ],
+            [
+              1769.534560649072,
+              512.1700501832818
+            ],
+            [
+              1747.510055821257,
+              528.3112288440087
+            ],
+            [
+              1724.115224961269,
+              545.3692765645733
+            ],
+            [
+              1699.350068069108,
+              563.3441933449758
+            ],
+            [
+              1673.214585144774,
+              582.2359791852161
+            ],
+            [
+              1645.708776188267,
+              602.0446340852942
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.375,
+          "lane_width_start": 3.25,
+          "lane_width_end": 3.5,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.25,
+              "left_boundary_id": null,
+              "right_boundary_id": null,
+              "width_end": 3.5
+            }
+          ],
+          "predecessor_road_id": "46",
+          "successor_road_id": "24",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": 0.0,
+          "bU": 67.83310741946387,
+          "cU": 281.2377746690386,
+          "dU": 0.0,
+          "aV": -0.0,
+          "bV": 1.6342482922482304e-13,
+          "cV": 97.32853683725486,
+          "dV": 0.0,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.00913766902754,
+              57.484083070342955
+            ],
+            [
+              12.009140570115761,
+              57.484084663228856
+            ],
+            [
+              12.009144754874896,
+              57.4840866460436
+            ],
+            [
+              12.009150221510948,
+              57.484089018137006
+            ],
+            [
+              12.009156967853388,
+              57.48409177874471
+            ],
+            [
+              12.009164991356885,
+              57.48409492698871
+            ],
+            [
+              12.009174289103315,
+              57.48409846187805
+            ],
+            [
+              12.009184857804051,
+              57.484102382309544
+            ],
+            [
+              12.009196693802489,
+              57.484106687068575
+            ],
+            [
+              12.009209793076872,
+              57.48411137483009
+            ],
+            [
+              12.009224151243348,
+              57.484116444159476
+            ],
+            [
+              12.0092397635593,
+              57.48412189351367
+            ],
+            [
+              12.009256624926905,
+              57.48412772124228
+            ],
+            [
+              12.009274729896974,
+              57.48413392558882
+            ],
+            [
+              12.009294072672988,
+              57.484140504691936
+            ],
+            [
+              12.009314647115405,
+              57.484147456586825
+            ],
+            [
+              12.00933644674618,
+              57.484154779206584
+            ],
+            [
+              12.009359464753507,
+              57.48416247038373
+            ],
+            [
+              12.009383693996783,
+              57.484170527851774
+            ],
+            [
+              12.009409127011786,
+              57.484178949246804
+            ]
+          ],
+          "stored_start_heading": 2.3199395664067106,
+          "stored_end_heading": 2.5182804013682514
+        }
+      ],
+      "lane_connections": [
+        {
+          "id": "7",
+          "from_road_id": "23",
+          "from_lane_id": -1,
+          "to_road_id": "24",
+          "to_lane_id": -1,
+          "turn_type": "straight",
+          "priority": 0,
+          "connecting_road_id": "33",
+          "connecting_lane_id": -1
+        },
+        {
+          "id": "8",
+          "from_road_id": "46",
+          "from_lane_id": -1,
+          "to_road_id": "24",
+          "to_lane_id": -1,
+          "turn_type": "right",
+          "priority": 0,
+          "connecting_road_id": "34",
+          "connecting_lane_id": -1
+        }
+      ],
+      "is_roundabout": true,
+      "roundabout_lane_count": 1,
+      "roundabout_clockwise": false,
+      "entry_roads": [
+        "46"
+      ],
+      "exit_roads": [],
+      "roundabout_center": [
+        1993.2800181573048,
+        953.2426934251281
+      ],
+      "roundabout_radius": 460.0275689694547
+    },
+    {
+      "id": "5",
+      "name": "S\u00e4r\u00f6leden Entry 5",
+      "center_point": [
+        1617.9838253931216,
+        621.9766909776123
+      ],
+      "connected_road_ids": [
+        "24",
+        "25",
+        "15"
+      ],
+      "connections": [],
+      "junction_type": "default",
+      "connecting_roads": [
+        {
+          "id": "35",
+          "path": [
+            [
+              1630.7128204399064,
+              612.8255456670505
+            ],
+            [
+              1623.8185051970315,
+              618.2828007963412
+            ],
+            [
+              1616.7330391416722,
+              624.7621727086758
+            ],
+            [
+              1609.553905248946,
+              632.0182646058108
+            ],
+            [
+              1602.3785865022635,
+              639.8056796936626
+            ],
+            [
+              1595.3045658841156,
+              647.8790212204492
+            ],
+            [
+              1588.4293263765912,
+              655.9928924096482
+            ],
+            [
+              1581.8503509652612,
+              663.9018964677867
+            ],
+            [
+              1575.6651226281704,
+              671.3606366294719
+            ],
+            [
+              1569.971124348175,
+              678.1237161153298
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.5,
+          "lane_width_start": 3.5,
+          "lane_width_end": 3.5,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "predecessor_road_id": "24",
+          "successor_road_id": "25",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": 0.0,
+          "bU": 74.99999999999977,
+          "cU": 39.45667436081722,
+          "dU": -27.021133579466394,
+          "aV": -0.0,
+          "bV": 4.263256414560601e-14,
+          "cV": -34.85727207101926,
+          "dV": 17.29507072080183,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.009422966206499,
+              57.48418352249488
+            ],
+            [
+              12.00942939029151,
+              57.48418589268473
+            ],
+            [
+              12.009436104305534,
+              57.484188795177495
+            ],
+            [
+              12.009442992805857,
+              57.484192104589546
+            ],
+            [
+              12.00944994110406,
+              57.48419569585984
+            ],
+            [
+              12.009456835369901,
+              57.48419944441398
+            ],
+            [
+              12.009463562681894,
+              57.48420322627029
+            ],
+            [
+              12.009470011025451,
+              57.48420691808841
+            ],
+            [
+              12.00947606923953,
+              57.48421039716125
+            ],
+            [
+              12.009481626912677,
+              57.48421354135082
+            ]
+          ],
+          "stored_start_heading": 2.5182804013682514,
+          "stored_end_heading": 2.2782579580700335
+        },
+        {
+          "id": "36",
+          "path": [
+            [
+              1630.7128204399064,
+              612.8255456670505
+            ],
+            [
+              1625.8662539557745,
+              616.203188459366
+            ],
+            [
+              1620.2809429240788,
+              619.8986165227466
+            ],
+            [
+              1613.9568873448202,
+              623.9118298571926
+            ],
+            [
+              1606.8940872179985,
+              628.2428284627044
+            ],
+            [
+              1599.0925425436135,
+              632.8916123392816
+            ],
+            [
+              1590.552253321665,
+              637.858181486924
+            ],
+            [
+              1581.2732195521535,
+              643.1425359056318
+            ],
+            [
+              1571.2554412350787,
+              648.7446755954053
+            ],
+            [
+              1560.498918370441,
+              654.6646005562441
+            ],
+            [
+              1549.0036509582396,
+              660.9023107881482
+            ],
+            [
+              1536.7696389984753,
+              667.4578062911179
+            ],
+            [
+              1523.7968824911477,
+              674.331087065153
+            ],
+            [
+              1510.0853814362567,
+              681.5221531102536
+            ],
+            [
+              1495.6351358338025,
+              689.0310044264195
+            ],
+            [
+              1480.4461456837853,
+              696.8576410136509
+            ],
+            [
+              1464.5184109862048,
+              705.0020628719478
+            ],
+            [
+              1447.851931741061,
+              713.4642700013101
+            ],
+            [
+              1430.446707948354,
+              722.2442624017377
+            ],
+            [
+              1412.3027396080838,
+              731.3420400732309
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.5,
+          "lane_width_start": 3.5,
+          "lane_width_end": 3.5,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "predecessor_road_id": "24",
+          "successor_road_id": "15",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": 0.0,
+          "bU": 104.76845434291468,
+          "cU": 141.75085831015008,
+          "dU": 0.0,
+          "aV": -0.0,
+          "bV": 1.6342482922482304e-13,
+          "cV": 31.262618961852475,
+          "dV": 0.0,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.009422966206499,
+              57.48418352249488
+            ],
+            [
+              12.009427420936772,
+              57.48418494190823
+            ],
+            [
+              12.00943252622021,
+              57.484186470981726
+            ],
+            [
+              12.009438281569249,
+              57.48418810961884
+            ],
+            [
+              12.009444686468806,
+              57.48418985771843
+            ],
+            [
+              12.009451740376363,
+              57.484191715174696
+            ],
+            [
+              12.009459442722019,
+              57.48419368187727
+            ],
+            [
+              12.009467792908566,
+              57.48419575771122
+            ],
+            [
+              12.009476790311561,
+              57.484197942556975
+            ],
+            [
+              12.009486434279404,
+              57.48420023629047
+            ],
+            [
+              12.009496724133411,
+              57.484202638783046
+            ],
+            [
+              12.009507659167902,
+              57.48420514990154
+            ],
+            [
+              12.009519238650283,
+              57.48420776950824
+            ],
+            [
+              12.009531461821124,
+              57.48421049746096
+            ],
+            [
+              12.009544327894272,
+              57.48421333361304
+            ],
+            [
+              12.009557836056912,
+              57.48421627781331
+            ],
+            [
+              12.009571985469687,
+              57.48421932990618
+            ],
+            [
+              12.009586775266786,
+              57.48422248973162
+            ],
+            [
+              12.009602204556048,
+              57.48422575712518
+            ],
+            [
+              12.009618272419054,
+              57.48422913191801
+            ]
+          ],
+          "stored_start_heading": 2.5182804013682514,
+          "stored_end_heading": 2.7172235441961052
+        }
+      ],
+      "lane_connections": [
+        {
+          "id": "9",
+          "from_road_id": "24",
+          "from_lane_id": -1,
+          "to_road_id": "25",
+          "to_lane_id": -1,
+          "turn_type": "straight",
+          "priority": 0,
+          "connecting_road_id": "35",
+          "connecting_lane_id": -1
+        },
+        {
+          "id": "10",
+          "from_road_id": "24",
+          "from_lane_id": -1,
+          "to_road_id": "15",
+          "to_lane_id": -1,
+          "turn_type": "right",
+          "priority": 0,
+          "connecting_road_id": "36",
+          "connecting_lane_id": -1
+        }
+      ],
+      "is_roundabout": true,
+      "roundabout_lane_count": 1,
+      "roundabout_clockwise": false,
+      "entry_roads": [],
+      "exit_roads": [
+        "15"
+      ],
+      "roundabout_center": [
+        1993.2800181573048,
+        953.2426934251281
+      ],
+      "roundabout_radius": 460.0275689694547
+    },
+    {
+      "id": "6",
+      "name": "S\u00e4r\u00f6leden Entry 6",
+      "center_point": [
+        1555.1356680194356,
+        1136.7407954036998
+      ],
+      "connected_road_ids": [
+        "25",
+        "26",
+        "45"
+      ],
+      "connections": [],
+      "junction_type": "default",
+      "connecting_roads": [
+        {
+          "id": "37",
+          "path": [
+            [
+              1520.807202340271,
+              1071.3247091743838
+            ],
+            [
+              1526.1797848166766,
+              1080.6773194960736
+            ],
+            [
+              1534.1023881176118,
+              1093.3251676153195
+            ],
+            [
+              1543.8991694786564,
+              1108.2903128170576
+            ],
+            [
+              1554.89428612822,
+              1124.594814277232
+            ],
+            [
+              1566.4118953126565,
+              1141.2607313155618
+            ],
+            [
+              1577.776154258741,
+              1157.3101231215744
+            ],
+            [
+              1588.3112202023103,
+              1171.7650489341268
+            ],
+            [
+              1597.3412503839572,
+              1183.6475680422445
+            ],
+            [
+              1604.1904020366087,
+              1191.979739672678
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.5,
+          "lane_width_start": 3.5,
+          "lane_width_end": 3.5,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "predecessor_road_id": "25",
+          "successor_road_id": "26",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": 0.0,
+          "bU": 74.99999999999984,
+          "cU": 213.95331256893965,
+          "dU": -143.36945145069745,
+          "aV": 0.0,
+          "bV": -3.623767952376511e-13,
+          "cV": -35.26752262606101,
+          "dV": 17.49862400943106,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.009568949675971,
+              57.48441107604678
+            ],
+            [
+              12.009565752560695,
+              57.48441604966451
+            ],
+            [
+              12.009560920322922,
+              57.48442280359144
+            ],
+            [
+              12.009554888456593,
+              57.484430796931015
+            ],
+            [
+              12.0095480890443,
+              57.484439493790674
+            ],
+            [
+              12.009540948529068,
+              57.4844483657314
+            ],
+            [
+              12.009533886585585,
+              57.484456892855995
+            ],
+            [
+              12.009527316053008,
+              57.48446456358577
+            ],
+            [
+              12.009521643886313,
+              57.484470873178545
+            ],
+            [
+              12.009517273088655,
+              57.48447532103225
+            ]
+          ],
+          "stored_start_heading": 1.0875288536894039,
+          "stored_end_heading": 0.8446249319800093
+        },
+        {
+          "id": "38",
+          "path": [
+            [
+              1396.5924291176218,
+              1052.5908028609538
+            ],
+            [
+              1407.5435450816499,
+              1055.249161359665
+            ],
+            [
+              1418.4918936164524,
+              1058.427286673208
+            ],
+            [
+              1429.4374747220295,
+              1062.1251788015823
+            ],
+            [
+              1440.3802883983815,
+              1066.3428377447888
+            ],
+            [
+              1451.320334645508,
+              1071.0802635028267
+            ],
+            [
+              1462.2576134634087,
+              1076.337456075696
+            ],
+            [
+              1473.1921248520841,
+              1082.114415463397
+            ],
+            [
+              1484.1238688115345,
+              1088.4111416659298
+            ],
+            [
+              1495.0528453417592,
+              1095.2276346832944
+            ],
+            [
+              1505.9790544427583,
+              1102.5638945154901
+            ],
+            [
+              1516.9024961145324,
+              1110.4199211625178
+            ],
+            [
+              1527.823170357081,
+              1118.795714624377
+            ],
+            [
+              1538.741077170404,
+              1127.691274901068
+            ],
+            [
+              1549.6562165545015,
+              1137.1066019925906
+            ],
+            [
+              1560.5685885093737,
+              1147.041695898945
+            ],
+            [
+              1571.4781930350205,
+              1157.4965566201306
+            ],
+            [
+              1582.3850301314421,
+              1168.4711841561482
+            ],
+            [
+              1593.289099798638,
+              1179.9655785069974
+            ],
+            [
+              1604.1904020366087,
+              1191.979739672678
+            ]
+          ],
+          "lane_count_left": 0,
+          "lane_count_right": 1,
+          "lane_width": 3.5,
+          "lane_width_start": 3.5,
+          "lane_width_end": 3.5,
+          "lanes": [
+            {
+              "id": 0,
+              "lane_type": "none",
+              "road_mark_type": "none",
+              "width": 0.0,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            },
+            {
+              "id": -1,
+              "lane_type": "driving",
+              "road_mark_type": "solid",
+              "width": 3.5,
+              "left_boundary_id": null,
+              "right_boundary_id": null
+            }
+          ],
+          "predecessor_road_id": "45",
+          "successor_road_id": "26",
+          "contact_point_start": "end",
+          "contact_point_end": "start",
+          "geometry_type": "parampoly3",
+          "aU": 0.0,
+          "bU": 213.02883711526584,
+          "cU": 19.581524650432982,
+          "dU": 0.0,
+          "aV": 0.0,
+          "bV": 1.2789769243681803e-13,
+          "cV": 91.75300357375768,
+          "dV": 0.0,
+          "p_range": 1.0,
+          "p_range_normalized": true,
+          "tangent_scale": 1.0,
+          "geo_path": [
+            [
+              12.00966610259903,
+              57.48439294709328
+            ],
+            [
+              12.009657594052785,
+              57.48439505417559
+            ],
+            [
+              12.009649154292125,
+              57.48439741584715
+            ],
+            [
+              12.009640784532435,
+              57.48440003117907
+            ],
+            [
+              12.009632485962884,
+              57.484402899163356
+            ],
+            [
+              12.009624259745895,
+              57.48440601871374
+            ],
+            [
+              12.009616107016633,
+              57.48440938866657
+            ],
+            [
+              12.00960802888251,
+              57.484413007781804
+            ],
+            [
+              12.009600026422728,
+              57.484416874744014
+            ],
+            [
+              12.009592100687826,
+              57.48442098816345
+            ],
+            [
+              12.009584252699279,
+              57.48442534657718
+            ],
+            [
+              12.009576483449106,
+              57.48442994845028
+            ],
+            [
+              12.009568793899508,
+              57.484434792177005
+            ],
+            [
+              12.009561184982529,
+              57.484439876082156
+            ],
+            [
+              12.009553657599753,
+              57.48444519842231
+            ],
+            [
+              12.00954621262202,
+              57.484450757387265
+            ],
+            [
+              12.009538850889166,
+              57.4844565511014
+            ],
+            [
+              12.009531573209804,
+              57.48446257762512
+            ],
+            [
+              12.00952438036111,
+              57.48446883495641
+            ],
+            [
+              12.009517273088655,
+              57.48447532103225
+            ]
+          ],
+          "stored_start_heading": 0.1318823491016766,
+          "stored_end_heading": 0.8446249319800093
+        }
+      ],
+      "lane_connections": [
+        {
+          "id": "11",
+          "from_road_id": "25",
+          "from_lane_id": -1,
+          "to_road_id": "26",
+          "to_lane_id": -1,
+          "turn_type": "straight",
+          "priority": 0,
+          "connecting_road_id": "37",
+          "connecting_lane_id": -1
+        },
+        {
+          "id": "12",
+          "from_road_id": "45",
+          "from_lane_id": -1,
+          "to_road_id": "26",
+          "to_lane_id": -1,
+          "turn_type": "right",
+          "priority": 0,
+          "connecting_road_id": "38",
+          "connecting_lane_id": -1
+        }
+      ],
+      "is_roundabout": true,
+      "roundabout_lane_count": 1,
+      "roundabout_clockwise": false,
+      "entry_roads": [
+        "45"
+      ],
+      "exit_roads": [],
+      "roundabout_center": [
+        1993.2800181573048,
+        953.2426934251281
+      ],
+      "roundabout_radius": 460.0275689694547
+    },
+    {
+      "id": "11",
+      "name": "Path Crossing 1",
+      "center_point": [
+        462.92416208641447,
+        911.3212815739071
+      ],
+      "connected_road_ids": [],
+      "connections": [],
+      "junction_type": "virtual",
+      "connecting_roads": [],
+      "lane_connections": [],
+      "is_roundabout": false,
+      "roundabout_lane_count": 1,
+      "roundabout_clockwise": false,
+      "entry_roads": [],
+      "exit_roads": [],
+      "geo_center_point": [
+        12.0104378,
+        57.4842487
+      ]
+    },
+    {
+      "id": "12",
+      "name": "Path Crossing 2",
+      "center_point": [
+        434.11873444955825,
+        1164.3917067635566
+      ],
+      "connected_road_ids": [],
+      "connections": [],
+      "junction_type": "virtual",
+      "connecting_roads": [],
+      "lane_connections": [],
+      "is_roundabout": false,
+      "roundabout_lane_count": 1,
+      "roundabout_clockwise": false,
+      "entry_roads": [],
+      "exit_roads": [],
+      "geo_center_point": [
+        12.0104686,
+        57.4843789
+      ]
+    }
+  ],
+  "junction_groups": [],
+  "signals": [
+    {
+      "id": "2",
+      "position": [
+        1798.3652231216545,
+        315.41577333640447
+      ],
+      "type": "library_sign",
+      "value": null,
+      "speed_unit": "km/h",
+      "road_id": "2",
+      "name": "OSM Signal 1609680977 (give_way)",
+      "orientation": "+",
+      "h_offset": 0.0,
+      "z_offset": 2.0,
+      "sign_width": 0.9,
+      "sign_height": 0.9,
+      "s_position": 1063.1903076010772,
+      "validity_range": null,
+      "geo_position": [
+        12.0092152,
+        57.4840899
+      ],
+      "library_id": "se",
+      "sign_id": "B1"
+    },
+    {
+      "id": "3",
+      "position": [
+        2748.202952944022,
+        732.7967553865584
+      ],
+      "type": "library_sign",
+      "value": null,
+      "speed_unit": "km/h",
+      "road_id": "6",
+      "name": "OSM Signal 1609681052 (give_way)",
+      "orientation": "+",
+      "h_offset": 0.0,
+      "z_offset": 2.0,
+      "sign_width": 0.9,
+      "sign_height": 0.9,
+      "s_position": 1470.197034414981,
+      "validity_range": null,
+      "geo_position": [
+        12.0086895,
+        57.4843483
+      ],
+      "library_id": "se",
+      "sign_id": "B1"
+    },
+    {
+      "id": "4",
+      "position": [
+        1340.013722838501,
+        1172.9898984291735
+      ],
+      "type": "library_sign",
+      "value": null,
+      "speed_unit": "km/h",
+      "road_id": "45",
+      "name": "OSM Signal 1609681090 (give_way)",
+      "orientation": "+",
+      "h_offset": -1.9198621771937625,
+      "z_offset": 2.0,
+      "sign_width": 0.9,
+      "sign_height": 0.9,
+      "s_position": 1612.5913130341946,
+      "validity_range": null,
+      "geo_position": [
+        12.0096561,
+        57.4844198
+      ],
+      "library_id": "se",
+      "sign_id": "B1"
+    }
+  ],
+  "objects": [],
+  "parking_spaces": [],
+  "control_points": [
+    {
+      "pixel_x": 2381.6633709051493,
+      "pixel_y": 1320.8480481322604,
+      "longitude": 12.008951647166743,
+      "latitude": 57.484585691968014,
+      "name": "lamppost_1a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 1487.800877482311,
+      "pixel_y": 1252.8849494587882,
+      "longitude": 12.009611491094834,
+      "latitude": 57.48449667507564,
+      "name": "lamppost_2d",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 402.64053552286623,
+      "pixel_y": 747.7609945424658,
+      "longitude": 12.010498613144026,
+      "latitude": 57.484161220753606,
+      "name": "feature_3a",
+      "is_validation": true
+    },
+    {
+      "pixel_x": 409.704404567127,
+      "pixel_y": 765.925229227708,
+      "longitude": 12.010482270846094,
+      "latitude": 57.484163889839216,
+      "name": "feature_4a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 1843.9450362291204,
+      "pixel_y": 122.01228349177762,
+      "longitude": 12.009176025186662,
+      "latitude": 57.48393191976969,
+      "name": "lamppost_5d",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 2079.81905522548,
+      "pixel_y": 220.42733285110282,
+      "longitude": 12.008980625165208,
+      "latitude": 57.48399774973272,
+      "name": "lamppost_6a",
+      "is_validation": false
+    }
+  ],
+  "right_hand_traffic": true,
+  "transform_method": "homography",
+  "country_code": "se",
+  "map_name": "VIDr_ff_2025-10-16T131742CEST",
+  "openstreetmap_used": true,
+  "junction_offset_distance_meters": 8.0,
+  "roundabout_ring_offset_distance_meters": 4.0,
+  "roundabout_approach_offset_distance_meters": 8.0,
+  "georef_validation": {
+    "transform_method": "homography",
+    "reprojection_error": {
+      "rmse_pixels": 6.471225879973246e-09,
+      "mean_error_pixels": 5.6991700519777035e-09,
+      "max_error_pixels": 1.0391805299930529e-08,
+      "rmse_meters": 0.5702129692181407,
+      "mean_error_meters": 0.4570769515001113,
+      "max_error_meters": 0.8800268531235286,
+      "per_point_errors": [
+        {
+          "name": "lamppost_1a",
+          "error_pixels": 3.521663290147784e-09,
+          "error_meters": 0.21070365066640445
+        },
+        {
+          "name": "lamppost_2d",
+          "error_pixels": 1.5783560942020176e-09,
+          "error_meters": 0.21514242609506512
+        },
+        {
+          "name": "feature_4a",
+          "error_pixels": 5.514960691484391e-09,
+          "error_meters": 0.11501407802297234
+        },
+        {
+          "name": "lamppost_5d",
+          "error_pixels": 1.0391805299930529e-08,
+          "error_meters": 0.8644977495925862
+        },
+        {
+          "name": "lamppost_6a",
+          "error_pixels": 7.489064884123798e-09,
+          "error_meters": 0.8800268531235286
+        }
+      ]
+    },
+    "validation_error": {
+      "rmse_pixels": 19.40629488948036,
+      "mean_error_pixels": 19.40629488948036,
+      "max_error_pixels": 19.40629488948036,
+      "rmse_meters": 1.0534027681840583,
+      "mean_error_meters": 1.0534027681840583,
+      "max_error_meters": 1.0534027681840583,
+      "per_point_errors": [
+        {
+          "name": "feature_3a",
+          "error_pixels": 19.40629488948036,
+          "error_meters": 1.0534027681840583
+        }
+      ]
+    },
+    "scale_factors": {
+      "x": 0.04945807618178866,
+      "y": 0.0588310484692802
+    },
+    "num_training_points": 5,
+    "num_validation_points": 1
+  },
+  "uncertainty_grid_cache": [
+    [
+      0.16383734817853046,
+      0.15880574762009775,
+      0.15384954106723872,
+      0.14897625358364902,
+      0.14419429236238185,
+      0.13951304890304503,
+      0.13494300519581712,
+      0.130495844782281,
+      0.126184560733201,
+      0.12202355608591135,
+      0.11802872575762402,
+      0.11421750737979836,
+      0.11060888249775493,
+      0.10722330803309298,
+      0.10408255223506938,
+      0.10120940961645673,
+      0.09862727062533473,
+      0.09635953210834813,
+      0.09442884811080876,
+      0.09285624530462928,
+      0.09166015617643573,
+      0.09085545208503466,
+      0.09045257945049207,
+      0.09045690733657875,
+      0.09086837768215099,
+      0.0916815086374059,
+      0.0928857524439349,
+      0.0944661526757443,
+      0.09640421148297387,
+      0.0986788578658665,
+      0.10126741327826513,
+      0.10414647382196422,
+      0.1072926559714079,
+      0.11068318324949714,
+      0.11429631261158858,
+      0.11811161719282787,
+      0.12211014768752097,
+      0.12627449948051214,
+      0.13058880990269833,
+      0.1350387068444705,
+      0.13961122588765418,
+      0.14429471051045947,
+      0.14907870263518153,
+      0.15395383288661,
+      0.1589117137136914,
+      0.1639448378590731,
+      0.1690464846151915,
+      0.17421063427951308,
+      0.1794318901511364,
+      0.18470540963777884
+    ],
+    [
+      0.16144892179758782,
+      0.15636030055878705,
+      0.15134450714186418,
+      0.14640902657718316,
+      0.14156225953341708,
+      0.13681363448985154,
+      0.13217372981006525,
+      0.1276544010632816,
+      0.12326891089098309,
+      0.11903205305937486,
+      0.11496026251863471,
+      0.11107169411661068,
+      0.10738625392678584,
+      0.10392555435202798,
+      0.10071276565577236,
+      0.09777232983448443,
+      0.09512950541362698,
+      0.09280972006634262,
+      0.09083772606883984,
+      0.08923658350387588,
+      0.08802653114519192,
+      0.08722384733030954,
+      0.08683982901736607,
+      0.08688002809672528,
+      0.08734385873620312,
+      0.08822463961409746,
+      0.08951006331876496,
+      0.09118301833606261,
+      0.09322264337107296,
+      0.09560547389479603,
+      0.09830655652040254,
+      0.1013004367336629,
+      0.10456196690669976,
+      0.1080669160895851,
+      0.11179239150098623,
+      0.1157170957275873,
+      0.11982145339733702,
+      0.12408763904684558,
+      0.12849953551706983,
+      0.13304264770914825,
+      0.1377039890100234,
+      0.14247195542191998,
+      0.1473361957418881,
+      0.15228748496922645,
+      0.15731760422770794,
+      0.16241922947227652,
+      0.16758583069448485,
+      0.17281157990247695,
+      0.17809127063622854,
+      0.18342024488402509
+    ],
+    [
+      0.1591519864319429,
+      0.15400761160470328,
+      0.14893341155333187,
+      0.14393680814260162,
+      0.13902616807245885,
+      0.1342109275605376,
+      0.12950172873621962,
+      0.12491056563386815,
+      0.12045093657514327,
+      0.11613799459005764,
+      0.11198868913133188,
+      0.10802187832755443,
+      0.10425839489039762,
+      0.10072103370766722,
+      0.09743442594660148,
+      0.094424758848469,
+      0.0917192990814133,
+      0.08934568578362842,
+      0.08733098141784286,
+      0.08570050214804796,
+      0.08447649875991775,
+      0.08367681042418212,
+      0.08331365668586077,
+      0.08339274048387216,
+      0.08391281165790906,
+      0.08486576313374367,
+      0.08623724574271804,
+      0.08800769490699038,
+      0.0901536088547925,
+      0.09264890181182191,
+      0.09546618162623184,
+      0.09857784573829446,
+      0.10195694440620809,
+      0.10557780242357277,
+      0.10941642115283455,
+      0.11345069885816125,
+      0.11766051137867327,
+      0.12202769282344599,
+      0.12653595025160352,
+      0.1311707383112856,
+      0.13591911371678336,
+      0.14076958258199876,
+      0.1457119496945485,
+      0.15073717590623445,
+      0.15583724561995807,
+      0.1610050466583617,
+      0.16623426237047295,
+      0.17151927565935965,
+      0.17685508438077793,
+      0.18223722681830723
+    ],
+    [
+      0.15695055884494782,
+      0.15175199500741884,
+      0.14662088876662632,
+      0.14156457571528497,
+      0.13659136199045518,
+      0.1317106610982334,
+      0.12693314514860904,
+      0.1222709099497053,
+      0.11773765125296705,
+      0.11334884481177988,
+      0.1091219215147339,
+      0.10507641910418165,
+      0.10123408997977582,
+      0.09761892803020378,
+      0.09425707525017275,
+      0.09117655613114312,
+      0.08840678444516872,
+      0.08597779766358853,
+      0.08391919240149703,
+      0.08225878083731403,
+      0.08102104782475843,
+      0.08022555942985787,
+      0.07988552788477862,
+      0.08000676074835548,
+      0.0805871761638233,
+      0.08161697846801189,
+      0.0830794582653555,
+      0.08495227254887545,
+      0.08720898941178505,
+      0.08982067723926232,
+      0.09275735715236785,
+      0.09598920545058681,
+      0.09948746058292836,
+      0.10322504088717703,
+      0.10717691141363588,
+      0.11132025249800674,
+      0.11563448396827748,
+      0.1201011913837071,
+      0.12470399137897419,
+      0.12942836539742678,
+      0.1342614802580292,
+      0.1391920090672671,
+      0.1442099605079794,
+      0.14930652038901093,
+      0.1544739083110921,
+      0.15970524941656958,
+      0.16499446063262752,
+      0.17033615122194484,
+      0.1757255353497497,
+      0.18115835646760198
+    ],
+    [
+      0.154848712502334,
+      0.14959784165829756,
+      0.14441167434009516,
+      0.13929743778617107,
+      0.1342633518707264,
+      0.12931877720510146,
+      0.12447438142217272,
+      0.11974232392184143,
+      0.11513645662068511,
+      0.11067253567048148,
+      0.1063684336537605,
+      0.10224433586391718,
+      0.09832289532937098,
+      0.09462930986005554,
+      0.09119127062110358,
+      0.08803872097919678,
+      0.08520335644660361,
+      0.08271780049884747,
+      0.08061441616605415,
+      0.07892376495571349,
+      0.07767280257858024,
+      0.07688299455567911,
+      0.07656861272384947,
+      0.07673550061107028,
+      0.07738054455478334,
+      0.07849195689746717,
+      0.08005031489445297,
+      0.08203015030308998,
+      0.08440180797348822,
+      0.08713329921265076,
+      0.09019193690213974,
+      0.0935456367051906,
+      0.09716385034837803,
+      0.10101815918100968,
+      0.10508258733801154,
+      0.10933370407052445,
+      0.11375058037265066,
+      0.11831465351473835,
+      0.12300954004541442,
+      0.12782082632836336,
+      0.13273585561465367,
+      0.13774352291284706,
+      0.14283408496903557,
+      0.14799898836702108,
+      0.15323071593937848,
+      0.1585226515584623,
+      0.16386896229630377,
+      0.1692644959148886,
+      0.1747046917838489,
+      0.18018550476097275
+    ],
+    [
+      0.15285055538037692,
+      0.14754959561465072,
+      0.14231057959370003,
+      0.1371406064595457,
+      0.13204778617646099,
+      0.12704139766872435,
+      0.12213207050870423,
+      0.11733198860638154,
+      0.11265511741579139,
+      0.10811744723822203,
+      0.10373724661616965,
+      0.099535306694376,
+      0.0955351517880152,
+      0.09176317439993285,
+      0.0882486381321463,
+      0.08502347381988169,
+      0.0821217819611256,
+      0.0795789548782566,
+      0.07743035610366457,
+      0.07570955707117104,
+      0.07444622912560771,
+      0.073663912716303,
+      0.07337799431614164,
+      0.07359425974744664,
+      0.07430832450148211,
+      0.07550606674254096,
+      0.07716496719024755,
+      0.07925607358258888,
+      0.08174622473813875,
+      0.08460019097621607,
+      0.0877824946621466,
+      0.09125879376034786,
+      0.09499681843514704,
+      0.09896691672229137,
+      0.10314229343770329,
+      0.10749903152630479,
+      0.1120159716038604,
+      0.1166745087864748,
+      0.1214583513755655,
+      0.12635326764949986,
+      0.13134683998515487,
+      0.136428235740599,
+      0.1415879996666953,
+      0.14681786945149125,
+      0.15211061419141622,
+      0.15745989364147078,
+      0.16286013716920164,
+      0.1683064391563505,
+      0.1737944695255,
+      0.17932039710407066
+    ],
+    [
+      0.150960205147205,
+      0.14561172624641497,
+      0.140322461148286,
+      0.1350993649497277,
+      0.1299504163942767,
+      0.124884787045054,
+      0.11991303663478059,
+      0.11504733665228305,
+      0.11030172260199421,
+      0.10569237130381877,
+      0.10123789650657136,
+      0.09695964645645906,
+      0.09288197566789862,
+      0.08903244785268837,
+      0.08544190503258683,
+      0.08214431521473893,
+      0.07917629001678789,
+      0.07657616002834547,
+      0.0743825160126885,
+      0.07263219738033935,
+      0.07135783416573133,
+      0.07058521030056858,
+      0.07033086333027415,
+      0.07060039496804062,
+      0.07138787154333957,
+      0.07267645870872197,
+      0.07444013775699021,
+      0.0766461189576608,
+      0.07925747925679234,
+      0.08223560957952773,
+      0.08554221156612536,
+      0.08914073951955838,
+      0.09299731135256382,
+      0.09708117958239885,
+      0.10136487523589613,
+      0.10582413450022408,
+      0.11043769262528971,
+      0.11518701090718678,
+      0.12005597856263564,
+      0.12503061839177354,
+      0.1300988089119846,
+      0.1352500337066781,
+      0.14047515857241594,
+      0.1457662366254637,
+      0.151116340258344,
+      0.1565194168724647,
+      0.16197016531774167,
+      0.16746393054062667,
+      0.17299661453581697,
+      0.1785645995635233
+    ],
+    [
+      0.1491817598425089,
+      0.1437886962637784,
+      0.13845218628698266,
+      0.1331790283269525,
+      0.1279770538332946,
+      0.12285530529441153,
+      0.11782424527987546,
+      0.11289599859019961,
+      0.10808463004826434,
+      0.10340645529885512,
+      0.09888038104127249,
+      0.0945282577310672,
+      0.09037521942760489,
+      0.08644996275802957,
+      0.08278489500308991,
+      0.07941604769812065,
+      0.07638262514346422,
+      0.07372604176221681,
+      0.0714883210199666,
+      0.0697098117848836,
+      0.0684263302856006,
+      0.06766605138749539,
+      0.06744667036042064,
+      0.06777344007245961,
+      0.06863856079172388,
+      0.07002208139672733,
+      0.07189408000745015,
+      0.0742176030770405,
+      0.07695176076914571,
+      0.08005448995976633,
+      0.08348470670233121,
+      0.08720377372859169,
+      0.09117635135521414,
+      0.09537076572781335,
+      0.09975903904470472,
+      0.10431670906969308,
+      0.10902253303614227,
+      0.11385814259059462,
+      0.11880769153835719,
+      0.12385752108046513,
+      0.12899585453793352,
+      0.13421252711591272,
+      0.13949875052652289,
+      0.14484691013796475,
+      0.15025039216635142,
+      0.15570343706996,
+      0.16120101528788722,
+      0.166738721733767,
+      0.1723126876808054,
+      0.17791950525182
+    ],
+    [
+      0.14751926697132833,
+      0.14208492616610177,
+      0.13670459155742015,
+      0.13138489824083083,
+      0.12613351896821376,
+      0.12095935158228295,
+      0.11587274003860305,
+      0.11088573411750015,
+      0.10601239165491429,
+      0.101269123394971,
+      0.09667507704384046,
+      0.09225254842892502,
+      0.08802739271919491,
+      0.08402938804140854,
+      0.08029247318965267,
+      0.07685474258063567,
+      0.07375804134865585,
+      0.07104697659675906,
+      0.06876717311148671,
+      0.06696269347856908,
+      0.0656727306907395,
+      0.0649279584944457,
+      0.064747193304568,
+      0.06513513101681348,
+      0.06608175659345886,
+      0.06756359092031233,
+      0.06954643118233861,
+      0.07198889065678316,
+      0.0748459862266902,
+      0.07807220985524377,
+      0.08162380317952977,
+      0.08546021037281998,
+      0.08954483160527507,
+      0.09384526191259226,
+      0.09833319124192846,
+      0.10298410963582165,
+      0.1077769185933917,
+      0.11269351589818165,
+      0.11771839223643112,
+      0.1228382604067547,
+      0.12804172595516258,
+      0.13331900073026196,
+      0.13866165772868538,
+      0.14406242293267388,
+      0.14951499961915374,
+      0.15501392032837458,
+      0.16055442352283444,
+      0.1661323488038178,
+      0.17174405005904794,
+      0.17738632180290642
+    ],
+    [
+      0.14597668812863804,
+      0.1405047543563545,
+      0.1350844385151215,
+      0.12972221114837112,
+      0.124425582620777,
+      0.11920329754376688,
+      0.11406556754309653,
+      0.10902434711935509,
+      0.10409365894187106,
+      0.09928997128822069,
+      0.09463262645023816,
+      0.09014430967262632,
+      0.08585153559408498,
+      0.08178510116269477,
+      0.07798042298986238,
+      0.07447762737768457,
+      0.07132120721438027,
+      0.06855902002004001,
+      0.0662404019739219,
+      0.0644132711107866,
+      0.06312032273100829,
+      0.06239477380327647,
+      0.06225646510948721,
+      0.06270928249014704,
+      0.06374062896803563,
+      0.06532310817538893,
+      0.06741792153157805,
+      0.06997907426445504,
+      0.0729574707139298,
+      0.07630426749715138,
+      0.07997322643414626,
+      0.08392210473290161,
+      0.08811327590985521,
+      0.09251381579457259,
+      0.09709526170110912,
+      0.10183319988189848,
+      0.10670678676715774,
+      0.11169826811284415,
+      0.11679252910549111,
+      0.12197669299055786,
+      0.12723977132667588,
+      0.13257236583158155,
+      0.13796641607846308,
+      0.1434149879516471,
+      0.14891209680033152,
+      0.1544525602985641,
+      0.160031875581741,
+      0.16564611685097277,
+      0.1712918498970277,
+      0.17696606081087066
+    ],
+    [
+      0.14455786222723607,
+      0.139052394694161,
+      0.13359636371247827,
+      0.1281960816395769,
+      0.12285889999557409,
+      0.1175934107975287,
+      0.11240968920949802,
+      0.10731958441531064,
+      0.1023370665298387,
+      0.0974786343707169,
+      0.09276378687906524,
+      0.08821554935327992,
+      0.08386103485959069,
+      0.07973198964706135,
+      0.07586523699077381,
+      0.07230287140874211,
+      0.06909199115392557,
+      0.06628369541648714,
+      0.0639310590690916,
+      0.06208590312498797,
+      0.060794452278049665,
+      0.06009241624951758,
+      0.06000048803012309,
+      0.06052144768544112,
+      0.06163975760976179,
+      0.06332377755112821,
+      0.06552990845958478,
+      0.0682075069869625,
+      0.07130347895813817,
+      0.07476586941924074,
+      0.07854623698015474,
+      0.0826009350856661,
+      0.08689156813070699,
+      0.0913849098666205,
+      0.0960525163711405,
+      0.10087019905682611,
+      0.10581746179220947,
+      0.11087696058243053,
+      0.11603401462562146,
+      0.12127617963943677,
+      0.12659288257839918,
+      0.1319751155065983,
+      0.13741517868836509,
+      0.1429064677236489,
+      0.14844329804238166,
+      0.15402075817648028,
+      0.15963458956797774,
+      0.1652810861076052,
+      0.17095701114569065,
+      0.1766595281552624
+    ],
+    [
+      0.14326646603587986,
+      0.13773189038526462,
+      0.13224482595749637,
+      0.1268114400934469,
+      0.12143893822904298,
+      0.11613577003000465,
+      0.11091188149684901,
+      0.10577901887884145,
+      0.10075109541870232,
+      0.09584462755925048,
+      0.09107924588344223,
+      0.08647827725800947,
+      0.0820693782601546,
+      0.07788517366495817,
+      0.07396380672745764,
+      0.07034924405514928,
+      0.06709109170505487,
+      0.06424359914148241,
+      0.06186349886035996,
+      0.06000643258590691,
+      0.058722043740489484,
+      0.05804835827345556,
+      0.05800665802392105,
+      0.05859829232321691,
+      0.05980446771117463,
+      0.06158908877149467,
+      0.0639037116506334,
+      0.06669317714182418,
+      0.06990066096944192,
+      0.07347143611216851,
+      0.07735520966000635,
+      0.08150725117059233,
+      0.08588866365394635,
+      0.09046612674982302,
+      0.09521136824697057,
+      0.10010053050104986,
+      0.10511353285934898,
+      0.11023348122282174,
+      0.11544614743166377,
+      0.12073952359506275,
+      0.12610344622546704,
+      0.13152928478692558,
+      0.13700968348253578,
+      0.14253834917239952,
+      0.14810987679565724,
+      0.15371960590455636,
+      0.1593635022897196,
+      0.16503806080240263,
+      0.17074022419159327,
+      0.17646731657885953
+    ],
+    [
+      0.14210597370703576,
+      0.13654706703974204,
+      0.1310340500143218,
+      0.12557296704290274,
+      0.12017089840049396,
+      0.11483617290621494,
+      0.10957862652405921,
+      0.10440991900838653,
+      0.09934391776513464,
+      0.09439715990108906,
+      0.08958940012582875,
+      0.08494424307378047,
+      0.08048984571196839,
+      0.07625964262484042,
+      0.07229300060490682,
+      0.06863563057153543,
+      0.06533948752558436,
+      0.06246178425983366,
+      0.06006269529229126,
+      0.058201436726366663,
+      0.056930783550155926,
+      0.05629074524653257,
+      0.056302832006847055,
+      0.056966628731345684,
+      0.058259863536337414,
+      0.060141945544125566,
+      0.06255975162789312,
+      0.06545394148764648,
+      0.06876439040573211,
+      0.07243404807020175,
+      0.07641117895397063,
+      0.08065030822159251,
+      0.08511229740019445,
+      0.0897639189233742,
+      0.09457719653877358,
+      0.09952867971548976,
+      0.10459874318513405,
+      0.10977095730619016,
+      0.11503154374383387,
+      0.12036891652707438,
+      0.12577330032566394,
+      0.13123641677991393,
+      0.1367512270862509,
+      0.14231172173525444,
+      0.1479127485240331,
+      0.15354987204173937,
+      0.1592192584803781,
+      0.16491758039726057,
+      0.17064193908826583,
+      0.17638979975585709
+    ],
+    [
+      0.14107961554389553,
+      0.13550148372994486,
+      0.1299679701255255,
+      0.12448502497324541,
+      0.11905963479693855,
+      0.11370003884758355,
+      0.10841599530221802,
+      0.10321910787364452,
+      0.09812322586018705,
+      0.09314492829320692,
+      0.08830410461579327,
+      0.0836246322994468,
+      0.07913513989852539,
+      0.07486981109383388,
+      0.07086913198739093,
+      0.06718039984819918,
+      0.06385769637354034,
+      0.060960902719185264,
+      0.05855326577381378,
+      0.05669713590932411,
+      0.05544792614997979,
+      0.05484712217630671,
+      0.05491600965727128,
+      0.0556521017401134,
+      0.05702956900082926,
+      0.05900350893646967,
+      0.06151652946797197,
+      0.06450565661206385,
+      0.06790804870722753,
+      0.07166486884999938,
+      0.07572338334501941,
+      0.08003771077627012,
+      0.08456870885180966,
+      0.08928339647856959,
+      0.09415418349207849,
+      0.09915806907998521,
+      0.10427589393244152,
+      0.10949168215414848,
+      0.11479208104541481,
+      0.12016589485602167,
+      0.12560370098989174,
+      0.13109753670055455,
+      0.13664064391068448,
+      0.14222726185370896,
+      0.14785245842030026,
+      0.15351199276953229,
+      0.15920220281971548,
+      0.16491991337624465,
+      0.17066236056265136,
+      0.17642712885516298
+    ],
+    [
+      0.14019033774919584,
+      0.13459838549676303,
+      0.12905017226881824,
+      0.12355159067093606,
+      0.11810957267104581,
+      0.11273231014893424,
+      0.10742952745275189,
+      0.10221281716354359,
+      0.09709605352412981,
+      0.09209589703885356,
+      0.08723240156948339,
+      0.08252973112856922,
+      0.0780169736525367,
+      0.07372900936026545,
+      0.06970733459787877,
+      0.06600064523852765,
+      0.06266486133343295,
+      0.05976212447591324,
+      0.05735821840303382,
+      0.055517978280591886,
+      0.05429874412063579,
+      0.053742797891937685,
+      0.053870678836480806,
+      0.05467758925294025,
+      0.05613425417371881,
+      0.05819189996331406,
+      0.06078953011210716,
+      0.06386128497606154,
+      0.06734231562718002,
+      0.07117259466629242,
+      0.0752988446110477,
+      0.07967509511284629,
+      0.08426240300450079,
+      0.08902814913996918,
+      0.09394518159742009,
+      0.09899095890512749,
+      0.1041467702188729,
+      0.10939705916121382,
+      0.11472885595049517,
+      0.12013130815885496,
+      0.12559529861559746,
+      0.13111313394183818,
+      0.13667829284997285,
+      0.14228522259696957,
+      0.1479291737110333,
+      0.15360606531723683,
+      0.15931237608418855,
+      0.16504505462364394,
+      0.1708014459157069,
+      0.17657923099780298
+    ],
+    [
+      0.13944076293225866,
+      0.13384065661601985,
+      0.12828383905362145,
+      0.12277618807878314,
+      0.11732462815914342,
+      0.11193735473092681,
+      0.10662411272672213,
+      0.10139654058857754,
+      0.09626859553272092,
+      0.09125707388859895,
+      0.08638224107860924,
+      0.08166857797371813,
+      0.07714563295244285,
+      0.07284893796774035,
+      0.06882088224154467,
+      0.06511134243149963,
+      0.06177772256793886,
+      0.058883903595663485,
+      0.05649750615791148,
+      0.05468500074721294,
+      0.0535047420053223,
+      0.052998986235537046,
+      0.0531869784088707,
+      0.05406148171466058,
+      0.055590106539676935,
+      0.057720906880943994,
+      0.060390175083932324,
+      0.06353007480682234,
+      0.0670745448577887,
+      0.07096298853533663,
+      0.0751420249985238,
+      0.07956587906581838,
+      0.08419596964569355,
+      0.08900011516272023,
+      0.093951618980108,
+      0.09902837935074381,
+      0.10421209211002919,
+      0.10948756718520401,
+      0.11484215949193158,
+      0.12026530185874185,
+      0.12574812554752127,
+      0.13128315322070722,
+      0.13686405145700709,
+      0.14248543032105035,
+      0.14814268160468466,
+      0.15383184777935288,
+      0.1595495148118097,
+      0.16529272511043944,
+      0.171058905883427,
+      0.17684581017311293
+    ],
+    [
+      0.13883315400983118,
+      0.1332307773994686,
+      0.12767169797292152,
+      0.12216182662467549,
+      0.11670813295325436,
+      0.11131887405055402,
+      0.10600387808672761,
+      0.10077489568917525,
+      0.09564603522645794,
+      0.09063429542175742,
+      0.08576021203854839,
+      0.08104862394453177,
+      0.07652954927562686,
+      0.07223912644703398,
+      0.06822050915536408,
+      0.0645245021425203,
+      0.0612095733623873,
+      0.05834071798968647,
+      0.055986550974271417,
+      0.05421416240417002,
+      0.05308186071763836,
+      0.052630974413556755,
+      0.05287893724176258,
+      0.05381609005009653,
+      0.05540747330574365,
+      0.057598885973462036,
+      0.06032497182359366,
+      0.06351692527632939,
+      0.06710830332102273,
+      0.07103855264270749,
+      0.07525459820356946,
+      0.0797111043279554,
+      0.08436997544189868,
+      0.0891995087921373,
+      0.09417345161979201,
+      0.09927009922076792,
+      0.10447149482440467,
+      0.1097627481050382,
+      0.11513147056077003,
+      0.12056731381965152,
+      0.12606159530459593,
+      0.1316069962881674,
+      0.1371973183291245,
+      0.14282728672011363,
+      0.1484923920495822,
+      0.1541887615868101,
+      0.15991305416850346,
+      0.1656623753555211,
+      0.1714342069178829,
+      0.17722634967348244
+    ],
+    [
+      0.13836938113121258,
+      0.13277078540499213,
+      0.12721597493067358,
+      0.12171094483490454,
+      0.11626276673823047,
+      0.11087982126542048,
+      0.10557208728864238,
+      0.10035149957680485,
+      0.09523239119514816,
+      0.09023203529916422,
+      0.08537130116267767,
+      0.08067542958156769,
+      0.07617491601731412,
+      0.07190645120080477,
+      0.06791380284604451,
+      0.06424841264108917,
+      0.06096933192480256,
+      0.05814195867213908,
+      0.05583495569929087,
+      0.05411491673810884,
+      0.053038977634059625,
+      0.052646643711155516,
+      0.05295311175970364,
+      0.05394647346345086,
+      0.05558991782208783,
+      0.05782804627571565,
+      0.060594999018940846,
+      0.06382203300347115,
+      0.0674431381316089,
+      0.07139838151084452,
+      0.07563536134103928,
+      0.08010938701287128,
+      0.0847829399359914,
+      0.08962481203723482,
+      0.09460916425847413,
+      0.09971463281510615,
+      0.10492353899833008,
+      0.1102212188350983,
+      0.11559546764535115,
+      0.12103608638409247,
+      0.12653451414577208,
+      0.13208353168625078,
+      0.13767702212747368,
+      0.1433097781476117,
+      0.148977345897866,
+      0.15467589890412073,
+      0.16040213465189848,
+      0.16615319111761717,
+      0.17192657749298454,
+      0.17772011748880864
+    ],
+    [
+      0.138050893936444,
+      0.13246224199347914,
+      0.12691835478267888,
+      0.12142536398546397,
+      0.11599050074366844,
+      0.11062233280500891,
+      0.10533105796238844,
+      0.10012886715214106,
+      0.0950303914736975,
+      0.09005324862220221,
+      0.08521870020629704,
+      0.08055242491058043,
+      0.07608538924931826,
+      0.07185476154998274,
+      0.06790474262829058,
+      0.06428707793232,
+      0.06106086888622346,
+      0.05829114888327517,
+      0.05604563654757009,
+      0.05438929784586361,
+      0.05337700877802403,
+      0.053045654119227195,
+      0.05340790941313938,
+      0.05444993252531029,
+      0.05613388037628763,
+      0.058404254197833315,
+      0.06119581924989527,
+      0.064440877500647,
+      0.06807460686989321,
+      0.07203821556336205,
+      0.07628029832164321,
+      0.08075698319884135,
+      0.08543139799152667,
+      0.09027283194563314,
+      0.09525582203391246,
+      0.10035928499495479,
+      0.10556574982274222,
+      0.11086070538516463,
+      0.11623205865571576,
+      0.12166969192023329,
+      0.1271651030204219,
+      0.1327111145198114,
+      0.13830163914565213,
+      0.1439314902615447,
+      0.14959622784889273,
+      0.15529203431355376,
+      0.16101561238245987,
+      0.16676410270907452,
+      0.17253501527289689,
+      0.17832617313860066
+    ],
+    [
+      0.1378786992860045,
+      0.1323062067368076,
+      0.12677995105220236,
+      0.1213062514637833,
+      0.11589255498376089,
+      0.11054767736442642,
+      0.10528210029717501,
+      0.1001083378631388,
+      0.09504138567943253,
+      0.09009926570993189,
+      0.08530367739284114,
+      0.08068075408767086,
+      0.0762619026032031,
+      0.0720846620314101,
+      0.06819344708722883,
+      0.06463993307580444,
+      0.06148270234125278,
+      0.05878563965670546,
+      0.0566145491673995,
+      0.05503171745735535,
+      0.05408881301996227,
+      0.05381948025073224,
+      0.05423375545517247,
+      0.05531628157912703,
+      0.05702901712065748,
+      0.05931739700834431,
+      0.06211783473791816,
+      0.06536454844917071,
+      0.06899456502814497,
+      0.0729506876318255,
+      0.07718278728735865,
+      0.08164796069499529,
+      0.08631004187545119,
+      0.09113881816024118,
+      0.09610916723959456,
+      0.10120023164291173,
+      0.10639468382755637,
+      0.1116780982191288,
+      0.1170384273669022,
+      0.12246557220787452,
+      0.12795103074486458,
+      0.13348761426717393,
+      0.13906921686561613,
+      0.1446906284985792,
+      0.15034738406918804,
+      0.15603563956790542,
+      0.16175207184419993,
+      0.16749379599391961,
+      0.17325829741476947,
+      0.1790433762724912
+    ],
+    [
+      0.13785334531806126,
+      0.132303219355815,
+      0.12680128511154962,
+      0.12135409746442323,
+      0.11596937114491736,
+      0.11065622491789691,
+      0.1054254817262321,
+      0.10029003579318405,
+      0.09526529997475347,
+      0.09036974314318465,
+      0.08562552536330031,
+      0.08105922341189198,
+      0.07670261941610763,
+      0.07259347735921372,
+      0.06877616645469616,
+      0.0653018852981098,
+      0.062228115523163416,
+      0.059616839202866194,
+      0.057531067071584646,
+      0.05602951761163928,
+      0.05515992218166306,
+      0.05495229013528388,
+      0.0554140630111407,
+      0.05652883839642509,
+      0.05825914319371344,
+      0.060552233468453856,
+      0.06334702193228878,
+      0.06658036045516454,
+      0.07019167061556612,
+      0.0741257300920566,
+      0.07833392689008996,
+      0.08277446068032737,
+      0.08741193047533162,
+      0.09221662998266472,
+      0.09716375405742336,
+      0.10223262879930467,
+      0.10740601780330175,
+      0.11266952537854225,
+      0.11801109371699449,
+      0.12342058792708746,
+      0.12888945582331313,
+      0.1344104502528962,
+      0.13997740335608364,
+      0.14558504310342038,
+      0.1512288434905717,
+      0.15690490254772668,
+      0.16260984220142757,
+      0.16834072628996136,
+      0.17409499274577428,
+      0.17987039730661922
+    ],
+    [
+      0.13797491298774683,
+      0.1324532900878424,
+      0.1269822764647193,
+      0.12156870488128782,
+      0.1162206026586831,
+      0.11094743792685441,
+      0.1057604201160811,
+      0.10067286609887571,
+      0.09570063986537435,
+      0.09086267650964276,
+      0.08618159027352439,
+      0.0816843560708734,
+      0.07740302677613503,
+      0.07337540525259856,
+      0.06964552135050141,
+      0.06626367173415439,
+      0.06328567570291575,
+      0.060770933171474736,
+      0.058778932321744796,
+      0.05736415662803805,
+      0.05656993056483188,
+      0.056422465763358194,
+      0.05692678838598061,
+      0.0580659179908025,
+      0.05980359056089804,
+      0.06208957293735324,
+      0.06486592083448504,
+      0.06807266201695386,
+      0.07165203380253526,
+      0.07555109259060624,
+      0.07972294681880054,
+      0.08412702240980495,
+      0.08872874709462375,
+      0.0934989424126424,
+      0.09841311345544361,
+      0.10345074475427708,
+      0.10859465585946208,
+      0.11383043951740013,
+      0.11914598469629747,
+      0.12453107793799155,
+      0.12997707527930408,
+      0.1354766319690359,
+      0.14102348221406114,
+      0.1466122582383129,
+      0.1522383427873025,
+      0.1578977477736888,
+      0.1635870150779742,
+      0.16930313428585833,
+      0.17504347475166016,
+      0.18080572945444107
+    ],
+    [
+      0.1382430146482278,
+      0.13275590003044277,
+      0.12732224415938243,
+      0.12194919334830877,
+      0.11664512264188459,
+      0.1114198839645065,
+      0.10628510449934087,
+      0.10125454732200999,
+      0.09634453935408005,
+      0.09157447345852565,
+      0.08696737965515791,
+      0.08255054850407456,
+      0.0783561612005241,
+      0.07442183788931922,
+      0.07079095220576784,
+      0.06751247939127296,
+      0.06464006372310598,
+      0.06222995910957978,
+      0.060337590236117636,
+      0.05901278495801679,
+      0.05829425168090029,
+      0.0582044481373576,
+      0.05874625762367494,
+      0.059902544238115044,
+      0.061638736440655297,
+      0.06390758837702946,
+      0.06665472894772319,
+      0.06982372752910446,
+      0.07335993443526256,
+      0.07721291361765005,
+      0.08133766094603422,
+      0.08569494240018855,
+      0.09025108437064287,
+      0.09497747267634411,
+      0.0998499344235026,
+      0.10484810676422814,
+      0.10995484800374525,
+      0.11515571501003638,
+      0.12043851465231722,
+      0.12579292481938617,
+      0.13121017891714837,
+      0.13668280502764424,
+      0.14220441035680767,
+      0.1477695045592594,
+      0.1533733536680008,
+      0.15901186051251615,
+      0.16468146509308282,
+      0.17037906304769948,
+      0.1761019372683384,
+      0.181847701346733
+    ],
+    [
+      0.13865680043187678,
+      0.13321000938200647,
+      0.12781991978285676,
+      0.12249401692981507,
+      0.11724104867069998,
+      0.11207127107670237,
+      0.10699674346510912,
+      0.10203167857004233,
+      0.09719285349936674,
+      0.0925000815856976,
+      0.0879767380708042,
+      0.08365031251300063,
+      0.07955293924375577,
+      0.07572180993004156,
+      0.07219932047044093,
+      0.06903273314923529,
+      0.06627308376976095,
+      0.06397305701439442,
+      0.062183674797504696,
+      0.06094992873984675,
+      0.060305930201611006,
+      0.0602705867993372,
+      0.060844959151950505,
+      0.06201210752311762,
+      0.06373947689964292,
+      0.06598308384161945,
+      0.06869236343401644,
+      0.0718146311429443,
+      0.07529853058292402,
+      0.07909629052408375,
+      0.08316492439835187,
+      0.08746664000838104,
+      0.09196873712627127,
+      0.09664321549881319,
+      0.10146625348343608,
+      0.1064176541084499,
+      0.11148031499547083,
+      0.11663974938196063,
+      0.12188366850222156,
+      0.127201624188761,
+      0.13258470775731498,
+      0.1380252993607161,
+      0.14351685902951422,
+      0.14905375331633106,
+      0.15463111243667152,
+      0.16024471133281354,
+      0.16589087104158654,
+      0.17156637683945605,
+      0.17726841024048076,
+      0.1829944913296288
+    ],
+    [
+      0.139214971275259,
+      0.13381407590629354,
+      0.12847347051400274,
+      0.12320099569507652,
+      0.11800578393910321,
+      0.1128985020442974,
+      0.1078916377681825,
+      0.1029998360301332,
+      0.09824028688133392,
+      0.09363316032788557,
+      0.0892020766107772,
+      0.08497457989460466,
+      0.08098255976416184,
+      0.07726252497115298,
+      0.07385558578412885,
+      0.07080695119944075,
+      0.06816471318860162,
+      0.06597771537599309,
+      0.06429243135394046,
+      0.0631490422712333,
+      0.06257725914090029,
+      0.06259274866472758,
+      0.06319507906444732,
+      0.06436777805915649,
+      0.06608048656050726,
+      0.06829258784404216,
+      0.07095739150476577,
+      0.07402602424357665,
+      0.0774505012165567,
+      0.0811858055613209,
+      0.08519106117680048,
+      0.08943000502027525,
+      0.09387098431637154,
+      0.09848667221005525,
+      0.10325364159613967,
+      0.10815189051748106,
+      0.1131643731184533,
+      0.11827656689370053,
+      0.12347608758262406,
+      0.12875235592456835,
+      0.13409631274382322,
+      0.1395001794361441,
+      0.14495725580749905,
+      0.150461752557969,
+      0.15600865023131366,
+      0.16159358255931336,
+      0.1672127385198174,
+      0.17286278059566815,
+      0.17854077664885537,
+      0.1842441421828142
+    ],
+    [
+      0.13991579914131322,
+      0.13456608024327893,
+      0.12928053240071585,
+      0.12406735744618799,
+      0.11893607237064367,
+      0.11389774556871828,
+      0.10896527233279318,
+      0.1041536928116913,
+      0.09948055023784591,
+      0.09496628368882272,
+      0.09063463577849826,
+      0.08651304160412353,
+      0.08263293862426233,
+      0.07902990405178191,
+      0.07574348764995219,
+      0.07281657178633918,
+      0.07029407747165799,
+      0.06822088046718958,
+      0.06663892821600274,
+      0.06558377834803916,
+      0.06508105876699072,
+      0.06514356022636338,
+      0.06576967146527936,
+      0.06694358020481277,
+      0.06863718516667767,
+      0.07081320817914735,
+      0.07342877314823892,
+      0.07643877289001495,
+      0.0797985856984503,
+      0.08346597853210902,
+      0.08740224177291053,
+      0.09157270972561293,
+      0.09594684715909328,
+      0.10049806359405598,
+      0.10520337973472062,
+      0.11004302994117904,
+      0.11500005559085931,
+      0.1200599188686326,
+      0.12521015314995323,
+      0.13044005448801196,
+      0.13574041470143267,
+      0.1411032939129813,
+      0.14652182741193348,
+      0.15199006318059238,
+      0.15750282435798987,
+      0.16305559508488068,
+      0.16864442316875355,
+      0.17426583970714188,
+      0.17991678992083798,
+      0.18559457619048852
+    ],
+    [
+      0.14075715315941661,
+      0.13546355847994268,
+      0.13023825168758763,
+      0.1250897906428595,
+      0.12002806455157866,
+      0.1150645202445136,
+      0.11021242381074862,
+      0.10548715528224041,
+      0.10090653343747945,
+      0.0964911604812382,
+      0.09226476378408831,
+      0.08825449684346891,
+      0.08449114040118468,
+      0.0810091131048801,
+      0.07784617528976524,
+      0.07504268525168967,
+      0.07264027279136756,
+      0.07067984754159543,
+      0.06919898471697139,
+      0.06822891699411235,
+      0.06779157583386423,
+      0.0678972562401606,
+      0.06854344654725766,
+      0.06971511829633086,
+      0.07138640198927483,
+      0.0735232348435237,
+      0.0760864031498451,
+      0.07903443832292617,
+      0.0823260052137393,
+      0.08592163191586925,
+      0.08978479563633249,
+      0.09388247570375455,
+      0.09818531442540449,
+      0.10266752015830043,
+      0.10730661870720186,
+      0.1120831305631871,
+      0.11698022442533593,
+      0.12198337866007922,
+      0.12708006695406363,
+      0.13225947674512914,
+      0.13751226113157583,
+      0.14283032500359463,
+      0.14820664124603164,
+      0.15363509468438322,
+      0.15911034889700945,
+      0.1646277343103766,
+      0.1701831534896259,
+      0.17577300001568347,
+      0.18139409130088502,
+      0.18704361041866727
+    ],
+    [
+      0.14173653090955635,
+      0.13650364143050106,
+      0.13134333270146642,
+      0.12626450410189513,
+      0.12127739252146703,
+      0.11639378803520144,
+      0.11162727643266925,
+      0.10699350835017112,
+      0.10251048631508893,
+      0.09819885837127725,
+      0.09408219157723978,
+      0.09018718736176927,
+      0.08654377949270688,
+      0.08318503336181625,
+      0.08014674536189602,
+      0.07746663035025397,
+      0.07518300232970179,
+      0.07333291121714886,
+      0.07194980824781311,
+      0.07106096646336016,
+      0.07068503388264592,
+      0.07083017764322648,
+      0.07149322442222762,
+      0.07265999734112422,
+      0.07430677149053598,
+      0.07640251551604647,
+      0.07891146599675028,
+      0.08179560841908384,
+      0.08501676698052067,
+      0.08853816567853892,
+      0.09232545642993496,
+      0.09634728856993635,
+      0.10057552962393289,
+      0.10498524326292748,
+      0.10955451813730305,
+      0.11426421396796214,
+      0.11909767312322689,
+      0.12404042852738063,
+      0.12907992518322953,
+      0.13420526538070318,
+      0.13940698128378273,
+      0.1446768351682532,
+      0.15000764593411384,
+      0.1553931402001341,
+      0.1608278248022838,
+      0.16630687731453153,
+      0.1718260535523668,
+      0.17738160813302256,
+      0.18297022749684394,
+      0.18858897203527786
+    ],
+    [
+      0.1428510934993266,
+      0.13768309722006344,
+      0.13259209102923303,
+      0.12758729152385162,
+      0.12267924973233904,
+      0.11788005209724423,
+      0.11320354257898081,
+      0.10866556233543492,
+      0.104284197322214,
+      0.10008001912346741,
+      0.09607629064001964,
+      0.09229910088461132,
+      0.0887773700307679,
+      0.08554265510677221,
+      0.08262867102519428,
+      0.08007044219762967,
+      0.07790302398955751,
+      0.07615978988164095,
+      0.0748703750188614,
+      0.07405848708414152,
+      0.07373990080352837,
+      0.07392099453150727,
+      0.07459812945018927,
+      0.07575800551501989,
+      0.07737891761401255,
+      0.07943264689746496,
+      0.08188663439365186,
+      0.0847061001665101,
+      0.08785586445805056,
+      0.09130174938642127,
+      0.09501154128600081,
+      0.09895556325225804,
+      0.10310693991781955,
+      0.10744163819917052,
+      0.11193836317761642,
+      0.11657836730785466,
+      0.12134521532396524,
+      0.12622453751171625,
+      0.13120378592244905,
+      0.13627200756341937,
+      0.14141963666085258,
+      0.14663831095405425,
+      0.15192070903261826,
+      0.15726040968069352,
+      0.16265176934419084,
+      0.16808981738922887,
+      0.17357016545644882,
+      0.17908893033184572,
+      0.1846426674509759,
+      0.19022831355535696
+    ],
+    [
+      0.1440977041869685,
+      0.13899837804199344,
+      0.13398050921533383,
+      0.12905359978452632,
+      0.12422847255525894,
+      0.11951745552900468,
+      0.11493458118731746,
+      0.11049579513365032,
+      0.10621916277671084,
+      0.10212505739472355,
+      0.09823630265827486,
+      0.094578232047041,
+      0.09117861484328624,
+      0.08806738686960079,
+      0.08527611895078366,
+      0.08283716140904276,
+      0.08078243108014878,
+      0.07914186007489893,
+      0.07794160562924331,
+      0.0772022069480724,
+      0.07693695230763212,
+      0.07715073242423023,
+      0.07783960046244207,
+      0.07899112800449426,
+      0.08058548381809967,
+      0.08259702853687148,
+      0.08499614712228806,
+      0.08775105666401485,
+      0.09082938883868058,
+      0.09419944166637582,
+      0.09783107255495707,
+      0.1016962619775005,
+      0.10576940797724009,
+      0.11002741752723756,
+      0.11444965963995227,
+      0.11901782870558958,
+      0.12371576104043855,
+      0.12852922830871752,
+      0.13344572873964378,
+      0.13845428673024301,
+      0.143545266461564,
+      0.14871020317415135,
+      0.1539416530505329,
+      0.15923306058093692,
+      0.16457864265725153,
+      0.16997328812197612,
+      0.1754124701951651,
+      0.18089217163645155,
+      0.1864088190033194,
+      0.19195922711460656
+    ],
+    [
+      0.14547296822260167,
+      0.14044566790800153,
+      0.13550429445980447,
+      0.13065859705808333,
+      0.12591962185298175,
+      0.12129987781289385,
+      0.11681351189134219,
+      0.11247648535725892,
+      0.1083067401996827,
+      0.10432433654702974,
+      0.1005515360830711,
+      0.09701279624868496,
+      0.0937346300387724,
+      0.09074528152053678,
+      0.0880741640097354,
+      0.08575102110070627,
+      0.08380479632091598,
+      0.08226224618382322,
+      0.08114639505166892,
+      0.08047499428060846,
+      0.0802591988249235,
+      0.08050267256054107,
+      0.08120128439986579,
+      0.08234345092382908,
+      0.08391106130697047,
+      0.08588082169020869,
+      0.08822580040322618,
+      0.0909169687019298,
+      0.09392457363992386,
+      0.09721925161142048,
+      0.100772849677369,
+      0.10455897185712987,
+      0.1085532908737063,
+      0.11273367879620161,
+      0.11708020633550509,
+      0.12157505540583054,
+      0.1262023791047864,
+      0.1309481343526896,
+      0.13579990537376269,
+      0.14074672892900103,
+      0.14577892897051395,
+      0.15088796354756484,
+      0.15606628714018878,
+      0.16130722678474263,
+      0.16660487345767047,
+      0.171953986039482,
+      0.17734990769823356,
+      0.18278849315129272,
+      0.18826604504156624,
+      0.19377925890145684
+    ],
+    [
+      0.14697327414466022,
+      0.14202093119558332,
+      0.13715893507475765,
+      0.1323972396477194,
+      0.12774706120831225,
+      0.12322102606479557,
+      0.11883331970543215,
+      0.11459983193788235,
+      0.1105382834050306,
+      0.1066683164574572,
+      0.10301152541026924,
+      0.09959139521519646,
+      0.09643310973836171,
+      0.09356318882837494,
+      0.09100891694459881,
+      0.08879753736322607,
+      0.08695521440875696,
+      0.08550580673621246,
+      0.08446954288537001,
+      0.08386173955897751,
+      0.08369173239715741,
+      0.08396218062836736,
+      0.0846688636963365,
+      0.08580100354607975,
+      0.08734205701367696,
+      0.08927084997047222,
+      0.09156288224377356,
+      0.09419164050762055,
+      0.0971297889403617,
+      0.10035015520851476,
+      0.1038264823038488,
+      0.10753394903035152,
+      0.11144949066596982,
+      0.11555195692804732,
+      0.11982214965157202,
+      0.12424277575683484,
+      0.12879834684188496,
+      0.13347504613759573,
+      0.13826058282583314,
+      0.14314404142168638,
+      0.14811573658138574,
+      0.1531670763321443,
+      0.15829043588481112,
+      0.1634790444161595,
+      0.1687268823033167,
+      0.1740285915468525,
+      0.17937939552835996,
+      0.18477502919660835,
+      0.19021167756500404,
+      0.19568592231396775
+    ],
+    [
+      0.14859483451155175,
+      0.14371995976923913,
+      0.13893975615656354,
+      0.13426433564666812,
+      0.1297050300854924,
+      0.12527451800434572,
+      0.12098694919166925,
+      0.11685805879329896,
+      0.11290525649210714,
+      0.10914767509273858,
+      0.10560615523843837,
+      0.10230313814829348,
+      0.09926243567108027,
+      0.09650884516929904,
+      0.0940675835330702,
+      0.09196352728036894,
+      0.09022027168964847,
+      0.08885905425901151,
+      0.08789762584727538,
+      0.08734918848507395,
+      0.08722153311400956,
+      0.08751650103582663,
+      0.08822985365357089,
+      0.08935157083438515,
+      0.09086653038099288,
+      0.09275546613945258,
+      0.09499607168019178,
+      0.09756412145200447,
+      0.10043450084300493,
+      0.10358207921280187,
+      0.10698239251131635,
+      0.11061213537920238,
+      0.11444948094988872,
+      0.11847425829165953,
+      0.1226680197717843,
+      0.1270140279267794,
+      0.13149718817644948,
+      0.13610394827823158,
+      0.14082217844614706,
+      0.14564104567608344,
+      0.15055088649886503,
+      0.1555430862363456,
+      0.16060996520616344,
+      0.1657446747013845,
+      0.17094110230536338,
+      0.17619378741623826,
+      0.18149784579546266,
+      0.18684890234021717,
+      0.1922430326191333,
+      0.19767671051949373
+    ],
+    [
+      0.15033372575139156,
+      0.14553841936195921,
+      0.1408419713796298,
+      0.13625460474022957,
+      0.131787710917934,
+      0.12745395704797863,
+      0.1232673865667363,
+      0.11924350314369345,
+      0.11539932618211915,
+      0.11175340230298264,
+      0.10832575125326761,
+      0.10513772317452846,
+      0.1022117425691592,
+      0.09957091337937886,
+      0.09723847122351931,
+      0.09523707668252808,
+      0.09358797071336059,
+      0.0923100361459273,
+      0.09141883985959508,
+      0.0909257543190219,
+      0.09083726284464616,
+      0.09115454374743158,
+      0.09187339319793376,
+      0.09298449830052939,
+      0.09447402011471685,
+      0.09632440516940172,
+      0.09851532158166049,
+      0.10102461657811367,
+      0.10382920941104976,
+      0.10690586190448284,
+      0.11023179625368378,
+      0.11378515497043389,
+      0.11754531511723776,
+      0.1214930767815684,
+      0.1256107531726922,
+      0.12988218485159714,
+      0.13429270109015493,
+      0.13882904668325025,
+      0.1434792871707713,
+      0.14823270384177684,
+      0.1530796855726263,
+      0.15801162237120306,
+      0.16302080372842803,
+      0.16810032462118243,
+      0.17324399788072148,
+      0.17844627623801698,
+      0.1837021806704957,
+      0.1890072377094591,
+      0.1943574222712205,
+      0.19974910841980245
+    ],
+    [
+      0.1521859259419611,
+      0.14747189173433806,
+      0.1428607317461957,
+      0.1383627316183804,
+      0.1339892881125113,
+      0.12975299674852087,
+      0.12566772855476638,
+      0.12174868729452032,
+      0.11801243464571862,
+      0.11447686918834517,
+      0.11116114178715275,
+      0.10808548620893124,
+      0.10527094659729201,
+      0.1027389852795767,
+      0.10051095956579262,
+      0.09860747379504188,
+      0.09704762645241949,
+      0.09584819617516628,
+      0.09502283220253824,
+      0.09458132779756385,
+      0.09452906162233392,
+      0.09486667717958552,
+      0.09559004332341951,
+      0.0966905028721213,
+      0.09815537324542349,
+      0.09996863639820121,
+      0.1021117340845927,
+      0.10456438792901145,
+      0.10730537358785411,
+      0.11031320050829715,
+      0.11356666855407996,
+      0.11704529552059129,
+      0.120729620300071,
+      0.12460139746290533,
+      0.12864370275897674,
+      0.13284096991458436,
+      0.13717897549629804,
+      0.14164478945661674,
+      0.14622670213771052,
+      0.15091413945388024,
+      0.1556975708083713,
+      0.1605684172559323,
+      0.16551896179403225,
+      0.17054226395228547,
+      0.17563208098397967,
+      0.18078279501605926,
+      0.1859893466401149,
+      0.19124717564346996,
+      0.19655216686484767,
+      0.20190060285094472
+    ],
+    [
+      0.15414735063309373,
+      0.14951591529545658,
+      0.14499116921264651,
+      0.1405834143117749,
+      0.13630400077629537,
+      0.13216539592432863,
+      0.12818123940738074,
+      0.12436637567665507,
+      0.12073685297318226,
+      0.11730987573414665,
+      0.11410369503313313,
+      0.11113742167906757,
+      0.1084307465700611,
+      0.10600355696769052,
+      0.10387544661877955,
+      0.10206512487930186,
+      0.10058975113178947,
+      0.09946423160087889,
+      0.09870053544388545,
+      0.0983070955449363,
+      0.098288358330352,
+      0.09864453731729415,
+      0.09937160100332482,
+      0.10046149740494792,
+      0.10190258501346237,
+      0.10368022088479364,
+      0.10577743893851294,
+      0.10817565342317494,
+      0.11085533087628018,
+      0.11379658953354994,
+      0.11697969996355194,
+      0.12038547924822277,
+      0.12399558071705535,
+      0.12779268939160307,
+      0.1317606386689476,
+      0.1358844632947176,
+      0.14015040421184366,
+      0.14454587943587194,
+      0.14905943017582216,
+      0.15368065328112615,
+      0.1584001251936035,
+      0.16320932311768874,
+      0.16810054624518306,
+      0.17306684004765086,
+      0.17810192486864831,
+      0.18320012867575652,
+      0.18835632628193935,
+      0.193565883284731,
+      0.19882460538310162,
+      0.20412869284469307
+    ],
+    [
+      0.15621388564689198,
+      0.151666020193506,
+      0.1472284358532933,
+      0.1429114060714808,
+      0.13872618578650905,
+      0.13468506339928063,
+      0.13080139509403513,
+      0.1270896164921272,
+      0.12356521894537223,
+      0.12024467970718297,
+      0.11714533576509417,
+      0.11428518441555158,
+      0.11168260428843634,
+      0.10935598661395357,
+      0.10732328046323311,
+      0.1056014595311149,
+      0.10420593542297188,
+      0.10314995263813641,
+      0.10244401131633972,
+      0.10209537315367251,
+      0.10210769792623216,
+      0.10248085546627198,
+      0.1032109320850946,
+      0.10429043235897886,
+      0.10570865180936763,
+      0.10745217940632058,
+      0.10950547773243174,
+      0.11185148841923832,
+      0.11447221614673617,
+      0.11734925681760346,
+      0.12046424741507852,
+      0.1237992275326705,
+      0.12733691361023028,
+      0.13106089200635185,
+      0.13495574185091647,
+      0.1390071009215546,
+      0.14320168637384734,
+      0.1475272817267589,
+      0.15197270052795647,
+      0.15652773429589417,
+      0.16118308991454158,
+      0.16593032385829917,
+      0.17076177348599947,
+      0.1756704903782477,
+      0.18065017605584455,
+      0.18569512116069412,
+      0.19080014921298855,
+      0.19596056461256176,
+      0.2011721050154657,
+      0.20643089826324704
+    ],
+    [
+      0.15838141658956792,
+      0.15391776102683724,
+      0.14956773792501607,
+      0.1453415503973685,
+      0.1412503144813207,
+      0.1373060939276857,
+      0.13352191758702525,
+      0.12991177228929335,
+      0.12649055962433703,
+      0.12327401096209428,
+      0.12027854698842017,
+      0.11752107455716636,
+      0.11501871201348036,
+      0.11278844010094545,
+      0.1108466839956289,
+      0.1092088342849408,
+      0.10788873262024094,
+      0.10689815141189732,
+      0.1062463078601608,
+      0.10593945487580755,
+      0.1059805891268768,
+      0.10636930678805187,
+      0.1071018236422305,
+      0.10817115514871675,
+      0.10956744047856512,
+      0.11127837262644887,
+      0.11328969685837073,
+      0.11558573279590091,
+      0.1181498829837274,
+      0.12096509863745707,
+      0.12401428267543112,
+      0.12728062128471856,
+      0.13074784050027285,
+      0.1344003945909582,
+      0.13822359173952062,
+      0.14220366939797874,
+      0.14632782666583163,
+      0.15058422609102345,
+      0.15496197087663013,
+      0.15945106680617097,
+      0.16404237261442903,
+      0.16872754462655296,
+      0.17349897875734396,
+      0.17834975179400114,
+      0.18327356406145848,
+      0.18826468492993564,
+      0.19331790128471876,
+      0.198428468916046,
+      0.2035920691935816,
+      0.20880476768562709
+    ],
+    [
+      0.16064585552585114,
+      0.1562667441958963,
+      0.15200436443194026,
+      0.14786881103829091,
+      0.14387102118229417,
+      0.14002279539581705,
+      0.13633679888135727,
+      0.13282653809981765,
+      0.12950630379770534,
+      0.12639107262992996,
+      0.1234963592723688,
+      0.1208380125251062,
+      0.11843195011159538,
+      0.11629383184917486,
+      0.11443867734456435,
+      0.11288043863501265,
+      0.11163155011524586,
+      0.11070248208773414,
+      0.11010133105311345,
+      0.10983348160396599,
+      0.1099013706047349,
+      0.1103043781915415,
+      0.1110388555349008,
+      0.1120982874062102,
+      0.11347357244247933,
+      0.11515339447683494,
+      0.1171246510659281,
+      0.11937290529113587,
+      0.12188282957350885,
+      0.1246386167279487,
+      0.12762434106839438,
+      0.13082426027808666,
+      0.13422305588997374,
+      0.1378060136620182,
+      0.14155915041853892,
+      0.1454692949282658,
+      0.14952412993855926,
+      0.15371220555678813,
+      0.1580229281704916,
+      0.16244653433168202,
+      0.16697405257141992,
+      0.17159725799498854,
+      0.17630862341850412,
+      0.18110126839043364,
+      0.1859689091395345,
+      0.19090580895232842,
+      0.1959067319892337,
+      0.20096689877814697,
+      0.2060819452447292,
+      0.21124788504586983
+    ],
+    [
+      0.16300316365446066,
+      0.1587086520513173,
+      0.15453371185334622,
+      0.15048829518281728,
+      0.14658312612043814,
+      0.1428297089725311,
+      0.13924031625747443,
+      0.13582795206739812,
+      0.1326062837165471,
+      0.12958953434516923,
+      0.1267923315413716,
+      0.12422950641328726,
+      0.12191584073452784,
+      0.11986576309172699,
+      0.1180930019151791,
+      0.1166102056767184,
+      0.1154285494840745,
+      0.11455735243802727,
+      0.11400373230053659,
+      0.11377232512562464,
+      0.11386509548389863,
+      0.11428125374375794,
+      0.11501728981592937,
+      0.11606711845142492,
+      0.11742232324746364,
+      0.11907247802134321,
+      0.12100551664361454,
+      0.12320812507456017,
+      0.12566612960789444,
+      0.12836485962439112,
+      0.13128947117934825,
+      0.13442522197185863,
+      0.13775769445343988,
+      0.1412729678881321,
+      0.14495774394293556,
+      0.14879943084365238,
+      0.15278619286369036,
+      0.15690697191706512,
+      0.16115148752461086,
+      0.16551022037214658,
+      0.16997438393634923,
+      0.1745358882557729,
+      0.17918729989773566,
+      0.18392179741188586,
+      0.18873312834818368,
+      0.19361556472498054,
+      0.198563861406659,
+      0.203573215846563,
+      0.20863923024900616,
+      0.21375787602433716
+    ],
+    [
+      0.16544937150563385,
+      0.161239262634933,
+      0.15715130316154563,
+      0.15319527211755263,
+      0.14938165112160193,
+      0.14572162161719981,
+      0.1422270414039272,
+      0.1389103978607675,
+      0.13578473015466552,
+      0.13286351748123407,
+      0.13016052631676384,
+      0.12768961571048237,
+      0.1254644982592377,
+      0.12349846022862693,
+      0.12180404773268357,
+      0.12039272987693998,
+      0.11927455636667726,
+      0.11845782868124521,
+      0.11794880910275791,
+      0.11775148817292129,
+      0.11786743133164924,
+      0.11829571753351366,
+      0.11903297526941242,
+      0.12007351336564819,
+      0.1214095344437706,
+      0.12303141259850936,
+      0.12492801494630199,
+      0.12708704254447376,
+      0.12949536996249444,
+      0.13213936694537023,
+      0.1350051879238011,
+      0.13807902172665162,
+      0.1413472982025004,
+      0.14479685148495877,
+      0.14841504204965467,
+      0.1521898426340431,
+      0.15610989306989168,
+      0.16016452857832164,
+      0.1643437882696976,
+      0.16863840690686366,
+      0.1730397954332273,
+      0.17754001340722034,
+      0.18213173497958188,
+      0.18680821301893286,
+      0.19156324023940138,
+      0.19639111128508543,
+      0.2012865846365919,
+      0.2062448465355036,
+      0.21126147621574115,
+      0.216332413005563
+    ],
+    [
+      0.1679805953726632,
+      0.16385446624904831,
+      0.15985280350625528,
+      0.15598518678308568,
+      0.15226183108284572,
+      0.1486935739174165,
+      0.14529184302281226,
+      0.14206860096694585,
+      0.13903626195104765,
+      0.1362075763952905,
+      0.13359548128719825,
+      0.13121291234860644,
+      0.12907258092414597,
+      0.12718671669479095,
+      0.12556678571590602,
+      0.12422319210915808,
+      0.1231649798275469,
+      0.1223995508585605,
+      0.12193241915024841,
+      0.12176701792822246,
+      0.12190457528066308,
+      0.12234406935723155,
+      0.1230822656516872,
+      0.12411383470411264,
+      0.1254315383197335,
+      0.12702647220549035,
+      0.12888834512094882,
+      0.13100577605293068,
+      0.1333665934468283,
+      0.13595811894186333,
+      0.13876742764281474,
+      0.14178157452697546,
+      0.14498778490184452,
+      0.14837360842554723,
+      0.15192703703568325,
+      0.15563659107074518,
+      0.15949137723089168,
+      0.1634811222746467,
+      0.167596188168801,
+      0.17182757115198732,
+      0.17616689008118622,
+      0.18060636508562347,
+      0.18513879134057373,
+      0.18975750846265885,
+      0.1944563678206801,
+      0.1992296990676804,
+      0.2040722763420643,
+      0.20897928588669468,
+      0.21394629452463834,
+      0.2189692191471187
+    ],
+    [
+      0.17059305082825474,
+      0.16655027799365382,
+      0.16263403155031048,
+      0.1588536695273562,
+      0.15521912071983224,
+      0.15174086320343988,
+      0.14842988482199437,
+      0.1452976216406537,
+      0.14235587098400007,
+      0.1396166757724065,
+      0.1370921781560903,
+      0.13479444153340206,
+      0.13273524272084633,
+      0.13092583715569786,
+      0.12937670583819105,
+      0.12809729200421932,
+      0.12709574112430494,
+      0.1263786596662825,
+      0.12595090652068078,
+      0.12581543250647456,
+      0.12597318084025705,
+      0.1264230538071327,
+      0.1271619509518509,
+      0.12818487433555242,
+      0.1294850928567196,
+      0.13105435331589832,
+      0.1328831245201949,
+      0.13496085748599426,
+      0.1372762482707058,
+      0.13981749043511424,
+      0.14257250758180773,
+      0.14552915931785784,
+      0.148675416661018,
+      0.15199950606085558,
+      0.15549002262201772,
+      0.1591360156495207,
+      0.16292704748812167,
+      0.16685323236933297,
+      0.17090525590143119,
+      0.1750743808825558,
+      0.17935244130052388,
+      0.18373182780877995,
+      0.18820546726850382,
+      0.1927667977151099,
+      0.1974097406248519,
+      0.20212867209122956,
+      0.20691839325556236,
+      0.21177410106023092,
+      0.21669135947861373,
+      0.22166607252338752
+    ],
+    [
+      0.17328306400556445,
+      0.16932284779060322,
+      0.16549096746400377,
+      0.16179654149302716,
+      0.1582491970591091,
+      0.15485904214135052,
+      0.15163661975525747,
+      0.1485928430678535,
+      0.1457389054829891,
+      0.14308616682030828,
+      0.140646012053914,
+      0.13842968351687196,
+      0.1364480886181974,
+      0.1347115862695837,
+      0.13322976048761973,
+      0.13201118771868733,
+      0.13106321102892554,
+      0.13039173253388847,
+      0.1300010366590933,
+      0.12989365716636803,
+      0.1300702956026063,
+      0.1305297991202757,
+      0.13126919709373966,
+      0.13228379630691536,
+      0.13356732543392424,
+      0.13511212047360494,
+      0.13690933783345788,
+      0.13894918300709053,
+      0.14122114274942135,
+      0.1437142088967793,
+      0.1464170875820833,
+      0.1493183855547448,
+      0.1524067714029464,
+      0.15567111066418646,
+      0.15910057333130337,
+      0.16268471706750354,
+      0.1664135478173378,
+      0.1702775606267823,
+      0.17426776353824563,
+      0.17837568827022032,
+      0.18259338962646324,
+      0.1869134364785751,
+      0.19132889615426488,
+      0.19583331502391457,
+      0.20042069527114847,
+      0.20508546970118752,
+      0.20982247664255219,
+      0.21462693328743807,
+      0.21949441067241718,
+      0.22442080823795874
+    ],
+    [
+      0.17604707972107503,
+      0.17216846746425607,
+      0.16841975871363757,
+      0.1648098178347464,
+      0.16134795943064434,
+      0.15804391466772358,
+      0.15490778191721835,
+      0.15194995847592413,
+      0.14918105060941717,
+      0.14661176226790384,
+      0.14425276017952027,
+      0.1421145165159897,
+      0.14020713178692956,
+      0.138540141529132,
+      0.1371223133808323,
+      0.1359614424491464,
+      0.135064154609388,
+      0.13443572779417665,
+      0.1340799422635021,
+      0.13399897005002537,
+      0.13419330840859722,
+      0.1346617654697653,
+      0.1354014960892389,
+      0.13640808707109828,
+      0.13767568514813924,
+      0.13919716006183933,
+      0.1409642914743749,
+      0.14296797032837869,
+      0.14519840441272008,
+      0.14764531744368511,
+      0.1502981366799449,
+      0.15314616225026273,
+      0.15617871541284442,
+      0.15938526365659147,
+      0.16275552342969027,
+      0.16627954039367662,
+      0.16994774990665573,
+      0.17375101979941315,
+      0.17768067717873984,
+      0.18172852337148795,
+      0.1858868376039065,
+      0.19014837253145161,
+      0.19450634371408956,
+      0.19895441433633346,
+      0.20348667568351686,
+      0.2080976270784412,
+      0.21278215292903022,
+      0.21753550019796458,
+      0.22235325514206014,
+      0.2272313211021114
+    ],
+    [
+      0.17888166745297987,
+      0.17508357517005507,
+      0.17141672216055825,
+      0.16788970783600857,
+      0.1645115264776144,
+      0.16129153018605447,
+      0.15823937589112505,
+      0.1553649557137875,
+      0.15267830837103596,
+      0.15018951103007022,
+      0.14790855155414293,
+      0.14584518167926713,
+      0.14400875470579136,
+      0.1424080505043279,
+      0.1410510945851108,
+      0.1399449774069604,
+      0.1390956833921412,
+      0.13850793691821633,
+      0.13818507531728594,
+      0.13812895604116007,
+      0.13833990364439433,
+      0.138816700802089,
+      0.13955662253497877,
+      0.1405555135228432,
+      0.14180790125305698,
+      0.14330713991445268,
+      0.14504557509423852,
+      0.14701472157037493,
+      0.14920544522552165,
+      0.1516081409573178,
+      0.15421290125440434,
+      0.15700966991652096,
+      0.15998837771917118,
+      0.16313905892238764,
+      0.16645194830860094,
+      0.16991755837845865,
+      0.17352673922463305,
+      0.17727072173569722,
+      0.18114114766176387,
+      0.18513008658464397,
+      0.1892300440288074,
+      0.19343396064720553,
+      0.19773520613519618,
+      0.2021275670505217,
+      0.20660523222739488,
+      0.2111627751895741,
+      0.21579513486222293,
+      0.22049759608128594,
+      0.2252657686153786,
+      0.2300955675018549
+    ],
+    [
+      0.1817835260671554,
+      0.17806475816008904,
+      0.17447834491776157,
+      0.1710326127479733,
+      0.16773623157507156,
+      0.16459817486360298,
+      0.1616276645475954,
+      0.1588341012537937,
+      0.15622697762556684,
+      0.1538157739806017,
+      0.1516098385651879,
+      0.149618250733413,
+      0.14784967289970286,
+      0.14631219228536949,
+      0.14501315952355073,
+      0.14395902988027084,
+      0.14315521341242848,
+      0.14260594300192456,
+      0.14231416595766755,
+      0.14228146645734746,
+      0.14250802283366754,
+      0.14299260284437404,
+      0.14373259666506816,
+      0.14472408651540197,
+      0.14596194758784392,
+      0.14743997437377404,
+      0.1491510273595834,
+      0.15108718961211431,
+      0.15323992890927865,
+      0.1556002561941344,
+      0.1581588779176901,
+      0.16090633491173065,
+      0.16383312719805418,
+      0.16692982215032315,
+      0.17018714545100705,
+      0.17359605541946949,
+      0.17714780107283482,
+      0.18083396643690883,
+      0.18464650117838893,
+      0.18857774098622998,
+      0.19262041794470636,
+      0.19676766357115638,
+      0.2010130056255153,
+      0.2053503602638114,
+      0.2097740200913331,
+      0.21427863991359428,
+      0.21885922085301285,
+      0.22351109282068826,
+      0.2282298965318506,
+      0.2330115656680013
+    ],
+    [
+      0.1847494856710203,
+      0.18110875354251987,
+      0.17760128317240456,
+      0.17423512262447258,
+      0.17101861636190668,
+      0.1679603623658395,
+      0.16506915681430975,
+      0.16235392424148185,
+      0.15982363384662185,
+      0.15748719994893243,
+      0.155353369335844,
+      0.1534305953004778,
+      0.15172690206416745,
+      0.1502497423219683,
+      0.14900585325413815,
+      0.1480011166809629,
+      0.14724042857675165,
+      0.14672758455510407,
+      0.1464651881610258,
+      0.1464545855004821,
+      0.14669583121135332,
+      0.14718768697111337,
+      0.14792765300773436,
+      0.14891203041574835,
+      0.15013601208501853,
+      0.15159379418581018,
+      0.15327870612897146,
+      0.15518334989023996,
+      0.15729974382120113,
+      0.15961946549416742,
+      0.16213378771906878,
+      0.1648338055745355,
+      0.1677105507414796,
+      0.1707550912892962,
+      0.17395861741432422,
+      0.17731251214317437,
+      0.18080840786258096,
+      0.18443823015965705,
+      0.18819422981435122,
+      0.1920690047080668,
+      0.19605551244231742,
+      0.2001470769373573,
+      0.20433738724899725,
+      0.2086204933712342,
+      0.21299079724931005,
+      0.21744304113897783,
+      0.22197229469367694,
+      0.22657393949922436,
+      0.23124365406616518,
+      0.23597739722164895
+    ],
+    [
+      0.18777650883219146,
+      0.18421244753202362,
+      0.1807823592224623,
+      0.17749401115329622,
+      0.1743554231573543,
+      0.17137482361104536,
+      0.16856059382061855,
+      0.1659211993536742,
+      0.16346510946971018,
+      0.16120070298089498,
+      0.15913616269765957,
+      0.15727935948084135,
+      0.15563772856239508,
+      0.15421814167434023,
+      0.15302677827189978,
+      0.1520690025437953,
+      0.151349249057559,
+      0.15087092460200185,
+      0.1506363288171201,
+      0.15064660055012813,
+      0.150901689662358,
+      0.1514003588048469,
+      0.15214021279718443,
+      0.15311775560392765,
+      0.1543284704273283,
+      0.1557669204769472,
+      0.15742686325236066,
+      0.15930137477485237,
+      0.1613829784885807,
+      0.16366377276538438,
+      0.1661355538961586,
+      0.16878993169781578,
+      0.17161843379939654,
+      0.1746125985965232,
+      0.17776405535657455,
+      0.1810645911333268,
+      0.18450620573904877,
+      0.18808115474533812,
+      0.19178198191110435,
+      0.19560154247153155,
+      0.19953301789018907,
+      0.20356992427538964,
+      0.20770611432195576,
+      0.2119357751171228,
+      0.21625342219082797,
+      0.22065389069195251,
+      0.2251323240866473,
+      0.229684161832785,
+      0.2343051260400883,
+      0.23899120693530865
+    ],
+    [
+      0.19086169010566417,
+      0.18737287350230872,
+      0.1840185581600433,
+      0.1808062298560565,
+      0.1777435871061487,
+      0.17483849617534264,
+      0.17209893598356574,
+      0.16953293125879965,
+      0.16714847540980013,
+      0.1649534415150878,
+      0.16295548441491084,
+      0.16116193396101888,
+      0.1595796822978517,
+      0.15821506900976462,
+      0.15707376655380412,
+      0.15616067110176976,
+      0.1554798035148689,
+      0.15503422330620537,
+      0.15482596193932036,
+      0.15485597689045197,
+      0.15512412996000205,
+      0.15562919010007184,
+      0.15636886178302145,
+      0.15733983612656005,
+      0.1585378635256027,
+      0.15995784233385624,
+      0.16159392153467383,
+      0.16343961152194822,
+      0.16548789918345158,
+      0.167731362462834,
+      0.17016228177645548,
+      0.17277274469980122,
+      0.17555474213871808,
+      0.17850025402573988,
+      0.1816013240195316,
+      0.18485012330349448,
+      0.1882390031521038,
+      0.19176053690792388,
+      0.19540755295480855,
+      0.1991731582490668,
+      0.20305075529544594,
+      0.20703405146189408,
+      0.21111706400624783,
+      0.21529411963923584,
+      0.21955985115322377,
+      0.2239091902833428,
+      0.22833735957158338,
+      0.23283986140756524,
+      0.23741246669578803,
+      0.24205120252537052
+    ]
+  ],
+  "uncertainty_grid_resolution": [
+    50,
+    50
+  ],
+  "uncertainty_bootstrap_grid": null,
+  "uncertainty_last_computed": "2026-02-03T11:36:19.520330",
+  "mc_sigma_pixels": 1.5,
+  "baseline_uncertainty_m": 0.05,
+  "gcp_suggestion_threshold": 0.2,
+  "imported_geo_reference": null,
+  "enabled_sign_libraries": [
+    "se"
+  ],
+  "id_counters": {
+    "polyline": 31,
+    "road": 48,
+    "junction": 13,
+    "signal": 5,
+    "object": 1,
+    "parking": 1,
+    "lane_connection": 13,
+    "junction_group": 1
+  }
+}
