@@ -597,6 +597,11 @@ class MainWindow(QMainWindow):
                 # This ensures pixel coords match the current transformer state
                 self._initialize_and_refresh_geo_coords()
 
+                # Apply lane alignment to all junctions so CR visuals are
+                # correct immediately (without requiring the user to open the
+                # lane connection dialog first).
+                self._align_all_junction_connecting_roads(scale_factors)
+
                 # Update UI
                 self.image_view.load_project(self.project, scale_factors)
                 self.elements_tree.set_project(self.project)
@@ -2270,6 +2275,55 @@ class MainWindow(QMainWindow):
             if road.centerline_id:
                 self.image_view.update_road_lanes(road.id, scale_factors)
 
+    def _refresh_connecting_road_geo_path(self, conn_road):
+        """Regenerate a connecting road's geo_path from its current pixel path.
+
+        Called after the pixel path has been updated (e.g. road move) so that
+        geo_path stays in sync. If the project has no georeferencing or the
+        CR had no geo_path, this is a no-op.
+        """
+        if not conn_road.geo_path:
+            return
+        if not self.project.has_georeferencing():
+            return
+        try:
+            from orbit.export import create_transformer
+            transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+            )
+            if transformer and conn_road.path:
+                conn_road.geo_path = [
+                    transformer.pixel_to_geo(x, y) for x, y in conn_road.path
+                ]
+        except Exception:
+            pass
+
+    def _align_all_junction_connecting_roads(self, scale_factors):
+        """Apply lane alignment to all junctions' connecting roads.
+
+        Called on project load to ensure CR visuals match lane connections
+        without requiring the user to open the lane connection dialog.
+        """
+        from orbit.utils.connecting_road_alignment import align_connecting_road_paths
+
+        if scale_factors:
+            scale = (scale_factors[0] + scale_factors[1]) / 2.0
+        else:
+            scale = 0.058  # Default fallback
+
+        for junction in self.project.junctions:
+            if junction.lane_connections and junction.connecting_roads:
+                modified_ids = align_connecting_road_paths(
+                    junction, self.project, scale
+                )
+                # Update geo_path for modified CRs so export uses
+                # the aligned coordinates, not the stale originals.
+                if modified_ids:
+                    for cr in junction.connecting_roads:
+                        if cr.id in modified_ids:
+                            self._refresh_connecting_road_geo_path(cr)
+
     def regenerate_affected_connecting_roads(self, polyline_id: str):
         """
         Regenerate ParamPoly3D connecting roads when a road centerline endpoint is modified.
@@ -2373,6 +2427,7 @@ class MainWindow(QMainWindow):
 
             # Update the connecting road
             conn_road.path = path
+            self._refresh_connecting_road_geo_path(conn_road)
             aU, bU, cU, dU, aV, bV, cV, dV = coeffs
             conn_road.aU = aU
             conn_road.bU = bU
@@ -2420,9 +2475,43 @@ class MainWindow(QMainWindow):
                 else:
                     conn_road.path[-1] = succ_polyline.points[0]
 
+                self._refresh_connecting_road_geo_path(conn_road)
+
                 # Update graphics
                 scale_factors = self.get_current_scale()
                 self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
+
+        # Apply lane alignment to affected junctions so CR endpoints shift
+        # from the road centerline to the correct lane position.
+        from orbit.utils.connecting_road_alignment import align_connecting_road_paths
+
+        scale_factors = self.get_current_scale()
+        if scale_factors:
+            scale = (scale_factors[0] + scale_factors[1]) / 2.0
+        else:
+            scale = 0.058
+
+        affected_junction_ids = set()
+        for junction in self.project.junctions:
+            for cr in junction.connecting_roads:
+                if (cr.predecessor_road_id == affected_road.id or
+                        cr.successor_road_id == affected_road.id):
+                    affected_junction_ids.add(junction.id)
+                    break
+
+        for junction in self.project.junctions:
+            if junction.id in affected_junction_ids:
+                if junction.lane_connections and junction.connecting_roads:
+                    modified = align_connecting_road_paths(
+                        junction, self.project, scale
+                    )
+                    for cr in junction.connecting_roads:
+                        if cr.id in modified:
+                            self._refresh_connecting_road_geo_path(cr)
+                    for cr_id in modified:
+                        self.image_view.update_connecting_road_graphics(
+                            cr_id, scale_factors
+                        )
 
     def on_polyline_selected_in_tree(self, polyline_id):
         """Handle polyline selection from tree."""

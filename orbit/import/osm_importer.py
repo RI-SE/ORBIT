@@ -229,6 +229,10 @@ class OSMImporter:
                 self.project.roads = roads
                 self.project.polylines = list(polylines_dict.values())
 
+                # Sync ID counters so subsequent add_road/add_polyline calls
+                # don't collide with IDs assigned by the split function
+                self.project._sync_id_counters()
+
                 # Update road_to_osm_way mapping with split roads
                 if updated_road_to_osm_way is not None:
                     self.road_to_osm_way = updated_road_to_osm_way
@@ -267,6 +271,9 @@ class OSMImporter:
 
         # Assign IDs to any entities created without explicit IDs
         self.project.assign_missing_ids()
+
+        # Link lane connections to connecting roads (must happen after ID assignment)
+        self.project.link_lane_connections_to_connecting_roads()
 
         # Mark success if we imported anything
         result.success = (
@@ -331,6 +338,10 @@ class OSMImporter:
                 self.project.roads = roads
                 self.project.polylines = list(polylines_dict.values())
 
+                # Sync ID counters so subsequent add_road/add_polyline calls
+                # don't collide with IDs assigned by the split function
+                self.project._sync_id_counters()
+
                 # Update road_to_osm_way mapping with split roads
                 if updated_road_to_osm_way is not None:
                     self.road_to_osm_way = updated_road_to_osm_way
@@ -369,6 +380,9 @@ class OSMImporter:
 
         # Assign IDs to any entities created without explicit IDs
         self.project.assign_missing_ids()
+
+        # Link lane connections to connecting roads (must happen after ID assignment)
+        self.project.link_lane_connections_to_connecting_roads()
 
         # Mark success if we imported anything
         result.success = (
@@ -441,9 +455,13 @@ class OSMImporter:
                         print(f"DEBUG: Skipping road '{road.name}' - no endpoint inside image bounds")
                     continue
 
-            # Add to project
-            self.project.add_road(road)
+            # Add to project (assigns IDs to road and polyline)
             self.project.add_polyline(centerline)
+            self.project.add_road(road)
+
+            # Update road references with the assigned polyline ID
+            road.centerline_id = centerline.id
+            road.polyline_ids = [centerline.id]
 
             # Track
             roads.append(road)
@@ -526,10 +544,11 @@ class OSMImporter:
                 # Add ring segments to project
                 ring_roads = []
                 for road, polyline in ring_segments:
-                    self.project.add_road(road)
                     self.project.add_polyline(polyline)
-                    # Note: Don't add to roads list - add_road already added to project.roads
-                    # which is the same list object after road splitting (line 216)
+                    self.project.add_road(road)
+                    # Update road references with the assigned polyline ID
+                    road.centerline_id = polyline.id
+                    road.polyline_ids = [polyline.id]
                     polylines_dict[polyline.id] = polyline
                     ring_roads.append(road)
                     result.roads_imported += 1

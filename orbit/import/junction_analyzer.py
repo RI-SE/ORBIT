@@ -449,22 +449,46 @@ def detect_connection_patterns(geometry_info: Dict[str, Any]) -> List[Connection
 def filter_unlikely_connections(patterns: List[ConnectionPattern],
                                roads_dict: Dict[str, Road]) -> List[ConnectionPattern]:
     """
-    Filter out geometrically unlikely connections.
+    Filter out continuation patterns that should not become connecting roads.
+
+    Roads split at junctions get successor/predecessor links and matching base
+    names — these represent straight-through continuations, not junction
+    maneuvers.  Keeping them would create spurious connecting roads.
 
     Args:
         patterns: List of all possible connection patterns
         roads_dict: Dictionary of road_id -> Road object
 
     Returns:
-        Filtered list of likely connections
+        Filtered list with continuation patterns removed
     """
+    from .osm_to_orbit import _extract_base_road_name
+
     filtered = []
 
     for pattern in patterns:
-        # Note: We do NOT filter by successor/predecessor relationships here.
-        # When roads are split at a junction, they get linked via successor/predecessor,
-        # but they still need connecting roads within the junction for each direction.
-        # The junction is where vehicles physically transition between road segments.
+        from_road = roads_dict.get(pattern.from_road_id)
+        to_road = roads_dict.get(pattern.to_road_id)
+
+        if from_road and to_road:
+            is_consecutive = False
+
+            # Filter successor/predecessor continuations
+            if from_road.successor_id == pattern.to_road_id:
+                is_consecutive = True
+            if to_road.predecessor_id == pattern.from_road_id:
+                is_consecutive = True
+
+            # Filter segments of the same original OSM way
+            if not is_consecutive:
+                from_base = _extract_base_road_name(from_road.name)
+                to_base = _extract_base_road_name(to_road.name)
+                if from_base == to_base:
+                    is_consecutive = True
+
+            if is_consecutive:
+                continue
+
         filtered.append(pattern)
 
     return filtered

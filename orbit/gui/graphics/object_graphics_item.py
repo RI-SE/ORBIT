@@ -201,6 +201,10 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
             if self.obj.type.get_shape_type() != "polyline":
                 pos = self.pos()
                 self.obj.position = (pos.x(), pos.y())
+                # Clear geo_position since user manually repositioned the object.
+                # Otherwise the stale geo_position would override the dragged
+                # position when the project is reloaded.
+                self.obj.geo_position = None
 
             # Notify about change
             if self.object_changed:

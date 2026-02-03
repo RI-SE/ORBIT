@@ -843,6 +843,19 @@ def split_roads_at_junction_nodes(
     new_polylines = {}
     new_road_to_osm_way = {} if road_to_osm_way is not None else None
 
+    # Determine next available IDs for new entities created during splitting.
+    # Input roads/polylines already have project-assigned IDs; new segments
+    # need unique IDs so dict keys don't collide and successor/predecessor
+    # links work correctly.
+    _next_poly_id = 1 + max(
+        (int(p.id) for p in polylines_dict.values() if p.id and p.id.isdigit()),
+        default=0
+    )
+    _next_road_id = 1 + max(
+        (int(r.id) for r in roads if r.id and r.id.isdigit()),
+        default=0
+    )
+
     split_count = 0
     segment_count = 0
 
@@ -906,6 +919,9 @@ def split_roads_at_junction_nodes(
                 osm_node_ids=segment_node_ids,
                 color=centerline.color
             )
+            # Assign unique ID so dict keys don't collide
+            new_polyline.id = str(_next_poly_id)
+            _next_poly_id += 1
 
             # Create new road for this segment
             # Include OSM way ID in name to distinguish segments from different OSM ways
@@ -919,6 +935,9 @@ def split_roads_at_junction_nodes(
                 centerline_id=new_polyline.id,
                 speed_limit=road.speed_limit
             )
+            # Assign unique ID so successor/predecessor links work
+            new_road.id = str(_next_road_id)
+            _next_road_id += 1
 
             # Add the centerline polyline to the road's polyline list
             new_road.add_polyline(new_polyline.id)

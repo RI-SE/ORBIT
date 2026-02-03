@@ -354,28 +354,28 @@ class ImageView(QGraphicsView):
         # Also refresh/remove connecting road graphics for this junction
         junction = self.project.get_junction(junction_id) if self.project else None
         if junction:
-            # Get current connecting road IDs from the junction
-            # Find connecting road graphics that belong to this junction but are no longer valid
-            orphaned_ids = []
-            for conn_road_id in list(self.connecting_road_lanes_items.keys()):
-                # Check if this connecting road was part of this junction
-                # by checking if it's NOT in any junction's connecting_roads
+            # Find connecting road graphics that are no longer in any junction
+            all_cr_ids_in_scene = set(self.connecting_road_centerline_items.keys()) | set(
+                self.connecting_road_lanes_items.keys())
+            for conn_road_id in list(all_cr_ids_in_scene):
                 found_in_any_junction = False
                 for j in self.project.junctions:
                     if any(cr.id == conn_road_id for cr in j.connecting_roads):
                         found_in_any_junction = True
                         break
                 if not found_in_any_junction:
-                    orphaned_ids.append(conn_road_id)
+                    self.remove_connecting_road_graphics(conn_road_id)
 
-            # Remove orphaned connecting road graphics
-            for conn_road_id in orphaned_ids:
-                self.remove_connecting_road_graphics(conn_road_id)
+            # Fully recreate connecting road graphics for this junction
+            # to ensure path changes from lane alignment are reflected
+            scale_factors = None
+            for cr in junction.connecting_roads:
+                # Preserve scale_factors from existing item if available
+                if scale_factors is None and cr.id in self.connecting_road_lanes_items:
+                    scale_factors = self.connecting_road_lanes_items[cr.id].scale_factors
 
-            # Update existing connecting road graphics
             for conn_road in junction.connecting_roads:
-                if conn_road.id in self.connecting_road_lanes_items:
-                    self.connecting_road_lanes_items[conn_road.id].update_graphics()
+                self.add_connecting_road_graphics(conn_road, scale_factors)
 
     def add_signal_graphics(self, signal: Signal):
         """Add a signal to the graphics scene."""
@@ -591,6 +591,8 @@ class ImageView(QGraphicsView):
         pts = polyline.points
         gp = polyline.geo_points
         if gp is None or len(gp) < 2:
+            return None
+        if len(gp) != len(pts):
             return None
 
         new_px, new_py = pts[drag_index]
