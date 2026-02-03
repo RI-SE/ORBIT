@@ -168,11 +168,13 @@ def regenerate_connecting_road_path(
 ) -> None:
     """Regenerate a connecting road's pixel path after endpoint shifts.
 
-    Does NOT clear geo_path. Lane alignment shifts are small (a few pixels
-    for lane offsets) and only affect the visual pixel path. The export
-    should continue using geo_path when available, as it provides more
-    accurate meter-space coordinates than pixel-to-meters conversion.
+    Clears geo_path so the export uses the shifted pixel path. The
+    geo_path would otherwise override the shifted endpoints (the
+    exporter prefers geo_path when available), causing the exported
+    geometry to follow the old, unaligned path.
     """
+    # Invalidate geo_path — it no longer matches the shifted pixel path.
+    cr.geo_path = None
     new_start = cr.path[0]
     new_end = cr.path[-1]
     if start_shift:

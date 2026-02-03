@@ -637,7 +637,11 @@ class OpenDriveWriter:
 
         # Snap CR endpoints to connected road endpoints for topological correctness.
         # Small pixel-level misalignment can cause visible gaps in the export.
-        path_meters = self._snap_cr_endpoints_to_roads(connecting_road, path_meters)
+        # Lane connections are passed so the snap accounts for lane alignment
+        # (e.g., CR targeting lane -2 snaps to lane -2 center, not centerline).
+        path_meters = self._snap_cr_endpoints_to_roads(
+            connecting_road, path_meters, lane_connections
+        )
 
         # Check if connecting road has ParamPoly3D geometry
         if connecting_road.geometry_type == "parampoly3":
@@ -830,6 +834,7 @@ class OpenDriveWriter:
         self,
         connecting_road: ConnectingRoad,
         path_meters: list,
+        lane_connections=None,
     ) -> list:
         """Snap connecting road endpoints to the connected road endpoints in meters.
 
@@ -838,15 +843,32 @@ class OpenDriveWriter:
         export uses, and replaces path_meters[0] / path_meters[-1] so the
         exported geometry is topologically connected.
 
+        When lane connections indicate the CR targets a lane other than -1,
+        the snap point is offset perpendicular to the road heading so the
+        CR's lane center aligns with the target lane center.
+
         Args:
             connecting_road: The connecting road being exported.
             path_meters: Path points already converted to meters.
+            lane_connections: Junction lane connections for this CR's junction.
 
         Returns:
             path_meters with snapped first/last points (may be the same list).
         """
         if len(path_meters) < 2:
             return path_meters
+
+        # Find primary lane connection for this CR
+        primary_conn = None
+        if lane_connections:
+            for conn in lane_connections:
+                if conn.connecting_road_id == connecting_road.id:
+                    primary_conn = conn
+                    break
+
+        cr_lane_id = -1
+        if primary_conn and primary_conn.connecting_lane_id is not None:
+            cr_lane_id = primary_conn.connecting_lane_id
 
         # Snap start to predecessor road endpoint
         pred_road = self.road_map.get(connecting_road.predecessor_road_id)
@@ -855,6 +877,13 @@ class OpenDriveWriter:
                 pred_road.centerline_id, connecting_road.contact_point_start
             )
             if snap_pt is not None:
+                if primary_conn:
+                    snap_pt = self._apply_lane_offset_to_snap_point(
+                        snap_pt, pred_road, pred_road.centerline_id,
+                        connecting_road.contact_point_start,
+                        primary_conn.from_lane_id, cr_lane_id,
+                        connecting_road.lane_width,
+                    )
                 path_meters[0] = snap_pt
 
         # Snap end to successor road endpoint
@@ -864,9 +893,84 @@ class OpenDriveWriter:
                 succ_road.centerline_id, connecting_road.contact_point_end
             )
             if snap_pt is not None:
+                if primary_conn:
+                    snap_pt = self._apply_lane_offset_to_snap_point(
+                        snap_pt, succ_road, succ_road.centerline_id,
+                        connecting_road.contact_point_end,
+                        primary_conn.to_lane_id, cr_lane_id,
+                        connecting_road.lane_width,
+                    )
                 path_meters[-1] = snap_pt
 
         return path_meters
+
+    def _apply_lane_offset_to_snap_point(
+        self, snap_pt, road, centerline_id, contact_point,
+        target_lane_id, cr_lane_id, cr_lane_width,
+    ):
+        """Offset a snap point perpendicular to road heading for lane alignment.
+
+        Computes how far the CR centerline must be from the road centerline
+        so that the CR's lane center aligns with the target lane center on
+        the connected road.
+
+        Returns the offset point, or the original snap_pt if no offset needed.
+        """
+        from orbit.utils.connecting_road_alignment import (
+            _get_road_lane_width, _lane_center_offset,
+        )
+
+        road_lane_width = _get_road_lane_width(road)
+        road_lane_off = _lane_center_offset(target_lane_id, road_lane_width)
+        cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width)
+        offset_m = road_lane_off - cr_lane_off
+
+        if abs(offset_m) < 0.01:
+            return snap_pt
+
+        heading = self._get_road_heading_at_contact_meters(
+            centerline_id, contact_point
+        )
+        if heading is None:
+            return snap_pt
+
+        # Right perpendicular in global (east/north) coordinates.
+        # Positive offset_m = further to the right of the road direction.
+        dx = offset_m * math.sin(heading)
+        dy = -offset_m * math.cos(heading)
+
+        return (snap_pt[0] + dx, snap_pt[1] + dy)
+
+    def _get_road_heading_at_contact_meters(self, centerline_id, contact_point):
+        """Get road heading at a contact point in meter coordinates."""
+        polyline = self.polyline_map.get(centerline_id)
+        if not polyline or len(polyline.points) < 2:
+            return None
+
+        use_end = (contact_point == "end")
+
+        if polyline.geo_points:
+            idx0 = -2 if use_end else 0
+            idx1 = -1 if use_end else 1
+            lon0, lat0 = polyline.geo_points[idx0]
+            lon1, lat1 = polyline.geo_points[idx1]
+            p0 = self.transformer.latlon_to_meters(lat0, lon0)
+            p1 = self.transformer.latlon_to_meters(lat1, lon1)
+        else:
+            pts = polyline.points
+            if use_end:
+                batch = self.transformer.pixels_to_meters_batch(
+                    [pts[-2], pts[-1]]
+                )
+            else:
+                batch = self.transformer.pixels_to_meters_batch(
+                    [pts[0], pts[1]]
+                )
+            p0, p1 = batch[0], batch[1]
+
+        dx = p1[0] - p0[0]
+        dy = p1[1] - p0[1]
+        return math.atan2(dy, dx)
 
     def _get_road_endpoint_meters(
         self, centerline_id: str, contact_point: str
