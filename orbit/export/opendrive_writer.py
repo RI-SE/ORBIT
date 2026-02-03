@@ -937,7 +937,8 @@ class OpenDriveWriter:
         Returns the offset point, or the original snap_pt if no offset needed.
         """
         from orbit.utils.connecting_road_alignment import (
-            _get_road_lane_width, _lane_center_offset,
+            _get_road_lane_width,
+            _lane_center_offset,
         )
 
         road_lane_width = _get_road_lane_width(road)

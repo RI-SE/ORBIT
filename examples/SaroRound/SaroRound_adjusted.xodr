@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <OpenDRIVE xmlns="http://code.asam.net/simulation/standard/opendrive_schema">
-  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-02-03T15:29:23.851685" north="6375277.0348" south="6375189.0226" east="320826.7133" west="320628.5245" vendor="ORBIT by RISE Research Institutes of Sweden">
+  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-02-03T19:12:06.319658" north="6375277.0348" south="6375189.0226" east="320826.7133" west="320628.5245" vendor="ORBIT by RISE Research Institutes of Sweden">
     <geoReference>+proj=utm +zone=33 +north +ellps=WGS84 +datum=WGS84 +units=m +no_defs</geoReference>
     <userData code="tool">Produced by ORBIT (https://github.com/fwrise/ORBIT)</userData>
     <userData code="license">Licensed under the Open Database License (https://opendatacommons.org/licenses/odbl/1-0/)</userData>
@@ -99,7 +99,9 @@
         </center>
         <right>
           <lane id="-1" type="driving" level="false">
-            <link/>
+            <link>
+              <successor id="-1"/>
+            </link>
             <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
             <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12"/>
             <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
@@ -136,7 +138,9 @@
         </center>
         <right>
           <lane id="-1" type="driving" level="false">
-            <link/>
+            <link>
+              <predecessor id="-1"/>
+            </link>
             <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
             <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12"/>
             <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
@@ -145,7 +149,7 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="6" name="Säröleden" length="61.0854" junction="-1">
+  <road id="6" name="Säröleden" length="61.2180" junction="-1">
     <link>
       <predecessor elementType="road" elementId="3" contactPoint="end"/>
     </link>
@@ -171,10 +175,10 @@
       <geometry s="51.9505" x="320678.5911" y="6375257.9438" hdg="-0.321476" length="3.8728">
         <line/>
       </geometry>
-      <geometry s="55.8234" x="320682.2655" y="6375256.7201" hdg="-0.556664" length="2.8779">
+      <geometry s="55.8234" x="320682.2655" y="6375256.7201" hdg="-0.409547" length="2.8004">
         <line/>
       </geometry>
-      <geometry s="58.7013" x="320684.7089" y="6375255.1996" hdg="-0.899786" length="2.3841">
+      <geometry s="58.6238" x="320684.8343" y="6375255.6050" hdg="-0.800363" length="2.5942">
         <line/>
       </geometry>
     </planView>
@@ -191,7 +195,9 @@
         </center>
         <right>
           <lane id="-1" type="driving" level="false">
-            <link/>
+            <link>
+              <predecessor id="-1"/>
+            </link>
             <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
             <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12"/>
             <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
@@ -243,7 +249,9 @@
         </center>
         <right>
           <lane id="-1" type="driving" level="false">
-            <link/>
+            <link>
+              <successor id="-1"/>
+            </link>
             <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
             <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12"/>
             <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
@@ -611,7 +619,7 @@
     <type s="0.0" type="town"/>
     <planView>
       <geometry s="0.0000" x="320708.1631" y="6375274.0605" hdg="-2.767252" length="7.1087">
-        <paramPoly3 aU="0.0000000000" bU="10.6559680162" cU="-10.5526638571" dU="6.9635980360" aV="0.0000000000" bV="0.0000000000" cV="0.0470840007" dV="0.6777652352" pRange="normalized"/>
+        <paramPoly3 aU="0.0000000000" bU="10.6559680162" cU="-10.5526638708" dU="6.9635980726" aV="0.0000000000" bV="0.0000000000" cV="0.0470837342" dV="0.6777652778" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -644,7 +652,7 @@
     <type s="0.0" type="town"/>
     <planView>
       <geometry s="0.0000" x="320708.1631" y="6375274.0605" hdg="-2.767252" length="13.2941">
-        <paramPoly3 aU="0.0000000000" bU="19.8999332972" cU="-19.8945860456" dU="13.2612639841" aV="0.0000000000" bV="0.0000000000" cV="0.4115446953" dV="-0.4285995517" pRange="normalized"/>
+        <paramPoly3 aU="0.0000000000" bU="19.8999332972" cU="-19.8857906054" dU="13.2524685434" aV="0.0000000000" bV="0.0000000000" cV="-0.8021553588" dV="0.7851000820" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -677,7 +685,7 @@
     <type s="0.0" type="town"/>
     <planView>
       <geometry s="0.0000" x="320692.5288" y="6375245.6668" hdg="-1.267584" length="7.8020">
-        <paramPoly3 aU="0.0000000000" bU="11.6938492102" cU="-11.5427009053" dU="7.5971639066" aV="0.0000000000" bV="0.0000000000" cV="-0.0250968965" dV="0.8851587976" pRange="normalized"/>
+        <paramPoly3 aU="0.0000000000" bU="11.6938492102" cU="-11.5427009234" dU="7.5971639275" aV="0.0000000000" bV="0.0000000000" cV="-0.0250968569" dV="0.8851587325" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -702,15 +710,15 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="30" name="" length="17.7708" junction="2">
+  <road id="30" name="" length="17.7068" junction="2">
     <link>
       <predecessor elementType="road" elementId="6" contactPoint="end"/>
       <successor elementType="road" elementId="22" contactPoint="start"/>
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320686.1913" y="6375253.3324" hdg="-0.963273" length="17.7708">
-        <paramPoly3 aU="0.0000000000" bU="26.3618245789" cU="-26.3169940341" dU="17.5168144866" aV="0.0000000000" bV="0.0000000000" cV="0.0769948115" dV="-0.7503607049" pRange="normalized"/>
+      <geometry s="0.0000" x="320686.6411" y="6375253.7434" hdg="-0.800363" length="17.7068">
+        <paramPoly3 aU="0.0000000000" bU="26.5328155382" cU="-27.2170106517" dU="17.8858013512" aV="0.0000000000" bV="0.0000000000" cV="-5.9929473077" dV="1.8711369299" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -743,7 +751,7 @@
     <type s="0.0" type="town"/>
     <planView>
       <geometry s="0.0000" x="320696.1536" y="6375237.6876" hdg="-1.042908" length="4.4108">
-        <paramPoly3 aU="0.0000000000" bU="6.5970345281" cU="-6.6865392258" dU="4.3914610974" aV="0.0000000000" bV="0.0000000000" cV="1.1357292256" dV="-0.2215204919" pRange="normalized"/>
+        <paramPoly3 aU="0.0000000000" bU="6.5970345281" cU="-6.6865391547" dU="4.3914610447" aV="0.0000000000" bV="0.0000000000" cV="1.1357289024" dV="-0.2215202556" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -776,7 +784,7 @@
     <type s="0.0" type="town"/>
     <planView>
       <geometry s="0.0000" x="320696.0997" y="6375237.6562" hdg="-1.042908" length="12.1564">
-        <paramPoly3 aU="0.0000000000" bU="18.1886791826" cU="-18.0021512993" dU="11.5930983373" aV="0.0000000000" bV="0.0000000000" cV="-2.0677831623" dV="-0.8088633527" pRange="normalized"/>
+        <paramPoly3 aU="0.0000000000" bU="18.1886791826" cU="-17.6458309039" dU="11.2367778838" aV="0.0000000000" bV="0.0000000000" cV="-1.2121277582" dV="-1.6645189949" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -809,7 +817,7 @@
     <type s="0.0" type="town"/>
     <planView>
       <geometry s="0.0000" x="320721.0882" y="6375228.3253" hdg="0.255764" length="7.6371">
-        <paramPoly3 aU="0.0000000000" bU="11.4449880697" cU="-11.2729032928" dU="7.3961792402" aV="0.0000000000" bV="0.0000000000" cV="0.0684637530" dV="0.9001220186" pRange="normalized"/>
+        <paramPoly3 aU="0.0000000000" bU="11.4449880697" cU="-11.2729032140" dU="7.3961791844" aV="0.0000000000" bV="0.0000000000" cV="0.0684631751" dV="0.9001224164" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -841,8 +849,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320710.7161" y="6375220.3454" hdg="0.712608" length="20.5867">
-        <paramPoly3 aU="0.0000000000" bU="30.8020248154" cU="-30.9366510944" dU="20.4066668585" aV="0.0000000000" bV="0.0000000000" cV="-3.5110696187" dV="0.2372972853" pRange="normalized"/>
+      <geometry s="0.0000" x="320710.7161" y="6375220.3454" hdg="0.717553" length="20.5867">
+        <paramPoly3 aU="0.0000000000" bU="30.8020248154" cU="-30.9543882106" dU="20.4079675488" aV="0.0000000000" bV="0.0000000000" cV="-3.6626756494" dV="0.2886995205" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -875,7 +883,7 @@
     <type s="0.0" type="town"/>
     <planView>
       <geometry s="0.0000" x="320729.0168" y="6375231.6492" hdg="0.506283" length="4.8646">
-        <paramPoly3 aU="0.0000000000" bU="7.2792107450" cU="-7.3677867717" dU="4.8352516349" aV="0.0000000000" bV="0.0000000000" cV="1.2134236395" dV="-0.2040634288" pRange="normalized"/>
+        <paramPoly3 aU="0.0000000000" bU="7.2792107450" cU="-7.3677867902" dU="4.8352516561" aV="0.0000000000" bV="0.0000000000" cV="1.2134237043" dV="-0.2040635066" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -908,7 +916,7 @@
     <type s="0.0" type="town"/>
     <planView>
       <geometry s="0.0000" x="320729.0168" y="6375231.6492" hdg="0.506283" length="12.7342">
-        <paramPoly3 aU="0.0000000000" bU="19.0874447507" cU="-18.9826059224" dU="12.4940932526" aV="0.0000000000" bV="0.0000000000" cV="-1.0930562075" dV="-0.6934482075" pRange="normalized"/>
+        <paramPoly3 aU="0.0000000000" bU="19.0874447507" cU="-19.1536715624" dU="12.6651588878" aV="0.0000000000" bV="0.0000000000" cV="-1.9232061710" dV="0.1367017216" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -941,7 +949,7 @@
     <type s="0.0" type="town"/>
     <planView>
       <geometry s="0.0000" x="320738.8771" y="6375256.5767" hdg="1.825938" length="7.8015">
-        <paramPoly3 aU="0.0000000000" bU="11.6936044748" cU="-11.5424561388" dU="7.5976993682" aV="0.0000000000" bV="0.0000000000" cV="-0.0348610131" dV="0.8885963203" pRange="normalized"/>
+        <paramPoly3 aU="0.0000000000" bU="11.6936044748" cU="-11.5424560793" dU="7.5976993049" aV="0.0000000000" bV="0.0000000000" cV="-0.0348612227" dV="0.8885965634" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>
@@ -973,8 +981,8 @@
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="320745.5363" y="6375254.1537" hdg="2.784057" length="13.7624">
-        <paramPoly3 aU="0.0000000000" bU="20.3097457604" cU="-18.9747393183" dU="10.9054655512" aV="0.0000000000" bV="0.0000000000" cV="-3.7551144080" dV="-2.0326187871" pRange="normalized"/>
+      <geometry s="0.0000" x="320745.5363" y="6375254.1537" hdg="2.633918" length="13.7624">
+        <paramPoly3 aU="0.0000000000" bU="20.3097457604" cU="-18.6565633747" dU="11.3152903226" aV="0.0000000000" bV="0.0000000000" cV="-0.4753509108" dV="-3.4164000798" pRange="normalized"/>
       </geometry>
     </planView>
     <elevationProfile>

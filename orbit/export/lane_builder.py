@@ -92,7 +92,18 @@ class LaneBuilder:
         boundary_map: dict
     ) -> None:
         """Create lane elements using lane sections."""
-        for section in road.lane_sections:
+        # Determine if default lane links are needed at road boundaries.
+        # Road-to-road connections need lane-level links; junction connections
+        # handle lane links through junction <connection> elements instead.
+        has_road_predecessor = (
+            bool(road.predecessor_id) and not road.predecessor_junction_id
+        )
+        has_road_successor = (
+            bool(road.successor_id) and not road.successor_junction_id
+        )
+        num_sections = len(road.lane_sections)
+
+        for idx, section in enumerate(road.lane_sections):
             lane_section = etree.SubElement(lanes, 'laneSection')
 
             # Convert pixel s-coordinates to meters
@@ -113,6 +124,10 @@ class LaneBuilder:
             section_length_px = section.s_end - section.s_start
             section_length_m = section_length_px * self.scale_x
 
+            # First section needs predecessor lane links, last needs successor
+            add_pred = (idx == 0) and has_road_predecessor
+            add_succ = (idx == num_sections - 1) and has_road_successor
+
             # Left lanes (positive IDs)
             left_lanes = [lane for lane in section.lanes if lane.id > 0]
             left_lanes.sort(key=lambda lane: lane.id)  # Sort ascending: 1, 2, 3...
@@ -120,7 +135,10 @@ class LaneBuilder:
                 left = etree.SubElement(lane_section, 'left')
                 for lane_obj in left_lanes:
                     boundary_info = boundary_map.get(lane_obj.id)
-                    lane = self._create_lane(lane_obj, boundary_info, section_length_m)
+                    lane = self._create_lane(
+                        lane_obj, boundary_info, section_length_m,
+                        add_pred, add_succ
+                    )
                     left.append(lane)
 
             # Center lane (reference lane, id=0) - required
@@ -140,7 +158,10 @@ class LaneBuilder:
                 right = etree.SubElement(lane_section, 'right')
                 for lane_obj in right_lanes:
                     boundary_info = boundary_map.get(lane_obj.id)
-                    lane = self._create_lane(lane_obj, boundary_info, section_length_m)
+                    lane = self._create_lane(
+                        lane_obj, boundary_info, section_length_m,
+                        add_pred, add_succ
+                    )
                     right.append(lane)
 
     def _create_center_lane(self, center_lane_obj) -> etree.Element:
@@ -181,9 +202,18 @@ class LaneBuilder:
         self,
         lane_obj,
         boundary_info: Optional[BoundaryInfo] = None,
-        section_length_m: float = 0.0
+        section_length_m: float = 0.0,
+        add_pred_link: bool = False,
+        add_succ_link: bool = False
     ) -> etree.Element:
-        """Create a single lane element with data-driven road mark."""
+        """Create a single lane element with data-driven road mark.
+
+        Args:
+            add_pred_link: If True and no explicit predecessor_id, default to
+                the lane's own ID (for road-to-road connections at first section).
+            add_succ_link: If True and no explicit successor_id, default to
+                the lane's own ID (for road-to-road connections at last section).
+        """
         lane = etree.Element('lane')
         lane.set('id', str(lane_obj.id))
         lane.set('type', lane_obj.lane_type.value)
@@ -196,13 +226,22 @@ class LaneBuilder:
             lane.set('advisory', lane_obj.advisory)
 
         # Lane link with predecessor/successor
+        pred_id = lane_obj.predecessor_id
+        succ_id = lane_obj.successor_id
+
+        # Default to same lane ID for road-to-road connections
+        if pred_id is None and add_pred_link:
+            pred_id = lane_obj.id
+        if succ_id is None and add_succ_link:
+            succ_id = lane_obj.id
+
         link = etree.SubElement(lane, 'link')
-        if lane_obj.predecessor_id is not None:
+        if pred_id is not None:
             pred = etree.SubElement(link, 'predecessor')
-            pred.set('id', str(lane_obj.predecessor_id))
-        if lane_obj.successor_id is not None:
+            pred.set('id', str(pred_id))
+        if succ_id is not None:
             succ = etree.SubElement(link, 'successor')
-            succ.set('id', str(lane_obj.successor_id))
+            succ.set('id', str(succ_id))
 
         # Lane width polynomial
         # If width_end is set, calculate width_b for linear transition
