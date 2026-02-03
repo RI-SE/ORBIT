@@ -135,6 +135,10 @@ class SignalGraphicsItem(QGraphicsItemGroup):
             # Update signal position
             pos = self.pos()
             self.signal.position = (pos.x(), pos.y())
+            # Clear geo_position since user manually repositioned the signal.
+            # Otherwise the stale geo_position would override the dragged
+            # position when the project is reloaded.
+            self.signal.geo_position = None
             # Notify about change
             if self.signal_changed:
                 self.signal_changed(self.signal)
