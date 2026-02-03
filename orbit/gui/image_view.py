@@ -354,8 +354,6 @@ class ImageView(QGraphicsView):
         # Also refresh/remove connecting road graphics for this junction
         junction = self.project.get_junction(junction_id) if self.project else None
         if junction:
-            current_cr_ids = {cr.id for cr in junction.connecting_roads}
-
             # Find connecting road graphics that are no longer in any junction
             all_cr_ids_in_scene = set(self.connecting_road_centerline_items.keys()) | set(
                 self.connecting_road_lanes_items.keys())
