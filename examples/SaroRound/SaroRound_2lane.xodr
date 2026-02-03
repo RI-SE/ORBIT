@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <OpenDRIVE xmlns="http://code.asam.net/simulation/standard/opendrive_schema">
-  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-02-03T15:20:17.326265" north="6375277.0348" south="6375189.0226" east="320826.7133" west="320628.5245" vendor="ORBIT by RISE Research Institutes of Sweden">
+  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-02-03T15:23:17.918608" north="6375277.0348" south="6375189.0226" east="320826.7133" west="320628.5245" vendor="ORBIT by RISE Research Institutes of Sweden">
     <geoReference>+proj=utm +zone=33 +north +ellps=WGS84 +datum=WGS84 +units=m +no_defs</geoReference>
     <userData code="tool">Produced by ORBIT (https://github.com/fwrise/ORBIT)</userData>
     <userData code="license">Licensed under the Open Database License (https://opendatacommons.org/licenses/odbl/1-0/)</userData>
@@ -108,7 +108,7 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="5" name="Säröleden (seg 1/2)" length="30.3946" junction="-1">
+  <road id="5" name="Säröleden (seg 1/2)" length="32.2096" junction="-1">
     <link>
       <predecessor elementType="road" elementId="15" contactPoint="end"/>
     </link>
@@ -116,10 +116,10 @@
       <speed max="19.44" unit="m/s"/>
     </type>
     <planView>
-      <geometry s="0.0000" x="320796.7241" y="6375242.0599" hdg="-0.140044" length="17.2603">
+      <geometry s="0.0000" x="320794.9395" y="6375242.4010" hdg="-0.144691" length="19.0753">
         <line/>
       </geometry>
-      <geometry s="17.2603" x="320813.8155" y="6375239.6506" hdg="-0.190044" length="13.1343">
+      <geometry s="19.0753" x="320813.8155" y="6375239.6506" hdg="-0.190044" length="13.1343">
         <line/>
       </geometry>
     </planView>
