@@ -666,8 +666,16 @@ class OpenDriveImporter:
             connecting_road.dV = param_poly3['dV']
             connecting_road.p_range = param_poly3['length']
             connecting_road.p_range_normalized = (param_poly3['pRange'] == 'normalized')
-            # Store the starting heading for export
-            connecting_road.stored_start_heading = param_poly3['hdg']
+            # Compute pixel-space headings from the converted path
+            # (raw param_poly3['hdg'] is in metric coordinate space, not pixel space)
+            if len(points_pixel) >= 2:
+                dx = points_pixel[1][0] - points_pixel[0][0]
+                dy = points_pixel[1][1] - points_pixel[0][1]
+                connecting_road.stored_start_heading = math.atan2(dy, dx)
+
+                dx = points_pixel[-1][0] - points_pixel[-2][0]
+                dy = points_pixel[-1][1] - points_pixel[-2][1]
+                connecting_road.stored_end_heading = math.atan2(dy, dx)
         else:
             connecting_road.geometry_type = "polyline"
 
@@ -723,15 +731,29 @@ class OpenDriveImporter:
                     if from_road_id and to_road_id:
                         # Create LaneConnection for each lane link
                         for lane_link in odr_conn.lane_links:
-                            # Note: lane_link.to_lane is the lane on the connecting road,
-                            # not the outgoing road. We store it in connecting_lane_id.
-                            # to_lane_id is the outgoing road lane (assumed same as from_lane_id).
+                            # lane_link.to_lane is the lane on the connecting road.
+                            # Look up the connecting road lane's successor/predecessor
+                            # link to find the actual outgoing road lane ID.
+                            to_lane = lane_link.from_lane  # Fallback
+                            if odr_road.lane_sections:
+                                section = odr_road.lane_sections[0]
+                                all_lanes = section.right_lanes + section.left_lanes
+                                for odr_lane in all_lanes:
+                                    if odr_lane.id == lane_link.to_lane and odr_lane.link:
+                                        if odr_conn.contact_point == "end":
+                                            outgoing_lane = odr_lane.link.predecessor_id
+                                        else:
+                                            outgoing_lane = odr_lane.link.successor_id
+                                        if outgoing_lane is not None:
+                                            to_lane = outgoing_lane
+                                        break
+
                             lane_connection = LaneConnection(
                                 id=self.project.next_id('lane_connection'),
                                 from_road_id=from_road_id,
                                 from_lane_id=lane_link.from_lane,
                                 to_road_id=to_road_id,
-                                to_lane_id=lane_link.from_lane,  # Assume same lane continues
+                                to_lane_id=to_lane,
                                 connecting_road_id=connecting_road.id,
                                 connecting_lane_id=lane_link.to_lane  # Lane on connecting road
                             )
