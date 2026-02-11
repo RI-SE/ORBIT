@@ -1125,3 +1125,250 @@ class TestConnectingRoadLanes:
         assert width.get('a') == '3.0000'
         # b = (4.0 - 3.0) / 100 = 0.01
         assert float(width.get('b')) == pytest.approx(0.01, abs=0.0001)
+
+
+class TestOffsetAndGeoReference:
+    """Tests for offset subtraction and geo_reference_string in OpenDriveWriter."""
+
+    @pytest.fixture
+    def mock_transformer(self):
+        return MockTransformer()
+
+    @pytest.fixture
+    def georef_project(self):
+        """Project with control points for georeferencing."""
+        from orbit.models import ControlPoint
+        project = Project()
+        project.control_points.append(ControlPoint(100, 100, 12.9, 57.7))
+        project.control_points.append(ControlPoint(200, 100, 12.91, 57.7))
+        project.control_points.append(ControlPoint(100, 200, 12.9, 57.71))
+        return project
+
+    def test_header_offset_element_written(self, georef_project, mock_transformer):
+        """Offset element is present in header when georeferenced."""
+        writer = OpenDriveWriter(
+            georef_project, mock_transformer,
+            offset_x=630000.0, offset_y=6374000.0
+        )
+        header = writer._create_header()
+        offset = header.find('offset')
+
+        assert offset is not None
+        assert offset.get('x') == '630000.0000'
+        assert offset.get('y') == '6374000.0000'
+        assert offset.get('z') == '0.0000'
+        assert offset.get('hdg') == '0.000000'
+
+    def test_header_offset_always_written_with_georef(self, georef_project, mock_transformer):
+        """Offset element is present even when offset is (0, 0)."""
+        writer = OpenDriveWriter(
+            georef_project, mock_transformer,
+            offset_x=0.0, offset_y=0.0
+        )
+        header = writer._create_header()
+        offset = header.find('offset')
+
+        assert offset is not None
+        assert offset.get('x') == '0.0000'
+        assert offset.get('y') == '0.0000'
+
+    def test_header_no_offset_without_georef(self, mock_transformer):
+        """Offset element is NOT present when not georeferenced."""
+        project = Project()  # No control points
+        writer = OpenDriveWriter(
+            project, mock_transformer,
+            offset_x=100.0, offset_y=200.0
+        )
+        header = writer._create_header()
+        offset = header.find('offset')
+
+        assert offset is None
+
+    def test_bounds_subtract_offset(self, mock_transformer):
+        """Header bounds are correctly adjusted by offset."""
+        from orbit.models import ControlPoint
+        project = Project()
+        project.control_points.append(ControlPoint(100, 100, 12.9, 57.7))
+        project.control_points.append(ControlPoint(200, 100, 12.91, 57.7))
+        project.control_points.append(ControlPoint(100, 200, 12.9, 57.71))
+
+        # Add polyline so bounds are non-zero (scale=1.0 so pixel=meter)
+        polyline = Polyline(id="1")
+        polyline.points = [(10, 20), (50, 60)]
+        project.polylines.append(polyline)
+
+        writer = OpenDriveWriter(
+            project, mock_transformer,
+            offset_x=5.0, offset_y=10.0
+        )
+        header = writer._create_header()
+
+        # Without offset: west=10, east=50, south=20, north=60
+        # With offset: west=5, east=45, south=10, north=50
+        assert float(header.get('west')) == pytest.approx(5.0, abs=0.01)
+        assert float(header.get('east')) == pytest.approx(45.0, abs=0.01)
+        assert float(header.get('south')) == pytest.approx(10.0, abs=0.01)
+        assert float(header.get('north')) == pytest.approx(50.0, abs=0.01)
+
+    def test_geometry_coordinates_subtract_offset(self, mock_transformer):
+        """PlanView geometry x,y values have offset subtracted."""
+        project = Project()
+        writer = OpenDriveWriter(
+            project, mock_transformer,
+            offset_x=1000.0, offset_y=2000.0
+        )
+
+        geometry = GeometryElement(
+            geom_type=GeometryType.LINE,
+            start_pos=(1050.0, 2100.0),
+            heading=0.5,
+            length=100.0
+        )
+
+        plan_view = writer._create_plan_view([geometry])
+        geom = plan_view.find('geometry')
+
+        assert float(geom.get('x')) == pytest.approx(50.0, abs=0.01)
+        assert float(geom.get('y')) == pytest.approx(100.0, abs=0.01)
+
+    def test_heading_not_affected_by_offset(self, mock_transformer):
+        """Heading values are unchanged by offset."""
+        project = Project()
+        writer = OpenDriveWriter(
+            project, mock_transformer,
+            offset_x=1000.0, offset_y=2000.0
+        )
+
+        heading = 1.234567
+        geometry = GeometryElement(
+            geom_type=GeometryType.LINE,
+            start_pos=(1050.0, 2100.0),
+            heading=heading,
+            length=100.0
+        )
+
+        plan_view = writer._create_plan_view([geometry])
+        geom = plan_view.find('geometry')
+
+        assert float(geom.get('hdg')) == pytest.approx(heading, abs=1e-6)
+
+    def test_geometry_length_not_affected_by_offset(self, mock_transformer):
+        """Geometry length is unchanged by offset."""
+        project = Project()
+        writer = OpenDriveWriter(
+            project, mock_transformer,
+            offset_x=1000.0, offset_y=2000.0
+        )
+
+        geometry = GeometryElement(
+            geom_type=GeometryType.LINE,
+            start_pos=(1050.0, 2100.0),
+            heading=0.0,
+            length=75.5
+        )
+
+        plan_view = writer._create_plan_view([geometry])
+        geom = plan_view.find('geometry')
+
+        assert float(geom.get('length')) == pytest.approx(75.5, abs=0.01)
+
+    def test_geo_reference_string_override(self, georef_project, mock_transformer):
+        """Custom geo_reference_string is written to header."""
+        custom_ref = "+proj=utm +zone=33 +datum=WGS84 +lat_0=57.7 +lon_0=12.9"
+        writer = OpenDriveWriter(
+            georef_project, mock_transformer,
+            geo_reference_string=custom_ref
+        )
+
+        header = writer._create_header()
+        georef = header.find('geoReference')
+
+        assert georef is not None
+        assert georef.text == custom_ref
+
+    def test_geo_reference_string_priority_over_export_proj(self, georef_project, mock_transformer):
+        """geo_reference_string takes priority over _export_proj_string."""
+        mock_transformer._export_proj_string = "+proj=utm +zone=34 +datum=WGS84"
+        custom_ref = "+proj=utm +zone=33 +datum=WGS84 +lat_0=57.7 +lon_0=12.9"
+
+        writer = OpenDriveWriter(
+            georef_project, mock_transformer,
+            geo_reference_string=custom_ref
+        )
+
+        header = writer._create_header()
+        georef = header.find('geoReference')
+
+        assert georef.text == custom_ref
+
+    def test_offset_element_schema_order(self, georef_project, mock_transformer):
+        """Offset element appears between geoReference and userData in header."""
+        writer = OpenDriveWriter(
+            georef_project, mock_transformer,
+            offset_x=100.0, offset_y=200.0
+        )
+        header = writer._create_header()
+
+        children = list(header)
+        tags = [child.tag for child in children]
+
+        georef_idx = tags.index('geoReference')
+        offset_idx = tags.index('offset')
+        userdata_idx = tags.index('userData')
+
+        assert georef_idx < offset_idx < userdata_idx
+
+    def test_multiple_geometries_all_offset(self, mock_transformer):
+        """All geometry elements in planView have offset subtracted."""
+        project = Project()
+        writer = OpenDriveWriter(
+            project, mock_transformer,
+            offset_x=500.0, offset_y=1000.0
+        )
+
+        geometries = [
+            GeometryElement(GeometryType.LINE, (500.0, 1000.0), 0.0, 50.0),
+            GeometryElement(GeometryType.ARC, (550.0, 1000.0), 0.0, 25.0, curvature=0.01),
+            GeometryElement(GeometryType.LINE, (575.0, 1010.0), 0.5, 50.0),
+        ]
+
+        plan_view = writer._create_plan_view(geometries)
+        geom_elements = plan_view.findall('geometry')
+
+        assert float(geom_elements[0].get('x')) == pytest.approx(0.0, abs=0.01)
+        assert float(geom_elements[0].get('y')) == pytest.approx(0.0, abs=0.01)
+        assert float(geom_elements[1].get('x')) == pytest.approx(50.0, abs=0.01)
+        assert float(geom_elements[1].get('y')) == pytest.approx(0.0, abs=0.01)
+        assert float(geom_elements[2].get('x')) == pytest.approx(75.0, abs=0.01)
+        assert float(geom_elements[2].get('y')) == pytest.approx(10.0, abs=0.01)
+
+    def test_export_to_opendrive_with_offset(self, mock_transformer, tmp_path):
+        """export_to_opendrive passes offset parameters through."""
+        project = Project()
+        centerline = Polyline(id="1")
+        centerline.line_type = LineType.CENTERLINE
+        centerline.points = [(0, 0), (100, 0)]
+        project.polylines.append(centerline)
+
+        road = Road(id="1")
+        road.centerline_id = centerline.id
+        project.roads.append(road)
+
+        output_path = tmp_path / "export.xodr"
+        result = export_to_opendrive(
+            project, mock_transformer, str(output_path),
+            offset_x=10.0, offset_y=20.0,
+            geo_reference_string="+proj=utm +zone=33 +datum=WGS84"
+        )
+
+        assert result is True
+        assert output_path.exists()
+
+    def test_default_offset_is_zero(self, mock_transformer):
+        """Default offset values are 0.0 (backward compat)."""
+        project = Project()
+        writer = OpenDriveWriter(project, mock_transformer)
+
+        assert writer.offset_x == 0.0
+        assert writer.offset_y == 0.0
+        assert writer.geo_reference_string is None

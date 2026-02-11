@@ -10,6 +10,7 @@ from typing import Optional
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialogButtonBox,
     QDoubleSpinBox,
     QFileDialog,
@@ -112,15 +113,32 @@ class ExportDialog(BaseDialog):
         self.preserve_geometry_checkbox.stateChanged.connect(self.on_preserve_geometry_changed)
         options_layout.addRow("Geometry:", self.preserve_geometry_checkbox)
 
-        # Projection type checkbox (UTM vs Transverse Mercator)
-        self.use_tmerc_checkbox = QCheckBox("Use Transverse Mercator (local projection)")
-        self.use_tmerc_checkbox.setChecked(False)  # UTM is default
-        self.use_tmerc_checkbox.setToolTip(
-            "If unchecked (default), uses UTM projection with automatically calculated zone.\n"
-            "If an imported OpenDRIVE file had a geoReference, it will be preserved.\n"
-            "If checked, uses a local Transverse Mercator projection centered on control points."
+        # Projection type dropdown (UTM, Transverse Mercator, Preserved)
+        self.projection_combo = QComboBox()
+        self.projection_combo.addItem("UTM", "utm")
+        self.projection_combo.addItem("Transverse Mercator", "tmerc")
+        if self.project.imported_geo_reference:
+            self.projection_combo.addItem("Preserved from import", "preserved")
+        self.projection_combo.setToolTip(
+            "UTM: Standard projection with automatically calculated zone.\n"
+            "Transverse Mercator: Local projection centered on control points.\n"
+            "Preserved from import: Use the geoReference from the imported OpenDRIVE file."
         )
-        options_layout.addRow("Projection:", self.use_tmerc_checkbox)
+        options_layout.addRow("Projection:", self.projection_combo)
+
+        # Origin point selection for coordinate offset
+        self.origin_combo = QComboBox()
+        self.origin_combo.addItem("Mean of control points", "mean")
+        for i, cp in enumerate(self.project.control_points):
+            label = cp.name if cp.name else f"CP {i+1}"
+            label += f" ({cp.latitude:.6f}, {cp.longitude:.6f})"
+            self.origin_combo.addItem(label, i)
+        self.origin_combo.setToolTip(
+            "Select the origin point for the local coordinate system.\n"
+            "The projected coordinates of this point become the offset,\n"
+            "producing small local coordinates in the exported file."
+        )
+        options_layout.addRow("Origin Point:", self.origin_combo)
 
         # German codes checkbox
         self.use_german_codes_checkbox = QCheckBox("Use German (DE) equivalent codes for signals")
@@ -320,13 +338,14 @@ class ExportDialog(BaseDialog):
             if not country_code:
                 country_code = "se"  # Default to Sweden
 
-            # Determine projection string for export so that coordinate
-            # conversion matches the declared geoReference in the output file.
-            use_tmerc = self.use_tmerc_checkbox.isChecked()
-            if use_tmerc:
-                proj_string = self.transformer.get_projection_string()
-            elif self.project.imported_geo_reference:
+            # Determine projection type from dropdown
+            projection_type = self.projection_combo.currentData()
+            use_tmerc = (projection_type == "tmerc")
+
+            if projection_type == "preserved":
                 proj_string = self.project.imported_geo_reference
+            elif use_tmerc:
+                proj_string = self.transformer.get_projection_string()
             else:
                 proj_string = self.transformer.get_utm_projection_string()
 
@@ -345,6 +364,35 @@ class ExportDialog(BaseDialog):
                 self.status_label.setText("<b>Export failed.</b>")
                 return
 
+            # Compute origin offset: project the selected origin lat/lon
+            # to get the offset that will be subtracted from all coordinates.
+            origin_selection = self.origin_combo.currentData()
+            if origin_selection == "mean":
+                origin_lat = sum(cp.latitude for cp in self.project.control_points) / len(self.project.control_points)
+                origin_lon = sum(cp.longitude for cp in self.project.control_points) / len(self.project.control_points)
+            else:
+                cp = self.project.control_points[origin_selection]
+                origin_lat = cp.latitude
+                origin_lon = cp.longitude
+
+            # Project origin through pyproj to get metric offset
+            from pyproj import Proj
+            proj = Proj(proj_string)
+            offset_x, offset_y = proj(origin_lon, origin_lat)
+
+            # Build geo_reference_string for the XML header.
+            # For UTM, append informational lat_0/lon_0 so tools can identify
+            # the origin. For TMERC, the proj string already has lat_0/lon_0.
+            # For preserved, use the imported string as-is.
+            if projection_type == "preserved":
+                geo_reference_string = self.project.imported_geo_reference
+            elif projection_type == "utm":
+                geo_reference_string = (
+                    f"{proj_string} +lat_0={origin_lat:.8f} +lon_0={origin_lon:.8f}"
+                )
+            else:
+                geo_reference_string = proj_string
+
             success = export_to_opendrive(
                 self.project,
                 export_transformer,
@@ -355,7 +403,10 @@ class ExportDialog(BaseDialog):
                 right_hand_traffic=self.project.right_hand_traffic,
                 country_code=country_code,
                 use_tmerc=use_tmerc,
-                use_german_codes=self.use_german_codes_checkbox.isChecked()
+                use_german_codes=self.use_german_codes_checkbox.isChecked(),
+                offset_x=offset_x,
+                offset_y=offset_y,
+                geo_reference_string=geo_reference_string
             )
 
             if success:
