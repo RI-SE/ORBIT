@@ -2593,7 +2593,6 @@ class MainWindow(QMainWindow):
                 from_heading=pred_heading,
                 to_pos=succ_pos,
                 to_heading=succ_heading,
-                num_points=20,
                 tangent_scale=conn_road.tangent_scale
             )
 
@@ -2609,6 +2608,11 @@ class MainWindow(QMainWindow):
             conn_road.bV = bV
             conn_road.cV = cV
             conn_road.dV = dV
+
+            # Update stored headings so get_start_heading/get_end_heading
+            # return accurate values (used by dialog, export, alignment)
+            conn_road.stored_start_heading = pred_heading
+            conn_road.stored_end_heading = succ_heading
 
             # Update graphics
             scale_factors = self.get_current_scale()

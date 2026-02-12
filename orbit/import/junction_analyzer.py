@@ -630,7 +630,6 @@ def create_connecting_roads_from_patterns(
                     to_pos_geo=to_endpoint.position_geo,
                     to_heading=to_endpoint.heading,
                     transformer=transformer,
-                    num_points=20,
                     tangent_scale=1.0,
                     from_direction_geo=from_endpoint.direction_geo,
                     to_direction_geo=to_endpoint.direction_geo
@@ -654,7 +653,6 @@ def create_connecting_roads_from_patterns(
                     from_heading=from_endpoint.heading,
                     to_pos=to_pos,
                     to_heading=to_endpoint.heading,
-                    num_points=20,
                     tangent_scale=1.0
                 )
 
@@ -818,7 +816,6 @@ def create_connecting_roads_from_patterns(
                 to_pos_geo=to_pos_geo,
                 to_heading=to_heading,
                 transformer=transformer,
-                num_points=20,
                 tangent_scale=1.0,
                 is_uturn=is_uturn,
                 from_direction_geo=from_direction_geo,
@@ -841,7 +838,6 @@ def create_connecting_roads_from_patterns(
                 from_heading=from_heading,
                 to_pos=to_pos,
                 to_heading=to_heading,
-                num_points=20,
                 tangent_scale=1.0,
                 is_uturn=is_uturn
             )
