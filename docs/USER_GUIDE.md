@@ -22,6 +22,7 @@ Complete guide for creating OpenDRIVE road networks from aerial imagery using OR
 - [Georeferencing](#georeferencing)
 - [Import Features](#import-features)
 - [Export to OpenDRIVE](#export-to-opendrive)
+- [Export Layout Mask](#export-layout-mask)
 - [View Controls](#view-controls)
 - [Preferences](#preferences)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
@@ -545,6 +546,44 @@ The generated .xodr file includes:
 - Signals and objects
 - Parking spaces
 - Geographic reference (PROJ4)
+
+---
+
+## Export Layout Mask
+
+Export a semantic segmentation mask where each pixel value identifies a lane region. The mask is accompanied by a JSON metadata file describing region properties, adjacency, and connectivity.
+
+### Access
+
+File menu → Export Layout Mask...
+
+### Export Methods
+
+| Method | Description | Requirements |
+|--------|-------------|--------------|
+| **Pixel-space** | Polygons from rendered lane visualization | None |
+| **OpenDRIVE-accurate** | Polygons from the export pipeline (curve-fitted reference lines + lane widths in meters) | Georeferencing (3+ control points) |
+
+The pixel-space method is fast and uses the same lane polygons shown in the GUI. The OpenDRIVE-accurate method runs the full curve fitting pipeline to produce geometrically precise lane polygons in metric space, then projects them back to pixel coordinates.
+
+### Output Files
+
+For an output path `image_layout_mask.png`:
+
+| File | Contents |
+|------|----------|
+| `image_layout_mask.png` | Raw mask (uint8/uint16), pixel value = region ID |
+| `image_layout_mask_vis.png` | Colorized visualization for inspection |
+| `image_layout_mask.json` | Region metadata (lane IDs, adjacency, connectivity) |
+| `image_layout_mask.pgw` | World file for GIS (optional, requires georeferencing) |
+
+### Options
+
+- **GeoTIFF**: Write a world file (.pgw) alongside the mask for GIS compatibility. Requires georeferencing.
+- **Curve Fitting Settings** (OpenDRIVE method only):
+  - **Line tolerance**: Maximum deviation for line segments (meters)
+  - **Arc tolerance**: Maximum deviation for arc segments (meters)
+  - **Preserve geometry**: Keep all original polyline vertices
 
 ---
 
