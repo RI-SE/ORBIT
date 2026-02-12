@@ -151,6 +151,9 @@ class LayoutMaskExporter:
             return []
 
         polygons = []
+        # Store reference line endpoint headings for CR heading alignment:
+        # {(road_id, "start"|"end"): heading_radians}
+        road_ref_headings: Dict[Tuple[str, str], float] = {}
 
         for road in self.project.roads:
             if not road.centerline_id:
@@ -181,6 +184,10 @@ class LayoutMaskExporter:
             ref_points = sample_reference_line(geometry_elements, step_m=0.5)
             if len(ref_points) < 2:
                 continue
+
+            # Store reference line endpoint headings for CR alignment
+            road_ref_headings[(road.id, "start")] = ref_points[0][2]
+            road_ref_headings[(road.id, "end")] = ref_points[-1][2]
 
             # Estimate scale (meters per pixel)
             total_px = sum(
@@ -213,18 +220,27 @@ class LayoutMaskExporter:
             for cr in junction.connecting_roads:
                 if len(cr.path) < 2:
                     continue
-                cr_polys = self._collect_connecting_road_polygons(cr)
+                cr_polys = self._collect_connecting_road_polygons(
+                    cr, road_ref_headings,
+                )
                 polygons.extend(cr_polys)
 
         return polygons
 
     def _collect_connecting_road_polygons(
-        self, cr,
+        self, cr, road_ref_headings: Optional[Dict] = None,
     ) -> List[LanePolygonData]:
         """Generate lane polygons for a connecting road in meter space.
 
         Transforms the CR path to meters, computes headings, offsets lanes
         laterally using lane widths in meters, then converts back to pixels.
+
+        Args:
+            cr: ConnectingRoad with path and lane configuration
+            road_ref_headings: {(road_id, contact_point): heading} from
+                curve-fitted reference lines. Used to override CR endpoint
+                headings so lane edges align with road lane edges at
+                junction boundaries.
         """
         # Transform path to meters
         path_meters = []
@@ -245,6 +261,24 @@ class LayoutMaskExporter:
             else:
                 # Last point: use same heading as previous
                 headings.append(headings[-1] if headings else 0.0)
+
+        # Override endpoint headings with road reference line headings.
+        # This aligns the CR lane edge direction with the road lane edge
+        # direction at the junction boundary, eliminating wedge-shaped
+        # misalignment. Only headings are changed — positions stay put,
+        # so no path kink is introduced.
+        if road_ref_headings:
+            pred_hdg = road_ref_headings.get(
+                (cr.predecessor_road_id, cr.contact_point_start)
+            )
+            if pred_hdg is not None:
+                headings[0] = pred_hdg
+
+            succ_hdg = road_ref_headings.get(
+                (cr.successor_road_id, cr.contact_point_end)
+            )
+            if succ_hdg is not None and len(headings) > 0:
+                headings[-1] = succ_hdg
 
         path_length_m = s_values[-1] if len(s_values) > 1 else 0.0
         if path_length_m < 1e-6:
@@ -400,8 +434,14 @@ class LayoutMaskExporter:
     ) -> np.ndarray:
         """Render polygons into a mask, tracking overlapping regions.
 
-        When two polygons overlap, a new combo region is created representing
-        the intersection, following Thanh's format for downstream consumers.
+        When two connecting road polygons overlap (e.g. CRs sharing a common
+        start point that diverge), a combo region is created representing
+        the intersection for downstream consumers.
+
+        When a connecting road polygon overlaps a regular road polygon at a
+        junction boundary, the CR polygon cleanly overwrites the road polygon
+        (no combo region). This eliminates the colored patches at junction
+        boundaries while preserving correct CR-CR overlap tracking.
         """
         h, w = self.image_size[1], self.image_size[0]
         mask = np.zeros((h, w), dtype=np.int32)
@@ -411,11 +451,20 @@ class LayoutMaskExporter:
         id_members: Dict[int, frozenset] = {}
         next_combo_id = max(int(k) for k in region_info) + 1
 
+        # Build set of region IDs that are regular road lanes (not CRs)
+        road_lane_ids: Set[int] = set()
+        for key, rid in region_map.items():
+            _, _, _, is_connecting = key
+            if not is_connecting:
+                road_lane_ids.add(rid)
+
         for poly in polygons:
             key = (poly.road_id, poly.section_number, poly.lane_id, poly.is_connecting_road)
             region_id = region_map.get(key)
             if region_id is None:
                 continue
+
+            is_cr = poly.is_connecting_road
 
             pts = np.array(poly.points, dtype=np.int32).reshape((-1, 1, 2))
             if pts.shape[0] < 3:
@@ -436,8 +485,25 @@ class LayoutMaskExporter:
 
                 for old_id in overlap_ids:
                     old_id = int(old_id)
-                    # Determine members of old_id
+
+                    # CR overwriting a road lane at junction boundary:
+                    # just overwrite, no combo region needed.
+                    if is_cr and old_id in road_lane_ids:
+                        overlap_pixel_mask = new_pixels & (mask == old_id)
+                        mask[overlap_pixel_mask] = region_id
+                        continue
+
+                    # CR overwriting a road-CR combo that was already
+                    # created (shouldn't happen since we skip road-CR combos,
+                    # but handle gracefully): check if old_id is a combo
+                    # whose members are all road lanes — treat as road overwrite.
                     old_members = id_members.get(old_id, frozenset([old_id]))
+                    if is_cr and old_members.issubset(road_lane_ids):
+                        overlap_pixel_mask = new_pixels & (mask == old_id)
+                        mask[overlap_pixel_mask] = region_id
+                        continue
+
+                    # All other overlaps (CR-CR, road-road): create combo region
                     new_members = old_members | frozenset([region_id])
 
                     if new_members in combo_map:
