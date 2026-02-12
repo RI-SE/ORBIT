@@ -1187,8 +1187,6 @@ class MainWindow(QMainWindow):
 
     def create_roundabout(self):
         """Open the roundabout creation wizard."""
-        from orbit.roundabout_creator import create_roundabout_from_params
-
         from .dialogs import RoundaboutWizardDialog
 
         # Get available roads for approach selection
@@ -1204,34 +1202,72 @@ class MainWindow(QMainWindow):
             if transformer:
                 scale_factor = transformer.get_scale_factor()[0]  # scale_x
 
-        # Show wizard dialog
-        params = RoundaboutWizardDialog.create_roundabout(
-            available_roads, scale_factor, self
-        )
+        dialog = RoundaboutWizardDialog(available_roads, self, scale_factor)
 
-        if params:
-            # Get approach roads and polylines
-            approach_roads = {road.id: road for road in self.project.roads}
-            polylines = {p.id: p for p in self.project.polylines}
+        # Connect pick-from-map: hide dialog, enter pick mode, route click back
+        dialog.pick_center_requested.connect(self._start_roundabout_center_pick)
+        dialog.pick_radius_requested.connect(self._start_roundabout_radius_pick)
 
-            try:
-                # Create roundabout
-                roads, junctions, new_polylines = create_roundabout_from_params(
-                    self.project, params, approach_roads, polylines
-                )
+        # Store reference so on_point_picked can route to it
+        self.roundabout_dialog = dialog
+        self._roundabout_pick_mode = None  # 'center' or 'radius'
 
-                # Update UI
-                self.elements_tree.load_project(self.project)
-                self.road_tree.load_project(self.project)
-                self.image_view.load_project(self.project)
-                self.modified = True
+        # Handle result when dialog is accepted/rejected
+        dialog.finished.connect(self._on_roundabout_dialog_finished)
 
-                self.statusBar().showMessage(
-                    f"Created roundabout with {len(roads)} road(s) and {len(junctions)} junction(s)"
-                )
+        dialog.show()
 
-            except Exception as e:
-                show_error(self, f"Failed to create roundabout:\n\n{e}", "Roundabout Creation Failed")
+    def _start_roundabout_center_pick(self):
+        """Enter point-pick mode for roundabout center."""
+        self._roundabout_pick_mode = 'center'
+        self.image_view.set_pick_point_mode(True)
+        self.statusBar().showMessage("Click on the image to set the roundabout center point")
+
+    def _start_roundabout_radius_pick(self):
+        """Enter point-pick mode for roundabout radius."""
+        self._roundabout_pick_mode = 'radius'
+        self.image_view.set_pick_point_mode(True)
+        self.statusBar().showMessage("Click on the inner edge of the roundabout road to set the centerline radius")
+
+    def _on_roundabout_dialog_finished(self, result):
+        """Handle roundabout wizard dialog result."""
+        from orbit.roundabout_creator import create_roundabout_from_params
+
+        from .dialogs import RoundaboutWizardDialog
+
+        dialog = self.roundabout_dialog
+        self.roundabout_dialog = None
+        self._roundabout_pick_mode = None
+
+        if result != RoundaboutWizardDialog.DialogCode.Accepted:
+            return
+
+        params = dialog.get_roundabout_params()
+        if not params:
+            return
+
+        # Get approach roads and polylines
+        approach_roads = {road.id: road for road in self.project.roads}
+        polylines = {p.id: p for p in self.project.polylines}
+
+        try:
+            # Create roundabout
+            roads, junctions, new_polylines = create_roundabout_from_params(
+                self.project, params, approach_roads, polylines
+            )
+
+            # Update UI
+            self.elements_tree.refresh_tree()
+            self.road_tree.refresh_tree()
+            self.image_view.load_project(self.project)
+            self.modified = True
+
+            self.statusBar().showMessage(
+                f"Created roundabout with {len(roads)} road(s) and {len(junctions)} junction(s)"
+            )
+
+        except Exception as e:
+            show_error(self, f"Failed to create roundabout:\n\n{e}", "Roundabout Creation Failed")
 
     def add_signal(self):
         """Add a traffic signal by clicking on the map."""
@@ -1441,8 +1477,17 @@ class MainWindow(QMainWindow):
         # Disable pick point mode after picking
         self.image_view.set_pick_point_mode(False)
 
-        # If we have an active georef dialog, send the coordinates to it
-        if hasattr(self, 'georef_dialog') and self.georef_dialog:
+        # Route to active dialog
+        if hasattr(self, 'roundabout_dialog') and self.roundabout_dialog:
+            pick_mode = getattr(self, '_roundabout_pick_mode', 'center')
+            if pick_mode == 'radius':
+                self.roundabout_dialog.set_radius_from_point(x, y)
+                self.statusBar().showMessage(f"Roundabout radius set from rim point ({x:.1f}, {y:.1f})")
+            else:
+                self.roundabout_dialog.set_center_point(x, y)
+                self.statusBar().showMessage(f"Roundabout center set at ({x:.1f}, {y:.1f})")
+            self._roundabout_pick_mode = None
+        elif hasattr(self, 'georef_dialog') and self.georef_dialog:
             self.georef_dialog.set_picked_point(x, y)
             self.statusBar().showMessage(f"Point selected at ({x:.1f}, {y:.1f})")
         else:

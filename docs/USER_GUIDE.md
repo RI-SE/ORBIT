@@ -250,7 +250,7 @@ Junctions handle intersections where multiple roads meet.
 
 ### Roundabout Wizard
 
-<!-- TODO: Add roundabout wizard screenshot: screenshot_roundabout_wizard.png -->
+![Roundabout wizard dialog](screenshot_roundabout_wizard.png)
 
 Create roundabouts via Tools → Create Roundabout (**Ctrl+Shift+R**):
 

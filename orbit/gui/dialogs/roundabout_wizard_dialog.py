@@ -5,6 +5,7 @@ Allows users to manually create roundabouts by specifying geometry
 and configuration parameters.
 """
 
+import math
 from typing import List, Optional, Tuple
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -38,8 +39,9 @@ class RoundaboutWizardDialog(BaseDialog):
     - Approach road selection
     """
 
-    # Signal emitted when user wants to pick a point on the map
+    # Signals emitted when user wants to pick a point on the map
     pick_center_requested = pyqtSignal()
+    pick_radius_requested = pyqtSignal()
 
     def __init__(self, available_roads: List[Tuple[str, str]], parent=None,
                  scale_factor: Optional[float] = None):
@@ -52,7 +54,6 @@ class RoundaboutWizardDialog(BaseDialog):
             scale_factor: Optional scale factor in meters/pixel for conversion
         """
         super().__init__("Create Roundabout", parent, min_width=450, min_height=500)
-        self.setModal(True)
 
         self.available_roads = available_roads
         self.scale_factor = scale_factor
@@ -120,6 +121,15 @@ class RoundaboutWizardDialog(BaseDialog):
         radius_layout.addWidget(self.radius_meters_label)
         radius_layout.addStretch()
         geom_layout.addLayout(radius_layout)
+
+        # Pick radius from map button
+        self.pick_radius_btn = QPushButton("Pick Radius from Map...")
+        self.pick_radius_btn.setToolTip(
+            "Click on the inner edge of the roundabout road to set the centerline radius "
+            "(center point must be set first)"
+        )
+        self.pick_radius_btn.clicked.connect(self._on_pick_radius)
+        geom_layout.addWidget(self.pick_radius_btn)
 
         # Ring points
         points_layout = QHBoxLayout()
@@ -226,7 +236,41 @@ class RoundaboutWizardDialog(BaseDialog):
 
     def _on_pick_center(self):
         """Request center point pick from map."""
+        self.hide()
         self.pick_center_requested.emit()
+
+    def _on_pick_radius(self):
+        """Request radius pick from map. Center must be set first."""
+        if self.center_point is None or (
+            self.center_point[0] == 0 and self.center_point[1] == 0
+        ):
+            show_warning(
+                self,
+                "Please set the center point first before picking the radius.",
+                "Center Point Required",
+            )
+            return
+        self.hide()
+        self.pick_radius_requested.emit()
+
+    def set_radius_from_point(self, x: float, y: float):
+        """
+        Set the radius by calculating distance from center to the clicked point.
+
+        Args:
+            x: X coordinate of the rim point in pixels
+            y: Y coordinate of the rim point in pixels
+        """
+        if self.center_point is None:
+            self.show()
+            return
+
+        cx, cy = self.center_point
+        radius = math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
+        self.radius_spin.setValue(radius)
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def set_center_point(self, x: float, y: float):
         """
@@ -239,6 +283,9 @@ class RoundaboutWizardDialog(BaseDialog):
         self.center_x_spin.setValue(x)
         self.center_y_spin.setValue(y)
         self.center_point = (x, y)
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def _update_meters_display(self):
         """Update the meters display label."""
