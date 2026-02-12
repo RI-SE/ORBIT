@@ -37,7 +37,8 @@ def generate_ring_points(
         List of (x, y) points along the ring
     """
     points = []
-    direction = -1 if clockwise else 1
+    # In screen coordinates Y is flipped, so invert the math direction
+    direction = 1 if clockwise else -1
 
     for i in range(num_points):
         angle = direction * 2 * math.pi * i / num_points

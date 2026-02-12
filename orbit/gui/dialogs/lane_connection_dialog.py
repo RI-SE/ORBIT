@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QPushButton,
     QSpinBox,
     QTableWidget,
@@ -22,6 +21,7 @@ from PyQt6.QtWidgets import (
 
 from orbit.models import ConnectingRoad, Junction, LaneConnection, Project
 
+from ..utils import ask_yes_no, show_error, show_info, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
 
 # Valid turn types for the dropdown
@@ -437,16 +437,12 @@ class LaneConnectionDialog(BaseDialog):
 
     def auto_generate(self):
         """Auto-generate connections using the junction analyzer."""
-        result = QMessageBox.question(
+        if not ask_yes_no(
             self,
-            "Auto-Generate Connections",
             "This will clear all existing connections and regenerate them based on "
             "junction geometry.\n\nContinue?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-
-        if result != QMessageBox.StandardButton.Yes:
+            "Auto-Generate Connections"
+        ):
             return
 
         # Import junction analyzer
@@ -455,11 +451,7 @@ class LaneConnectionDialog(BaseDialog):
             junction_analyzer = importlib.import_module('orbit.import.junction_analyzer')
             generate_junction_connections = junction_analyzer.generate_junction_connections
         except ImportError as e:
-            QMessageBox.critical(
-                self,
-                "Import Error",
-                f"Failed to import junction analyzer: {e}"
-            )
+            show_error(self, f"Failed to import junction analyzer: {e}", "Import Error")
             return
 
         # Build dictionaries
@@ -505,21 +497,21 @@ class LaneConnectionDialog(BaseDialog):
                 ]
                 self.refresh_table()
                 self.update_summary()
-                QMessageBox.warning(
+                show_warning(
                     self,
-                    "No Connections Generated",
                     "The junction analyzer could not generate any connections.\n\n"
-                    "Previous connections have been restored."
+                    "Previous connections have been restored.",
+                    "No Connections Generated"
                 )
                 return
 
             self.refresh_table()
             self.update_summary()
 
-            QMessageBox.information(
+            show_info(
                 self,
-                "Connections Generated",
-                f"Generated {len(self.connections)} lane connection(s)."
+                f"Generated {len(self.connections)} lane connection(s).",
+                "Connections Generated"
             )
         except Exception as e:
             # Restore on failure
@@ -530,11 +522,11 @@ class LaneConnectionDialog(BaseDialog):
             ]
             self.refresh_table()
             self.update_summary()
-            QMessageBox.critical(
+            show_error(
                 self,
-                "Generation Failed",
                 f"Failed to generate connections:\n\n{str(e)}\n\n"
-                "Previous connections have been restored."
+                "Previous connections have been restored.",
+                "Generation Failed"
             )
 
     def update_summary(self):
@@ -581,17 +573,14 @@ class LaneConnectionDialog(BaseDialog):
                 errors.extend([f"Row {i+1}: {msg}" for msg in msgs])
 
         if errors:
-            result = QMessageBox.warning(
+            if not ask_yes_no(
                 self,
-                "Validation Warnings",
                 "Some connections have issues:\n\n" +
                 "\n".join(errors[:5]) +
                 (f"\n... and {len(errors)-5} more" if len(errors) > 5 else "") +
                 "\n\nSave anyway?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            if result != QMessageBox.StandardButton.Yes:
+                "Validation Warnings"
+            ):
                 return
 
         # Save connections back to junction

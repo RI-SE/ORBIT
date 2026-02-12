@@ -2,7 +2,41 @@
 
 All notable changes to this project are documented in this file.
 
-**Current Version**: 0.4.0
+**Current Version**: 0.6.0
+
+---
+
+## [0.6.0] - 2026-02
+
+### Added
+- Offset export with configurable lateral offset for lane boundaries
+- Projection dropdown in export dialog (UTM auto-detect, custom PROJ4)
+- Origin selector for export coordinate reference
+- CI pipeline with linting and multi-Python testing
+- Comprehensive test suite (2,363+ tests)
+
+### Changed
+- Replaced print() calls with structured logging throughout codebase
+- Standardized QMessageBox usage via message helper functions
+- Improved signal code handling in export
+- Version bump for public release
+
+### Fixed
+- UTM output coordinate offset
+- Import bug for connecting road endpoint connections
+- OpenDRIVE import bug when schema is defined
+
+---
+
+## [0.5.0] - 2026-02
+
+### Added
+- Undo/redo system (partial — covers most operations, not all side effects)
+- Offset export support for lane boundaries
+- Projection dropdown in export dialog
+
+### Changed
+- Improved code quality and test coverage
 
 ---
 
@@ -100,7 +134,7 @@ All notable changes to this project are documented in this file.
 
 ## Known Limitations
 
-- No undo/redo system (Qt undo framework not implemented)
+- Undo/redo partially implemented — covers most operations but not all side effects (e.g., junction cleanup after road deletion)
 - Single-image projects only (no multi-image mosaics)
 - GUI code has low test coverage
 

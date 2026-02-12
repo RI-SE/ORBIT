@@ -430,7 +430,7 @@ def generate_simple_connection_path(from_pos: Tuple[float, float],
                                    from_heading: float,
                                    to_pos: Tuple[float, float],
                                    to_heading: float,
-                                   num_points: int = 20,
+                                   num_points: int = 50,
                                    tangent_scale: float = 1.0,
                                    is_uturn: bool = False) -> Tuple[List[Tuple[float, float]], Tuple[float, ...]]:
     """
@@ -527,7 +527,7 @@ def generate_connection_path_geo(
     to_pos_geo: Tuple[float, float],
     to_heading: float,
     transformer: 'CoordinateTransformer',
-    num_points: int = 20,
+    num_points: int = 50,
     tangent_scale: float = 1.0,
     is_uturn: bool = False,
     from_direction_geo: Optional[Tuple[float, float]] = None,

@@ -113,7 +113,7 @@ def _compute_lane_alignment_shift(
         road_cl_pos = polyline.points[0]
         perp = calculate_perpendicular(polyline.points[0], polyline.points[1])
 
-    road_lane_width = _get_road_lane_width(road)
+    road_lane_width = _get_road_lane_width(road, contact_point)
 
     # How far from the road CL should the CR CL be?
     # road_lane_offset: where the target lane center is relative to road CL
@@ -149,10 +149,15 @@ def _lane_center_offset(lane_id: int, lane_width: float) -> float:
     return 0.0
 
 
-def _get_road_lane_width(road) -> float:
-    """Get average lane width for a road in meters."""
+def _get_road_lane_width(road, contact_point: str = "end") -> float:
+    """Get average lane width for a road in meters at the given contact point.
+
+    Args:
+        road: Road with lane_sections
+        contact_point: "start" uses first section, "end" uses last section
+    """
     if road.lane_sections:
-        section = road.lane_sections[-1]
+        section = road.lane_sections[0] if contact_point == "start" else road.lane_sections[-1]
         widths = [lane.width for lane in section.lanes if lane.id != 0 and lane.width > 0]
         if widths:
             return sum(widths) / len(widths)

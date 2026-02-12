@@ -189,6 +189,10 @@ class MainWindow(QMainWindow):
         self.export_georef_action.setStatusTip("Export georeferencing parameters to JSON")
         self.export_georef_action.triggered.connect(self.export_georeferencing)
 
+        self.export_layout_mask_action = QAction("Export Layout &Mask...", self)
+        self.export_layout_mask_action.setStatusTip("Export lane segmentation mask and metadata")
+        self.export_layout_mask_action.triggered.connect(self.export_layout_mask)
+
         self.import_osm_action = QAction("Import &OpenStreetMap Data...", self)
         self.import_osm_action.setShortcut(QKeySequence("Ctrl+Shift+I"))
         self.import_osm_action.setStatusTip("Import road network from OpenStreetMap (API or file)")
@@ -376,6 +380,7 @@ class MainWindow(QMainWindow):
         export_menu = file_menu.addMenu("&Export")
         export_menu.addAction(self.export_action)
         export_menu.addAction(self.export_georef_action)
+        export_menu.addAction(self.export_layout_mask_action)
         file_menu.addSeparator()
         file_menu.addAction(self.exit_action)
 
@@ -810,6 +815,128 @@ class MainWindow(QMainWindow):
         else:
             show_error(self, "Failed to export georeferencing parameters.", "Export Error")
 
+    def export_layout_mask(self):
+        """Export lane segmentation mask and metadata JSON."""
+        # Validate prerequisites
+        if not self.image_view.image_item:
+            show_warning(self, "Cannot export: No image loaded.", "No Image")
+            return
+
+        if not self.project.roads:
+            show_warning(self, "Cannot export: No roads defined in the project.\n"
+                "Please create at least one road first.", "No Roads")
+            return
+
+        # Check if georeferencing is available (for OpenDRIVE method and GeoTIFF)
+        has_georef = len(self.project.control_points) >= 3
+
+        # Show options dialog
+        from PyQt6.QtWidgets import QCheckBox, QComboBox, QDialogButtonBox, QFormLayout, QGroupBox, QVBoxLayout
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Export Layout Mask")
+        layout = QVBoxLayout(dialog)
+
+        form = QFormLayout()
+        method_combo = QComboBox()
+        method_combo.addItem("Pixel-space (from rendered scene)", "pixel")
+        method_combo.addItem("OpenDRIVE-accurate (from export pipeline)", "opendrive")
+        if not has_georef:
+            # Disable OpenDRIVE method if no georef
+            model = method_combo.model()
+            item = model.item(1)
+            item.setEnabled(False)
+            item.setToolTip("Requires at least 3 control points")
+        form.addRow("Method:", method_combo)
+
+        geotiff_check = QCheckBox("Include world file for GIS")
+        geotiff_check.setEnabled(has_georef)
+        if not has_georef:
+            geotiff_check.setToolTip("Requires georeferencing (control points)")
+        form.addRow("GeoTIFF:", geotiff_check)
+
+        layout.addLayout(form)
+
+        # Curve fitting settings group (for OpenDRIVE method)
+        fit_group = QGroupBox("Curve Fitting Settings")
+        fit_layout = QFormLayout(fit_group)
+
+        from PyQt6.QtWidgets import QDoubleSpinBox
+        line_tol_spin = QDoubleSpinBox()
+        line_tol_spin.setRange(0.001, 10.0)
+        line_tol_spin.setValue(0.05)
+        line_tol_spin.setDecimals(3)
+        line_tol_spin.setSuffix(" m")
+        fit_layout.addRow("Line tolerance:", line_tol_spin)
+
+        arc_tol_spin = QDoubleSpinBox()
+        arc_tol_spin.setRange(0.001, 10.0)
+        arc_tol_spin.setValue(0.1)
+        arc_tol_spin.setDecimals(3)
+        arc_tol_spin.setSuffix(" m")
+        fit_layout.addRow("Arc tolerance:", arc_tol_spin)
+
+        preserve_check = QCheckBox("Preserve geometry")
+        preserve_check.setChecked(True)
+        fit_layout.addRow(preserve_check)
+
+        fit_group.setVisible(False)
+        layout.addWidget(fit_group)
+
+        def on_method_changed(index):
+            fit_group.setVisible(method_combo.currentData() == "opendrive")
+        method_combo.currentIndexChanged.connect(on_method_changed)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.statusBar().showMessage("Export cancelled")
+            return
+
+        method = method_combo.currentData()
+        geotiff = geotiff_check.isChecked()
+        line_tol = line_tol_spin.value()
+        arc_tol = arc_tol_spin.value()
+        preserve = preserve_check.isChecked()
+
+        # File save dialog
+        default_name = ""
+        if self.project.image_path:
+            default_name = self.project.image_path.stem + "_layout_mask.png"
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Layout Mask",
+            default_name,
+            "PNG files (*.png);;TIFF files (*.tif *.tiff);;All files (*.*)"
+        )
+
+        if not file_path:
+            self.statusBar().showMessage("Export cancelled")
+            return
+
+        # Run export
+        self.statusBar().showMessage("Exporting layout mask...")
+        try:
+            success = self.image_view.export_layout_mask(
+                output_path=file_path,
+                method=method,
+                geotiff=geotiff,
+                line_tolerance=line_tol,
+                arc_tolerance=arc_tol,
+                preserve_geometry=preserve,
+            )
+            if success:
+                self.statusBar().showMessage(f"Layout mask exported to {file_path}")
+            else:
+                show_error(self, "Failed to export layout mask.\n"
+                    "Check that roads have lanes defined.", "Export Error")
+        except Exception as e:
+            logger.exception("Layout mask export failed")
+            show_error(self, f"Export failed: {e}", "Export Error")
+
     def import_osm_data(self):
         """Import road network data from OpenStreetMap (API or file)."""
         # Import from the 'import' module using importlib (since 'import' is a Python keyword)
@@ -1187,8 +1314,6 @@ class MainWindow(QMainWindow):
 
     def create_roundabout(self):
         """Open the roundabout creation wizard."""
-        from orbit.roundabout_creator import create_roundabout_from_params
-
         from .dialogs import RoundaboutWizardDialog
 
         # Get available roads for approach selection
@@ -1204,34 +1329,72 @@ class MainWindow(QMainWindow):
             if transformer:
                 scale_factor = transformer.get_scale_factor()[0]  # scale_x
 
-        # Show wizard dialog
-        params = RoundaboutWizardDialog.create_roundabout(
-            available_roads, scale_factor, self
-        )
+        dialog = RoundaboutWizardDialog(available_roads, self, scale_factor)
 
-        if params:
-            # Get approach roads and polylines
-            approach_roads = {road.id: road for road in self.project.roads}
-            polylines = {p.id: p for p in self.project.polylines}
+        # Connect pick-from-map: hide dialog, enter pick mode, route click back
+        dialog.pick_center_requested.connect(self._start_roundabout_center_pick)
+        dialog.pick_radius_requested.connect(self._start_roundabout_radius_pick)
 
-            try:
-                # Create roundabout
-                roads, junctions, new_polylines = create_roundabout_from_params(
-                    self.project, params, approach_roads, polylines
-                )
+        # Store reference so on_point_picked can route to it
+        self.roundabout_dialog = dialog
+        self._roundabout_pick_mode = None  # 'center' or 'radius'
 
-                # Update UI
-                self.elements_tree.load_project(self.project)
-                self.road_tree.load_project(self.project)
-                self.image_view.load_project(self.project)
-                self.modified = True
+        # Handle result when dialog is accepted/rejected
+        dialog.finished.connect(self._on_roundabout_dialog_finished)
 
-                self.statusBar().showMessage(
-                    f"Created roundabout with {len(roads)} road(s) and {len(junctions)} junction(s)"
-                )
+        dialog.show()
 
-            except Exception as e:
-                show_error(self, f"Failed to create roundabout:\n\n{e}", "Roundabout Creation Failed")
+    def _start_roundabout_center_pick(self):
+        """Enter point-pick mode for roundabout center."""
+        self._roundabout_pick_mode = 'center'
+        self.image_view.set_pick_point_mode(True)
+        self.statusBar().showMessage("Click on the image to set the roundabout center point")
+
+    def _start_roundabout_radius_pick(self):
+        """Enter point-pick mode for roundabout radius."""
+        self._roundabout_pick_mode = 'radius'
+        self.image_view.set_pick_point_mode(True)
+        self.statusBar().showMessage("Click on the inner edge of the roundabout road to set the centerline radius")
+
+    def _on_roundabout_dialog_finished(self, result):
+        """Handle roundabout wizard dialog result."""
+        from orbit.roundabout_creator import create_roundabout_from_params
+
+        from .dialogs import RoundaboutWizardDialog
+
+        dialog = self.roundabout_dialog
+        self.roundabout_dialog = None
+        self._roundabout_pick_mode = None
+
+        if result != RoundaboutWizardDialog.DialogCode.Accepted:
+            return
+
+        params = dialog.get_roundabout_params()
+        if not params:
+            return
+
+        # Get approach roads and polylines
+        approach_roads = {road.id: road for road in self.project.roads}
+        polylines = {p.id: p for p in self.project.polylines}
+
+        try:
+            # Create roundabout
+            roads, junctions, new_polylines = create_roundabout_from_params(
+                self.project, params, approach_roads, polylines
+            )
+
+            # Update UI
+            self.elements_tree.refresh_tree()
+            self.road_tree.refresh_tree()
+            self.image_view.load_project(self.project)
+            self.modified = True
+
+            self.statusBar().showMessage(
+                f"Created roundabout with {len(roads)} road(s) and {len(junctions)} junction(s)"
+            )
+
+        except Exception as e:
+            show_error(self, f"Failed to create roundabout:\n\n{e}", "Roundabout Creation Failed")
 
     def add_signal(self):
         """Add a traffic signal by clicking on the map."""
@@ -1441,8 +1604,17 @@ class MainWindow(QMainWindow):
         # Disable pick point mode after picking
         self.image_view.set_pick_point_mode(False)
 
-        # If we have an active georef dialog, send the coordinates to it
-        if hasattr(self, 'georef_dialog') and self.georef_dialog:
+        # Route to active dialog
+        if hasattr(self, 'roundabout_dialog') and self.roundabout_dialog:
+            pick_mode = getattr(self, '_roundabout_pick_mode', 'center')
+            if pick_mode == 'radius':
+                self.roundabout_dialog.set_radius_from_point(x, y)
+                self.statusBar().showMessage(f"Roundabout radius set from rim point ({x:.1f}, {y:.1f})")
+            else:
+                self.roundabout_dialog.set_center_point(x, y)
+                self.statusBar().showMessage(f"Roundabout center set at ({x:.1f}, {y:.1f})")
+            self._roundabout_pick_mode = None
+        elif hasattr(self, 'georef_dialog') and self.georef_dialog:
             self.georef_dialog.set_picked_point(x, y)
             self.statusBar().showMessage(f"Point selected at ({x:.1f}, {y:.1f})")
         else:
@@ -2421,7 +2593,6 @@ class MainWindow(QMainWindow):
                 from_heading=pred_heading,
                 to_pos=succ_pos,
                 to_heading=succ_heading,
-                num_points=20,
                 tangent_scale=conn_road.tangent_scale
             )
 
@@ -2437,6 +2608,11 @@ class MainWindow(QMainWindow):
             conn_road.bV = bV
             conn_road.cV = cV
             conn_road.dV = dV
+
+            # Update stored headings so get_start_heading/get_end_heading
+            # return accurate values (used by dialog, export, alignment)
+            conn_road.stored_start_heading = pred_heading
+            conn_road.stored_end_heading = succ_heading
 
             # Update graphics
             scale_factors = self.get_current_scale()

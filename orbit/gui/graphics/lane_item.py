@@ -19,8 +19,11 @@ from orbit.utils.geometry import (
     create_polynomial_width_lane_polygon,
     create_variable_width_lane_polygon,
 )
+from orbit.utils.logging_config import get_logger
 
 from .interactive_lane import InteractiveLanePolygon
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from ..image_view import ImageView
@@ -164,9 +167,7 @@ class RoadLanesGraphicsItem:
 
         # Verbose output for debugging
         if self.verbose:
-            print(f"\n{'='*60}")
-            print(f"LANE VISUALIZATION: {self.road.name} (ID: {self.road.id[:8]}...)")
-            print(f"{'='*60}")
+            logger.debug("LANE VISUALIZATION: %s (ID: %s...)", self.road.name, self.road.id[:8])
 
         # Use lane sections if available, otherwise fall back to old method
         if self.road.lane_sections:
@@ -184,8 +185,8 @@ class RoadLanesGraphicsItem:
             self.road.lane_sections[-1].s_end = s_coords[-1]
 
         if self.verbose:
-            print("  Creating section-based lane polygons:")
-            print(f"    Sections: {len(self.road.lane_sections)}")
+            logger.debug("  Creating section-based lane polygons:")
+            logger.debug("    Sections: %d", len(self.road.lane_sections))
 
         # For each section, create polygons for each lane
         for section_idx, section in enumerate(self.road.lane_sections):
@@ -210,10 +211,9 @@ class RoadLanesGraphicsItem:
             section_centerline = [centerline_points[i] for i in section_point_indices]
 
             if self.verbose:
-                print(
-                    f"    Section {section.section_number}: "
-                    f"{len(section_centerline)} points, "
-                    f"{len(section.lanes)} lanes"
+                logger.debug(
+                    "    Section %d: %d points, %d lanes",
+                    section.section_number, len(section_centerline), len(section.lanes)
                 )
 
             # Calculate section s-coordinates for polynomial width evaluation
@@ -262,7 +262,7 @@ class RoadLanesGraphicsItem:
                                 inner_boundary if lane.id > 0 else outer_polyline.points
                             )
                             if self.verbose:
-                                print(f"      Lane {lane.id}: Using explicit outer boundary")
+                                logger.debug("      Lane %d: Using explicit outer boundary", lane.id)
 
                 # Option 2: Polynomial/variable width
                 if polygon_points is None:
@@ -311,7 +311,7 @@ class RoadLanesGraphicsItem:
                             is_left_lane=(lane.id > 0)
                         )
                         if self.verbose:
-                            print(f"      Lane {lane.id}: Using polynomial width")
+                            logger.debug("      Lane %d: Using polynomial width", lane.id)
 
                     elif has_variable_width:
                         # Use linear interpolation (start/end width)
@@ -403,31 +403,21 @@ class RoadLanesGraphicsItem:
 
         # Verbose output for debugging
         if self.verbose:
-            print("  Lane configuration:")
-            print(f"    Left lanes:  {left_count}")
-            print(f"    Right lanes: {right_count}")
-            print(f"    Total lanes: {left_count + right_count}")
-            print("  Lane width:")
-            print(f"    Configured: {lane_width_m:.3f} m")
+            logger.debug("  Lane config: left=%d, right=%d, total=%d",
+                         left_count, right_count, left_count + right_count)
+            logger.debug("  Lane width configured: %.3f m", lane_width_m)
 
             # Enhanced scale output
             if self.scale_factors:
                 scale_x, scale_y = self.scale_factors
-                print("  Scale from georeferencing:")
-                print(f"    X (horizontal): {scale_x:.6f} m/px = {scale_x*100:.4f} cm/px")
-                print(f"    Y (vertical):   {scale_y:.6f} m/px = {scale_y*100:.4f} cm/px")
-                print(f"    Directional:    {scale:.6f} m/px = {scale*100:.4f} cm/px")
+                logger.debug("  Scale from georeferencing: X=%.6f m/px, Y=%.6f m/px, "
+                             "directional=%.6f m/px", scale_x, scale_y, scale)
             else:
-                print("  Scale:")
-                print(f"    {scale:.6f} m/px = {scale*100:.4f} cm/px")
-                print("    Source: default (no georef)")
+                logger.debug("  Scale: %.6f m/px (default, no georef)", scale)
 
-            print("  Calculated lane width in image:")
-            print(f"    {lane_width_px:.2f} pixels")
-            print("  Total road width in image:")
             total_width_px = (left_count + right_count) * lane_width_px
-            print(f"    {total_width_px:.2f} pixels = {total_width_px * scale:.3f} m")
-            print(f"{'='*60}\n")
+            logger.debug("  Lane width in image: %.2f px | Total road width: %.2f px = %.3f m",
+                         lane_width_px, total_width_px, total_width_px * scale)
 
         # Create right-hand lanes (negative IDs in OpenDRIVE: -1, -2, -3, ...)
         # Use POSITIVE offsets to place on right side (in screen coords: positive = right)

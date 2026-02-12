@@ -28,10 +28,13 @@ from orbit.models.parking import ParkingAccess, ParkingType
 from orbit.models.polyline import LineType, RoadMarkType
 from orbit.models.road import RoadType
 from orbit.models.signal import SignalType
+from orbit.utils.logging_config import get_logger
 
 from .opendrive_coordinate_transform import OpenDriveCoordinateTransform, TransformMode, batch_metric_to_pixel
 from .opendrive_geometry import GeometryConverter, calculate_s_offsets, sample_elevation_profile
 from .opendrive_parser import ODRLane, ODRObject, ODRRoad, ODRSignal, OpenDriveData, OpenDriveParser
+
+logger = get_logger(__name__)
 
 
 class ImportMode(Enum):
@@ -154,7 +157,7 @@ class OpenDriveImporter:
 
         # Step 1: Parse OpenDrive file
         if options.verbose:
-            print(f"Parsing OpenDrive file: {file_path}")
+            logger.debug("Parsing OpenDrive file: %s", file_path)
 
         parser = OpenDriveParser()
         try:
@@ -164,7 +167,8 @@ class OpenDriveImporter:
             return result
 
         if options.verbose:
-            print(f"Parsed {len(self.odr_data.roads)} roads, {len(self.odr_data.junctions)} junctions")
+            logger.debug("Parsed %d roads, %d junctions",
+                         len(self.odr_data.roads), len(self.odr_data.junctions))
 
         # Step 2: Setup coordinate transformation
         # Collect sample points from all roads
@@ -212,7 +216,7 @@ class OpenDriveImporter:
                     return result
 
         if options.verbose:
-            print(f"Transform mode: {result.transform_mode}, scale: {result.scale_used}")
+            logger.debug("Transform mode: %s, scale: %s", result.transform_mode, result.scale_used)
 
         # Step 3: Handle import mode
         if options.import_mode == ImportMode.REPLACE:
@@ -243,7 +247,7 @@ class OpenDriveImporter:
             except Exception as e:
                 result.warnings.append(f"Failed to import road {odr_road.id}: {e}")
                 if options.verbose:
-                    print(f"Error importing road {odr_road.id}: {e}")
+                    logger.debug("Error importing road %s: %s", odr_road.id, e)
 
         # Step 5: Import junctions
         for odr_junction in self.odr_data.junctions:
@@ -275,7 +279,7 @@ class OpenDriveImporter:
                 odr_road = pending['odr_road']
                 result.warnings.append(f"Failed to import connecting road {odr_road.id}: {e}")
                 if options.verbose:
-                    print(f"Error importing connecting road {odr_road.id}: {e}")
+                    logger.debug("Error importing connecting road %s: %s", odr_road.id, e)
 
         # Step 6: Import signals and objects
         for odr_road in self.odr_data.roads:
@@ -760,11 +764,12 @@ class OpenDriveImporter:
                             junction.add_lane_connection(lane_connection)
 
                         if options.verbose:
-                            print(f"    Created {len(odr_conn.lane_links)} lane connection(s)")
+                            logger.debug("    Created %d lane connection(s)", len(odr_conn.lane_links))
 
         if options.verbose:
             geom_type = "paramPoly3" if param_poly3 else "polyline"
-            print(f"  Connecting road {odr_road.id} → Junction {junction.name} ({geom_type})")
+            logger.debug("  Connecting road %s -> Junction %s (%s)",
+                         odr_road.id, junction.name, geom_type)
 
         return True
 

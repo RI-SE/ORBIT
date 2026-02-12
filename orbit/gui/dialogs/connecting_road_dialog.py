@@ -7,7 +7,15 @@ Allows editing of connecting road properties including tangent adjustment for Pa
 import math
 from typing import Optional
 
-from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QLabel, QPushButton, QSpinBox
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QDoubleSpinBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+)
 
 from orbit.models import Project
 from orbit.models.connecting_road import ConnectingRoad
@@ -153,6 +161,24 @@ class ConnectingRoadDialog(BaseDialog):
             self.regenerate_button.clicked.connect(self.on_regenerate_curve)
             curve_layout.addRow("", self.regenerate_button)
 
+            # Convert to polyline: point count + button
+            self.polyline_points_spin = QSpinBox()
+            self.polyline_points_spin.setRange(3, len(self.connecting_road.path) or 50)
+            self.polyline_points_spin.setValue(min(10, len(self.connecting_road.path) or 10))
+            self.polyline_points_spin.setToolTip(
+                "Number of points in the converted polyline. "
+                "Fewer points are easier to edit."
+            )
+            self.convert_to_polyline_btn = QPushButton("Convert to Polyline")
+            self.convert_to_polyline_btn.setToolTip(
+                "Convert to editable polyline. Allows manual point dragging."
+            )
+            self.convert_to_polyline_btn.clicked.connect(self.on_convert_to_polyline)
+            convert_layout = QHBoxLayout()
+            convert_layout.addWidget(self.polyline_points_spin)
+            convert_layout.addWidget(self.convert_to_polyline_btn)
+            curve_layout.addRow("Convert:", convert_layout)
+
         # Create standard OK/Cancel buttons
         self.create_button_box()
 
@@ -206,7 +232,6 @@ class ConnectingRoadDialog(BaseDialog):
             from_heading=start_heading,
             to_pos=end_point,
             to_heading=end_heading,
-            num_points=20,
             tangent_scale=1.0
         )
 
@@ -234,12 +259,87 @@ class ConnectingRoadDialog(BaseDialog):
                 image_view.connecting_road_lanes_items[self.connecting_road.id].update_graphics()
 
         # Close and reopen dialog to show new UI
-        from PyQt6.QtWidgets import QMessageBox
         QMessageBox.information(
             self,
             "Conversion Complete",
             "Connecting road has been converted to ParamPoly3D.\n\n"
             "The dialog will now close. Reopen it to adjust tangent parameters."
+        )
+        self.accept()
+
+    def _resample_path(self, path, num_points):
+        """Resample a path to num_points using arc-length interpolation.
+
+        Preserves first and last points exactly.
+        """
+        if len(path) <= num_points:
+            return list(path)
+
+        # Compute cumulative arc lengths
+        cum_lengths = [0.0]
+        for i in range(1, len(path)):
+            dx = path[i][0] - path[i - 1][0]
+            dy = path[i][1] - path[i - 1][1]
+            cum_lengths.append(cum_lengths[-1] + math.sqrt(dx * dx + dy * dy))
+
+        total_length = cum_lengths[-1]
+        if total_length == 0:
+            return [path[0]] * num_points
+
+        # Sample at equally spaced arc-length positions
+        result = [path[0]]
+        seg = 0  # current segment index
+        for i in range(1, num_points - 1):
+            target_s = total_length * i / (num_points - 1)
+            # Advance to the segment containing target_s
+            while seg < len(cum_lengths) - 2 and cum_lengths[seg + 1] < target_s:
+                seg += 1
+            seg_len = cum_lengths[seg + 1] - cum_lengths[seg]
+            if seg_len > 0:
+                t = (target_s - cum_lengths[seg]) / seg_len
+            else:
+                t = 0.0
+            x = path[seg][0] + t * (path[seg + 1][0] - path[seg][0])
+            y = path[seg][1] + t * (path[seg + 1][1] - path[seg][1])
+            result.append((x, y))
+        result.append(path[-1])
+        return result
+
+    def on_convert_to_polyline(self):
+        """Convert ParamPoly3D CR to polyline, enabling manual point editing."""
+        if self.connecting_road.geometry_type != "parampoly3":
+            return
+
+        # Resample path to user-selected point count
+        num_points = self.polyline_points_spin.value()
+        self.connecting_road.path = self._resample_path(
+            self.connecting_road.path, num_points
+        )
+
+        self.connecting_road.geometry_type = "polyline"
+        # Clear ParamPoly3D coefficients
+        self.connecting_road.aU = 0.0
+        self.connecting_road.bU = 0.0
+        self.connecting_road.cU = 0.0
+        self.connecting_road.dU = 0.0
+        self.connecting_road.aV = 0.0
+        self.connecting_road.bV = 0.0
+        self.connecting_road.cV = 0.0
+        self.connecting_road.dV = 0.0
+
+        # Update graphics if main window is parent
+        if hasattr(self.parent(), 'image_view'):
+            image_view = self.parent().image_view
+            if self.connecting_road.id in image_view.connecting_road_centerline_items:
+                image_view.connecting_road_centerline_items[self.connecting_road.id].update_graphics()
+            if self.connecting_road.id in image_view.connecting_road_lanes_items:
+                image_view.connecting_road_lanes_items[self.connecting_road.id].update_graphics()
+
+        QMessageBox.information(
+            self,
+            "Converted",
+            "Converted to polyline. You can now drag points on the connecting road.\n\n"
+            "The dialog will now close. Reopen it to convert back to ParamPoly3D if needed."
         )
         self.accept()
 
@@ -251,19 +351,6 @@ class ConnectingRoadDialog(BaseDialog):
         if not self.project:
             return
 
-        # Get predecessor and successor roads
-        pred_road = self.project.get_road(self.connecting_road.predecessor_road_id)
-        succ_road = self.project.get_road(self.connecting_road.successor_road_id)
-
-        if not pred_road or not succ_road:
-            return
-
-        # Get endpoint information
-        # We need to reconstruct the endpoint info to regenerate the curve
-        # This is a simplified version - in practice, we'd need the full endpoint calculation
-        # from junction_analyzer. For now, we'll use the existing path endpoints and
-        # recalculate the curve coefficients.
-
         if len(self.connecting_road.path) < 2:
             return
 
@@ -271,22 +358,48 @@ class ConnectingRoadDialog(BaseDialog):
         start_point = self.connecting_road.path[0]
         end_point = self.connecting_road.path[-1]
 
-        # Calculate headings from path
-        # For start heading, use first segment
-        if len(self.connecting_road.path) >= 2:
+        # Prefer stored headings (accurate, set by regenerate_affected_connecting_roads)
+        start_heading = self.connecting_road.stored_start_heading
+        end_heading = self.connecting_road.stored_end_heading
+
+        # Fallback: compute from road polyline endpoints (same logic as
+        # regenerate_affected_connecting_roads in main_window.py)
+        if start_heading is None or end_heading is None:
+            pred_road = self.project.get_road(self.connecting_road.predecessor_road_id)
+            succ_road = self.project.get_road(self.connecting_road.successor_road_id)
+            if pred_road and succ_road:
+                pred_polyline = self.project.get_polyline(pred_road.centerline_id)
+                succ_polyline = self.project.get_polyline(succ_road.centerline_id)
+
+                if start_heading is None and pred_polyline and len(pred_polyline.points) >= 2:
+                    if self.connecting_road.contact_point_start == "end":
+                        dx = pred_polyline.points[-1][0] - pred_polyline.points[-2][0]
+                        dy = pred_polyline.points[-1][1] - pred_polyline.points[-2][1]
+                        start_heading = math.atan2(dy, dx)
+                    else:
+                        dx = pred_polyline.points[1][0] - pred_polyline.points[0][0]
+                        dy = pred_polyline.points[1][1] - pred_polyline.points[0][1]
+                        start_heading = math.atan2(dy, dx) + math.pi
+
+                if end_heading is None and succ_polyline and len(succ_polyline.points) >= 2:
+                    if self.connecting_road.contact_point_end == "start":
+                        dx = succ_polyline.points[1][0] - succ_polyline.points[0][0]
+                        dy = succ_polyline.points[1][1] - succ_polyline.points[0][1]
+                        end_heading = math.atan2(dy, dx) + math.pi
+                    else:
+                        dx = succ_polyline.points[-1][0] - succ_polyline.points[-2][0]
+                        dy = succ_polyline.points[-1][1] - succ_polyline.points[-2][1]
+                        end_heading = math.atan2(dy, dx)
+
+        # Last resort: approximate from path points
+        if start_heading is None:
             dx = self.connecting_road.path[1][0] - self.connecting_road.path[0][0]
             dy = self.connecting_road.path[1][1] - self.connecting_road.path[0][1]
             start_heading = math.atan2(dy, dx)
-        else:
-            start_heading = 0.0
-
-        # For end heading, use last segment
-        if len(self.connecting_road.path) >= 2:
+        if end_heading is None:
             dx = self.connecting_road.path[-1][0] - self.connecting_road.path[-2][0]
             dy = self.connecting_road.path[-1][1] - self.connecting_road.path[-2][1]
             end_heading = math.atan2(dy, dx)
-        else:
-            end_heading = 0.0
 
         # Get new tangent scale
         new_tangent_scale = self.tangent_scale_spin.value()
@@ -297,7 +410,6 @@ class ConnectingRoadDialog(BaseDialog):
             from_heading=start_heading,
             to_pos=end_point,
             to_heading=end_heading,
-            num_points=20,
             tangent_scale=new_tangent_scale
         )
 

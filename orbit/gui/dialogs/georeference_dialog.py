@@ -1024,16 +1024,11 @@ class GeoreferenceDialog(BaseDialog):
                 import numpy as np
                 estimator._cached_grid = np.array(self.project.uncertainty_grid_cache)
                 if self.verbose:
-                    print(
-                        f"[DEBUG] Loaded cached grid shape: "
-                        f"{estimator._cached_grid.shape}"
-                    )
+                    logger.debug("Loaded cached grid shape: %s",
+                                 estimator._cached_grid.shape)
                     grid = estimator._cached_grid
-                    print(
-                        f"[DEBUG] Cached grid min/max: "
-                        f"{np.min(grid):.3f} / "
-                        f"{np.max(grid):.3f}m"
-                    )
+                    logger.debug("Cached grid min/max: %.3f / %.3fm",
+                                 np.min(grid), np.max(grid))
             else:
                 show_warning(
                     self,
@@ -1049,18 +1044,14 @@ class GeoreferenceDialog(BaseDialog):
             # Debug: Check what's in the grid
             if self.verbose:
                 stats = estimator.get_uncertainty_statistics()
-                print(
-                    f"[DEBUG] Grid stats - "
-                    f"Mean: {stats['mean']:.3f}m, "
-                    f"Max: {stats['max']:.3f}m, "
-                    f"Min: {stats.get('min', 'N/A')}"
-                )
-                print(f"[DEBUG] Threshold: {threshold:.3f}m")
+                logger.debug("Grid stats - Mean: %.3fm, Max: %.3fm, Min: %s",
+                             stats['mean'], stats['max'], stats.get('min', 'N/A'))
+                logger.debug("Threshold: %.3fm", threshold)
 
             suggestions = estimator.find_high_uncertainty_regions(threshold=threshold, verbose=self.verbose)
 
             if self.verbose:
-                print(f"[DEBUG] Found {len(suggestions)} suggestions")
+                logger.debug("Found %d suggestions", len(suggestions))
 
             if not suggestions:
                 show_info(self, f"No high-uncertainty areas found above threshold ({threshold:.2f}m)!\n\n"

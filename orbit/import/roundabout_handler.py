@@ -18,8 +18,11 @@ from orbit.models.lane_section import LaneSection
 from orbit.models.polyline import LineType, Polyline, RoadMarkType
 from orbit.models.road import LaneInfo, RoadType
 from orbit.utils.geometry import generate_simple_connection_path
+from orbit.utils.logging_config import get_logger
 
 from .osm_parser import OSMData, OSMWay
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from orbit.utils.coordinate_transform import CoordinateTransformer
@@ -245,9 +248,9 @@ def analyze_roundabout(
     connection_points.sort(key=lambda cp: cp.ring_index)
 
     if verbose:
-        print(f"Roundabout {osm_way.id}: center=({center_x:.1f}, {center_y:.1f}), "
-              f"radius={radius:.1f}px, {len(connection_points)} connections, "
-              f"{'clockwise' if clockwise else 'counter-clockwise'}")
+        logger.debug("Roundabout %s: center=(%.1f, %.1f), radius=%.1fpx, %d connections, %s",
+                     osm_way.id, center_x, center_y, radius, len(connection_points),
+                     'clockwise' if clockwise else 'counter-clockwise')
 
     return RoundaboutInfo(
         osm_way_id=osm_way.id,
@@ -317,7 +320,7 @@ def create_ring_segments(
 
         if len(segment_points) < 2:
             if verbose:
-                print(f"  Skipping segment {i}: too few points")
+                logger.debug("  Skipping segment %d: too few points", i)
             continue
 
         # Create polyline for this segment
@@ -358,8 +361,8 @@ def create_ring_segments(
         segments.append((road, polyline))
 
         if verbose:
-            print(f"  Ring segment {i + 1}: {len(segment_points)} points, "
-                  f"from connection {i} to {(i + 1) % n_connections}")
+            logger.debug("  Ring segment %d: %d points, from connection %d to %d",
+                         i + 1, len(segment_points), i, (i + 1) % n_connections)
 
     return segments
 
@@ -500,7 +503,8 @@ def create_roundabout_junctions(
 
         if len(connected_road_ids) < 2:
             if verbose:
-                print(f"  Skipping junction at connection {i}: only {len(connected_road_ids)} roads")
+                logger.debug("  Skipping junction at connection %d: only %d roads",
+                             i, len(connected_road_ids))
             continue
 
         # Create junction
@@ -525,8 +529,8 @@ def create_roundabout_junctions(
         junctions.append(junction)
 
         if verbose:
-            print(f"  Junction {i + 1} at ({cp.position[0]:.1f}, {cp.position[1]:.1f}): "
-                  f"{len(connected_road_ids)} roads connected")
+            logger.debug("  Junction %d at (%.1f, %.1f): %d roads connected",
+                         i + 1, cp.position[0], cp.position[1], len(connected_road_ids))
 
     return junctions
 
@@ -980,7 +984,7 @@ def create_roundabout_connectors(
     outgoing_start = outgoing_ring_polyline.points[0] if outgoing_ring_polyline else None
 
     if verbose:
-        print(f"  Creating connectors for junction {junction_index + 1}:")
+        logger.debug("  Creating connectors for junction %d:", junction_index + 1)
 
     # 1. Create THROUGH connector (ring continuation)
     if incoming_ring_road and outgoing_ring_road and incoming_end and outgoing_start:
@@ -1054,7 +1058,7 @@ def create_roundabout_connectors(
                               (through_path[i+1][1]-through_path[i][1])**2)
                     for i in range(len(through_path)-1)
                 )
-                print(f"    Through: {len(through_path)} points, ~{path_len:.1f}px")
+                logger.debug("    Through: %d points, ~%.1fpx", len(through_path), path_len)
 
     # 2. Create ENTRY connectors for incoming approach roads
     # Entry roads are pre-determined - they END at this junction (no distance check needed)
@@ -1142,7 +1146,7 @@ def create_roundabout_connectors(
                     lane_connections.append(lc)
 
                 if verbose:
-                    print(f"    Entry from {approach_road.name[:20]}: {len(entry_path)} points")
+                    logger.debug("    Entry from %s: %d points", approach_road.name[:20], len(entry_path))
 
     # 3. Create EXIT connectors for outgoing approach roads
     # Exit roads are pre-determined - they START at this junction (no distance check needed)
@@ -1231,7 +1235,7 @@ def create_roundabout_connectors(
                     lane_connections.append(lc)
 
                 if verbose:
-                    print(f"    Exit to {approach_road.name[:20]}: {len(exit_path)} points")
+                    logger.debug("    Exit to %s: %d points", approach_road.name[:20], len(exit_path))
 
     return connecting_roads, lane_connections
 
@@ -1260,7 +1264,7 @@ def generate_all_roundabout_connectors(
         verbose: Print debug info
     """
     if verbose:
-        print(f"\nGenerating connectors for roundabout {roundabout.osm_way_id}:")
+        logger.debug("Generating connectors for roundabout %s:", roundabout.osm_way_id)
 
     for i, junction in enumerate(junctions):
         connectors, lane_conns = create_roundabout_connectors(
@@ -1284,4 +1288,5 @@ def generate_all_roundabout_connectors(
     if verbose:
         total_connectors = sum(len(j.connecting_roads) for j in junctions)
         total_lane_conns = sum(len(j.lane_connections) for j in junctions)
-        print(f"  Total: {total_connectors} connecting roads, {total_lane_conns} lane connections")
+        logger.debug("  Total: %d connecting roads, %d lane connections",
+                     total_connectors, total_lane_conns)

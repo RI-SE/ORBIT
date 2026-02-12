@@ -14,6 +14,10 @@ from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainterPath, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsEllipseItem, QGraphicsPathItem
 
+from orbit.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class RoadEndpointMarker(QGraphicsEllipseItem):
     """
@@ -322,9 +326,7 @@ class JunctionDebugOverlay:
                 items.append(marker)
 
         except Exception as e:
-            print(f"Warning: Failed to create endpoint markers: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.warning("Failed to create endpoint markers: %s", e, exc_info=True)
 
         # Create connection path graphics
         for lane_conn in self.junction.lane_connections:

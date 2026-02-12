@@ -2,7 +2,7 @@
 
 Complete guide for creating OpenDRIVE road networks from aerial imagery using ORBIT.
 
-**Version**: 0.5.0 | **OpenDRIVE**: 1.8
+**Version**: 0.6.0 | **OpenDRIVE**: 1.8
 
 ---
 
@@ -22,6 +22,7 @@ Complete guide for creating OpenDRIVE road networks from aerial imagery using OR
 - [Georeferencing](#georeferencing)
 - [Import Features](#import-features)
 - [Export to OpenDRIVE](#export-to-opendrive)
+- [Export Layout Mask](#export-layout-mask)
 - [View Controls](#view-controls)
 - [Preferences](#preferences)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
@@ -64,6 +65,8 @@ orbit --xodr_schema /path/to/OpenDRIVE_Core.xsd
 
 ## Basic Workflow
 
+![ORBIT interface overview](screenshot_ui_overview.png)
+
 The typical workflow from aerial image to OpenDRIVE export:
 
 ```
@@ -83,6 +86,8 @@ Load Image → Draw Polylines → Create Roads → Add Junctions → Georeferenc
 ---
 
 ## Drawing Polylines
+
+![Drawing mode](screenshot_drawing_mode.png)
 
 Polylines represent road centerlines and lane boundaries.
 
@@ -246,6 +251,8 @@ Junctions handle intersections where multiple roads meet.
 
 ### Roundabout Wizard
 
+![Roundabout wizard dialog](screenshot_roundabout_wizard.png)
+
 Create roundabouts via Tools → Create Roundabout (**Ctrl+Shift+R**):
 
 - **Center Point**: Click "Pick on Map" or enter coordinates
@@ -388,6 +395,8 @@ Place physical objects along roads.
 
 ## Georeferencing
 
+![Georeferencing dialog](screenshot_georeference_dialog.png)
+
 Georeferencing converts pixel coordinates to real-world geographic coordinates.
 
 ### Why Georeference?
@@ -427,6 +436,8 @@ Georeferencing converts pixel coordinates to real-world geographic coordinates.
 - **Homography** (4+ points): Best for drone images, oblique angles
 
 ### Uncertainty Analysis
+
+![Uncertainty overlay](screenshot_uncertainty.png)
 
 For quality assessment:
 - Click "Compute Uncertainty (Monte Carlo)"
@@ -483,6 +494,8 @@ Import existing .xodr files for round-trip editing:
 
 ## Export to OpenDRIVE
 
+![Export dialog](screenshot_export_dialog.png)
+
 ### Export Process
 
 1. Press **Ctrl+E** or File → Export to OpenDrive
@@ -533,6 +546,44 @@ The generated .xodr file includes:
 - Signals and objects
 - Parking spaces
 - Geographic reference (PROJ4)
+
+---
+
+## Export Layout Mask
+
+Export a semantic segmentation mask where each pixel value identifies a lane region. The mask is accompanied by a JSON metadata file describing region properties, adjacency, and connectivity.
+
+### Access
+
+File menu → Export Layout Mask...
+
+### Export Methods
+
+| Method | Description | Requirements |
+|--------|-------------|--------------|
+| **Pixel-space** | Polygons from rendered lane visualization | None |
+| **OpenDRIVE-accurate** | Polygons from the export pipeline (curve-fitted reference lines + lane widths in meters) | Georeferencing (3+ control points) |
+
+The pixel-space method is fast and uses the same lane polygons shown in the GUI. The OpenDRIVE-accurate method runs the full curve fitting pipeline to produce geometrically precise lane polygons in metric space, then projects them back to pixel coordinates.
+
+### Output Files
+
+For an output path `image_layout_mask.png`:
+
+| File | Contents |
+|------|----------|
+| `image_layout_mask.png` | Raw mask (uint8/uint16), pixel value = region ID |
+| `image_layout_mask_vis.png` | Colorized visualization for inspection |
+| `image_layout_mask.json` | Region metadata (lane IDs, adjacency, connectivity) |
+| `image_layout_mask.pgw` | World file for GIS (optional, requires georeferencing) |
+
+### Options
+
+- **GeoTIFF**: Write a world file (.pgw) alongside the mask for GIS compatibility. Requires georeferencing.
+- **Curve Fitting Settings** (OpenDRIVE method only):
+  - **Line tolerance**: Maximum deviation for line segments (meters)
+  - **Arc tolerance**: Maximum deviation for arc segments (meters)
+  - **Preserve geometry**: Keep all original polyline vertices
 
 ---
 

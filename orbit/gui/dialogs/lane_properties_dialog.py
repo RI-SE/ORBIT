@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -33,7 +32,7 @@ from orbit.models import Lane, LaneType, LineType, Project, RoadMarkType
 from orbit.utils import format_enum_name
 from orbit.utils.lane_fitting import evaluate_fit_quality
 
-from ..utils import set_combo_by_data
+from ..utils import ask_yes_no, set_combo_by_data, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
 
 if TYPE_CHECKING:
@@ -802,27 +801,27 @@ class LanePropertiesDialog(BaseDialog):
         # Get the road and centerline
         road = self.project.get_road(self.road_id)
         if not road:
-            QMessageBox.warning(self, "Error", "Road not found.")
+            show_warning(self, "Road not found.", "Error")
             return
 
         centerline = self.project.get_polyline(road.centerline_id)
         if not centerline or len(centerline.points) < 2:
-            QMessageBox.warning(self, "Error", "Road has no valid centerline.")
+            show_warning(self, "Road has no valid centerline.", "Error")
             return
 
         # Get outer boundary polyline
         outer_id = self.outer_boundary_combo.currentData()
         if not outer_id:
-            QMessageBox.warning(self, "Error", "Outer boundary must be assigned.")
+            show_warning(self, "Outer boundary must be assigned.", "Error")
             return
 
         outer_poly = self.project.get_polyline(outer_id)
         if not outer_poly:
-            QMessageBox.warning(self, "Error", "Could not find boundary polyline.")
+            show_warning(self, "Could not find boundary polyline.", "Error")
             return
 
         if len(outer_poly.points) < 2:
-            QMessageBox.warning(self, "Error", "Boundary polyline must have at least 2 points.")
+            show_warning(self, "Boundary polyline must have at least 2 points.", "Error")
             return
 
         # Get scale factor for conversion to meters (m/pixel)
@@ -838,17 +837,14 @@ class LanePropertiesDialog(BaseDialog):
                 break
 
         if not has_georef:
-            reply = QMessageBox.warning(
+            if not ask_yes_no(
                 self,
-                "No Georeferencing",
                 "No georeferencing (control points) found.\n\n"
                 "The fitting will use pixel coordinates directly, which may produce "
                 "incorrect results. Add control points for accurate metric conversion.\n\n"
                 "Continue anyway?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            if reply != QMessageBox.StandardButton.Yes:
+                "No Georeferencing"
+            ):
                 return
 
         # Import fitting function
@@ -863,7 +859,7 @@ class LanePropertiesDialog(BaseDialog):
                 scale=scale
             )
         except ValueError as e:
-            QMessageBox.warning(self, "Fitting Error", str(e))
+            show_warning(self, str(e), "Fitting Error")
             return
 
         # Evaluate quality

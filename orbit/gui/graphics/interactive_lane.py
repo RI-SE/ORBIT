@@ -47,6 +47,9 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
 
         super().__init__(polygon)
 
+        # Store polygon points for non-Qt access (e.g., mask export)
+        self.points = list(polygon_points)
+
         # Store metadata
         self.lane_id = lane_id
         self.section_number = section_number

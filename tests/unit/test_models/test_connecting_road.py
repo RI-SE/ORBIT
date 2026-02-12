@@ -462,6 +462,74 @@ class TestConnectingRoadStoredHeadings:
         assert cr.get_end_heading() == pytest.approx(0.0)
 
 
+class TestConnectingRoadStoredHeadingUpdates:
+    """Test that stored headings update correctly on path regeneration."""
+
+    def test_stored_headings_roundtrip_serialization(self):
+        """Test stored headings survive to_dict/from_dict roundtrip."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 0)])
+        cr.stored_start_heading = 0.785
+        cr.stored_end_heading = -1.571
+
+        data = cr.to_dict()
+        restored = ConnectingRoad.from_dict(data)
+
+        assert restored.stored_start_heading == pytest.approx(0.785)
+        assert restored.stored_end_heading == pytest.approx(-1.571)
+        assert restored.get_start_heading() == pytest.approx(0.785)
+        assert restored.get_end_heading() == pytest.approx(-1.571)
+
+    def test_stored_heading_overrides_path_derived(self):
+        """Test that stored heading takes priority over path-derived heading."""
+        # Path points eastward (heading ~0), but stored heading points north
+        cr = ConnectingRoad(path=[(0, 0), (100, 0), (200, 0)])
+        cr.stored_start_heading = math.pi / 2  # North
+        cr.stored_end_heading = -math.pi / 2   # South
+
+        assert cr.get_start_heading() == pytest.approx(math.pi / 2)
+        assert cr.get_end_heading() == pytest.approx(-math.pi / 2)
+
+    def test_clearing_stored_heading_falls_back_to_path(self):
+        """Test clearing stored heading reverts to path-based calculation."""
+        cr = ConnectingRoad(path=[(0, 0), (100, 0)])
+        cr.stored_start_heading = 1.0
+        assert cr.get_start_heading() == pytest.approx(1.0)
+
+        # Clear stored heading
+        cr.stored_start_heading = None
+        # Should fall back to path-derived (eastward = 0)
+        assert cr.get_start_heading() == pytest.approx(0.0)
+
+
+class TestConnectingRoadSampleCount:
+    """Test that connection path generation uses sufficient sample points."""
+
+    def test_default_sample_count_is_50(self):
+        """Test generate_simple_connection_path defaults to 50 points."""
+        from orbit.utils.geometry import generate_simple_connection_path
+
+        path, coeffs = generate_simple_connection_path(
+            from_pos=(0.0, 0.0),
+            from_heading=0.0,
+            to_pos=(100.0, 100.0),
+            to_heading=math.pi / 2,
+        )
+        assert len(path) == 50
+
+    def test_explicit_sample_count_respected(self):
+        """Test explicit num_points overrides default."""
+        from orbit.utils.geometry import generate_simple_connection_path
+
+        path, coeffs = generate_simple_connection_path(
+            from_pos=(0.0, 0.0),
+            from_heading=0.0,
+            to_pos=(100.0, 100.0),
+            to_heading=math.pi / 2,
+            num_points=30,
+        )
+        assert len(path) == 30
+
+
 class TestConnectingRoadLaneManagement:
     """Test lane initialization and management."""
 

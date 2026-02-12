@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Set
 from orbit.models import Junction, Project, Road
 from orbit.models.polyline import Polyline
 from orbit.utils import CoordinateTransformer
+from orbit.utils.logging_config import get_logger
 
 from .junction_analyzer import create_connecting_roads_from_patterns
 from .osm_parser import OSMData, OSMParser
@@ -35,6 +36,8 @@ from .roundabout_handler import (
     generate_all_roundabout_connectors,
     link_ring_segments,
 )
+
+logger = get_logger(__name__)
 
 
 class ImportMode(Enum):
@@ -162,31 +165,29 @@ class OSMImporter:
                 with open('overpass_tmp.json', 'w', encoding='utf-8') as f:
                     json.dump(osm_json, f, indent=2)
                 num_elems = len(osm_json.get('elements', []))
-                print(
-                    f"DEBUG: Wrote Overpass API response to "
-                    f"overpass_tmp.json ({num_elems} elements)"
+                logger.debug(
+                    "Wrote Overpass API response to overpass_tmp.json (%d elements)",
+                    num_elems
                 )
             except Exception as e:
-                print(f"WARNING: Failed to write overpass_tmp.json: {e}")
+                logger.warning("Failed to write overpass_tmp.json: %s", e)
 
         # Step 3: Parse OSM data
         try:
             osm_data = OSMParser.parse(osm_json)
 
             if options.verbose:
-                print(
-                    f"DEBUG: Parsed OSM data: "
-                    f"{len(osm_data.nodes)} nodes, "
-                    f"{len(osm_data.ways)} ways, "
-                    f"{len(osm_data.relations)} relations"
+                logger.debug(
+                    "Parsed OSM data: %d nodes, %d ways, %d relations",
+                    len(osm_data.nodes), len(osm_data.ways), len(osm_data.relations)
                 )
                 # Count nodes by type
                 highway_nodes = sum(1 for n in osm_data.nodes.values() if 'highway' in n.tags)
-                print(f"DEBUG: Nodes with 'highway' tag: {highway_nodes}")
+                logger.debug("Nodes with 'highway' tag: %d", highway_nodes)
                 if highway_nodes > 0 and highway_nodes < 20:  # Show details if not too many
                     for node in osm_data.nodes.values():
                         if 'highway' in node.tags:
-                            print(f"DEBUG:   Node {node.id}: highway={node.tags.get('highway')}, tags={node.tags}")
+                            logger.debug("  Node %s: highway=%s, tags=%s", node.id, node.tags.get('highway'), node.tags)
         except Exception as e:
             result.error_message = f"Failed to parse OSM data: {e}"
             return result
@@ -215,7 +216,7 @@ class OSMImporter:
             junction_node_ids = detect_junction_node_ids_from_osm(osm_data, self.road_to_osm_way)
 
             if options.verbose:
-                print(f"DEBUG: Detected {len(junction_node_ids)} junction nodes for road splitting")
+                logger.debug("Detected %d junction nodes for road splitting", len(junction_node_ids))
 
             # Step 7: Split roads at junction nodes (BEFORE linking!)
             if junction_node_ids:
@@ -324,7 +325,7 @@ class OSMImporter:
             junction_node_ids = detect_junction_node_ids_from_osm(osm_data, self.road_to_osm_way)
 
             if options.verbose:
-                print(f"DEBUG: Detected {len(junction_node_ids)} junction nodes for road splitting")
+                logger.debug("Detected %d junction nodes for road splitting", len(junction_node_ids))
 
             # Step 4: Split roads at junction nodes (BEFORE linking!)
             if junction_node_ids:
@@ -415,13 +416,13 @@ class OSMImporter:
         self.roundabout_way_ids = {way.id for way in roundabout_ways}
 
         if options.verbose and self.roundabout_way_ids:
-            print(f"DEBUG: Found {len(self.roundabout_way_ids)} roundabout way(s) - will process separately")
+            logger.debug("Found %d roundabout way(s) - will process separately", len(self.roundabout_way_ids))
 
         for osm_way in highway_ways:
             # Skip roundabout ways - they're processed by _import_roundabouts
             if osm_way.id in self.roundabout_way_ids:
                 if options.verbose:
-                    print(f"DEBUG: Skipping roundabout way {osm_way.id} (will process separately)")
+                    logger.debug("Skipping roundabout way %s (will process separately)", osm_way.id)
                 continue
 
             road_result = create_road_from_osm(
@@ -452,7 +453,7 @@ class OSMImporter:
                 if not start_inside and not end_inside:
                     # Neither endpoint is inside image bounds, skip this road
                     if options.verbose:
-                        print(f"DEBUG: Skipping road '{road.name}' - no endpoint inside image bounds")
+                        logger.debug("Skipping road '%s' - no endpoint inside image bounds", road.name)
                     continue
 
             # Add to project (assigns IDs to road and polyline)
@@ -497,7 +498,7 @@ class OSMImporter:
             return
 
         if options.verbose:
-            print(f"DEBUG: Processing {len(self.roundabout_way_ids)} roundabout(s)...")
+            logger.debug("Processing %d roundabout(s)...", len(self.roundabout_way_ids))
 
         # Build approach roads dict for finding connecting roads
         approach_roads = {road.id: road for road in roads}
@@ -509,7 +510,7 @@ class OSMImporter:
 
             if options.verbose:
                 name = osm_way.tags.get('name', f'Way {roundabout_way_id}')
-                print(f"DEBUG: Analyzing roundabout '{name}' (way {roundabout_way_id})")
+                logger.debug("Analyzing roundabout '%s' (way %s)", name, roundabout_way_id)
 
             try:
                 # Step 1: Analyze roundabout geometry
@@ -519,16 +520,16 @@ class OSMImporter:
                 )
 
                 if options.verbose:
-                    print(f"DEBUG:   Center: ({roundabout_info.center[0]:.1f}, {roundabout_info.center[1]:.1f})")
-                    print(f"DEBUG:   Radius: {roundabout_info.radius:.1f} px")
-                    print(f"DEBUG:   Connection points: {len(roundabout_info.connection_points)}")
+                    logger.debug("  Center: (%.1f, %.1f)", roundabout_info.center[0], roundabout_info.center[1])
+                    logger.debug("  Radius: %.1f px", roundabout_info.radius)
+                    logger.debug("  Connection points: %d", len(roundabout_info.connection_points))
 
                 # Filter roundabouts outside image bounds if option is enabled
                 if options.filter_outside_image:
                     cx, cy = roundabout_info.center
                     if not (0 <= cx <= self.image_width and 0 <= cy <= self.image_height):
                         if options.verbose:
-                            print("DEBUG:   Skipping roundabout - center outside image bounds")
+                            logger.debug("  Skipping roundabout - center outside image bounds")
                         continue
 
                 # Step 2: Create ring segments
@@ -539,7 +540,7 @@ class OSMImporter:
                 )
 
                 if options.verbose:
-                    print(f"DEBUG:   Created {len(ring_segments)} ring segment(s)")
+                    logger.debug("  Created %d ring segment(s)", len(ring_segments))
 
                 # Add ring segments to project
                 ring_roads = []
@@ -566,7 +567,7 @@ class OSMImporter:
                 )
 
                 if options.verbose:
-                    print(f"DEBUG:   Created {len(roundabout_junctions)} junction(s)")
+                    logger.debug("  Created %d junction(s)", len(roundabout_junctions))
 
                 for junction in roundabout_junctions:
                     self.project.add_junction(junction)
@@ -608,10 +609,9 @@ class OSMImporter:
                 if options.verbose:
                     ring_offset = self.project.roundabout_ring_offset_distance_meters
                     approach_offset = self.project.roundabout_approach_offset_distance_meters
-                    print(
-                        f"DEBUG:   Applied {ring_offset}m offset "
-                        f"to ring segments, {approach_offset}m "
-                        f"to approach roads"
+                    logger.debug(
+                        "  Applied %sm offset to ring segments, %sm to approach roads",
+                        ring_offset, approach_offset
                     )
 
                 # Step 5: Generate connectors for entry/exit/through movements
@@ -627,20 +627,17 @@ class OSMImporter:
 
                 if options.verbose:
                     total_connectors = sum(len(j.connecting_roads) for j in roundabout_junctions)
-                    print(f"DEBUG:   Generated {total_connectors} connecting road(s)")
+                    logger.debug("  Generated %d connecting road(s)", total_connectors)
 
                 # Mark as imported
                 self.imported_way_ids.add(roundabout_way_id)
 
             except Exception as e:
-                if options.verbose:
-                    print(f"WARNING: Failed to import roundabout {roundabout_way_id}: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.warning("Failed to import roundabout %s: %s", roundabout_way_id, e, exc_info=True)
                 continue
 
         if options.verbose:
-            print("DEBUG: Finished processing roundabouts")
+            logger.debug("Finished processing roundabouts")
 
     def _import_junctions_from_osm(self, osm_data: OSMData, options: ImportOptions,
                                    result: ImportResult) -> List[Junction]:
@@ -658,16 +655,15 @@ class OSMImporter:
         )
 
         if options.verbose:
-            print(f"DEBUG: Detected {len(junctions)} road junctions from OSM node IDs")
+            logger.debug("Detected %d road junctions from OSM node IDs", len(junctions))
 
         for junction in junctions:
             self.project.add_junction(junction)
             result.junctions_imported += 1
             if options.verbose:
-                print(
-                    f"DEBUG: Added junction '{junction.name}' "
-                    f"at {junction.center_point} connecting "
-                    f"{len(junction.connected_road_ids)} roads"
+                logger.debug(
+                    "Added junction '%s' at %s connecting %d roads",
+                    junction.name, junction.center_point, len(junction.connected_road_ids)
                 )
 
         # IMPORTANT ORDER: Analyze connections BEFORE offsetting endpoints
@@ -677,7 +673,7 @@ class OSMImporter:
 
         # Step 1: Analyze junction geometry and detect connection patterns (before offsetting)
         if junctions and options.verbose:
-            print(f"DEBUG: Analyzing geometry for {len(junctions)} junctions before offsetting...")
+            logger.debug("Analyzing geometry for %d junctions before offsetting...", len(junctions))
 
         # Import junction_analyzer to access analysis functions
 
@@ -692,7 +688,7 @@ class OSMImporter:
                 verbose=options.verbose
             )
             if options.verbose:
-                print(f"DEBUG: Processed {restrictions_count} turn restrictions from OSM relations")
+                logger.debug("Processed %d turn restrictions from OSM relations", restrictions_count)
         junction_analyzer_module = importlib.import_module('orbit.import.junction_analyzer')
         analyze_junction_geometry = junction_analyzer_module.analyze_junction_geometry
         detect_connection_patterns = junction_analyzer_module.detect_connection_patterns
@@ -705,7 +701,7 @@ class OSMImporter:
             # Skip virtual junctions (path crossings) - no connecting roads needed
             if junction.junction_type == "virtual":
                 if options.verbose:
-                    print(f"DEBUG: Skipping virtual junction '{junction.name}' (path crossing)")
+                    logger.debug("Skipping virtual junction '%s' (path crossing)", junction.name)
                 continue
 
             geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
@@ -732,7 +728,7 @@ class OSMImporter:
 
         # Step 3: Generate connecting roads using pre-detected patterns but with updated (offset) positions
         if junctions and options.verbose:
-            print(f"DEBUG: Generating connections for {len(junctions)} junctions...")
+            logger.debug("Generating connections for %d junctions...", len(junctions))
 
         # Refresh dicts after offset
         roads_dict = {road.id: road for road in self.project.roads}
@@ -763,8 +759,11 @@ class OSMImporter:
 
             if options.verbose:
                 summary = junction.get_connection_summary()
-                print(f"DEBUG: Generated {summary['total_connections']} connections for '{junction.name}': "
-                      f"{summary['straight']} straight, {summary['left']} left, {summary['right']} right")
+                logger.debug(
+                    "Generated %d connections for '%s': %d straight, %d left, %d right",
+                    summary['total_connections'], junction.name,
+                    summary['straight'], summary['left'], summary['right']
+                )
 
         # Detect virtual junctions for path crossings
         path_crossings = detect_path_crossings_from_osm(
@@ -774,13 +773,13 @@ class OSMImporter:
         )
 
         if options.verbose:
-            print(f"DEBUG: Detected {len(path_crossings)} path crossings (virtual junctions)")
+            logger.debug("Detected %d path crossings (virtual junctions)", len(path_crossings))
 
         for crossing in path_crossings:
             self.project.add_junction(crossing)
             result.junctions_imported += 1
             if options.verbose:
-                print(f"DEBUG: Added virtual junction '{crossing.name}' at {crossing.center_point}")
+                logger.debug("Added virtual junction '%s' at %s", crossing.name, crossing.center_point)
 
         # NOTE: Virtual junctions (path crossings) do NOT get connecting roads.
         # They are visual markers only, representing where paths cross roads without
@@ -797,16 +796,15 @@ class OSMImporter:
         junctions = detect_junctions(roads, polylines_dict, tolerance=5.0)
 
         if options.verbose:
-            print(f"DEBUG: Detected {len(junctions)} junctions from {len(roads)} roads")
+            logger.debug("Detected %d junctions from %d roads", len(junctions), len(roads))
 
         for junction in junctions:
             self.project.add_junction(junction)
             result.junctions_imported += 1
             if options.verbose:
-                print(
-                    f"DEBUG: Added junction '{junction.name}' "
-                    f"at {junction.center_point} connecting "
-                    f"{len(junction.connected_road_ids)} roads"
+                logger.debug(
+                    "Added junction '%s' at %s connecting %d roads",
+                    junction.name, junction.center_point, len(junction.connected_road_ids)
                 )
 
         return junctions
@@ -818,7 +816,7 @@ class OSMImporter:
         traffic_signals = OSMParser.get_traffic_signal_nodes(osm_data)
 
         if options.verbose:
-            print(f"DEBUG: Found {len(traffic_signals)} traffic signal nodes in OSM data")
+            logger.debug("Found %d traffic signal nodes in OSM data", len(traffic_signals))
 
         for osm_node in traffic_signals:
             signal = create_signal_from_osm(
@@ -831,9 +829,9 @@ class OSMImporter:
                 if osm_node.id in self.imported_node_ids:
                     result.signals_skipped_duplicate += 1
                     if options.verbose:
-                        print(f"DEBUG: Skipped duplicate traffic signal node: {osm_node.id}")
+                        logger.debug("Skipped duplicate traffic signal node: %s", osm_node.id)
                 elif options.verbose:
-                    print(f"DEBUG: Skipped traffic signal node {osm_node.id} (create_signal_from_osm returned None)")
+                    logger.debug("Skipped traffic signal node %s (create_signal_from_osm returned None)", osm_node.id)
                 continue
 
             self.project.add_signal(signal)
@@ -842,13 +840,13 @@ class OSMImporter:
             result.signals_imported += 1
 
             if options.verbose:
-                print(f"DEBUG: Imported traffic signal: {signal.name} at {signal.position}")
+                logger.debug("Imported traffic signal: %s at %s", signal.name, signal.position)
 
         # Traffic signs
         traffic_signs = OSMParser.get_traffic_sign_nodes(osm_data)
 
         if options.verbose:
-            print(f"DEBUG: Found {len(traffic_signs)} traffic sign nodes in OSM data")
+            logger.debug("Found %d traffic sign nodes in OSM data", len(traffic_signs))
 
         for osm_node in traffic_signs:
             signal = create_signal_from_osm(
@@ -861,13 +859,11 @@ class OSMImporter:
                 if osm_node.id in self.imported_node_ids:
                     result.signals_skipped_duplicate += 1
                     if options.verbose:
-                        print(f"DEBUG: Skipped duplicate traffic sign node: {osm_node.id}")
+                        logger.debug("Skipped duplicate traffic sign node: %s", osm_node.id)
                 elif options.verbose:
-                    print(
-                        f"DEBUG: Skipped traffic sign node "
-                        f"{osm_node.id} "
-                        f"(create_signal_from_osm returned None, "
-                        f"tags: {osm_node.tags})"
+                    logger.debug(
+                        "Skipped traffic sign node %s (create_signal_from_osm returned None, tags: %s)",
+                        osm_node.id, osm_node.tags
                     )
                 continue
 
@@ -877,7 +873,7 @@ class OSMImporter:
             result.signals_imported += 1
 
             if options.verbose:
-                print(f"DEBUG: Imported traffic sign: {signal.name} at {signal.position}")
+                logger.debug("Imported traffic sign: %s at %s", signal.name, signal.position)
 
     def _attach_signals_to_roads(self, osm_data: OSMData, options: ImportOptions) -> None:
         """
@@ -940,15 +936,13 @@ class OSMImporter:
 
             if options.verbose:
                 orientation_str = signal.get_orientation_ui_string()
-                print(
-                    f"DEBUG: Auto-attached signal "
-                    f"'{signal.name}' to road '{road.name}' "
-                    f"at s={signal.s_position:.1f}, "
-                    f"orientation={orientation_str}"
+                logger.debug(
+                    "Auto-attached signal '%s' to road '%s' at s=%.1f, orientation=%s",
+                    signal.name, road.name, signal.s_position, orientation_str
                 )
 
         if options.verbose and attached_count > 0:
-            print(f"DEBUG: Auto-attached {attached_count} signals to roads based on OSM node membership")
+            logger.debug("Auto-attached %d signals to roads based on OSM node membership", attached_count)
 
     def _attach_objects_to_roads(self, options: ImportOptions) -> None:
         """
@@ -1006,15 +1000,13 @@ class OSMImporter:
                 attached_count += 1
 
                 if options.verbose:
-                    print(
-                        f"DEBUG: Auto-attached object "
-                        f"'{obj.get_display_name()}' to road "
-                        f"'{nearest_road.name}' at "
-                        f"s={nearest_s:.1f}, t={nearest_t:.1f}"
+                    logger.debug(
+                        "Auto-attached object '%s' to road '%s' at s=%.1f, t=%.1f",
+                        obj.get_display_name(), nearest_road.name, nearest_s, nearest_t
                     )
 
         if options.verbose and attached_count > 0:
-            print(f"DEBUG: Auto-attached {attached_count} objects to nearest roads")
+            logger.debug("Auto-attached %d objects to nearest roads", attached_count)
 
     def _import_objects(self, osm_data: OSMData, options: ImportOptions,
                        result: ImportResult) -> None:
@@ -1098,7 +1090,7 @@ class OSMImporter:
         parking_ways = OSMParser.get_parking_ways(osm_data)
 
         if options.verbose:
-            print(f"DEBUG: Found {len(parking_ways)} parking ways in OSM data")
+            logger.debug("Found %d parking ways in OSM data", len(parking_ways))
 
         for osm_way in parking_ways:
             parking = create_parking_from_osm(
@@ -1117,13 +1109,13 @@ class OSMImporter:
             result.parking_imported += 1
 
             if options.verbose:
-                print(f"DEBUG: Imported parking '{parking.name}' ({parking.parking_type.value})")
+                logger.debug("Imported parking '%s' (%s)", parking.name, parking.parking_type.value)
 
         # Parking nodes (point facilities)
         parking_nodes = OSMParser.get_parking_nodes(osm_data)
 
         if options.verbose:
-            print(f"DEBUG: Found {len(parking_nodes)} parking nodes in OSM data")
+            logger.debug("Found %d parking nodes in OSM data", len(parking_nodes))
 
         for osm_node in parking_nodes:
             parking = create_parking_from_osm(
@@ -1142,4 +1134,4 @@ class OSMImporter:
             result.parking_imported += 1
 
             if options.verbose:
-                print(f"DEBUG: Imported parking '{parking.name}' ({parking.parking_type.value})")
+                logger.debug("Imported parking '%s' (%s)", parking.name, parking.parking_type.value)
