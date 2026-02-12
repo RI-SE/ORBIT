@@ -170,6 +170,46 @@ class TestComputeLanePolygons:
         assert len(polygons) == 1
         assert polygons[0].lane_id == 1
 
+    def test_variable_width_inner_offset(self):
+        """With variable-width inner lane, outer lane boundary tracks correctly.
+
+        When lane -1 tapers from 4.0m to 2.0m, lane -2's inner boundary must
+        follow that taper, not use a constant 4.0m offset.
+        """
+        from orbit.models.lane import Lane
+        from orbit.models.lane_section import LaneSection
+
+        road = Road(id="road_vw", name="Variable Width")
+        section = LaneSection(section_number=1, s_start=0.0, s_end=100.0)
+        # Lane -1: tapers from 4.0 to 2.0
+        lane1 = Lane(id=-1, width=4.0, width_end=2.0)
+        # Lane -2: constant 3.0
+        lane2 = Lane(id=-2, width=3.0)
+        center = Lane(id=0, width=0.0)
+        section.lanes = [center, lane1, lane2]
+        section.s_start = 0.0
+        section.s_end = 100.0
+        section.end_point_index = None
+        road.lane_sections = [section]
+
+        # 10m road, heading east, scale 0.1 m/px
+        ref_points = self._make_reference_points(length_m=10.0, heading=0.0)
+        polygons = compute_lane_polygons(ref_points, road, 0.1)
+
+        assert len(polygons) == 2
+        poly_1 = next(p for p in polygons if p.lane_id == -1)
+        poly_2 = next(p for p in polygons if p.lane_id == -2)
+
+        # For lane -2, the inner boundary at the end should be at ~2.0m offset
+        # (matching lane -1's tapered width), not 4.0m.
+        # Inner boundary points are the first half of the polygon.
+        n_half = len(poly_2.points) // 2
+        inner_end = poly_2.points[n_half - 1]  # last inner boundary point
+        # Road goes east (heading=0), so Y offset indicates perpendicular distance.
+        # Right lanes offset downward (negative Y).
+        # Inner offset at end = lane -1 width at end = 2.0
+        assert inner_end[1] == pytest.approx(-2.0, abs=0.2)
+
     def test_empty_reference_points(self):
         """Empty reference points returns empty list."""
         road = self._make_road_with_lanes()

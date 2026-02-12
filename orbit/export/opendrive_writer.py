@@ -111,6 +111,15 @@ class OpenDriveWriter:
             polyline_map=self.polyline_map
         )
 
+        # Curve-fit endpoint data: {(road_id, "start"|"end"): (x, y, heading)}
+        # Populated during _create_road() so CR heading lookups use fitted geometry.
+        self._road_curve_endpoints: dict[tuple, tuple] = {}
+
+        # Reverse lookup: centerline polyline ID -> road ID
+        self._centerline_to_road: dict[str, str] = {
+            r.centerline_id: r.id for r in project.roads if r.centerline_id
+        }
+
         # Reference validation warnings (populated during write)
         self.reference_warnings: List[str] = []
 
@@ -454,6 +463,16 @@ class OpenDriveWriter:
 
         if not geometry_elements:
             return None
+
+        # Store curve-fit start/end positions and headings for CR alignment
+        from .reference_line_sampler import _sample_element
+        first_elem = geometry_elements[0]
+        self._road_curve_endpoints[(road.id, "start")] = (
+            first_elem.start_pos[0], first_elem.start_pos[1], first_elem.heading
+        )
+        last_elem = geometry_elements[-1]
+        ex, ey, ehdg = _sample_element(last_elem, last_elem.length)
+        self._road_curve_endpoints[(road.id, "end")] = (ex, ey, ehdg)
 
         # Calculate total road length
         road_length = sum(elem.length for elem in geometry_elements)
@@ -959,7 +978,7 @@ class OpenDriveWriter:
             _lane_center_offset,
         )
 
-        road_lane_width = _get_road_lane_width(road)
+        road_lane_width = _get_road_lane_width(road, contact_point)
         road_lane_off = _lane_center_offset(target_lane_id, road_lane_width)
         cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width)
         offset_m = road_lane_off - cr_lane_off
@@ -981,7 +1000,19 @@ class OpenDriveWriter:
         return (snap_pt[0] + dx, snap_pt[1] + dy)
 
     def _get_road_heading_at_contact_meters(self, centerline_id, contact_point):
-        """Get road heading at a contact point in meter coordinates."""
+        """Get road heading at a contact point in meter coordinates.
+
+        Prefers curve-fit geometry data (stored during _create_road) for
+        accuracy. Falls back to 2-point approximation from raw polyline.
+        """
+        # Prefer curve-fit heading (matches the exported reference line)
+        road_id = self._centerline_to_road.get(centerline_id)
+        if road_id:
+            endpoint = self._road_curve_endpoints.get((road_id, contact_point))
+            if endpoint is not None:
+                return endpoint[2]  # heading
+
+        # Fallback: 2-point approximation from raw polyline
         polyline = self.polyline_map.get(centerline_id)
         if not polyline or len(polyline.points) < 2:
             return None

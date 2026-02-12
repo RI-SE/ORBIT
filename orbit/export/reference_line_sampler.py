@@ -324,10 +324,8 @@ def _build_side_polygons(
         section_length_m: Section length in meters
         side: "left" or "right"
     """
-    cumulative_offset = 0.0
-
-    for lane in lanes:
-        inner_offset = cumulative_offset
+    for lane_idx, lane in enumerate(lanes):
+        inner_lanes = lanes[:lane_idx]
 
         # Compute boundary points
         inner_boundary = []
@@ -335,6 +333,10 @@ def _build_side_polygons(
 
         for (x, y, hdg), s in section_ref:
             ds = s - s_start_m
+            # Per-point inner offset from all closer-to-center lanes
+            inner_offset = sum(
+                il.get_width_at_s(ds, section_length_m) for il in inner_lanes
+            )
             lane_width = lane.get_width_at_s(ds, section_length_m)
             outer_offset = inner_offset + lane_width
 
@@ -372,5 +374,3 @@ def _build_side_polygons(
                 is_connecting_road=False,
                 lane_type=lane.lane_type.value,
             ))
-
-        cumulative_offset += lane.width  # Use constant width for cumulative offset base
