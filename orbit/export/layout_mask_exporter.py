@@ -280,6 +280,32 @@ class LayoutMaskExporter:
             if succ_hdg is not None and len(headings) > 0:
                 headings[-1] = succ_hdg
 
+        # Extend CR path slightly at both endpoints along the heading.
+        # Curve-fitted road reference lines may not end at exactly the same
+        # position as the raw CR path endpoints. The extension ensures the
+        # CR polygon reaches the road polygon boundary. The mask renderer
+        # gives road pixels priority, so the extended part is clipped at
+        # the road boundary — producing a clean seam with no gap or overlap.
+        _EXT_M = 0.5  # extension distance in meters
+        if len(path_meters) >= 2:
+            hdg0 = headings[0]
+            ext_start = (
+                path_meters[0][0] - math.cos(hdg0) * _EXT_M,
+                path_meters[0][1] - math.sin(hdg0) * _EXT_M,
+            )
+            path_meters.insert(0, ext_start)
+            headings.insert(0, hdg0)
+            s_values = [0.0] + [s + _EXT_M for s in s_values]
+
+            hdg_end = headings[-1]
+            ext_end = (
+                path_meters[-1][0] + math.cos(hdg_end) * _EXT_M,
+                path_meters[-1][1] + math.sin(hdg_end) * _EXT_M,
+            )
+            path_meters.append(ext_end)
+            headings.append(hdg_end)
+            s_values.append(s_values[-1] + _EXT_M)
+
         path_length_m = s_values[-1] if len(s_values) > 1 else 0.0
         if path_length_m < 1e-6:
             return []
@@ -434,14 +460,14 @@ class LayoutMaskExporter:
     ) -> np.ndarray:
         """Render polygons into a mask, tracking overlapping regions.
 
-        When two connecting road polygons overlap (e.g. CRs sharing a common
-        start point that diverge), a combo region is created representing
-        the intersection for downstream consumers.
-
-        When a connecting road polygon overlaps a regular road polygon at a
-        junction boundary, the CR polygon cleanly overwrites the road polygon
-        (no combo region). This eliminates the colored patches at junction
-        boundaries while preserving correct CR-CR overlap tracking.
+        Rendering priority rules:
+        - Road polygons are painted first (they appear first in the polygon list).
+        - CR polygons that overlap road pixels are clipped: road pixels are
+          preserved and the CR fills only the remaining background pixels up
+          to the road boundary. This produces a clean 1-pixel seam between
+          CR and road regions with no gap and no overlap.
+        - When two CR polygons overlap (e.g. CRs sharing a common start
+          that diverge), a combo region is created for downstream consumers.
         """
         h, w = self.image_size[1], self.image_size[0]
         mask = np.zeros((h, w), dtype=np.int32)
@@ -486,21 +512,16 @@ class LayoutMaskExporter:
                 for old_id in overlap_ids:
                     old_id = int(old_id)
 
-                    # CR overwriting a road lane at junction boundary:
-                    # just overwrite, no combo region needed.
+                    # CR overlapping a road lane at junction boundary:
+                    # road pixels take priority — skip, don't overwrite.
+                    # The CR will fill background pixels up to the road
+                    # boundary in the "paint remaining" step below.
                     if is_cr and old_id in road_lane_ids:
-                        overlap_pixel_mask = new_pixels & (mask == old_id)
-                        mask[overlap_pixel_mask] = region_id
                         continue
 
-                    # CR overwriting a road-CR combo that was already
-                    # created (shouldn't happen since we skip road-CR combos,
-                    # but handle gracefully): check if old_id is a combo
-                    # whose members are all road lanes — treat as road overwrite.
+                    # CR overlapping a road-only combo: same — preserve.
                     old_members = id_members.get(old_id, frozenset([old_id]))
                     if is_cr and old_members.issubset(road_lane_ids):
-                        overlap_pixel_mask = new_pixels & (mask == old_id)
-                        mask[overlap_pixel_mask] = region_id
                         continue
 
                     # All other overlaps (CR-CR, road-road): create combo region
