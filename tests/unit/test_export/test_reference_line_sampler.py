@@ -197,7 +197,7 @@ class TestComputeLanePolygons:
         polygons = compute_lane_polygons(ref_points, road, 0.1)
 
         assert len(polygons) == 2
-        poly_1 = next(p for p in polygons if p.lane_id == -1)
+        next(p for p in polygons if p.lane_id == -1)  # verify lane -1 exists
         poly_2 = next(p for p in polygons if p.lane_id == -2)
 
         # For lane -2, the inner boundary at the end should be at ~2.0m offset
