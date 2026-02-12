@@ -38,7 +38,10 @@ class OpenDriveWriter:
         right_hand_traffic: bool = True,
         country_code: str = "se",
         use_tmerc: bool = False,
-        use_german_codes: bool = False
+        use_german_codes: bool = False,
+        offset_x: float = 0.0,
+        offset_y: float = 0.0,
+        geo_reference_string: Optional[str] = None
     ):
         """
         Initialize OpenDrive writer.
@@ -52,6 +55,10 @@ class OpenDriveWriter:
             use_tmerc: If True, use Transverse Mercator projection; if False (default),
                        use UTM projection or preserved geoReference from import
             use_german_codes: If True, use German VzKat codes (opendrive_de) for signals
+            offset_x: X offset subtracted from all exported coordinates (projected easting)
+            offset_y: Y offset subtracted from all exported coordinates (projected northing)
+            geo_reference_string: Explicit proj string for the geoReference element.
+                Takes priority over use_tmerc / imported_geo_reference when set.
         """
         self.project = project
         self.transformer = transformer
@@ -59,6 +66,9 @@ class OpenDriveWriter:
         self.right_hand_traffic = right_hand_traffic
         self.country_code = country_code.lower()
         self.use_tmerc = use_tmerc
+        self.offset_x = offset_x
+        self.offset_y = offset_y
+        self.geo_reference_string = geo_reference_string
 
         # Build lookup maps
         self.polyline_map = {p.id: p for p in project.polylines}
@@ -326,10 +336,10 @@ class OpenDriveWriter:
         # Calculate bounding box from all polylines in metric coordinates
         if self.project.has_georeferencing():
             bounds = self._calculate_bounds()
-            header.set('north', f'{bounds["north"]:.4f}')
-            header.set('south', f'{bounds["south"]:.4f}')
-            header.set('east', f'{bounds["east"]:.4f}')
-            header.set('west', f'{bounds["west"]:.4f}')
+            header.set('north', f'{bounds["north"] - self.offset_y:.4f}')
+            header.set('south', f'{bounds["south"] - self.offset_y:.4f}')
+            header.set('east', f'{bounds["east"] - self.offset_x:.4f}')
+            header.set('west', f'{bounds["west"] - self.offset_x:.4f}')
         else:
             header.set('north', '0.0')
             header.set('south', '0.0')
@@ -342,9 +352,10 @@ class OpenDriveWriter:
         # Add georef first if available
         if self.project.has_georeferencing():
             georef = etree.SubElement(header, 'geoReference')
-            # Use export projection string if set (guarantees consistency
-            # between declared projection and actual coordinate conversion)
-            if getattr(self.transformer, '_export_proj_string', None):
+            # Priority: explicit geo_reference_string > _export_proj_string > use_tmerc > imported > UTM
+            if self.geo_reference_string:
+                georef.text = self.geo_reference_string
+            elif getattr(self.transformer, '_export_proj_string', None):
                 georef.text = self.transformer._export_proj_string
             elif self.use_tmerc:
                 # Use local Transverse Mercator projection centered on control points
@@ -355,6 +366,13 @@ class OpenDriveWriter:
                     georef.text = self.project.imported_geo_reference
                 else:
                     georef.text = self.transformer.get_utm_projection_string()
+
+            # Add offset element (always present when georeferenced)
+            offset_elem = etree.SubElement(header, 'offset')
+            offset_elem.set('x', f'{self.offset_x:.4f}')
+            offset_elem.set('y', f'{self.offset_y:.4f}')
+            offset_elem.set('z', '0.0000')
+            offset_elem.set('hdg', '0.000000')
 
         # Add tool information as userData (after geoReference per schema order)
         tool_data = etree.SubElement(header, 'userData')
@@ -1158,8 +1176,8 @@ class OpenDriveWriter:
         for geom in geometry_elements:
             geometry = etree.SubElement(plan_view, 'geometry')
             geometry.set('s', f'{s_offset:.4f}')
-            geometry.set('x', f'{geom.start_pos[0]:.4f}')
-            geometry.set('y', f'{geom.start_pos[1]:.4f}')
+            geometry.set('x', f'{geom.start_pos[0] - self.offset_x:.4f}')
+            geometry.set('y', f'{geom.start_pos[1] - self.offset_y:.4f}')
             geometry.set('hdg', f'{geom.heading:.6f}')
             geometry.set('length', f'{geom.length:.4f}')
 
@@ -1346,7 +1364,10 @@ def export_to_opendrive(
     right_hand_traffic: bool = True,
     country_code: str = "se",
     use_tmerc: bool = False,
-    use_german_codes: bool = False
+    use_german_codes: bool = False,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    geo_reference_string: Optional[str] = None
 ) -> bool:
     """
     Export project to OpenDrive format.
@@ -1363,6 +1384,9 @@ def export_to_opendrive(
         use_tmerc: If True, use Transverse Mercator projection; if False (default),
                    use UTM projection or preserved geoReference
         use_german_codes: If True, use German VzKat codes (opendrive_de) for signals
+        offset_x: X offset subtracted from all exported coordinates (projected easting)
+        offset_y: Y offset subtracted from all exported coordinates (projected northing)
+        geo_reference_string: Explicit proj string for the geoReference element
 
     Returns:
         True if successful
@@ -1370,7 +1394,8 @@ def export_to_opendrive(
     curve_fitter = CurveFitter(line_tolerance, arc_tolerance, preserve_geometry)
     writer = OpenDriveWriter(
         project, transformer, curve_fitter, right_hand_traffic,
-        country_code, use_tmerc, use_german_codes
+        country_code, use_tmerc, use_german_codes,
+        offset_x, offset_y, geo_reference_string
     )
     return writer.write(output_path)
 

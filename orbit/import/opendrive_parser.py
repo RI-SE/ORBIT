@@ -504,9 +504,17 @@ class OpenDriveParser:
         try:
             tree = etree.parse(file_path)
             root = tree.getroot()
+            self._strip_namespace(root)
             return self.parse_root(root)
         except Exception as e:
             raise Exception(f"Failed to parse OpenDrive file: {e}")
+
+    @staticmethod
+    def _strip_namespace(root: etree.Element) -> None:
+        """Strip XML namespace from all elements to allow unqualified find/findall."""
+        for elem in root.iter():
+            if isinstance(elem.tag, str) and '}' in elem.tag:
+                elem.tag = elem.tag.split('}', 1)[1]
 
     def parse_root(self, root: etree.Element) -> OpenDriveData:
         """Parse root OpenDRIVE element."""
