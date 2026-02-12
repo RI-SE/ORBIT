@@ -2263,6 +2263,94 @@ class ImageView(QGraphicsView):
 
         return result
 
+    def export_layout_mask(self, output_path: str, method: str = "pixel",
+                           geotiff: bool = False,
+                           line_tolerance: float = 0.05,
+                           arc_tolerance: float = 0.1,
+                           preserve_geometry: bool = True) -> bool:
+        """Export a layout mask and metadata JSON for lane segmentation.
+
+        Args:
+            output_path: Path for the mask image (PNG/TIFF)
+            method: "pixel" (from rendered scene) or "opendrive" (from export pipeline)
+            geotiff: If True and georeferencing available, write a world file
+            line_tolerance: Curve fitting tolerance (opendrive method only)
+            arc_tolerance: Arc fitting tolerance (opendrive method only)
+            preserve_geometry: Preserve original geometry during fitting
+
+        Returns:
+            True on success, False on failure
+        """
+        from orbit.export.layout_mask_exporter import ExportMethod, LayoutMaskExporter
+        from orbit.export.reference_line_sampler import LanePolygonData
+
+        if not self.image_item:
+            return False
+
+        image_size = (
+            int(self.image_item.pixmap().width()),
+            int(self.image_item.pixmap().height()),
+        )
+
+        # Collect polygon data from rendered scene (for pixel method)
+        lane_polygons = []
+        if method == "pixel":
+            # Regular road lanes
+            for road_id, lanes_item in self.road_lanes_items.items():
+                road = self.project.get_road(road_id) if self.project else None
+                for poly_item in lanes_item.lane_items:
+                    lane_type = "driving"
+                    if road:
+                        lane = road.get_lane(poly_item.lane_id, poly_item.section_number)
+                        if lane:
+                            lane_type = lane.lane_type.value
+                    lane_polygons.append(LanePolygonData(
+                        road_id=poly_item.road_id,
+                        section_number=poly_item.section_number,
+                        lane_id=poly_item.lane_id,
+                        points=list(poly_item.points),
+                        is_connecting_road=False,
+                        lane_type=lane_type,
+                    ))
+
+            # Connecting road lanes
+            for cr_id, cr_lanes_item in self.connecting_road_lanes_items.items():
+                for poly_item in cr_lanes_item.lane_items:
+                    lane_polygons.append(LanePolygonData(
+                        road_id=poly_item.road_id,
+                        section_number=poly_item.section_number,
+                        lane_id=poly_item.lane_id,
+                        points=list(poly_item.points),
+                        is_connecting_road=True,
+                        lane_type="driving",
+                    ))
+
+        # Create transformer if georeferencing available
+        transformer = None
+        if self.project and len(self.project.control_points) >= 3:
+            from orbit.export import create_transformer
+            transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+            )
+
+        export_method = ExportMethod.OPENDRIVE if method == "opendrive" else ExportMethod.PIXEL
+
+        exporter = LayoutMaskExporter(
+            image_size=image_size,
+            project=self.project,
+            find_connected_lanes=self.find_connected_lanes,
+            get_connecting_road_lane_id=self._get_connecting_road_lane_id,
+            transformer=transformer,
+            method=export_method,
+            line_tolerance=line_tolerance,
+            arc_tolerance=arc_tolerance,
+            preserve_geometry=preserve_geometry,
+            lane_polygons=lane_polygons,
+        )
+
+        return exporter.export(output_path, geotiff=geotiff)
+
     def select_lane(self, road_id: str, section_number: int, lane_id: int):
         """
         Select and highlight a lane on the map.

@@ -189,6 +189,10 @@ class MainWindow(QMainWindow):
         self.export_georef_action.setStatusTip("Export georeferencing parameters to JSON")
         self.export_georef_action.triggered.connect(self.export_georeferencing)
 
+        self.export_layout_mask_action = QAction("Export Layout &Mask...", self)
+        self.export_layout_mask_action.setStatusTip("Export lane segmentation mask and metadata")
+        self.export_layout_mask_action.triggered.connect(self.export_layout_mask)
+
         self.import_osm_action = QAction("Import &OpenStreetMap Data...", self)
         self.import_osm_action.setShortcut(QKeySequence("Ctrl+Shift+I"))
         self.import_osm_action.setStatusTip("Import road network from OpenStreetMap (API or file)")
@@ -376,6 +380,7 @@ class MainWindow(QMainWindow):
         export_menu = file_menu.addMenu("&Export")
         export_menu.addAction(self.export_action)
         export_menu.addAction(self.export_georef_action)
+        export_menu.addAction(self.export_layout_mask_action)
         file_menu.addSeparator()
         file_menu.addAction(self.exit_action)
 
@@ -809,6 +814,128 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Georeferencing exported to {file_path}")
         else:
             show_error(self, "Failed to export georeferencing parameters.", "Export Error")
+
+    def export_layout_mask(self):
+        """Export lane segmentation mask and metadata JSON."""
+        # Validate prerequisites
+        if not self.image_view.image_item:
+            show_warning(self, "Cannot export: No image loaded.", "No Image")
+            return
+
+        if not self.project.roads:
+            show_warning(self, "Cannot export: No roads defined in the project.\n"
+                "Please create at least one road first.", "No Roads")
+            return
+
+        # Check if georeferencing is available (for OpenDRIVE method and GeoTIFF)
+        has_georef = len(self.project.control_points) >= 3
+
+        # Show options dialog
+        from PyQt6.QtWidgets import QCheckBox, QComboBox, QDialogButtonBox, QFormLayout, QGroupBox, QVBoxLayout
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Export Layout Mask")
+        layout = QVBoxLayout(dialog)
+
+        form = QFormLayout()
+        method_combo = QComboBox()
+        method_combo.addItem("Pixel-space (from rendered scene)", "pixel")
+        method_combo.addItem("OpenDRIVE-accurate (from export pipeline)", "opendrive")
+        if not has_georef:
+            # Disable OpenDRIVE method if no georef
+            model = method_combo.model()
+            item = model.item(1)
+            item.setEnabled(False)
+            item.setToolTip("Requires at least 3 control points")
+        form.addRow("Method:", method_combo)
+
+        geotiff_check = QCheckBox("Include world file for GIS")
+        geotiff_check.setEnabled(has_georef)
+        if not has_georef:
+            geotiff_check.setToolTip("Requires georeferencing (control points)")
+        form.addRow("GeoTIFF:", geotiff_check)
+
+        layout.addLayout(form)
+
+        # Curve fitting settings group (for OpenDRIVE method)
+        fit_group = QGroupBox("Curve Fitting Settings")
+        fit_layout = QFormLayout(fit_group)
+
+        from PyQt6.QtWidgets import QDoubleSpinBox
+        line_tol_spin = QDoubleSpinBox()
+        line_tol_spin.setRange(0.001, 10.0)
+        line_tol_spin.setValue(0.05)
+        line_tol_spin.setDecimals(3)
+        line_tol_spin.setSuffix(" m")
+        fit_layout.addRow("Line tolerance:", line_tol_spin)
+
+        arc_tol_spin = QDoubleSpinBox()
+        arc_tol_spin.setRange(0.001, 10.0)
+        arc_tol_spin.setValue(0.1)
+        arc_tol_spin.setDecimals(3)
+        arc_tol_spin.setSuffix(" m")
+        fit_layout.addRow("Arc tolerance:", arc_tol_spin)
+
+        preserve_check = QCheckBox("Preserve geometry")
+        preserve_check.setChecked(True)
+        fit_layout.addRow(preserve_check)
+
+        fit_group.setVisible(False)
+        layout.addWidget(fit_group)
+
+        def on_method_changed(index):
+            fit_group.setVisible(method_combo.currentData() == "opendrive")
+        method_combo.currentIndexChanged.connect(on_method_changed)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.statusBar().showMessage("Export cancelled")
+            return
+
+        method = method_combo.currentData()
+        geotiff = geotiff_check.isChecked()
+        line_tol = line_tol_spin.value()
+        arc_tol = arc_tol_spin.value()
+        preserve = preserve_check.isChecked()
+
+        # File save dialog
+        default_name = ""
+        if self.project.image_path:
+            default_name = self.project.image_path.stem + "_layout_mask.png"
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Layout Mask",
+            default_name,
+            "PNG files (*.png);;TIFF files (*.tif *.tiff);;All files (*.*)"
+        )
+
+        if not file_path:
+            self.statusBar().showMessage("Export cancelled")
+            return
+
+        # Run export
+        self.statusBar().showMessage("Exporting layout mask...")
+        try:
+            success = self.image_view.export_layout_mask(
+                output_path=file_path,
+                method=method,
+                geotiff=geotiff,
+                line_tolerance=line_tol,
+                arc_tolerance=arc_tol,
+                preserve_geometry=preserve,
+            )
+            if success:
+                self.statusBar().showMessage(f"Layout mask exported to {file_path}")
+            else:
+                show_error(self, "Failed to export layout mask.\n"
+                    "Check that roads have lanes defined.", "Export Error")
+        except Exception as e:
+            logger.exception("Layout mask export failed")
+            show_error(self, f"Export failed: {e}", "Export Error")
 
     def import_osm_data(self):
         """Import road network data from OpenStreetMap (API or file)."""

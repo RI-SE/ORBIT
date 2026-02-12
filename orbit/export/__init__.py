@@ -25,9 +25,11 @@ from orbit.utils import CoordinateTransformer, TransformMethod, create_transform
 from .curve_fitting import CurveFitter, GeometryElement, GeometryType, simplify_polyline
 from .georef_export import build_georef_data, export_georeferencing
 from .lane_builder import LaneBuilder, convert_road_mark_type
+from .layout_mask_exporter import ExportMethod, LayoutMaskExporter
 from .object_builder import ObjectBuilder
 from .opendrive_writer import OpenDriveWriter, export_to_opendrive, validate_opendrive_file
 from .parking_builder import ParkingBuilder
+from .reference_line_sampler import LanePolygonData, compute_lane_polygons, sample_reference_line
 from .reference_validator import validate_references
 from .signal_builder import SignalBuilder
 
@@ -50,4 +52,9 @@ __all__ = [
     'export_georeferencing',
     'build_georef_data',
     'validate_references',
+    'LayoutMaskExporter',
+    'ExportMethod',
+    'LanePolygonData',
+    'sample_reference_line',
+    'compute_lane_polygons',
 ]
