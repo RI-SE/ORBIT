@@ -18,6 +18,7 @@ from orbit.models.road import RoadType
 from orbit.models.signal import SignalType
 from orbit.utils import CoordinateTransformer
 from orbit.utils.geometry import calculate_path_length, find_point_at_distance_along_path, shorten_geo_points
+from orbit.utils.logging_config import get_logger
 
 from .osm_mappings import (
     estimate_lane_count,
@@ -37,6 +38,8 @@ from .osm_mappings import (
     should_import_highway,
 )
 from .osm_parser import OSMData, OSMNode, OSMWay
+
+logger = get_logger(__name__)
 
 
 def calculate_bbox_from_image(image_width: int, image_height: int,
@@ -890,7 +893,7 @@ def split_roads_at_junction_nodes(
         # Road needs splitting!
         split_count += 1
         if verbose:
-            print(f"  Splitting road '{road.name}' at {len(split_indices)} junction(s)")
+            logger.debug("  Splitting road '%s' at %d junction(s)", road.name, len(split_indices))
 
         # Create segments: [0, split1], [split1, split2], ..., [splitN, end]
         split_indices = [0] + split_indices + [len(centerline.points) - 1]
@@ -980,8 +983,9 @@ def split_roads_at_junction_nodes(
                 new_road_to_osm_way[new_road.id] = osm_way_id
 
             if verbose:
-                print(f"    Segment {seg_idx + 1}: {len(segment_points)} points, "
-                      f"OSM nodes {segment_node_ids[0]} -> {segment_node_ids[-1]}")
+                logger.debug("    Segment %d: %d points, OSM nodes %s -> %s",
+                             seg_idx + 1, len(segment_points),
+                             segment_node_ids[0], segment_node_ids[-1])
 
         # Link consecutive segments with predecessor/successor relationships
         for i in range(len(road_segments) - 1):
@@ -995,7 +999,7 @@ def split_roads_at_junction_nodes(
         new_roads.extend(road_segments)
 
     if verbose and split_count > 0:
-        print(f"Split {split_count} road(s) into {segment_count} segment(s)")
+        logger.debug("Split %d road(s) into %d segment(s)", split_count, segment_count)
 
     return new_roads, new_polylines, new_road_to_osm_way
 
@@ -1036,7 +1040,8 @@ def offset_road_endpoints_from_junctions(
     minimum_length_pixels = minimum_length_meters / avg_scale
 
     if verbose:
-        print(f"Offsetting junction endpoints by {offset_distance_meters}m ({offset_distance_pixels:.1f} pixels)")
+        logger.debug("Offsetting junction endpoints by %sm (%.1f pixels)",
+                     offset_distance_meters, offset_distance_pixels)
 
     modified_count = 0
 
@@ -1047,7 +1052,7 @@ def offset_road_endpoints_from_junctions(
         # Skip virtual junctions (path crossings) - they don't need space for connecting roads
         if junction.junction_type == "virtual":
             if verbose:
-                print(f"  Skipping virtual junction '{junction.name}' (path crossing)")
+                logger.debug("  Skipping virtual junction '%s' (path crossing)", junction.name)
             continue
 
         jx, jy = junction.center_point
@@ -1088,16 +1093,18 @@ def offset_road_endpoints_from_junctions(
                     # Road is already at or below minimum length - skip offset
                     if verbose:
                         road_length_m = path_length * avg_scale
-                        print(f"  SKIP: Road '{road.name}' is too short ({road_length_m:.1f}m) "
-                              f"to offset while preserving {minimum_length_meters}m minimum")
+                        logger.debug("  SKIP: Road '%s' is too short (%.1fm) "
+                                     "to offset while preserving %sm minimum",
+                                     road.name, road_length_m, minimum_length_meters)
                     actual_offset = 0
                 elif actual_offset > max_allowed_offset:
                     # Reduce offset to preserve minimum length
                     actual_offset = max_allowed_offset
                     if verbose:
                         actual_m = actual_offset * avg_scale
-                        print(f"  WARNING: Road '{road.name}' offset reduced to {actual_m:.1f}m "
-                              f"to preserve {minimum_length_meters}m minimum length")
+                        logger.debug("  WARNING: Road '%s' offset reduced to %.1fm "
+                                     "to preserve %sm minimum length",
+                                     road.name, actual_m, minimum_length_meters)
 
                 # Find point at offset distance along path (skip if no offset needed)
                 if actual_offset > 0:
@@ -1119,15 +1126,17 @@ def offset_road_endpoints_from_junctions(
                     # Validate we have at least 2 points
                     if len(points) < 2:
                         if verbose:
-                            print(f"  ERROR: Offsetting start of road '{road.name}' would leave < 2 points, skipping")
+                            logger.debug("  ERROR: Offsetting start of road '%s' would leave < 2 points, skipping",
+                                         road.name)
                     else:
                         modified = True
                         # Record the actual offset applied in meters
                         start_offset_meters_applied = actual_offset * avg_scale
                         if verbose:
-                            print(f"  Offset road '{road.name}' start: moved {actual_offset:.1f}px "
-                                  f"({start_offset_meters_applied:.1f}m), "
-                                  f"removed {points_removed} point(s)")
+                            logger.debug("  Offset road '%s' start: moved %.1fpx (%.1fm), "
+                                         "removed %d point(s)",
+                                         road.name, actual_offset,
+                                         start_offset_meters_applied, points_removed)
 
             # Check end point
             end_dx = points[-1][0] - jx
@@ -1147,16 +1156,18 @@ def offset_road_endpoints_from_junctions(
                     # Road is already at or below minimum length - skip offset
                     if verbose:
                         road_length_m = path_length * avg_scale
-                        print(f"  SKIP: Road '{road.name}' is too short ({road_length_m:.1f}m) "
-                              f"to offset while preserving {minimum_length_meters}m minimum")
+                        logger.debug("  SKIP: Road '%s' is too short (%.1fm) "
+                                     "to offset while preserving %sm minimum",
+                                     road.name, road_length_m, minimum_length_meters)
                     actual_offset = 0
                 elif actual_offset > max_allowed_offset:
                     # Reduce offset to preserve minimum length
                     actual_offset = max_allowed_offset
                     if verbose:
                         actual_m = actual_offset * avg_scale
-                        print(f"  WARNING: Road '{road.name}' offset reduced to {actual_m:.1f}m "
-                              f"to preserve {minimum_length_meters}m minimum length")
+                        logger.debug("  WARNING: Road '%s' offset reduced to %.1fm "
+                                     "to preserve %sm minimum length",
+                                     road.name, actual_m, minimum_length_meters)
 
                 # Find point at offset distance along path from end (skip if no offset needed)
                 if actual_offset > 0:
@@ -1181,15 +1192,17 @@ def offset_road_endpoints_from_junctions(
                     # Validate we have at least 2 points
                     if len(points) < 2:
                         if verbose:
-                            print(f"  ERROR: Offsetting end of road '{road.name}' would leave < 2 points, skipping")
+                            logger.debug("  ERROR: Offsetting end of road '%s' would leave < 2 points, skipping",
+                                         road.name)
                     else:
                         modified = True
                         # Record the actual offset applied in meters
                         end_offset_meters_applied = actual_offset * avg_scale
                         if verbose:
-                            print(f"  Offset road '{road.name}' end: moved {actual_offset:.1f}px "
-                                  f"({end_offset_meters_applied:.1f}m), "
-                                  f"removed {points_removed} point(s)")
+                            logger.debug("  Offset road '%s' end: moved %.1fpx (%.1fm), "
+                                         "removed %d point(s)",
+                                         road.name, actual_offset,
+                                         end_offset_meters_applied, points_removed)
 
             if modified:
                 # Update the polyline with modified points
@@ -1203,13 +1216,14 @@ def offset_road_endpoints_from_junctions(
                         end_offset_meters_applied
                     )
                     if verbose:
-                        print(f"    Also shortened geo_points: start={start_offset_meters_applied:.1f}m, "
-                              f"end={end_offset_meters_applied:.1f}m -> {len(centerline.geo_points)} geo points")
+                        logger.debug("    Also shortened geo_points: start=%.1fm, end=%.1fm -> %d geo points",
+                                     start_offset_meters_applied, end_offset_meters_applied,
+                                     len(centerline.geo_points))
 
                 modified_count += 1
 
     if verbose and modified_count > 0:
-        print(f"Offset endpoints for {modified_count} road(s) at junctions")
+        logger.debug("Offset endpoints for %d road(s) at junctions", modified_count)
 
 
 def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
@@ -1594,8 +1608,8 @@ def process_turn_restrictions(
 
         if not target_junction:
             if verbose:
-                print(f"  Restriction {relation.id}: Could not find junction for "
-                      f"from_way={from_way_id}, to_way={to_way_id}")
+                logger.debug("  Restriction %s: Could not find junction for "
+                             "from_way=%s, to_way=%s", relation.id, from_way_id, to_way_id)
             continue
 
         # Create turn restriction entry
@@ -1626,7 +1640,8 @@ def process_turn_restrictions(
         restrictions_processed += 1
 
         if verbose:
-            print(f"  Added restriction '{restriction_type}' to junction '{target_junction.name}'")
+            logger.debug("  Added restriction '%s' to junction '%s'",
+                         restriction_type, target_junction.name)
 
     return restrictions_processed
 

@@ -1,6 +1,6 @@
 [project]
 name = "orbit"
-version = "0.5.0"
+version = "0.6.0"
 description = "OpenDrive Road Builder from Imagery Tool"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -8,7 +8,17 @@ license = {text = "GPL-3.0"}
 authors = [
     {name = "RISE Research Institutes of Sweden"},
 ]
-
+keywords = ["opendrive", "road-network", "annotation", "gis", "georeferencing", "asam"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: GIS",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "PyQt6>=6.6.0",
     "PyQt6-Qt6>=6.6.0",
@@ -19,6 +29,13 @@ dependencies = [
     "pyproj>=3.6.0",
     "xmlschema>=4.2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/RI-SE/ORBIT"
+Repository = "https://github.com/RI-SE/ORBIT"
+Documentation = "https://github.com/RI-SE/ORBIT/tree/main/docs"
+Issues = "https://github.com/RI-SE/ORBIT/issues"
+Changelog = "https://github.com/RI-SE/ORBIT/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [

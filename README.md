@@ -11,6 +11,8 @@
 
 A visual tool for creating or editing ASAM OpenDRIVE 1.8 road networks from aerial imagery.
 
+![ORBIT main window](docs/screenshot_main_window.png)
+
 > [!NOTE]
 > This open source project is maintained by [RISE Research Institutes of Sweden](https://ri.se/). See [LICENSE](LICENSE) file for open source license information.
 
@@ -78,7 +80,7 @@ A visual tool for creating or editing ASAM OpenDRIVE 1.8 road networks from aeri
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone and install
-git clone <repository-url>
+git clone https://github.com/RI-SE/ORBIT.git
 cd ORBIT
 uv sync
 ```
@@ -115,9 +117,9 @@ orbit --xodr_schema /path/to/OpenDRIVE_Core.xsd
 
 1. **Load image** — File → Load Image or pass path on command line
 2. **Add control points** — Tools → Georeferencing (minimum 4 points (oblique imagery) or 3 (nadir imagery))
-3. **Import or draw** Either import existing map from OpenStreetmap or OpenDrive, or draw roads directly in Orbit.
-4. **Edit** Edit roads. Add signs, parkings, and objects.
-4. **Export** — File → Export → Export to OpenDrive
+3. **Import or draw** — Either import an existing map from OpenStreetMap or OpenDRIVE, or draw roads directly in ORBIT.
+4. **Edit** — Edit roads. Add signs, parkings, and objects.
+5. **Export** — File → Export → Export to OpenDrive
 
 ---
 

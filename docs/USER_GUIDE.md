@@ -2,7 +2,7 @@
 
 Complete guide for creating OpenDRIVE road networks from aerial imagery using ORBIT.
 
-**Version**: 0.5.0 | **OpenDRIVE**: 1.8
+**Version**: 0.6.0 | **OpenDRIVE**: 1.8
 
 ---
 
@@ -64,6 +64,8 @@ orbit --xodr_schema /path/to/OpenDRIVE_Core.xsd
 
 ## Basic Workflow
 
+![ORBIT interface overview](screenshot_ui_overview.png)
+
 The typical workflow from aerial image to OpenDRIVE export:
 
 ```
@@ -83,6 +85,8 @@ Load Image → Draw Polylines → Create Roads → Add Junctions → Georeferenc
 ---
 
 ## Drawing Polylines
+
+![Drawing mode](screenshot_drawing_mode.png)
 
 Polylines represent road centerlines and lane boundaries.
 
@@ -246,6 +250,8 @@ Junctions handle intersections where multiple roads meet.
 
 ### Roundabout Wizard
 
+<!-- TODO: Add roundabout wizard screenshot: screenshot_roundabout_wizard.png -->
+
 Create roundabouts via Tools → Create Roundabout (**Ctrl+Shift+R**):
 
 - **Center Point**: Click "Pick on Map" or enter coordinates
@@ -388,6 +394,8 @@ Place physical objects along roads.
 
 ## Georeferencing
 
+![Georeferencing dialog](screenshot_georeference_dialog.png)
+
 Georeferencing converts pixel coordinates to real-world geographic coordinates.
 
 ### Why Georeference?
@@ -427,6 +435,8 @@ Georeferencing converts pixel coordinates to real-world geographic coordinates.
 - **Homography** (4+ points): Best for drone images, oblique angles
 
 ### Uncertainty Analysis
+
+![Uncertainty overlay](screenshot_uncertainty.png)
 
 For quality assessment:
 - Click "Compute Uncertainty (Monte Carlo)"
@@ -482,6 +492,8 @@ Import existing .xodr files for round-trip editing:
 ---
 
 ## Export to OpenDRIVE
+
+![Export dialog](screenshot_export_dialog.png)
 
 ### Export Process
 

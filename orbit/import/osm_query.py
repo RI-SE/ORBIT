@@ -7,6 +7,10 @@ import urllib.error
 import urllib.request
 from typing import Optional
 
+from orbit.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class OverpassAPIError(Exception):
     """Raised when Overpass API request fails."""
@@ -53,8 +57,8 @@ class OverpassAPIClient:
         except OverpassAPIError as e:
             # Try backup endpoint if primary fails
             if self.endpoint == self.DEFAULT_ENDPOINT:
-                print(f"Primary endpoint failed: {e}")
-                print(f"Retrying with backup endpoint: {self.BACKUP_ENDPOINT}")
+                logger.warning("Primary endpoint failed: %s", e)
+                logger.info("Retrying with backup endpoint: %s", self.BACKUP_ENDPOINT)
                 old_endpoint = self.endpoint
                 self.endpoint = self.BACKUP_ENDPOINT
                 try:
@@ -223,5 +227,5 @@ def query_osm_data(bbox: tuple[float, float, float, float],
     try:
         return client.query_bbox(bbox, detail_level)
     except OverpassAPIError as e:
-        print(f"Failed to query OSM data: {e}")
+        logger.error("Failed to query OSM data: %s", e)
         return None

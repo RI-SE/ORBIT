@@ -26,9 +26,12 @@ from PyQt6.QtWidgets import (
 from orbit.export import CoordinateTransformer, create_transformer, export_to_opendrive, validate_opendrive_file
 from orbit.export.reference_validator import validate_references
 from orbit.models import Project
+from orbit.utils.logging_config import get_logger
 
 from ..utils.message_helpers import show_error, show_info, show_warning
 from .base_dialog import BaseDialog
+
+logger = get_logger(__name__)
 
 
 class ExportDialog(BaseDialog):
@@ -414,10 +417,9 @@ class ExportDialog(BaseDialog):
                 ref_warnings = validate_references(self.project)
                 ref_msg = ""
                 if ref_warnings:
-                    print(f"\n=== Reference Validation Warnings ({len(ref_warnings)}) ===")
+                    logger.warning("Reference Validation Warnings (%d):", len(ref_warnings))
                     for w in ref_warnings:
-                        print(f"  {w}")
-                    print("=" * 50)
+                        logger.warning("  %s", w)
                     ref_text = "\n".join(ref_warnings[:10])
                     if len(ref_warnings) > 10:
                         ref_text += f"\n... and {len(ref_warnings) - 10} more"
@@ -437,11 +439,10 @@ class ExportDialog(BaseDialog):
                     if validation_errors is None:
                         validation_msg = "\n\nSchema validation: Skipped (no schema)"
                     elif validation_errors:
-                        # Log all errors to console
-                        print(f"\n=== OpenDRIVE Schema Validation Errors ({len(validation_errors)}) ===")
+                        # Log all errors
+                        logger.warning("OpenDRIVE Schema Validation Errors (%d):", len(validation_errors))
                         for err in validation_errors:
-                            print(f"  {err}")
-                        print("=" * 50)
+                            logger.warning("  %s", err)
 
                         # Show validation errors in dialog but don't fail the export
                         error_text = "\n".join(validation_errors[:10])  # Show first 10 errors
@@ -451,7 +452,7 @@ class ExportDialog(BaseDialog):
                                    "Validation Warnings")
                         validation_msg = f"\n\nSchema validation: {len(validation_errors)} error(s)"
                     else:
-                        print("OpenDRIVE schema validation: Passed")
+                        logger.info("OpenDRIVE schema validation: Passed")
                         validation_msg = "\n\nSchema validation: Passed"
                 else:
                     validation_msg = "\n\nSchema validation: Skipped (use --xodr_schema to enable)"

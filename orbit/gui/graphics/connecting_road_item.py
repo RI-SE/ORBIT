@@ -12,8 +12,11 @@ from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsScene
 
 from orbit.utils.geometry import calculate_directional_scale
+from orbit.utils.logging_config import get_logger
 
 from .interactive_lane import InteractiveLanePolygon
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from orbit.models.connecting_road import ConnectingRoad
@@ -323,11 +326,12 @@ class ConnectingRoadLanesGraphicsItem:
         scale = self._calculate_scale()
 
         if self.verbose:
-            print(f"\n{'='*60}")
-            print(f"CONNECTING ROAD LANES: {self.connecting_road.id[:8]}...")
-            print(f"  Scale: {scale:.6f} m/px")
-            print(f"  Lane width: {self.connecting_road.lane_width}m")
-            print(f"  Lanes: R{self.connecting_road.lane_count_right}, L{self.connecting_road.lane_count_left}")
+            logger.debug("CONNECTING ROAD LANES: %s... Scale: %.6f m/px, "
+                         "Lane width: %sm, Lanes: R%d L%d",
+                         self.connecting_road.id[:8], scale,
+                         self.connecting_road.lane_width,
+                         self.connecting_road.lane_count_right,
+                         self.connecting_road.lane_count_left)
 
         # Get lane polygons
         lane_polygons = self.connecting_road.get_lane_polygons(scale)
@@ -349,7 +353,7 @@ class ConnectingRoadLanesGraphicsItem:
                     self.lane_items.append(lane_polygon)
 
                     if self.verbose:
-                        print(f"    Lane {lane_id}: {len(polygon_points)} points")
+                        logger.debug("  Lane %s: %d points", lane_id, len(polygon_points))
                 else:
                     # Fallback: create simple polygon without interactivity
                     polygon = QPolygonF()

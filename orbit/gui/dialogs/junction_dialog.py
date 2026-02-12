@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QTableWidget,
@@ -37,7 +36,7 @@ from orbit.models.junction import (
     JunctionElevationGridPoint,
 )
 
-from ..utils.message_helpers import show_warning
+from ..utils.message_helpers import show_error, show_info, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
 
 
@@ -514,11 +513,7 @@ class JunctionDialog(BaseDialog):
     def auto_generate_connections(self):
         """Auto-generate junction connections based on geometry."""
         if not self.project:
-            QMessageBox.warning(
-                self,
-                "No Project",
-                "Cannot generate connections without a project context."
-            )
+            show_warning(self, "Cannot generate connections without a project context.", "No Project")
             return
 
         # First save current road selections
@@ -526,11 +521,11 @@ class JunctionDialog(BaseDialog):
 
         # Check if we have enough roads
         if len(self.junction.connected_road_ids) < 2:
-            QMessageBox.warning(
+            show_warning(
                 self,
-                "Insufficient Roads",
                 "At least 2 roads must be connected to generate junction connections.\n\n"
-                "Please add roads to the junction first."
+                "Please add roads to the junction first.",
+                "Insufficient Roads"
             )
             return
 
@@ -540,11 +535,7 @@ class JunctionDialog(BaseDialog):
             junction_analyzer = importlib.import_module('orbit.import.junction_analyzer')
             generate_junction_connections = junction_analyzer.generate_junction_connections
         except ImportError as e:
-            QMessageBox.critical(
-                self,
-                "Import Error",
-                f"Failed to import junction analyzer: {e}"
-            )
+            show_error(self, f"Failed to import junction analyzer: {e}", "Import Error")
             return
 
         # Build dictionaries for roads and polylines
@@ -576,23 +567,23 @@ class JunctionDialog(BaseDialog):
 
             # Show success message
             summary = self.junction.get_connection_summary()
-            QMessageBox.information(
+            show_info(
                 self,
-                "Connections Generated",
                 f"Successfully generated {summary['total_connections']} connection(s):\n\n"
                 f"• Straight: {summary['straight']}\n"
                 f"• Left turns: {summary['left']}\n"
                 f"• Right turns: {summary['right']}\n"
                 f"• U-turns: {summary['uturn']}\n\n"
                 f"Connecting roads: {len(self.junction.connecting_roads)}\n"
-                f"Lane connections: {len(self.junction.lane_connections)}"
+                f"Lane connections: {len(self.junction.lane_connections)}",
+                "Connections Generated"
             )
 
         except Exception as e:
-            QMessageBox.critical(
+            show_error(
                 self,
-                "Generation Failed",
-                f"Failed to generate connections:\n\n{str(e)}"
+                f"Failed to generate connections:\n\n{str(e)}",
+                "Generation Failed"
             )
             import traceback
             traceback.print_exc()

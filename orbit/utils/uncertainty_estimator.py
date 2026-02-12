@@ -13,6 +13,9 @@ import numpy as np
 from scipy.spatial import ConvexHull, distance
 
 from .coordinate_transform import CoordinateTransformer
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class UncertaintyEstimator:
@@ -467,17 +470,15 @@ class UncertaintyEstimator:
 
         # Debug info
         if verbose:
-            print(f"[DEBUG find_high_unc] Grid shape: {grid.shape}")
-            print(f"[DEBUG find_high_unc] Grid min/max: {np.min(grid):.3f} / {np.max(grid):.3f}m")
-            print(f"[DEBUG find_high_unc] Threshold: {threshold:.3f}m")
+            logger.debug("Grid shape: %s", grid.shape)
+            logger.debug("Grid min/max: %.3f / %.3fm", np.min(grid), np.max(grid))
+            logger.debug("Threshold: %.3fm", threshold)
             total_regions = region_cols * region_rows
-            print(
-                f"[DEBUG find_high_unc] Dividing into "
-                f"{region_cols}x{region_rows} = "
-                f"{total_regions} regions"
-            )
+            logger.debug("Dividing into %dx%d = %d regions",
+                         region_cols, region_rows, total_regions)
             cells_above_threshold = np.sum(grid >= threshold)
-            print(f"[DEBUG find_high_unc] Cells above threshold: {cells_above_threshold} / {grid_rows*grid_cols}")
+            logger.debug("Cells above threshold: %d / %d",
+                         cells_above_threshold, grid_rows * grid_cols)
 
         # Calculate region boundaries
         region_height_cells = grid_rows // region_rows
@@ -513,18 +514,15 @@ class UncertaintyEstimator:
 
                     suggestions.append((x, y, max_unc))
                     if verbose:
-                        print(
-                            f"[DEBUG find_high_unc] "
-                            f"Region ({region_row},{region_col}): "
-                            f"max={max_unc:.3f}m at "
-                            f"pixel ({x:.0f},{y:.0f})"
-                        )
+                        logger.debug("Region (%d,%d): max=%.3fm at pixel (%.0f,%.0f)",
+                                     region_row, region_col, max_unc, x, y)
 
         # Sort by uncertainty (descending) to prioritize worst areas
         suggestions.sort(key=lambda s: s[2], reverse=True)
 
         if verbose:
-            print(f"[DEBUG find_high_unc] Found {len(suggestions)} suggestions from {region_cols*region_rows} regions")
+            logger.debug("Found %d suggestions from %d regions",
+                         len(suggestions), region_cols * region_rows)
 
         # Return just (x, y) coordinates
         return [(x, y) for x, y, _ in suggestions]

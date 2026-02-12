@@ -16,13 +16,13 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QRadioButton,
     QSpinBox,
     QVBoxLayout,
 )
 
+from ..utils import show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
 
 
@@ -284,20 +284,12 @@ class RoundaboutWizardDialog(BaseDialog):
         if self.center_point is None or (
             self.center_point[0] == 0 and self.center_point[1] == 0
         ):
-            QMessageBox.warning(
-                self,
-                "Missing Center Point",
-                "Please specify the roundabout center point."
-            )
+            show_warning(self, "Please specify the roundabout center point.", "Missing Center Point")
             return
 
         # Validate radius
         if self.radius_spin.value() < 10:
-            QMessageBox.warning(
-                self,
-                "Invalid Radius",
-                "Radius must be at least 10 pixels."
-            )
+            show_warning(self, "Radius must be at least 10 pixels.", "Invalid Radius")
             return
 
         super().accept()

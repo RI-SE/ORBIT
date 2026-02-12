@@ -749,5 +749,5 @@ Recompute Monte Carlo analysis after any changes for updated estimates.
 ---
 
 **Last Updated**: 2026-02
-**Version**: 0.5.0
+**Version**: 0.6.0
 **Status**: Production Ready

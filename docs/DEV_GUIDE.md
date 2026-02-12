@@ -111,6 +111,16 @@ orbit/
 
 ### Data Flow
 
+```mermaid
+graph LR
+    User[User Interaction] --> ImageView
+    ImageView --> Project[Project Data Store]
+    Project --> Writer[OpenDriveWriter]
+    Writer --> XML[OpenDRIVE XML]
+    ImageView -->|Qt Signals| TreeWidgets[Tree Widgets / UI]
+    Project --> JSON[.orbit JSON File]
+```
+
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │    ImageView    │────▶│     Project     │────▶│  OpenDriveWriter│

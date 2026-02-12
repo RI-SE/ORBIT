@@ -431,5 +431,5 @@ For issues or questions:
 ---
 
 **Last Updated**: 2026-02
-**Version**: 0.5.0
+**Version**: 0.6.0
 **Status**: Production Ready

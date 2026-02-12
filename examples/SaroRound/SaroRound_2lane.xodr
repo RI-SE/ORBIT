@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <OpenDRIVE xmlns="http://code.asam.net/simulation/standard/opendrive_schema">
-  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-02-11T21:36:09.419597" north="11.0452" south="-76.9669" east="84.8655" west="-113.3233" vendor="ORBIT by RISE Research Institutes of Sweden">
+  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-02-12T13:02:29.658093" north="10.7972" south="-76.9669" east="84.8655" west="-113.2473" vendor="ORBIT by RISE Research Institutes of Sweden">
     <geoReference>+proj=utm +zone=33 +north +ellps=WGS84 +datum=WGS84 +units=m +no_defs +lat_0=57.48449668 +lon_0=12.00961149</geoReference>
     <offset x="320741.8478" y="6375265.9895" z="0.0000" hdg="0.000000"/>
     <userData code="tool">Produced by ORBIT (https://github.com/fwrise/ORBIT)</userData>
@@ -54,10 +54,8 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="3" name="Säröleden" length="66.0184" junction="-1">
-    <link>
-      <successor elementType="road" elementId="6" contactPoint="start"/>
-    </link>
+  <road id="3" name="Säröleden" length="64.0428" junction="-1">
+    <link/>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
@@ -83,7 +81,7 @@
       <geometry s="43.6534" x="-92.6303" y="2.5682" hdg="2.773145" length="8.6398">
         <line/>
       </geometry>
-      <geometry s="52.2932" x="-100.6902" y="5.6799" hdg="2.739974" length="13.7252">
+      <geometry s="52.2932" x="-100.6902" y="5.6799" hdg="2.690970" length="11.7496">
         <line/>
       </geometry>
     </planView>
@@ -100,9 +98,7 @@
         </center>
         <right>
           <lane id="-1" type="driving" level="false">
-            <link>
-              <successor id="-1"/>
-            </link>
+            <link/>
             <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
             <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12"/>
             <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
@@ -150,36 +146,34 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="6" name="Säröleden" length="60.4227" junction="-1">
-    <link>
-      <predecessor elementType="road" elementId="3" contactPoint="end"/>
-    </link>
+  <road id="6" name="Säröleden" length="61.8220" junction="-1">
+    <link/>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
     <planView>
-      <geometry s="0.0000" x="-111.9694" y="9.6999" hdg="-0.415686" length="12.8079">
+      <geometry s="0.0000" x="-113.2473" y="10.2702" hdg="-0.416086" length="14.2073">
         <line/>
       </geometry>
-      <geometry s="12.8079" x="-100.2522" y="4.5279" hdg="-0.406985" length="13.4924">
+      <geometry s="14.2073" x="-100.2522" y="4.5279" hdg="-0.406985" length="13.4924">
         <line/>
       </geometry>
-      <geometry s="26.3003" x="-87.8619" y="-0.8130" hdg="-0.295244" length="12.8663">
+      <geometry s="27.6996" x="-87.8619" y="-0.8130" hdg="-0.295244" length="12.8663">
         <line/>
       </geometry>
-      <geometry s="39.1665" x="-75.5523" y="-4.5567" hdg="-0.251923" length="5.5795">
+      <geometry s="40.5659" x="-75.5523" y="-4.5567" hdg="-0.251923" length="5.5795">
         <line/>
       </geometry>
-      <geometry s="44.7460" x="-70.1489" y="-5.9475" hdg="-0.284967" length="7.2771">
+      <geometry s="46.1454" x="-70.1489" y="-5.9475" hdg="-0.284967" length="7.2771">
         <line/>
       </geometry>
-      <geometry s="52.0231" x="-63.1654" y="-7.9932" hdg="-0.291952" length="2.9272">
+      <geometry s="53.4225" x="-63.1654" y="-7.9932" hdg="-0.291952" length="2.9272">
         <line/>
       </geometry>
-      <geometry s="54.9502" x="-60.3621" y="-8.8357" hdg="-0.416983" length="2.7190">
+      <geometry s="56.3496" x="-60.3621" y="-8.8357" hdg="-0.416983" length="2.7190">
         <line/>
       </geometry>
-      <geometry s="57.6692" x="-57.8761" y="-9.9369" hdg="-0.824440" length="2.7534">
+      <geometry s="59.0686" x="-57.8761" y="-9.9369" hdg="-0.824440" length="2.7534">
         <line/>
       </geometry>
     </planView>
@@ -196,9 +190,7 @@
         </center>
         <right>
           <lane id="-1" type="driving" level="false">
-            <link>
-              <predecessor id="-1"/>
-            </link>
+            <link/>
             <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
             <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12"/>
             <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
@@ -207,7 +199,7 @@
       </laneSection>
     </lanes>
     <signals>
-      <signal id="3" s="62.939331" t="-6.320911" name="OSM Signal 1609681052 (give_way)" dynamic="no" orientation="+" hOffset="-1.570796" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
+      <signal id="3" s="63.065953" t="-6.320911" name="OSM Signal 1609681052 (give_way)" dynamic="no" orientation="+" hOffset="-1.570796" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
     </signals>
   </road>
   <road id="15" name="Säröleden" length="54.9307" junction="-1">

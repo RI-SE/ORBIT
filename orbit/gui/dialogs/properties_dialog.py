@@ -31,9 +31,12 @@ from PyQt6.QtWidgets import (
 
 from orbit.models import LineType, Project, Road, RoadType
 from orbit.utils import format_enum_name
+from orbit.utils.logging_config import get_logger
 
 from ..utils import set_combo_by_data
 from .base_dialog import InfoIconLabel
+
+logger = get_logger(__name__)
 
 
 class RoadPropertiesDialog(QDialog):
@@ -662,8 +665,7 @@ class RoadPropertiesDialog(QDialog):
             return
 
         if self.verbose:
-            print(f"\n[DEBUG] calculate_suggested_widths called for road: {self.road.name}")
-            print(f"[DEBUG] Verbose mode: {self.verbose}")
+            logger.debug("calculate_suggested_widths called for road: %s", self.road.name)
 
         try:
             from orbit.export.lane_analyzer import LaneAnalyzer
@@ -677,14 +679,14 @@ class RoadPropertiesDialog(QDialog):
                     if transformer:
                         scale_factors = transformer.get_scale_factor()
                         if self.verbose:
-                            print(f"[DEBUG] Scale factors retrieved: {scale_factors}")
+                            logger.debug("Scale factors retrieved: %s", scale_factors)
                 except Exception as e:
                     if self.verbose:
-                        print(f"[DEBUG] Failed to get scale factors: {e}")
+                        logger.debug("Failed to get scale factors: %s", e)
                     pass
             else:
                 if self.verbose:
-                    print("[DEBUG] No georeferencing available")
+                    logger.debug("No georeferencing available")
 
             analyzer = LaneAnalyzer(self.project, self.project.right_hand_traffic, scale_factors)
             self.measured_widths = analyzer.suggest_lane_widths(self.road, verbose=self.verbose)
