@@ -2,7 +2,7 @@
 <OpenDRIVE xmlns="http://code.asam.net/simulation/standard/opendrive_schema">
   <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-02-03T19:12:06.319658" north="6375277.0348" south="6375189.0226" east="320826.7133" west="320628.5245" vendor="ORBIT by RISE Research Institutes of Sweden">
     <geoReference>+proj=utm +zone=33 +north +ellps=WGS84 +datum=WGS84 +units=m +no_defs</geoReference>
-    <userData code="tool">Produced by ORBIT (https://github.com/fwrise/ORBIT)</userData>
+    <userData code="tool">Produced by ORBIT (https://github.com/RI-SE/ORBIT)</userData>
     <userData code="license">Licensed under the Open Database License (https://opendatacommons.org/licenses/odbl/1-0/)</userData>
     <userData code="sourceAttribution">Map data from OpenStreetMap (https://www.openstreetmap.org/copyright)</userData>
   </header>

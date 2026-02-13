@@ -35,7 +35,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/fwrise/ORBIT"
+Homepage = "https://github.com/RI-SE/ORBIT"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orbit_georef"]

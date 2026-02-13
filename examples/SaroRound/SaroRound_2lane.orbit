@@ -4,7 +4,7 @@
     "created": "2026-02-03T11:29:53.461231",
     "modified": "2026-02-12T21:13:48.222871"
   },
-  "image_path": "/home/fredrik/fwrise/ORBIT/examples/SaroRound/SaroRound_firstframe.png",
+  "image_path": "./SaroRound_firstframe.png",
   "polylines": [
     {
       "id": "1",

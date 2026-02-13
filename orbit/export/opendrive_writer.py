@@ -386,7 +386,7 @@ class OpenDriveWriter:
         # Add tool information as userData (after geoReference per schema order)
         tool_data = etree.SubElement(header, 'userData')
         tool_data.set('code', 'tool')
-        tool_data.text = 'Produced by ORBIT (https://github.com/fwrise/ORBIT)'
+        tool_data.text = 'Produced by ORBIT (https://github.com/RI-SE/ORBIT)'
 
         # Add license information as userData
         license_data = etree.SubElement(header, 'userData')
