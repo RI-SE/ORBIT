@@ -1601,21 +1601,38 @@ class Project:
         return project
 
     def save(self, file_path: Path) -> None:
-        """Save project to .orbit file."""
+        """Save project to .orbit file.
+
+        Stores image_path as relative to the save location when possible.
+        """
         file_path = Path(file_path)
         # Ensure .orbit extension
         if file_path.suffix not in ['.orbit', '.json']:
             file_path = file_path.with_suffix('.orbit')
 
+        data = self.to_dict()
+        # Convert absolute image path to relative for portability
+        if self.image_path and self.image_path.is_absolute():
+            try:
+                data['image_path'] = str(
+                    self.image_path.relative_to(file_path.parent.resolve())
+                )
+            except ValueError:
+                pass  # Keep absolute if not relative to project dir
+
         with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(self.to_dict(), f, indent=2)
+            json.dump(data, f, indent=2)
 
     @classmethod
     def load(cls, file_path: Path) -> 'Project':
         """Load project from .orbit file."""
+        file_path = Path(file_path)
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         project = cls.from_dict(data)
+        # Resolve relative image paths against the project file's directory
+        if project.image_path and not project.image_path.is_absolute():
+            project.image_path = (file_path.parent / project.image_path).resolve()
         # Clean up data integrity issues from older versions
         project.cleanup_junction_connected_road_ids()
         project.cleanup_empty_junctions()
