@@ -168,18 +168,22 @@ class GeoTransformer:
     def _meters_to_proj(self, mx: float, my: float, proj_string: str) -> Tuple[float, float]:
         """
         Convert meter offsets to a projected coordinate system.
+
         Args:
-            mx: Meter offset x
-            my: Meter offset y
+            mx: Meter offset x (easting)
+            my: Meter offset y (northing)
             proj_string: PROJ string for the target coordinate system
+
         Returns:
             Tuple of (x, y) in the target coordinate system
         """
-        # The local meter-based system is an equirectangular projection
-        # centered at the reference lat/lon. We can define a PROJ string for it.
+        # The local meter-based system used by ORBIT is an Equirectangular projection
+        # centered at the reference lat/lon, with the latitude of true scale
+        # set to the reference latitude. This is the correct projection to use
+        # as it precisely matches how the (mx, my) coordinates were calculated.
         # See: https://proj.org/operations/projections/eqc.html
         source_proj_string = (
-            f"+proj=eqc +lat_ts=0 +lat_0={self.reference_lat} "
+            f"+proj=eqc +lat_ts={self.reference_lat} +lat_0={self.reference_lat} "
             f"+lon_0={self.reference_lon} +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
         )
 
