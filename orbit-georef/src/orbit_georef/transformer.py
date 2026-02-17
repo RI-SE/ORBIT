@@ -217,18 +217,21 @@ class GeoTransformer:
             return result[0], result[1]
 
     def pixels_to_geo_batch(
-        self, points: List[Tuple[float, float]]
+        self,
+        points: List[Tuple[float, float]],
+        proj_string: str = None,
     ) -> List[Tuple[float, float]]:
         """
         Convert multiple pixel coordinates to geographic coordinates.
 
         Args:
             points: List of (pixel_x, pixel_y) tuples
+            proj_string: Optional PROJ string for output coordinate system. If none, assumes WGS84 for output.
 
         Returns:
-            List of (longitude, latitude) tuples
+            List of (longitude, latitude) or (x, y) tuples in the target coordinate system.
         """
-        return [self.pixel_to_geo(x, y) for x, y in points]
+        return [self.pixel_to_geo(x, y, proj_string=proj_string) for x, y in points]
 
     def geo_to_pixels_batch(
         self, points: List[Tuple[float, float]]
