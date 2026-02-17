@@ -26,7 +26,10 @@ georef = load_georef("georef_params.json")
 # Convert pixel to geographic coordinates
 lon, lat = georef.pixel_to_geo(1234.5, 567.8)
 
-# Convert geographic to pixel coordinates
+# Convert pixel coordinates to a projected coordinate system (e.g., WGS84)
+x, y = georef.pixel_to_geo(1234.5, 567.8, proj_string="+proj=longlat +datum=WGS84 +no_defs")
+
+# Convert geographic to pixel coordinates (assumes WGS84 as input)
 px, py = georef.geo_to_pixel(12.945, 57.720)
 
 # Batch conversion
