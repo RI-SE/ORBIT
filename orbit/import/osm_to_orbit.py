@@ -42,6 +42,27 @@ from .osm_parser import OSMData, OSMNode, OSMWay
 logger = get_logger(__name__)
 
 
+def calculate_bbox_from_center(center_lat: float, center_lon: float,
+                               radius_m: float) -> Tuple[float, float, float, float]:
+    """Calculate bounding box from center point and radius in meters.
+
+    Uses equirectangular approximation (~111,000 m per degree latitude,
+    longitude adjusted by cos(lat)). Accuracy is sufficient for radii up to 5 km.
+
+    Args:
+        center_lat: Center latitude in decimal degrees
+        center_lon: Center longitude in decimal degrees
+        radius_m: Radius in meters
+
+    Returns:
+        Tuple of (min_lat, min_lon, max_lat, max_lon)
+    """
+    dlat = radius_m / 111_000
+    dlon = radius_m / (111_000 * math.cos(math.radians(center_lat)))
+    return (center_lat - dlat, center_lon - dlon,
+            center_lat + dlat, center_lon + dlon)
+
+
 def calculate_bbox_from_image(image_width: int, image_height: int,
                                transformer: CoordinateTransformer,
                                buffer_percent: float = 5.0) -> Tuple[float, float, float, float]:

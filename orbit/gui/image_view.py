@@ -211,6 +211,33 @@ class ImageView(QGraphicsView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setMouseTracking(True)  # Enable mouse tracking for position updates
 
+    def set_synthetic_canvas(self, width: int, height: int, color=None):
+        """Create a grey canvas as a synthetic image substitute.
+
+        Used when importing data (OpenDrive, OSM) without a real image.
+        Downstream code checks image_item, so we create a real QPixmap.
+
+        Args:
+            width: Canvas width in pixels
+            height: Canvas height in pixels
+            color: Fill color (default: light grey)
+        """
+        if color is None:
+            color = QColor(200, 200, 200)
+
+        pixmap = QPixmap(width, height)
+        pixmap.fill(color)
+
+        # Clear scene and add synthetic pixmap
+        self.scene.clear()
+        self.polyline_items.clear()
+        self.image_item = self.scene.addPixmap(pixmap)
+        self.image_item.setZValue(0)
+        self.image_np = None
+        self.image_path = None
+
+        self.fit_to_window()
+
     def load_image(self, image_path: Path):
         """Load an image file."""
         self.image_path = image_path
