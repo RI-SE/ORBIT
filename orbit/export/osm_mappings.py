@@ -5,8 +5,9 @@ Used as fallback when original osm_tags are not available (e.g., manually create
 When osm_tags are preserved from import, those take priority over these mappings.
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
+from orbit.models.lane import Lane
 from orbit.models.object import ObjectType, RoadObject
 from orbit.models.parking import ParkingSpace, ParkingType
 from orbit.models.road import Road, RoadType
@@ -52,21 +53,13 @@ PARKING_TYPE_TO_OSM_TAGS = {
 }
 
 
-def get_osm_tags_for_road(road: Road) -> Dict[str, str]:
-    """Get OSM tags for a road, preferring preserved osm_tags over fallback mapping."""
-    if road.osm_tags:
-        return dict(road.osm_tags)
+def _apply_lane_tags(road: Road, tags: Dict[str, str]) -> None:
+    """Update lane count and width tags from ORBIT model data.
 
-    tags: Dict[str, str] = {}
-    highway = ROAD_TYPE_TO_OSM_HIGHWAY.get(road.road_type, 'road')
-    tags['highway'] = highway
-
-    if road.name and road.name != 'Unnamed Road':
-        tags['name'] = road.name
-    if road.speed_limit is not None:
-        tags['maxspeed'] = str(int(road.speed_limit))
-
-    # Lane count (only if non-default)
+    Sets lanes, lanes:forward/backward, width, and width:lanes:forward/backward.
+    Right lanes (negative IDs) map to OSM forward, left lanes (positive IDs) to backward.
+    """
+    # Lane counts
     total = road.lane_info.left_count + road.lane_info.right_count
     if total != 2:
         tags['lanes'] = str(total)
@@ -74,6 +67,52 @@ def get_osm_tags_for_road(road: Road) -> Dict[str, str]:
         tags['lanes:forward'] = str(road.lane_info.right_count)
         tags['lanes:backward'] = str(road.lane_info.left_count)
 
+    # Lane widths from first lane section
+    if not road.lane_sections:
+        return
+
+    section = road.lane_sections[0]
+    right_lanes: List[Lane] = sorted(
+        [l for l in section.lanes if l.id < 0], key=lambda l: abs(l.id)
+    )
+    left_lanes: List[Lane] = sorted(
+        [l for l in section.lanes if l.id > 0], key=lambda l: l.id
+    )
+
+    all_widths: List[float] = []
+
+    if right_lanes:
+        widths = [l.width for l in right_lanes]
+        all_widths.extend(widths)
+        tags['width:lanes:forward'] = '|'.join(f'{w:.1f}' for w in widths)
+
+    if left_lanes:
+        widths = [l.width for l in left_lanes]
+        all_widths.extend(widths)
+        tags['width:lanes:backward'] = '|'.join(f'{w:.1f}' for w in widths)
+
+    if all_widths:
+        tags['width'] = f'{sum(all_widths):.1f}'
+
+
+def get_osm_tags_for_road(road: Road) -> Dict[str, str]:
+    """Get OSM tags for a road, preferring preserved osm_tags over fallback mapping.
+
+    Lane count and width tags are always updated from ORBIT model data,
+    even when osm_tags are preserved, since the user may have edited them.
+    """
+    if road.osm_tags:
+        tags = dict(road.osm_tags)
+    else:
+        tags: Dict[str, str] = {}
+        tags['highway'] = ROAD_TYPE_TO_OSM_HIGHWAY.get(road.road_type, 'road')
+
+        if road.name and road.name != 'Unnamed Road':
+            tags['name'] = road.name
+        if road.speed_limit is not None:
+            tags['maxspeed'] = str(int(road.speed_limit))
+
+    _apply_lane_tags(road, tags)
     return tags
 
 

@@ -434,6 +434,8 @@
     <tag k="lanes:forward" v="1" />
     <tag k="maxspeed" v="50" />
     <tag k="name" v="Valldavägen (seg 1/2)" />
+    <tag k="width" v="3.2" />
+    <tag k="width:lanes:forward" v="3.2" />
   </way>
   <way id="-11" visible="true">
     <nd ref="-12" />
@@ -452,6 +454,8 @@
     <tag k="lanes:forward" v="1" />
     <tag k="maxspeed" v="70" />
     <tag k="name" v="Säröleden" />
+    <tag k="width" v="3.5" />
+    <tag k="width:lanes:forward" v="3.5" />
   </way>
   <way id="-22" visible="true">
     <nd ref="-23" />
@@ -470,6 +474,8 @@
     <tag k="lanes:forward" v="1" />
     <tag k="maxspeed" v="70" />
     <tag k="name" v="Säröleden" />
+    <tag k="width" v="3.5" />
+    <tag k="width:lanes:forward" v="3.5" />
   </way>
   <way id="-33" visible="true">
     <nd ref="-34" />
@@ -489,6 +495,8 @@
     <tag k="lanes:forward" v="1" />
     <tag k="maxspeed" v="70" />
     <tag k="name" v="Säröleden" />
+    <tag k="width" v="3.5" />
+    <tag k="width:lanes:forward" v="3.5" />
   </way>
   <way id="-45" visible="true">
     <nd ref="-46" />
@@ -502,6 +510,8 @@
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
     <tag k="name" v="Säröleden Ring 1" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-52" visible="true">
     <nd ref="-53" />
@@ -511,6 +521,8 @@
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
     <tag k="name" v="Säröleden Ring 2" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-55" visible="true">
     <nd ref="-56" />
@@ -523,6 +535,8 @@
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
     <tag k="name" v="Säröleden Ring 3" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-61" visible="true">
     <nd ref="-62" />
@@ -532,6 +546,8 @@
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
     <tag k="name" v="Säröleden Ring 4" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-64" visible="true">
     <nd ref="-65" />
@@ -545,6 +561,8 @@
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
     <tag k="name" v="Säröleden Ring 5" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-71" visible="true">
     <nd ref="-72" />
@@ -564,6 +582,8 @@
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
     <tag k="name" v="Säröleden Ring 6" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-84" visible="true">
     <nd ref="-85" />
@@ -580,6 +600,8 @@
     <tag k="lanes:forward" v="1" />
     <tag k="maxspeed" v="70" />
     <tag k="name" v="Säröleden (seg 2/2)" />
+    <tag k="width" v="3.5" />
+    <tag k="width:lanes:forward" v="3.5" />
   </way>
   <way id="-93" visible="true">
     <nd ref="-94" />
@@ -595,6 +617,8 @@
     <tag k="lanes:forward" v="1" />
     <tag k="maxspeed" v="50" />
     <tag k="name" v="Valldavägen (seg 2/2)" />
+    <tag k="width" v="3.2" />
+    <tag k="width:lanes:forward" v="3.2" />
   </way>
   <way id="-101" visible="true">
     <nd ref="-83" />
@@ -651,6 +675,8 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-133" visible="true">
     <nd ref="-134" />
@@ -707,6 +733,8 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-175" visible="true">
     <nd ref="-51" />
@@ -763,6 +791,8 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-196" visible="true">
     <nd ref="-32" />
@@ -820,6 +850,8 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="1" />
     <tag k="maxspeed" v="70" />
+    <tag k="width" v="3.5" />
+    <tag k="width:lanes:forward" v="3.5" />
   </way>
   <way id="-231" visible="true">
     <nd ref="-54" />
@@ -876,6 +908,8 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-258" visible="true">
     <nd ref="-259" />
@@ -932,6 +966,8 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-291" visible="true">
     <nd ref="-60" />
@@ -988,6 +1024,8 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-327" visible="true">
     <nd ref="-100" />
@@ -1002,6 +1040,8 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="1" />
     <tag k="maxspeed" v="50" />
+    <tag k="width" v="3.2" />
+    <tag k="width:lanes:forward" v="3.2" />
   </way>
   <way id="-334" visible="true">
     <nd ref="-63" />
@@ -1058,6 +1098,8 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-365" visible="true">
     <nd ref="-366" />
@@ -1070,6 +1112,8 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-371" visible="true">
     <nd ref="-70" />
@@ -1126,6 +1170,8 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="2" />
     <tag k="maxspeed" v="70" />
+    <tag k="width" v="7.0" />
+    <tag k="width:lanes:forward" v="3.5|3.5" />
   </way>
   <way id="-399" visible="true">
     <nd ref="-92" />
@@ -1183,5 +1229,7 @@
     <tag k="lanes:backward" v="0" />
     <tag k="lanes:forward" v="1" />
     <tag k="maxspeed" v="70" />
+    <tag k="width" v="3.5" />
+    <tag k="width:lanes:forward" v="3.5" />
   </way>
 </osm>
