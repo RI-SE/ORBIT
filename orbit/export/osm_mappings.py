@@ -40,6 +40,13 @@ OBJECT_TYPE_TO_OSM_TAGS = {
     ObjectType.TREE_CONIFER: {'natural': 'tree', 'leaf_type': 'needleleaved'},
     ObjectType.BUSH: {'natural': 'scrub'},
     ObjectType.BUILDING: {'building': 'yes'},
+    # Land use areas
+    ObjectType.LANDUSE_FOREST: {'landuse': 'forest'},
+    ObjectType.LANDUSE_FARMLAND: {'landuse': 'farmland'},
+    ObjectType.LANDUSE_MEADOW: {'landuse': 'meadow'},
+    ObjectType.LANDUSE_SCRUB: {'natural': 'scrub'},
+    ObjectType.NATURAL_WATER: {'natural': 'water'},
+    ObjectType.NATURAL_WETLAND: {'natural': 'wetland'},
 }
 
 # Reverse mapping: ParkingType -> OSM tags

@@ -27,6 +27,13 @@ class ObjectType(Enum):
     TREE_BROADLEAF = "tree_broadleaf"
     TREE_CONIFER = "tree_conifer"
     BUSH = "bush"
+    # Land use / natural area types (for OSM import of area polygons)
+    LANDUSE_FOREST = "landuse_forest"
+    LANDUSE_FARMLAND = "landuse_farmland"
+    LANDUSE_MEADOW = "landuse_meadow"
+    LANDUSE_SCRUB = "landuse_scrub"
+    NATURAL_WATER = "natural_water"
+    NATURAL_WETLAND = "natural_wetland"
     # Parking types (for OSM import of parking facilities)
     PARKING_SURFACE = "parking_surface"
     PARKING_UNDERGROUND = "parking_underground"
@@ -49,6 +56,10 @@ class ObjectType(Enum):
         elif self in (ObjectType.BUILDING, ObjectType.TREE_BROADLEAF,
                      ObjectType.TREE_CONIFER, ObjectType.BUSH):
             return "road_environment"
+        elif self in (ObjectType.LANDUSE_FOREST, ObjectType.LANDUSE_FARMLAND,
+                     ObjectType.LANDUSE_MEADOW, ObjectType.LANDUSE_SCRUB,
+                     ObjectType.NATURAL_WATER, ObjectType.NATURAL_WETLAND):
+            return "land_use"
         elif self in (ObjectType.PARKING_SURFACE, ObjectType.PARKING_UNDERGROUND,
                      ObjectType.PARKING_MULTI_STOREY, ObjectType.PARKING_ROOFTOP):
             return "parking"
@@ -73,6 +84,13 @@ class ObjectType(Enum):
             ObjectType.TREE_BROADLEAF: {"radius": 2.5, "height": 8.0},
             ObjectType.TREE_CONIFER: {"radius": 1.5, "height": 12.0},
             ObjectType.BUSH: {"radius": 1.0, "height": 1.5},
+            # Land use areas - polygon-based, dimensions are placeholders
+            ObjectType.LANDUSE_FOREST: {"width": 100.0, "length": 100.0, "height": 0.0},
+            ObjectType.LANDUSE_FARMLAND: {"width": 100.0, "length": 100.0, "height": 0.0},
+            ObjectType.LANDUSE_MEADOW: {"width": 100.0, "length": 100.0, "height": 0.0},
+            ObjectType.LANDUSE_SCRUB: {"width": 100.0, "length": 100.0, "height": 0.0},
+            ObjectType.NATURAL_WATER: {"width": 100.0, "length": 100.0, "height": 0.0},
+            ObjectType.NATURAL_WETLAND: {"width": 100.0, "length": 100.0, "height": 0.0},
             # Parking facilities - polygon-based, dimensions are lot size
             ObjectType.PARKING_SURFACE: {"width": 50.0, "length": 30.0, "height": 0.0},
             ObjectType.PARKING_UNDERGROUND: {"width": 50.0, "length": 30.0, "height": 3.0},
@@ -102,6 +120,13 @@ class ObjectType(Enum):
             ObjectType.TREE_BROADLEAF: "circle",
             ObjectType.TREE_CONIFER: "cone",
             ObjectType.BUSH: "circle",
+            # Land use - polygon outlines
+            ObjectType.LANDUSE_FOREST: "polygon",
+            ObjectType.LANDUSE_FARMLAND: "polygon",
+            ObjectType.LANDUSE_MEADOW: "polygon",
+            ObjectType.LANDUSE_SCRUB: "polygon",
+            ObjectType.NATURAL_WATER: "polygon",
+            ObjectType.NATURAL_WETLAND: "polygon",
             # Parking - polygon outlines
             ObjectType.PARKING_SURFACE: "polygon",
             ObjectType.PARKING_UNDERGROUND: "polygon",

@@ -592,6 +592,42 @@ OSM_PARKING_ACCESS_MAP = {
 }
 
 
+def get_landuse_type_from_osm(tags: dict) -> Optional[ObjectType]:
+    """Determine ORBIT land use ObjectType from OSM tags.
+
+    Separate from get_object_type_from_osm() to avoid conflicts with
+    node-level mappings (e.g. natural=scrub -> BUSH for nodes).
+
+    Args:
+        tags: OSM element tags dictionary
+
+    Returns:
+        ObjectType for land use areas, or None if not recognized
+    """
+    landuse = tags.get('landuse')
+    if landuse == 'forest':
+        return ObjectType.LANDUSE_FOREST
+    if landuse == 'farmland':
+        return ObjectType.LANDUSE_FARMLAND
+    if landuse in ('meadow', 'grass'):
+        return ObjectType.LANDUSE_MEADOW
+
+    natural = tags.get('natural')
+    if natural == 'wood':
+        return ObjectType.LANDUSE_FOREST
+    if natural == 'water':
+        return ObjectType.NATURAL_WATER
+    if natural == 'wetland':
+        return ObjectType.NATURAL_WETLAND
+    if natural in ('scrub', 'heath'):
+        return ObjectType.LANDUSE_SCRUB
+
+    if tags.get('waterway') == 'riverbank' or 'water' in tags:
+        return ObjectType.NATURAL_WATER
+
+    return None
+
+
 def get_parking_type_from_osm(tags: dict) -> Optional[ParkingType]:
     """
     Determine parking type from OSM tags.

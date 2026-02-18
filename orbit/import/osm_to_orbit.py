@@ -17,6 +17,7 @@ from orbit.models.polyline import LineType, Polyline, RoadMarkType
 from orbit.models.road import RoadType
 from orbit.models.signal import SignalType
 from orbit.utils import CoordinateTransformer
+from orbit.utils.enum_formatting import format_enum_name
 from orbit.utils.geometry import calculate_path_length, find_point_at_distance_along_path, shorten_geo_points
 from orbit.utils.logging_config import get_logger
 
@@ -1851,6 +1852,58 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
             return obj
 
     return None
+
+
+def create_landuse_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
+                            existing_osm_ids: Set[int] = None) -> Optional[RoadObject]:
+    """Create RoadObject from OSM land use/natural area way.
+
+    Args:
+        osm_way: OSM way representing a land use area
+        transformer: Coordinate transformer
+        existing_osm_ids: Set of already-imported OSM IDs
+
+    Returns:
+        RoadObject or None
+    """
+    from .osm_mappings import get_landuse_type_from_osm
+
+    if existing_osm_ids is not None and osm_way.id in existing_osm_ids:
+        return None
+
+    object_type = get_landuse_type_from_osm(osm_way.tags)
+    if not object_type:
+        return None
+
+    # Convert coords (same pattern as building import)
+    pixel_points = []
+    geo_points = []
+    for lat, lon in osm_way.resolved_coords:
+        px, py = transformer.geo_to_pixel(lon, lat)
+        pixel_points.append((px, py))
+        geo_points.append((lon, lat))
+
+    if len(pixel_points) < 3:
+        return None
+
+    # Centroid
+    avg_x = sum(p[0] for p in pixel_points) / len(pixel_points)
+    avg_y = sum(p[1] for p in pixel_points) / len(pixel_points)
+    avg_lon = sum(p[0] for p in geo_points) / len(geo_points)
+    avg_lat = sum(p[1] for p in geo_points) / len(geo_points)
+
+    obj = RoadObject(
+        position=(avg_x, avg_y),
+        object_type=object_type,
+        geo_position=(avg_lon, avg_lat),
+    )
+    obj.points = pixel_points
+    obj.geo_points = geo_points
+    obj.name = osm_way.tags.get(
+        'name', f"OSM {format_enum_name(object_type)} {osm_way.id}"
+    )
+    obj.osm_tags = dict(osm_way.tags)
+    return obj
 
 
 def create_parking_from_osm(osm_element, transformer: CoordinateTransformer,

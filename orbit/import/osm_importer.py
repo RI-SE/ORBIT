@@ -19,6 +19,7 @@ from .osm_parser import OSMData, OSMParser
 from .osm_query import OverpassAPIClient, OverpassAPIError
 from .osm_to_orbit import (
     calculate_bbox_from_image,
+    create_landuse_from_osm,
     create_object_from_osm,
     create_parking_from_osm,
     create_road_from_osm,
@@ -258,11 +259,15 @@ class OSMImporter:
         if options.detail_level == DetailLevel.FULL:
             self._import_objects(osm_data, options, result)
 
-        # Step 9a: Auto-attach objects to nearest roads
+        # Step 9a: Import land use areas (full only)
+        if options.detail_level == DetailLevel.FULL:
+            self._import_landuse(osm_data, options, result)
+
+        # Step 9b: Auto-attach objects to nearest roads
         if options.detail_level == DetailLevel.FULL:
             self._attach_objects_to_roads(options)
 
-        # Step 9b: Import parking facilities (full only)
+        # Step 9c: Import parking facilities (full only)
         if options.detail_level == DetailLevel.FULL:
             self._import_parking(osm_data, options, result)
 
@@ -367,11 +372,15 @@ class OSMImporter:
         if options.detail_level == DetailLevel.FULL:
             self._import_objects(osm_data, options, result)
 
-        # Step 6a: Auto-attach objects to nearest roads
+        # Step 6a: Import land use areas (full only)
+        if options.detail_level == DetailLevel.FULL:
+            self._import_landuse(osm_data, options, result)
+
+        # Step 6b: Auto-attach objects to nearest roads
         if options.detail_level == DetailLevel.FULL:
             self._attach_objects_to_roads(options)
 
-        # Step 6b: Import parking facilities (full only)
+        # Step 6c: Import parking facilities (full only)
         if options.detail_level == DetailLevel.FULL:
             self._import_parking(osm_data, options, result)
 
@@ -1082,6 +1091,28 @@ class OSMImporter:
             self.project.add_object(obj)
             self.imported_way_ids.add(osm_way.id)
             result.objects_imported += 1
+
+    def _import_landuse(self, osm_data: OSMData, options: ImportOptions,
+                        result: ImportResult) -> None:
+        """Import land use / natural area polygons (full mode only)."""
+        landuse_ways = OSMParser.get_landuse_ways(osm_data)
+
+        if options.verbose:
+            logger.debug("Found %d land use ways in OSM data", len(landuse_ways))
+
+        for osm_way in landuse_ways:
+            obj = create_landuse_from_osm(
+                osm_way, self.transformer, self.imported_way_ids
+            )
+            if obj is None:
+                continue
+
+            self.project.add_object(obj)
+            self.imported_way_ids.add(osm_way.id)
+            result.objects_imported += 1
+
+            if options.verbose:
+                logger.debug("Imported land use '%s' (%s)", obj.name, obj.type.value)
 
     def _import_parking(self, osm_data: OSMData, options: ImportOptions,
                         result: ImportResult) -> None:

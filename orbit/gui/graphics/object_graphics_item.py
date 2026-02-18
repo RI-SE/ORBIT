@@ -51,17 +51,17 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
 
         # Make item selectable, movable (only for point objects), and focusable
         self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsSelectable, True)
-        # Polyline objects (guardrails) and polygon buildings should not be draggable as a whole
-        # Instead, individual points are dragged
+        # Polyline objects (guardrails) and polygon objects should not be draggable as a whole
+        is_polygon = (obj.type.get_shape_type() == "polygon" and obj.points and len(obj.points) >= 3)
         is_polygon_building = (obj.type == ObjectType.BUILDING and obj.points and len(obj.points) >= 3)
-        if obj.type.get_shape_type() != "polyline" and not is_polygon_building:
+        if obj.type.get_shape_type() != "polyline" and not is_polygon_building and not is_polygon:
             self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setAcceptHoverEvents(True)
 
         # Set position and update graphics
-        # Don't use setPos for polylines or polygon buildings - they're in scene coordinates
-        if obj.type.get_shape_type() != "polyline" and not is_polygon_building:
+        # Don't use setPos for polylines or polygon objects - they're in scene coordinates
+        if obj.type.get_shape_type() != "polyline" and not is_polygon_building and not is_polygon:
             self.setPos(obj.position[0], obj.position[1])
 
         self.update_graphics()
@@ -102,6 +102,12 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
                 # Apply orientation
                 if self.obj.type.has_orientation():
                     path = rotate_path(path, self.obj.orientation)
+
+        elif shape_type == "polygon":  # Land use areas, parking
+            if self.obj.points and len(self.obj.points) >= 3:
+                path = create_polygon_path(self.obj.points)
+            else:
+                path = create_tree_circle_path(1.0, self.scale_factor)
 
         elif shape_type == "circle":  # Trees, bush
             radius = self.obj.dimensions.get('radius', 1.0)
