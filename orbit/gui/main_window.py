@@ -52,6 +52,9 @@ class MainWindow(QMainWindow):
         # Cached transformer for real-time coordinate display
         self._cached_transformer = None
 
+        # Session-level last used directory for file dialogs
+        self._last_file_directory: str = str(Path.home())
+
         # Settings
         self.settings = QSettings()
 
@@ -563,6 +566,11 @@ class MainWindow(QMainWindow):
             self.update_scale_display()
             self.statusBar().showMessage("New project created")
 
+    def _remember_directory(self, file_path: str) -> None:
+        """Update last used directory from a file path selected by the user."""
+        if file_path:
+            self._last_file_directory = str(Path(file_path).parent)
+
     def open_project(self):
         """Open an existing project file."""
         if not self.check_unsaved_changes():
@@ -571,11 +579,12 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Open Project",
-            str(Path.home()),
+            self._last_file_directory,
             "ORBIT Projects (*.orbit *.json);;All Files (*)"
         )
 
         if file_path:
+            self._remember_directory(file_path)
             try:
                 self.project = Project.load(Path(file_path))
                 self.current_project_file = Path(file_path)
@@ -642,11 +651,12 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Project As",
-            str(Path.home()),
+            self._last_file_directory,
             "ORBIT Projects (*.orbit);;JSON Files (*.json);;All Files (*)"
         )
 
         if file_path:
+            self._remember_directory(file_path)
             try:
                 self.current_project_file = Path(file_path)
                 self.project.save(self.current_project_file)
@@ -662,11 +672,12 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Load Image",
-            str(Path.home()),
+            self._last_file_directory,
             "Images (*.jpg *.jpeg *.png *.bmp *.tif *.tiff);;All Files (*)"
         )
 
         if file_path:
+            self._remember_directory(file_path)
             self.load_image(Path(file_path))
 
     def load_image(self, image_path: Path):
@@ -805,17 +816,19 @@ class MainWindow(QMainWindow):
         default_name = ""
         if self.project.image_path:
             default_name = self.project.image_path.stem + "_georef.json"
+        default_path = str(Path(self._last_file_directory) / default_name) if default_name else self._last_file_directory
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export Georeferencing Parameters",
-            default_name,
+            default_path,
             "JSON files (*.json);;All files (*.*)"
         )
 
         if not file_path:
             self.statusBar().showMessage("Export cancelled")
             return
+        self._remember_directory(file_path)
 
         # Export
         from pathlib import Path
@@ -914,17 +927,19 @@ class MainWindow(QMainWindow):
         default_name = ""
         if self.project.image_path:
             default_name = self.project.image_path.stem + "_layout_mask.png"
+        default_path = str(Path(self._last_file_directory) / default_name) if default_name else self._last_file_directory
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export Layout Mask",
-            default_name,
+            default_path,
             "PNG files (*.png);;TIFF files (*.tif *.tiff);;All files (*.*)"
         )
 
         if not file_path:
             self.statusBar().showMessage("Export cancelled")
             return
+        self._remember_directory(file_path)
 
         # Run export
         self.statusBar().showMessage("Exporting layout mask...")

@@ -163,14 +163,17 @@ class OpenDriveImportDialog(BaseDialog):
 
     def _browse_file(self):
         """Open file browser to select .xodr file."""
+        start_dir = getattr(self.parent(), '_last_file_directory', '')
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select OpenDrive File",
-            "",
+            start_dir,
             "OpenDrive Files (*.xodr *.xml);;All Files (*)"
         )
         if file_path:
             self.file_path_edit.setText(file_path)
+            if hasattr(self.parent(), '_remember_directory'):
+                self.parent()._remember_directory(file_path)
 
     def _on_coord_mode_changed(self):
         """Handle coordinate mode radio button change."""

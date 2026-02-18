@@ -422,10 +422,13 @@ Longitude: {min_lon:.6f}\u00b0 to {max_lon:.6f}\u00b0<br>
 
     def _browse_file(self):
         """Open file browser to select .osm file."""
+        start_dir = getattr(self.parent(), '_last_file_directory', '')
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select OSM File", "", "OSM Files (*.osm);;All Files (*)")
+            self, "Select OSM File", start_dir, "OSM Files (*.osm);;All Files (*)")
         if file_path:
             self.file_path_edit.setText(file_path)
+            if hasattr(self.parent(), '_remember_directory'):
+                self.parent()._remember_directory(file_path)
 
     def _update_info_text(self):
         """Update info text based on selected import source."""

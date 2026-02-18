@@ -299,10 +299,11 @@ class CSVImportDialog(BaseDialog):
 
     def load_csv_file(self):
         """Load and parse CSV file."""
+        start_dir = getattr(self.parent(), '_last_file_directory', '')
         filepath, _ = QFileDialog.getOpenFileName(
             self,
             "Select CSV File",
-            "",
+            start_dir,
             "CSV Files (*.csv);;All Files (*)"
         )
 
@@ -312,6 +313,8 @@ class CSVImportDialog(BaseDialog):
                 self.reject()
             return
 
+        if hasattr(self.parent(), '_remember_directory'):
+            self.parent()._remember_directory(filepath)
         self.csv_filepath = Path(filepath)
         self.file_label.setText(str(self.csv_filepath.name))
 
