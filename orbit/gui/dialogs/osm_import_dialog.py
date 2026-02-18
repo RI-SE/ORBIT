@@ -1,6 +1,12 @@
 """
 Dialog for OpenStreetMap import configuration.
+
+Supports two modes:
+- Georeferenced mode (has_georef=True): bbox computed from image, optional custom radius
+- Coordinate mode (has_georef=False): user specifies center lat/lon, radius, and scale
 """
+
+from typing import Optional, Tuple
 
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -22,18 +28,22 @@ from .base_dialog import BaseDialog
 class OSMImportDialog(BaseDialog):
     """Dialog for configuring OSM import options."""
 
-    def __init__(self, bbox: tuple[float, float, float, float], parent=None):
+    def __init__(self, bbox: tuple[float, float, float, float],
+                 parent=None, has_georef: bool = True):
         """
         Initialize OSM import dialog.
 
         Args:
-            bbox: Bounding box (min_lat, min_lon, max_lat, max_lon)
+            bbox: Bounding box (min_lat, min_lon, max_lat, max_lon).
+                  Ignored when has_georef is False.
             parent: Parent widget
+            has_georef: Whether georeferencing and image are available
         """
         super().__init__("Import OpenStreetMap Data", parent, min_width=500)
         self.setModal(True)
 
         self.bbox = bbox
+        self.has_georef = has_georef
 
         self.setup_ui()
         self.load_properties()
@@ -72,23 +82,10 @@ class OSMImportDialog(BaseDialog):
         source_group.setLayout(source_layout)
         self.get_main_layout().addWidget(source_group)
 
-        # Bounding box info
-        self.bbox_group = QGroupBox("Import Area")
-        bbox_layout = QVBoxLayout()
-
-        min_lat, min_lon, max_lat, max_lon = self.bbox
-        bbox_text = f"""
-<b>Bounding Box:</b><br>
-Latitude: {min_lat:.6f}° to {max_lat:.6f}°<br>
-Longitude: {min_lon:.6f}° to {max_lon:.6f}°<br>
-<br>
-<i>Data will be queried from OpenStreetMap for this area.</i>
-"""
-        bbox_label = QLabel(bbox_text)
-        bbox_label.setWordWrap(True)
-        bbox_layout.addWidget(bbox_label)
-        self.bbox_group.setLayout(bbox_layout)
-        self.get_main_layout().addWidget(self.bbox_group)
+        if self.has_georef:
+            self._setup_georef_area_ui()
+        else:
+            self._setup_coordinate_area_ui()
 
         # Import mode
         mode_group = QGroupBox("Import Mode")
@@ -178,6 +175,129 @@ Longitude: {min_lon:.6f}° to {max_lon:.6f}°<br>
 
         self.get_main_layout().addLayout(button_layout)
 
+    def _setup_georef_area_ui(self):
+        """Set up import area UI for georeferenced mode (image + control points)."""
+        # Bounding box info
+        self.bbox_group = QGroupBox("Import Area")
+        bbox_layout = QVBoxLayout()
+
+        min_lat, min_lon, max_lat, max_lon = self.bbox
+        bbox_text = f"""
+<b>Bounding Box:</b><br>
+Latitude: {min_lat:.6f}\u00b0 to {max_lat:.6f}\u00b0<br>
+Longitude: {min_lon:.6f}\u00b0 to {max_lon:.6f}\u00b0<br>
+<br>
+<i>Data will be queried from OpenStreetMap for this area.</i>
+"""
+        self.bbox_label = QLabel(bbox_text)
+        self.bbox_label.setWordWrap(True)
+        bbox_layout.addWidget(self.bbox_label)
+
+        # Custom radius option
+        self.custom_radius_check = QCheckBox("Use custom radius from image center")
+        self.custom_radius_check.setToolTip(
+            "Override the image-derived bounding box with a circular area from the image center"
+        )
+        self.custom_radius_check.toggled.connect(self._on_custom_radius_toggled)
+        bbox_layout.addWidget(self.custom_radius_check)
+
+        # Custom radius spin box (initially hidden)
+        radius_layout = QHBoxLayout()
+        self.custom_radius_label = QLabel("Radius:")
+        self.custom_radius_spin = QDoubleSpinBox()
+        self.custom_radius_spin.setRange(50.0, 5000.0)
+        self.custom_radius_spin.setValue(500.0)
+        self.custom_radius_spin.setSingleStep(50.0)
+        self.custom_radius_spin.setSuffix(" m")
+        self.custom_radius_spin.setToolTip("Radius around image center in meters")
+        radius_layout.addWidget(self.custom_radius_label)
+        radius_layout.addWidget(self.custom_radius_spin)
+        radius_layout.addStretch()
+        bbox_layout.addLayout(radius_layout)
+
+        # Warning label for large radius
+        self.custom_radius_warning = QLabel(
+            "<i style='color: orange;'>Large radius may result in slow import</i>"
+        )
+        self.custom_radius_warning.setVisible(False)
+        bbox_layout.addWidget(self.custom_radius_warning)
+        self.custom_radius_spin.valueChanged.connect(self._on_custom_radius_value_changed)
+
+        # Initially hide custom radius widgets
+        self.custom_radius_label.setVisible(False)
+        self.custom_radius_spin.setVisible(False)
+
+        self.bbox_group.setLayout(bbox_layout)
+        self.get_main_layout().addWidget(self.bbox_group)
+
+    def _setup_coordinate_area_ui(self):
+        """Set up import area UI for coordinate mode (no image)."""
+        self.bbox_group = QGroupBox("Import Area (specify coordinates)")
+        coord_layout = QVBoxLayout()
+
+        # Latitude
+        lat_layout = QHBoxLayout()
+        lat_layout.addWidget(QLabel("Center Latitude:"))
+        self.center_lat_spin = QDoubleSpinBox()
+        self.center_lat_spin.setRange(-90.0, 90.0)
+        self.center_lat_spin.setDecimals(6)
+        self.center_lat_spin.setValue(59.347)
+        self.center_lat_spin.setSingleStep(0.001)
+        self.center_lat_spin.setSuffix("\u00b0")
+        lat_layout.addWidget(self.center_lat_spin)
+        lat_layout.addStretch()
+        coord_layout.addLayout(lat_layout)
+
+        # Longitude
+        lon_layout = QHBoxLayout()
+        lon_layout.addWidget(QLabel("Center Longitude:"))
+        self.center_lon_spin = QDoubleSpinBox()
+        self.center_lon_spin.setRange(-180.0, 180.0)
+        self.center_lon_spin.setDecimals(6)
+        self.center_lon_spin.setValue(18.073)
+        self.center_lon_spin.setSingleStep(0.001)
+        self.center_lon_spin.setSuffix("\u00b0")
+        lon_layout.addWidget(self.center_lon_spin)
+        lon_layout.addStretch()
+        coord_layout.addLayout(lon_layout)
+
+        # Radius
+        radius_layout = QHBoxLayout()
+        radius_layout.addWidget(QLabel("Radius:"))
+        self.coord_radius_spin = QDoubleSpinBox()
+        self.coord_radius_spin.setRange(50.0, 5000.0)
+        self.coord_radius_spin.setValue(500.0)
+        self.coord_radius_spin.setSingleStep(50.0)
+        self.coord_radius_spin.setSuffix(" m")
+        self.coord_radius_spin.setToolTip("Radius around center point in meters")
+        self.coord_radius_spin.valueChanged.connect(self._on_coord_radius_value_changed)
+        radius_layout.addWidget(self.coord_radius_spin)
+        radius_layout.addStretch()
+        coord_layout.addLayout(radius_layout)
+
+        # Warning label for large radius
+        self.coord_radius_warning = QLabel(
+            "<i style='color: orange;'>Large radius may result in slow import</i>"
+        )
+        self.coord_radius_warning.setVisible(False)
+        coord_layout.addWidget(self.coord_radius_warning)
+
+        # Scale
+        scale_layout = QHBoxLayout()
+        scale_layout.addWidget(QLabel("Scale:"))
+        self.scale_spin = QDoubleSpinBox()
+        self.scale_spin.setRange(1.0, 20.0)
+        self.scale_spin.setValue(5.0)
+        self.scale_spin.setSingleStep(0.5)
+        self.scale_spin.setSuffix(" px/m")
+        self.scale_spin.setToolTip("Canvas resolution: pixels per meter")
+        scale_layout.addWidget(self.scale_spin)
+        scale_layout.addStretch()
+        coord_layout.addLayout(scale_layout)
+
+        self.bbox_group.setLayout(coord_layout)
+        self.get_main_layout().addWidget(self.bbox_group)
+
     def load_properties(self):
         """Load initial property values."""
         # Set initial radio button states
@@ -194,8 +314,7 @@ Longitude: {min_lon:.6f}° to {max_lon:.6f}°<br>
         self._update_info_text()
 
     def get_import_mode(self) -> str:
-        """
-        Get selected import mode.
+        """Get selected import mode.
 
         Returns:
             'add' or 'replace'
@@ -203,8 +322,7 @@ Longitude: {min_lon:.6f}° to {max_lon:.6f}°<br>
         return 'replace' if self.replace_radio.isChecked() else 'add'
 
     def get_detail_level(self) -> str:
-        """
-        Get selected detail level.
+        """Get selected detail level.
 
         Returns:
             'moderate' or 'full'
@@ -223,9 +341,33 @@ Longitude: {min_lon:.6f}° to {max_lon:.6f}°<br>
         """Get whether to filter roads outside image bounds."""
         return self.filter_outside_image_check.isChecked()
 
-    def get_import_source(self) -> tuple:
+    def get_custom_radius(self) -> Optional[float]:
+        """Get custom radius in meters, or None if not enabled.
+
+        Only applicable in georef mode.
         """
-        Get import source and related data.
+        if self.has_georef and hasattr(self, 'custom_radius_check'):
+            if self.custom_radius_check.isChecked():
+                return self.custom_radius_spin.value()
+        return None
+
+    def get_coordinate_params(self) -> Optional[Tuple[float, float, float, float]]:
+        """Get coordinate mode parameters.
+
+        Returns:
+            Tuple of (lat, lon, radius_m, scale_px_per_m) or None if in georef mode.
+        """
+        if self.has_georef:
+            return None
+        return (
+            self.center_lat_spin.value(),
+            self.center_lon_spin.value(),
+            self.coord_radius_spin.value(),
+            self.scale_spin.value(),
+        )
+
+    def get_import_source(self) -> tuple:
+        """Get import source and related data.
 
         Returns:
             Tuple of ('api', options) or ('file', file_path, options)
@@ -259,12 +401,34 @@ Longitude: {min_lon:.6f}° to {max_lon:.6f}°<br>
         # Update info text
         self._update_info_text()
 
+    def _on_custom_radius_toggled(self, checked: bool):
+        """Handle custom radius checkbox toggle."""
+        self.custom_radius_label.setVisible(checked)
+        self.custom_radius_spin.setVisible(checked)
+        if not checked:
+            self.custom_radius_warning.setVisible(False)
+        else:
+            self._on_custom_radius_value_changed(self.custom_radius_spin.value())
+
+    def _on_custom_radius_value_changed(self, value: float):
+        """Show warning when custom radius exceeds 1000m."""
+        if hasattr(self, 'custom_radius_warning'):
+            self.custom_radius_warning.setVisible(value > 1000)
+
+    def _on_coord_radius_value_changed(self, value: float):
+        """Show warning when coordinate radius exceeds 1000m."""
+        if hasattr(self, 'coord_radius_warning'):
+            self.coord_radius_warning.setVisible(value > 1000)
+
     def _browse_file(self):
         """Open file browser to select .osm file."""
+        start_dir = getattr(self.parent(), '_last_file_directory', '')
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select OSM File", "", "OSM Files (*.osm);;All Files (*)")
+            self, "Select OSM File", start_dir, "OSM Files (*.osm);;All Files (*)")
         if file_path:
             self.file_path_edit.setText(file_path)
+            if hasattr(self.parent(), '_remember_directory'):
+                self.parent()._remember_directory(file_path)
 
     def _update_info_text(self):
         """Update info text based on selected import source."""

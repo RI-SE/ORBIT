@@ -1,0 +1,117 @@
+{
+  "format": "ORBIT Georeferencing Data",
+  "version": "1.0",
+  "creator": {
+    "application": "ORBIT",
+    "application_version": "0.6.0"
+  },
+  "source": {
+    "project_file": "SaroRound_geo.orbit",
+    "image_path": "SaroRound_firstframe.png"
+  },
+  "image_size": [
+    3840,
+    2160
+  ],
+  "transform_method": "homography",
+  "control_points": [
+    {
+      "pixel_x": 2381.792018912278,
+      "pixel_y": 1320.4753679979985,
+      "longitude": 12.008951647166743,
+      "latitude": 57.484585691968014,
+      "name": "lamppost_1a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 1488.809871686169,
+      "pixel_y": 1252.5530009381446,
+      "longitude": 12.009611491094834,
+      "latitude": 57.48449667507564,
+      "name": "lamppost_2d",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 401.9362592048962,
+      "pixel_y": 745.4319953664027,
+      "longitude": 12.010498613144026,
+      "latitude": 57.484161220753606,
+      "name": "feature_3a",
+      "is_validation": true
+    },
+    {
+      "pixel_x": 410.7654029740414,
+      "pixel_y": 766.4537662453198,
+      "longitude": 12.010482270846094,
+      "latitude": 57.484163889839216,
+      "name": "feature_4a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 1843.2996007344987,
+      "pixel_y": 138.41258880729526,
+      "longitude": 12.009176025186662,
+      "latitude": 57.48393191976969,
+      "name": "lamppost_5d",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 2079.9219517245638,
+      "pixel_y": 220.5412203402547,
+      "longitude": 12.008980625165208,
+      "latitude": 57.48399774973272,
+      "name": "lamppost_6a",
+      "is_validation": false
+    }
+  ],
+  "reference_point": {
+    "longitude": 12.009616778767262,
+    "latitude": 57.48422285785648
+  },
+  "transformation_matrix": [
+    [
+      -0.05787857827805166,
+      0.0073918521147409025,
+      76.61748121054768
+    ],
+    [
+      0.010637375162994005,
+      0.06950255066781408,
+      -64.98550347638364
+    ],
+    [
+      3.938304028428042e-05,
+      0.00015028350779375558,
+      1.0
+    ]
+  ],
+  "inverse_matrix": [
+    [
+      -16.60862132334793,
+      -0.8637560277211555,
+      1216.3791118324912
+    ],
+    [
+      2.7650099880848167,
+      12.759102316222693,
+      617.3085871173593
+    ],
+    [
+      0.0002385626025496138,
+      -0.0018834653139458454,
+      0.8593239925745398
+    ]
+  ],
+  "scale_factors": {
+    "x_meters_per_pixel": 0.04966877595910623,
+    "y_meters_per_pixel": 0.059191234222199
+  },
+  "reprojection_error": {
+    "rmse_pixels": 4.492627201528206e-09,
+    "rmse_meters": 0.26959027168797084
+  },
+  "validation_error": {
+    "rmse_pixels": 20.642375387534457,
+    "rmse_meters": 1.1593689228034654
+  }
+}
