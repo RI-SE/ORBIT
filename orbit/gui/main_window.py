@@ -816,7 +816,10 @@ class MainWindow(QMainWindow):
         default_name = ""
         if self.project.image_path:
             default_name = self.project.image_path.stem + "_georef.json"
-        default_path = str(Path(self._last_file_directory) / default_name) if default_name else self._last_file_directory
+        if default_name:
+            default_path = str(Path(self._last_file_directory) / default_name)
+        else:
+            default_path = self._last_file_directory
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
@@ -831,7 +834,6 @@ class MainWindow(QMainWindow):
         self._remember_directory(file_path)
 
         # Export
-        from pathlib import Path
         if export_georeferencing(self.project, Path(file_path), transformer, image_size, self.current_project_file):
             self.statusBar().showMessage(f"Georeferencing exported to {file_path}")
         else:
@@ -927,7 +929,10 @@ class MainWindow(QMainWindow):
         default_name = ""
         if self.project.image_path:
             default_name = self.project.image_path.stem + "_layout_mask.png"
-        default_path = str(Path(self._last_file_directory) / default_name) if default_name else self._last_file_directory
+        if default_name:
+            default_path = str(Path(self._last_file_directory) / default_name)
+        else:
+            default_path = self._last_file_directory
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
