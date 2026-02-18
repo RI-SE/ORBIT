@@ -1,6 +1,6 @@
 # orbit-georef
 
-Standalone Python library for pixel↔geo coordinate transformation using georeferencing parameters exported from ORBIT.
+Standalone Python library for pixel↔geo coordinate transformation using georeferencing parameters exported from ORBIT. Supports transformation to any coordinate system that can be expressed via [PROJ strings](https://proj.org/en/stable/usage/quickstart.html).
 
 ## Installation
 
@@ -15,7 +15,7 @@ pip install -e .
 
 ## Usage
 
-### Load from ORBIT export
+### Load from ORBIT export and convert coordinates to desired coordinate system
 
 ```python
 from orbit_georef import load_georef
@@ -26,10 +26,13 @@ georef = load_georef("georef_params.json")
 # Convert pixel to geographic coordinates
 lon, lat = georef.pixel_to_geo(1234.5, 567.8)
 
-# Convert geographic to pixel coordinates
+# Convert pixel coordinates to a projected coordinate system via a PROJ string (https://proj.org/en/stable/usage/quickstart.html), e.g. WGS84
+x, y = georef.pixel_to_geo(1234.5, 567.8, proj_string="+proj=longlat +datum=WGS84 +no_defs")
+
+# Convert geographic to pixel coordinates (assumes WGS84 as input)
 px, py = georef.geo_to_pixel(12.945, 57.720)
 
-# Batch conversion
+# Batch conversion (as `pixel_to_geo()`, this supports also the optional `proj_string` argument)
 geo_coords = georef.pixels_to_geo_batch([(100, 200), (300, 400), (500, 600)])
 
 # Get scale factors (meters per pixel)
