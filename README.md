@@ -195,7 +195,24 @@ See [Developer Guide](docs/DEV_GUIDE.md) for architecture details.
 
 ## License
 
-ORBIT is licensed under the [GNU General Public License v3.0 (GPL-3.0)](LICENSE).
+The main ORBIT project is licensed under the [GNU General Public License v3.0 (GPL-3.0)](LICENSE).
+
+The separate library **orbit-georef** (located in `orbit-georef/`) is licensed under the [MIT License](orbit-georef/LICENSE), allowing for more permissive use in downstream projects.
+
+### Dependencies and Their Licenses
+
+**Main ORBIT project:**
+- **PyQt6** - GPL v3 (commercial license available)
+- **PyQt6-Qt6** - LGPL v3 (Qt framework bindings)
+- **opencv-python** - Apache 2.0
+- **NumPy** - BSD 3-Clause License
+- **SciPy** - BSD 3-Clause License
+- **lxml** - BSD 3-Clause License
+- **pyproj** - MIT License
+- **xmlschema** - MIT License
+
+**orbit-georef library:**
+- **NumPy** - BSD 3-Clause License
 
 ## Acknowledgement
 <br><div align="center">

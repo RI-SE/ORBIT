@@ -72,4 +72,8 @@ The JSON export format includes:
 
 ## License
 
-MIT
+This library is licensed under the [MIT License](LICENSE).
+
+### Dependencies and Their Licenses
+
+- **NumPy** - BSD 3-Clause License
