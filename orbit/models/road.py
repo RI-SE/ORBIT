@@ -96,6 +96,9 @@ class Road:
     # Surface CRG (OpenCRG) data: list of dicts with file,
     # s_start, s_end, orientation, mode, purpose, etc.
     surface_crg: List[Dict[str, Any]] = field(default_factory=list)
+    # Original OSM tags for round-trip export
+    osm_tags: Optional[Dict[str, str]] = None
+    osm_way_id: Optional[int] = None
 
     def add_polyline(self, polyline_id: str) -> None:
         """Add a polyline to this road."""
@@ -576,6 +579,10 @@ class Road:
             data['lane_offset'] = [list(lo) for lo in self.lane_offset]
         if self.surface_crg:
             data['surface_crg'] = self.surface_crg
+        if self.osm_tags:
+            data['osm_tags'] = self.osm_tags
+        if self.osm_way_id is not None:
+            data['osm_way_id'] = self.osm_way_id
         return data
 
     @classmethod
@@ -621,7 +628,9 @@ class Road:
             elevation_profile=[tuple(e) for e in data.get('elevation_profile', [])],
             superelevation_profile=[tuple(e) for e in data.get('superelevation_profile', [])],
             lane_offset=[tuple(e) for e in data.get('lane_offset', [])],
-            surface_crg=data.get('surface_crg', [])
+            surface_crg=data.get('surface_crg', []),
+            osm_tags=data.get('osm_tags'),
+            osm_way_id=data.get('osm_way_id'),
         )
 
         # Backward compatibility: migrate old format to lane_sections

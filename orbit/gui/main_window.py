@@ -196,6 +196,10 @@ class MainWindow(QMainWindow):
         self.export_layout_mask_action.setStatusTip("Export lane segmentation mask and metadata")
         self.export_layout_mask_action.triggered.connect(self.export_layout_mask)
 
+        self.export_osm_action = QAction("Export to &OSM...", self)
+        self.export_osm_action.setStatusTip("Export map data to OpenStreetMap format (.osm)")
+        self.export_osm_action.triggered.connect(self.export_to_osm)
+
         self.import_osm_action = QAction("Import &OpenStreetMap Data...", self)
         self.import_osm_action.setShortcut(QKeySequence("Ctrl+Shift+I"))
         self.import_osm_action.setStatusTip("Import road network from OpenStreetMap (API or file)")
@@ -382,6 +386,7 @@ class MainWindow(QMainWindow):
         # Export submenu
         export_menu = file_menu.addMenu("&Export")
         export_menu.addAction(self.export_action)
+        export_menu.addAction(self.export_osm_action)
         export_menu.addAction(self.export_georef_action)
         export_menu.addAction(self.export_layout_mask_action)
         file_menu.addSeparator()
@@ -762,6 +767,61 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Export completed successfully")
         else:
             self.statusBar().showMessage("Export cancelled")
+
+    def export_to_osm(self):
+        """Export project to OpenStreetMap XML format (.osm)."""
+        from pathlib import Path as _Path
+
+        from orbit.export.osm_writer import export_to_osm
+
+        # Check if any element has geo coordinates
+        has_geo = any(
+            project_polyline.has_geo_coords()
+            for road in self.project.roads
+            if road.centerline_id
+            for project_polyline in [self.project.get_polyline(road.centerline_id)]
+            if project_polyline is not None
+        )
+        if not has_geo:
+            show_warning(
+                self,
+                "Cannot export to OSM: No roads with geographic coordinates found.\n"
+                "Import from OSM or set control points first.",
+                "No Geo Data",
+            )
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export to OSM",
+            self._last_file_directory,
+            "OpenStreetMap Files (*.osm);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        self._remember_directory(file_path)
+
+        try:
+            # Create transformer for pixel→geo conversion (needed for connecting
+            # roads that only have pixel coordinates, e.g. roundabout entries/exits)
+            from orbit.utils.coordinate_transform import create_transformer
+            transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+                use_validation=True,
+            )
+
+            success, message, _stats = export_to_osm(
+                self.project, _Path(file_path), transformer=transformer
+            )
+            if success:
+                show_info(self, message, "OSM Export")
+                self.statusBar().showMessage("OSM export completed")
+            else:
+                show_warning(self, message, "OSM Export")
+        except Exception as e:
+            show_error(self, f"OSM export failed:\n{e}", "Export Error")
 
     def export_georeferencing(self):
         """Export georeferencing parameters to JSON file."""

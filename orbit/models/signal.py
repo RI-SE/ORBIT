@@ -178,6 +178,8 @@ class Signal:
         self.custom_subtype: Optional[str] = None
         # Lane validity - list of lane IDs this signal applies to (None = all lanes)
         self.validity_lanes: Optional[List[int]] = None
+        # Original OSM tags for round-trip export
+        self.osm_tags: Optional[dict] = None
 
     def has_geo_coords(self) -> bool:
         """Check if this signal has geographic coordinates stored."""
@@ -255,6 +257,8 @@ class Signal:
         # Lane validity
         if self.validity_lanes is not None:
             data['validity_lanes'] = self.validity_lanes
+        if self.osm_tags:
+            data['osm_tags'] = self.osm_tags
         return data
 
     @classmethod
@@ -351,6 +355,8 @@ class Signal:
         signal.custom_subtype = data.get('custom_subtype')
         # Lane validity
         signal.validity_lanes = data.get('validity_lanes')
+        # OSM tags
+        signal.osm_tags = data.get('osm_tags')
         return signal
 
     def get_display_name(self) -> str:

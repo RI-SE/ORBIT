@@ -187,6 +187,8 @@ class RoadObject:
         # OpenDRIVE orientation angles for round-trip preservation
         self.pitch: float = 0.0  # Pitch angle in radians
         self.roll: float = 0.0  # Roll angle in radians
+        # Original OSM tags for round-trip export
+        self.osm_tags: Optional[Dict[str, str]] = None
 
     def has_geo_coords(self) -> bool:
         """Check if this object has geographic coordinates stored."""
@@ -271,6 +273,8 @@ class RoadObject:
             data['pitch'] = self.pitch
         if self.roll != 0.0:
             data['roll'] = self.roll
+        if self.osm_tags:
+            data['osm_tags'] = self.osm_tags
         return data
 
     @classmethod
@@ -310,6 +314,8 @@ class RoadObject:
         # OpenDRIVE orientation angles
         obj.pitch = data.get('pitch', 0.0)
         obj.roll = data.get('roll', 0.0)
+        # OSM tags
+        obj.osm_tags = data.get('osm_tags')
 
         return obj
 

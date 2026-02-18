@@ -1376,6 +1376,8 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
 
         road.lane_sections.append(section)
 
+        road.osm_tags = dict(osm_way.tags)
+        road.osm_way_id = osm_way.id
         return (road, centerline)
 
     # Normal road processing (not a path)
@@ -1542,6 +1544,8 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
 
     road.lane_sections.append(section)
 
+    road.osm_tags = dict(osm_way.tags)
+    road.osm_way_id = osm_way.id
     return (road, centerline)
 
 
@@ -1739,6 +1743,7 @@ def create_signal_from_osm(osm_node: OSMNode, transformer: CoordinateTransformer
     # Note: Signal will be automatically attached to a road if its OSM node is part of a road way
     # during the import process. Manual adjustment can be done in the signal properties dialog.
 
+    signal.osm_tags = dict(osm_node.tags)
     return signal
 
 
@@ -1775,6 +1780,7 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
             geo_position=geo_position,  # Store geo coords as source of truth
         )
         obj.name = osm_element.tags.get('name', f"OSM Object {osm_element.id}")
+        obj.osm_tags = dict(osm_element.tags)
         return obj
 
     # Handle ways (polyline objects like guardrails or buildings)
@@ -1801,6 +1807,7 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
             obj.points = pixel_points
             obj.geo_points = geo_points  # Store geo coords as source of truth
             obj.name = osm_element.tags.get('name', f"OSM Guardrail {osm_element.id}")
+            obj.osm_tags = dict(osm_element.tags)
             return obj
 
         # For buildings, store polygon and use centroid as position
@@ -1840,6 +1847,7 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
                 'height': 6.0  # Default height in meters
             }
 
+            obj.osm_tags = dict(osm_element.tags)
             return obj
 
     return None
@@ -1882,6 +1890,7 @@ def create_parking_from_osm(osm_element, transformer: CoordinateTransformer,
             geo_position=geo_position,
         )
         parking.name = osm_element.tags.get('name', f"Parking {osm_element.id}")
+        parking.osm_tags = dict(osm_element.tags)
 
         # Extract capacity if available
         if 'capacity' in osm_element.tags:
@@ -1918,6 +1927,7 @@ def create_parking_from_osm(osm_element, transformer: CoordinateTransformer,
             geo_position=(avg_lon, avg_lat),
         )
         parking.name = osm_element.tags.get('name', f"Parking {osm_element.id}")
+        parking.osm_tags = dict(osm_element.tags)
 
         # Store polygon points
         parking.points = pixel_points
