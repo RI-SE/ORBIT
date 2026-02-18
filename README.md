@@ -201,7 +201,7 @@ The separate library **orbit-georef** (located in `orbit-georef/`) is licensed u
 
 ### Dependencies and Their Licenses
 
-**Main ORBIT project:**
+**Main ORBIT project (runtime):**
 - **PyQt6** - GPL v3 (commercial license available)
 - **PyQt6-Qt6** - LGPL v3 (Qt framework bindings)
 - **opencv-python** - Apache 2.0
@@ -211,8 +211,19 @@ The separate library **orbit-georef** (located in `orbit-georef/`) is licensed u
 - **pyproj** - MIT License
 - **xmlschema** - MIT License
 
-**orbit-georef library:**
+**Main ORBIT project (development, optional):**
+- **pytest** - MIT License
+- **pytest-cov** - MIT License
+- **pytest-mock** - MIT License
+- **ruff** - MIT License
+
+**orbit-georef library (runtime):**
 - **NumPy** - BSD 3-Clause License
+- **pyproj** - MIT License
+
+**orbit-georef library (development, optional):**
+- **pytest** - MIT License
+- **pytest-cov** - MIT License
 
 ## Acknowledgement
 <br><div align="center">

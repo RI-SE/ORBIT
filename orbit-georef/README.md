@@ -2,6 +2,12 @@
 
 Standalone Python library for pixel↔geo coordinate transformation using georeferencing parameters exported from ORBIT. Supports transformation to any coordinate system that can be expressed via [PROJ strings](https://proj.org/en/stable/usage/quickstart.html).
 
+> [!NOTE]
+> This open source project is maintained by [RISE Research Institutes of Sweden](https://ri.se/). See [LICENSE](LICENSE) file for open source license information.
+
+> [!NOTE]
+> This is a beta version. Bugs and missing features should be expected. Github issues can be added for bug reports or feature requests.
+
 ## Installation
 
 ```bash
@@ -79,4 +85,24 @@ This library is licensed under the [MIT License](LICENSE).
 
 ### Dependencies and Their Licenses
 
+**Runtime dependencies:**
 - **NumPy** - BSD 3-Clause License
+- **pyproj** - MIT License
+
+**Development dependencies (optional):**
+- **pytest** - MIT License
+- **pytest-cov** - MIT License
+
+## Acknowledgement
+
+<br><div align="center">
+  <img src="../docs/synergies.svg" alt="Synergies logo" width="200"/>
+</div>
+
+This package is developed as part of the [SYNERGIES](https://synergies-ccam.eu/) project.
+
+<br><div align="center">
+  <img src="../docs/funded_by_eu.svg" alt="Funded by EU" width="200"/>
+</div>
+
+Funded by the European Union. Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or European Climate, Infrastructure and Environment Executive Agency (CINEA). Neither the European Union nor the granting authority can be held responsible for them.
