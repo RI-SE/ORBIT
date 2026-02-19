@@ -214,7 +214,7 @@ def should_import_highway(highway_type: str) -> bool:
         True if should be imported
     """
     excluded_types = {
-        'steps', 'pedestrian',
+        'steps', 'pedestrian', 'platform',
         'bridleway', 'corridor', 'construction', 'proposed'
     }
     return highway_type not in excluded_types
@@ -510,6 +510,43 @@ OSM_SURFACE_TO_MATERIAL = {
     'wood': (0.6, 0.02, 'wood'),
     'metal': (0.7, 0.01, 'metal'),
 }
+
+
+# OSM smoothness values mapped to roughness adjustments.
+# These modify the base roughness from the surface material.
+# See https://wiki.openstreetmap.org/wiki/Key:smoothness
+OSM_SMOOTHNESS_TO_ROUGHNESS = {
+    'excellent': 0.005,
+    'good': 0.01,
+    'intermediate': 0.025,
+    'bad': 0.05,
+    'very_bad': 0.08,
+    'horrible': 0.12,
+    'very_horrible': 0.15,
+    'impassable': 0.20,
+}
+
+
+def get_roughness_smoothness(roughness: float) -> str | None:
+    """Reverse-lookup: get OSM smoothness label from a roughness value."""
+    for tag, val in OSM_SMOOTHNESS_TO_ROUGHNESS.items():
+        if abs(val - roughness) < 1e-6:
+            return tag
+    return None
+
+
+def get_smoothness_roughness(smoothness_tag: str) -> float | None:
+    """Get roughness value from OSM smoothness tag.
+
+    Args:
+        smoothness_tag: Value of OSM smoothness tag
+
+    Returns:
+        Roughness value or None if unknown
+    """
+    if not smoothness_tag:
+        return None
+    return OSM_SMOOTHNESS_TO_ROUGHNESS.get(smoothness_tag.strip().lower())
 
 
 def get_surface_material(surface_tag: str) -> tuple[float, float, str] | None:

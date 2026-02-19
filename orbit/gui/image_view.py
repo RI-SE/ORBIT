@@ -3347,25 +3347,24 @@ class ImageView(QGraphicsView):
 
                 # Check if Ctrl+Click on a line segment to insert a point
                 elif event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-                    # First check guardrails
+                    # First check object polylines and polygons
                     for object_id, object_item in self.object_items.items():
-                        if object_item.obj.type.get_shape_type() == "polyline":
+                        is_polyline = object_item.obj.type.get_shape_type() == "polyline"
+                        is_polygon = object_item._is_polygon_with_points()
+                        if is_polyline or is_polygon:
                             segment_index = object_item.get_segment_at(scene_pos)
                             if segment_index >= 0:
-                                insert_index = segment_index + 1
-                                obj = object_item.obj
-                                # Insert point after the first point of the segment
-                                obj.points.insert(insert_index, (scene_pos.x(), scene_pos.y()))
-                                # Update validity length
-                                if obj.points and len(obj.points) >= 2:
-                                    total_length = 0.0
-                                    for i in range(len(obj.points) - 1):
-                                        x1, y1 = obj.points[i]
-                                        x2, y2 = obj.points[i + 1]
-                                        total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-                                    obj.validity_length = total_length
-                                object_item.update_graphics()
-                                self.object_modified.emit(object_id)
+                                self._insert_object_point(object_id, segment_index, scene_pos)
+                                # Update validity length for guardrails
+                                if is_polyline:
+                                    obj = object_item.obj
+                                    if obj.points and len(obj.points) >= 2:
+                                        total_length = 0.0
+                                        for i in range(len(obj.points) - 1):
+                                            x1, y1 = obj.points[i]
+                                            x2, y2 = obj.points[i + 1]
+                                            total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+                                        obj.validity_length = total_length
                                 return
 
                     # Then check polylines
@@ -3969,6 +3968,16 @@ class ImageView(QGraphicsView):
                 if item.is_at_position(scene_pos):
                     self.junction_edit_requested.emit(junction_id)
                     return
+
+            # Check if double-clicking on a polygon/polyline edge to insert vertex
+            for object_id, item in self.object_items.items():
+                if item._is_polygon_with_points() or item.obj.type.get_shape_type() == "polyline":
+                    # Only insert if clicking on an edge (not a vertex)
+                    if item.get_point_at(scene_pos) < 0:
+                        segment_index = item.get_segment_at(scene_pos)
+                        if segment_index >= 0:
+                            self._insert_object_point(object_id, segment_index, scene_pos)
+                            return
 
             # Check if double-clicking on an object to edit
             for object_id, item in self.object_items.items():

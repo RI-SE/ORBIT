@@ -287,7 +287,8 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
 
     def hoverEnterEvent(self, event):
         """Change cursor on hover."""
-        if self.obj.type.get_shape_type() != "polyline":
+        shape = self.obj.type.get_shape_type()
+        if shape not in ("polyline",) and not self._is_polygon_with_points():
             self.setCursor(Qt.CursorShape.OpenHandCursor)
         super().hoverEnterEvent(event)
 
@@ -297,7 +298,18 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         super().hoverLeaveEvent(event)
 
     def mousePressEvent(self, event):
-        """Handle mouse press."""
+        """Handle mouse press.
+
+        For polygon objects, ignore the event unless clicking on a vertex
+        handle, so the view can use it for panning. Selection and dragging
+        of polygon vertices is handled by the ImageView mouse handler.
+        """
+        if self._is_polygon_with_points() and event.button() == Qt.MouseButton.LeftButton:
+            scene_pos = event.scenePos()
+            if self.get_point_at(scene_pos) < 0:
+                # Not near a vertex — let the event pass through for panning
+                event.ignore()
+                return
         if event.button() == Qt.MouseButton.LeftButton:
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
         super().mousePressEvent(event)

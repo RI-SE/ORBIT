@@ -31,6 +31,7 @@ from .osm_mappings import (
     get_path_width_from_osm,
     get_road_type_for_highway,
     get_signal_type_from_osm,
+    get_smoothness_roughness,
     get_surface_material,
     is_oneway,
     is_reverse_oneway,
@@ -1455,6 +1456,18 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
     surface_material = None
     if 'surface' in osm_way.tags:
         surface_material = get_surface_material(osm_way.tags['surface'])
+
+    # Apply smoothness tag to override roughness if available
+    if 'smoothness' in osm_way.tags:
+        smoothness_roughness = get_smoothness_roughness(osm_way.tags['smoothness'])
+        if smoothness_roughness is not None:
+            if surface_material:
+                # Override roughness from surface with smoothness-derived value
+                friction, _, surface_name = surface_material
+                surface_material = (friction, smoothness_roughness, surface_name)
+            else:
+                # No surface tag — use smoothness alone with default friction
+                surface_material = (0.8, smoothness_roughness, 'unknown')
 
     # Create single lane section spanning entire road
     section = LaneSection(
