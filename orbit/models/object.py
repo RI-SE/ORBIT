@@ -430,8 +430,10 @@ class RoadObject:
         if not centerline_points or len(centerline_points) < 2:
             return None, None
 
-        # Use first point for polyline objects, position for point objects
-        if self.points:
+        # Use centroid for polygon objects, first point for polylines, position for points
+        if self.points and self.type.get_shape_type() == "polygon":
+            px, py = self.position  # centroid stored at import time
+        elif self.points:
             px, py = self.points[0]
         else:
             px, py = self.position

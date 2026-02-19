@@ -675,7 +675,10 @@ class OpenDriveWriter:
         export_objects = getattr(self, '_export_objects', None)
         if export_objects is None:
             export_objects = self._get_export_objects()
-        objects = self.object_builder.create_objects(road, export_objects, centerline_points_pixel)
+        objects = self.object_builder.create_objects(
+            road, export_objects, centerline_points_pixel,
+            geometry_elements=geometry_elements, road_length=road_length,
+        )
 
         # Create parking objects for this road
         parking_objects = self.parking_builder.create_parking_objects(

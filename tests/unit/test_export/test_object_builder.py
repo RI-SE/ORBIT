@@ -78,19 +78,23 @@ class TestCalculatePixelLength:
 
 
 class TestCalculateRoadLengthMeters:
-    """Tests for _calculate_road_length_meters method."""
+    """Tests for _get_meter_centerline method."""
 
     def test_no_transformer_returns_zero(self):
         """Returns 0 when no transformer."""
         builder = ObjectBuilder()
         mock_road = Mock()
-        assert builder._calculate_road_length_meters(mock_road) == 0.0
+        pts, length = builder._get_meter_centerline(mock_road)
+        assert length == 0.0
+        assert pts == []
 
     def test_no_curve_fitter_returns_zero(self):
         """Returns 0 when no curve fitter."""
         builder = ObjectBuilder(transformer=Mock())
         mock_road = Mock()
-        assert builder._calculate_road_length_meters(mock_road) == 0.0
+        pts, length = builder._get_meter_centerline(mock_road)
+        assert length == 0.0
+        assert pts == []
 
     def test_no_centerline_returns_zero(self):
         """Returns 0 when centerline not in polyline map."""
@@ -104,7 +108,9 @@ class TestCalculateRoadLengthMeters:
         mock_road = Mock()
         mock_road.centerline_id = "cl1"
 
-        assert builder._calculate_road_length_meters(mock_road) == 0.0
+        pts, length = builder._get_meter_centerline(mock_road)
+        assert length == 0.0
+        assert pts == []
 
     def test_calculates_length_from_pixel_coords(self):
         """Calculates road length from pixel coordinates."""
@@ -128,7 +134,7 @@ class TestCalculateRoadLengthMeters:
         mock_road = Mock()
         mock_road.centerline_id = "cl1"
 
-        length = builder._calculate_road_length_meters(mock_road)
+        pts, length = builder._get_meter_centerline(mock_road)
         assert length == 10.0
 
     def test_uses_geo_points_when_available(self):
@@ -153,7 +159,7 @@ class TestCalculateRoadLengthMeters:
         mock_road = Mock()
         mock_road.centerline_id = "cl1"
 
-        length = builder._calculate_road_length_meters(mock_road)
+        pts, length = builder._get_meter_centerline(mock_road)
         assert length == 15.0
         mock_transformer.latlon_to_meters.assert_called()
 
