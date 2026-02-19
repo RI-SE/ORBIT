@@ -467,16 +467,26 @@ class TestCreateObjectOutline:
         corners = result.findall('cornerLocal')
         assert len(corners) == 3
 
-    def test_building_rectangular_outline(self, builder):
-        """Building gets rectangular outline."""
+    def test_building_polygon_outline(self, builder):
+        """Building gets polygon outline from its points."""
         obj = RoadObject(position=(0, 0), object_type=ObjectType.BUILDING)
         obj.dimensions = {'width': 20.0, 'length': 30.0, 'height': 10.0}
+        obj.points = [(0, 0), (10, 0), (10, 5), (5, 5), (5, 10), (0, 10)]
 
         result = builder._create_object_outline(obj)
 
         assert result is not None
         corners = result.findall('cornerLocal')
-        assert len(corners) == 4
+        assert len(corners) == 6
+
+    def test_building_without_points_no_outline(self, builder):
+        """Building without polygon points gets no outline."""
+        obj = RoadObject(position=(0, 0), object_type=ObjectType.BUILDING)
+        obj.dimensions = {'width': 20.0, 'length': 30.0, 'height': 10.0}
+
+        result = builder._create_object_outline(obj)
+
+        assert result is None
 
     def test_tree_broadleaf_circular_outline(self, builder):
         """Broadleaf tree gets circular outline."""

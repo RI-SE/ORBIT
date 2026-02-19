@@ -116,7 +116,7 @@ class ObjectType(Enum):
         shape_map = {
             ObjectType.LAMPPOST: "cylinder",
             ObjectType.GUARDRAIL: "polyline",
-            ObjectType.BUILDING: "rectangle",
+            ObjectType.BUILDING: "polygon",
             ObjectType.TREE_BROADLEAF: "circle",
             ObjectType.TREE_CONIFER: "cone",
             ObjectType.BUSH: "circle",

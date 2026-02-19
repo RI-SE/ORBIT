@@ -129,9 +129,9 @@ class TestObjectTypeGetShapeType:
         """Test guardrail shape is polyline."""
         assert ObjectType.GUARDRAIL.get_shape_type() == "polyline"
 
-    def test_building_is_rectangle(self):
-        """Test building shape is rectangle."""
-        assert ObjectType.BUILDING.get_shape_type() == "rectangle"
+    def test_building_is_polygon(self):
+        """Test building shape is polygon."""
+        assert ObjectType.BUILDING.get_shape_type() == "polygon"
 
     def test_tree_broadleaf_is_circle(self):
         """Test broadleaf tree shape is circle."""

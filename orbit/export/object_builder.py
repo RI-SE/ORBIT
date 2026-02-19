@@ -391,9 +391,6 @@ class ObjectBuilder:
         elif obj.type == ObjectType.GUARDRAIL:
             self._create_polyline_outline(outline, obj)
 
-        elif obj.type == ObjectType.BUILDING:
-            self._create_rectangular_outline(outline, obj)
-
         elif obj.type in (ObjectType.TREE_BROADLEAF, ObjectType.BUSH):
             self._create_circular_outline(outline, obj, 8)
 
