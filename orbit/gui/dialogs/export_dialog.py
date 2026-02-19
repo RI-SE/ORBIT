@@ -26,6 +26,8 @@ from PyQt6.QtWidgets import (
 from orbit.export import CoordinateTransformer, create_transformer, export_to_opendrive, validate_opendrive_file
 from orbit.export.reference_validator import validate_references
 from orbit.models import Project
+from orbit.models.object import ObjectType
+from orbit.utils.enum_formatting import format_enum_name
 from orbit.utils.logging_config import get_logger
 
 from ..utils.message_helpers import show_error, show_info, show_warning
@@ -153,6 +155,10 @@ class ExportDialog(BaseDialog):
         )
         options_layout.addRow("Signal Codes:", self.use_german_codes_checkbox)
 
+        # Feature categories (only shown if project has non-road objects)
+        self.feature_checkboxes: dict[ObjectType, QCheckBox] = {}
+        self._setup_feature_categories()
+
         # Output file selection
         output_layout = QHBoxLayout()
         self.output_path_edit = QLineEdit()
@@ -274,6 +280,48 @@ class ExportDialog(BaseDialog):
             self.status_label.setText(
                 "<b style='color: orange;'>Cannot export: Georeferencing required</b>"
             )
+
+    def _setup_feature_categories(self):
+        """Add checkboxes for each object type present in the project."""
+        # Count objects per type
+        type_counts: dict[ObjectType, int] = {}
+        for obj in self.project.objects:
+            type_counts[obj.type] = type_counts.get(obj.type, 0) + 1
+
+        if not type_counts:
+            return
+
+        from PyQt6.QtWidgets import QGridLayout
+        feature_group = QGroupBox("Feature Categories")
+        feature_layout = QGridLayout()
+
+        row, col = 0, 0
+        for obj_type in ObjectType:
+            count = type_counts.get(obj_type)
+            if not count:
+                continue
+            label = f"{format_enum_name(obj_type)} ({count})"
+            cb = QCheckBox(label)
+            cb.setChecked(True)
+            self.feature_checkboxes[obj_type] = cb
+            feature_layout.addWidget(cb, row, col)
+            col += 1
+            if col >= 3:
+                col = 0
+                row += 1
+
+        feature_group.setLayout(feature_layout)
+        self.get_main_layout().addWidget(feature_group)
+
+    def _get_export_object_types(self) -> set | None:
+        """Get the set of checked object types, or None if all are checked."""
+        if not self.feature_checkboxes:
+            return None
+        checked = {ot for ot, cb in self.feature_checkboxes.items() if cb.isChecked()}
+        # If all are checked, return None (export everything)
+        if len(checked) == len(self.feature_checkboxes):
+            return None
+        return checked
 
     def on_preserve_geometry_changed(self):
         """Handle preserve geometry checkbox change."""
@@ -412,7 +460,8 @@ class ExportDialog(BaseDialog):
                 use_german_codes=self.use_german_codes_checkbox.isChecked(),
                 offset_x=offset_x,
                 offset_y=offset_y,
-                geo_reference_string=geo_reference_string
+                geo_reference_string=geo_reference_string,
+                export_object_types=self._get_export_object_types()
             )
 
             if success:

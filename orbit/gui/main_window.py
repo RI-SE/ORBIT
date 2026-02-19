@@ -107,6 +107,7 @@ class MainWindow(QMainWindow):
         self.image_view.object_placement_requested.connect(self.on_object_placement_requested)
         self.image_view.parking_placement_requested.connect(self.on_parking_placement_requested)
         self.image_view.parking_polygon_completed.connect(self.on_parking_polygon_completed)
+        self.image_view.object_polygon_completed.connect(self.on_object_polygon_completed)
         self.image_view.section_split_requested.connect(self.on_section_split_requested)
         self.image_view.road_split_requested.connect(self.on_road_split_requested)
         self.image_view.section_modified.connect(self.on_section_modified)
@@ -1581,6 +1582,10 @@ class MainWindow(QMainWindow):
 
                 if object_type.get_shape_type() == "polyline":
                     self.statusBar().showMessage("Click and drag to draw guardrail. Release to finish.")
+                elif object_type.get_shape_type() == "polygon":
+                    self.statusBar().showMessage(
+                        "Click to place polygon vertices. Double-click or Enter to finish. Esc to cancel."
+                    )
                 else:
                     self.statusBar().showMessage(f"Click on the map to place {object_type.value.replace('_', ' ')}")
         else:
@@ -3427,6 +3432,69 @@ class MainWindow(QMainWindow):
 
         self.update_elements_tree()
         self.statusBar().showMessage("Guardrail added. Click and drag to add another or toggle off to finish.")
+
+    def on_object_polygon_completed(self, points: list, object_type):
+        """Handle object polygon completion from ImageView (for land use etc.)."""
+        from orbit.models import RoadObject
+
+        if len(points) < 3:
+            self.statusBar().showMessage("Polygon needs at least 3 points")
+            return
+
+        # Calculate centroid for position
+        centroid_x = sum(p[0] for p in points) / len(points)
+        centroid_y = sum(p[1] for p in points) / len(points)
+
+        # Create object with polygon points
+        obj = RoadObject(
+            object_id=self.project.next_id('object'),
+            position=(centroid_x, centroid_y),
+            object_type=object_type
+        )
+        obj.points = list(points)
+
+        # Find closest road and assign
+        closest_road_id = self.project.find_closest_road((centroid_x, centroid_y))
+        if closest_road_id:
+            obj.road_id = closest_road_id
+            road = self.project.get_road(closest_road_id)
+            if road and road.centerline_id:
+                centerline = self.project.get_polyline(road.centerline_id)
+                if centerline:
+                    s, t = obj.calculate_s_t_position(centerline.points)
+                    obj.s_position = s
+                    obj.t_offset = t
+
+        # Convert pixel coords to geo coords if transformer available
+        if self._cached_transformer:
+            lon, lat = self._cached_transformer.pixel_to_geo(centroid_x, centroid_y)
+            obj.geo_position = (lon, lat)
+            geo_points = []
+            for px, py in points:
+                lon, lat = self._cached_transformer.pixel_to_geo(px, py)
+                geo_points.append((lon, lat))
+            obj.geo_points = geo_points
+
+        # Get scale factor for graphics
+        scale_factor = 0.0
+        if hasattr(self, '_cached_transformer') and self._cached_transformer:
+            scale_x, scale_y = self._cached_transformer.get_scale_factor()
+            scale_factor = scale_x if scale_x else 0.0
+
+        # Add to project and view
+        self.project.add_object(obj)
+        self.image_view.add_object_graphics(obj, scale_factor)
+
+        # Push undo command
+        from .undo_commands import AddObjectCommand
+        cmd = AddObjectCommand(self, obj)
+        self.undo_stack.push(cmd)
+
+        self.update_elements_tree()
+        self.statusBar().showMessage(
+            f"Added {obj.get_display_name()}. "
+            f"Draw another or toggle off to finish."
+        )
 
     def on_object_modified(self, object_id):
         """Handle object modified signal (legacy, for non-undo modifications)."""

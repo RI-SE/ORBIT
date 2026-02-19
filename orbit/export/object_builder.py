@@ -188,6 +188,36 @@ class ObjectBuilder:
             object_elem.set('height', f"{obj.dimensions.get('height', 2.0):.2f}")
             object_elem.set('radius', f"{obj.dimensions.get('radius', 1.0):.2f}")
 
+        elif obj.type == ObjectType.LANDUSE_FOREST:
+            object_elem.set('type', 'vegetation')
+            object_elem.set('subtype', 'forest')
+            object_elem.set('height', '0.00')
+
+        elif obj.type == ObjectType.LANDUSE_FARMLAND:
+            object_elem.set('type', 'land')
+            object_elem.set('subtype', 'farmland')
+            object_elem.set('height', '0.00')
+
+        elif obj.type == ObjectType.LANDUSE_MEADOW:
+            object_elem.set('type', 'vegetation')
+            object_elem.set('subtype', 'meadow')
+            object_elem.set('height', '0.00')
+
+        elif obj.type == ObjectType.LANDUSE_SCRUB:
+            object_elem.set('type', 'vegetation')
+            object_elem.set('subtype', 'scrub')
+            object_elem.set('height', '0.00')
+
+        elif obj.type == ObjectType.NATURAL_WATER:
+            object_elem.set('type', 'water')
+            object_elem.set('subtype', '')
+            object_elem.set('height', '0.00')
+
+        elif obj.type == ObjectType.NATURAL_WETLAND:
+            object_elem.set('type', 'water')
+            object_elem.set('subtype', 'wetland')
+            object_elem.set('height', '0.00')
+
     def _create_object_outline(self, obj: RoadObject) -> Optional[etree.Element]:
         """
         Create outline geometry for an object.
@@ -210,6 +240,9 @@ class ObjectBuilder:
 
         elif obj.type == ObjectType.TREE_CONIFER:
             self._create_triangular_outline(outline, obj)
+
+        elif obj.type.get_shape_type() == "polygon":
+            self._create_polygon_outline(outline, obj)
 
         return outline if len(outline) > 0 else None
 
@@ -277,6 +310,44 @@ class ObjectBuilder:
             corner.set('v', f'{v:.4f}')
             corner.set('z', '0.0')
             corner.set('height', f'{height:.2f}')
+
+    def _create_polygon_outline(self, outline: etree.Element, obj: RoadObject) -> None:
+        """Create polygon outline for land use areas and parking polygons.
+
+        Converts polygon points to local u,v coordinates relative to the
+        object's anchor position (first point). Uses geo_points → meters
+        when available for accuracy, falling back to pixel * scale_x.
+        """
+        if not obj.points or len(obj.points) < 3:
+            return
+
+        height = obj.dimensions.get('height', 0.0)
+
+        # Determine reference point (first point) and convert to meters
+        if obj.geo_points and self.transformer and len(obj.geo_points) == len(obj.points):
+            # Use geo coords for precision
+            ref_lon, ref_lat = obj.geo_points[0]
+            ref_m = self.transformer.latlon_to_meters(ref_lat, ref_lon)
+            for lon, lat in obj.geo_points:
+                pt_m = self.transformer.latlon_to_meters(lat, lon)
+                u = pt_m[0] - ref_m[0]
+                v = pt_m[1] - ref_m[1]
+                corner = etree.SubElement(outline, 'cornerLocal')
+                corner.set('u', f'{u:.4f}')
+                corner.set('v', f'{v:.4f}')
+                corner.set('z', '0.0')
+                corner.set('height', f'{height:.2f}')
+        else:
+            # Fallback: pixel coordinates scaled to meters
+            ref_x, ref_y = obj.points[0]
+            for px, py in obj.points:
+                u = (px - ref_x) * self.scale_x
+                v = (py - ref_y) * self.scale_x
+                corner = etree.SubElement(outline, 'cornerLocal')
+                corner.set('u', f'{u:.4f}')
+                corner.set('v', f'{v:.4f}')
+                corner.set('z', '0.0')
+                corner.set('height', f'{height:.2f}')
 
     def _create_triangular_outline(self, outline: etree.Element, obj: RoadObject) -> None:
         """Create triangular outline for conifers."""

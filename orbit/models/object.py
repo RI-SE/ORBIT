@@ -350,6 +350,68 @@ class RoadObject:
             return self.name
         return format_enum_name(self.type)
 
+    def insert_point(self, index: int, pixel_point: Tuple[float, float],
+                     geo_point: Optional[Tuple[float, float]] = None):
+        """Insert a vertex at the given index in the polygon/polyline points.
+
+        Args:
+            index: Position to insert at
+            pixel_point: (x, y) pixel coordinates
+            geo_point: Optional (lon, lat) geographic coordinates
+        """
+        self.points.insert(index, pixel_point)
+        if self.geo_points is not None:
+            if geo_point is not None:
+                self.geo_points.insert(index, geo_point)
+            else:
+                # Insert None placeholder — caller should compute geo coords
+                self.geo_points.insert(index, (0.0, 0.0))
+        self.update_centroid()
+
+    def remove_point(self, index: int):
+        """Remove a vertex at the given index (enforces minimum 3 points for polygons).
+
+        Args:
+            index: Index of point to remove
+
+        Returns:
+            True if point was removed, False if minimum vertex count would be violated
+        """
+        min_points = 3 if self.type.get_shape_type() == "polygon" else 2
+        if len(self.points) <= min_points:
+            return False
+        self.points.pop(index)
+        if self.geo_points is not None and index < len(self.geo_points):
+            self.geo_points.pop(index)
+        self.update_centroid()
+        return True
+
+    def update_point(self, index: int, pixel_point: Tuple[float, float],
+                     geo_point: Optional[Tuple[float, float]] = None):
+        """Update a vertex at the given index.
+
+        Args:
+            index: Index of point to update
+            pixel_point: New (x, y) pixel coordinates
+            geo_point: Optional new (lon, lat) geographic coordinates
+        """
+        if 0 <= index < len(self.points):
+            self.points[index] = pixel_point
+        if geo_point is not None and self.geo_points is not None and index < len(self.geo_points):
+            self.geo_points[index] = geo_point
+        self.update_centroid()
+
+    def update_centroid(self):
+        """Recalculate position and geo_position from polygon/polyline points."""
+        if self.points:
+            cx = sum(p[0] for p in self.points) / len(self.points)
+            cy = sum(p[1] for p in self.points) / len(self.points)
+            self.position = (cx, cy)
+        if self.geo_points:
+            gx = sum(p[0] for p in self.geo_points) / len(self.geo_points)
+            gy = sum(p[1] for p in self.geo_points) / len(self.geo_points)
+            self.geo_position = (gx, gy)
+
     def calculate_s_t_position(
         self, centerline_points: List[Tuple[float, float]],
     ) -> Tuple[Optional[float], Optional[float]]:

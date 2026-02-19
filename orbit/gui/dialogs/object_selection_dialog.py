@@ -106,6 +106,50 @@ class ObjectSelectionDialog(BaseDialog):
         environment_group.setLayout(environment_layout)
         self.get_main_layout().addWidget(environment_group)
 
+        # Land Use section
+        landuse_group = QGroupBox("Land Use")
+        landuse_layout = QHBoxLayout()
+
+        self.forest_btn = QPushButton()
+        pixmap = self.create_simple_icon(ObjectType.LANDUSE_FOREST, size=48)
+        self.forest_btn.setIcon(QIcon(pixmap))
+        self.forest_btn.setIconSize(pixmap.size())
+        self.forest_btn.setText("Forest")
+        self.forest_btn.setFixedSize(110, 90)
+        self.forest_btn.clicked.connect(lambda: self.select_type(ObjectType.LANDUSE_FOREST))
+        landuse_layout.addWidget(self.forest_btn)
+
+        self.farmland_btn = QPushButton()
+        pixmap = self.create_simple_icon(ObjectType.LANDUSE_FARMLAND, size=48)
+        self.farmland_btn.setIcon(QIcon(pixmap))
+        self.farmland_btn.setIconSize(pixmap.size())
+        self.farmland_btn.setText("Farmland")
+        self.farmland_btn.setFixedSize(110, 90)
+        self.farmland_btn.clicked.connect(lambda: self.select_type(ObjectType.LANDUSE_FARMLAND))
+        landuse_layout.addWidget(self.farmland_btn)
+
+        self.meadow_btn = QPushButton()
+        pixmap = self.create_simple_icon(ObjectType.LANDUSE_MEADOW, size=48)
+        self.meadow_btn.setIcon(QIcon(pixmap))
+        self.meadow_btn.setIconSize(pixmap.size())
+        self.meadow_btn.setText("Meadow")
+        self.meadow_btn.setFixedSize(110, 90)
+        self.meadow_btn.clicked.connect(lambda: self.select_type(ObjectType.LANDUSE_MEADOW))
+        landuse_layout.addWidget(self.meadow_btn)
+
+        self.water_btn = QPushButton()
+        pixmap = self.create_simple_icon(ObjectType.NATURAL_WATER, size=48)
+        self.water_btn.setIcon(QIcon(pixmap))
+        self.water_btn.setIconSize(pixmap.size())
+        self.water_btn.setText("Water")
+        self.water_btn.setFixedSize(110, 90)
+        self.water_btn.clicked.connect(lambda: self.select_type(ObjectType.NATURAL_WATER))
+        landuse_layout.addWidget(self.water_btn)
+
+        landuse_layout.addStretch()
+        landuse_group.setLayout(landuse_layout)
+        self.get_main_layout().addWidget(landuse_group)
+
         # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -182,6 +226,19 @@ class ObjectSelectionDialog(BaseDialog):
             # Small circle
             radius = (size - margin * 4) // 2
             painter.drawEllipse(int(center - radius), int(center - radius), radius * 2, radius * 2)
+
+        elif object_type.get_shape_type() == "polygon":
+            # Filled polygon shape (pentagon) for land use / parking types
+            from PyQt6.QtCore import QPointF
+            from PyQt6.QtGui import QPolygonF
+            import math as _math
+            n_sides = 5
+            r = (size - margin * 2) // 2
+            pts = []
+            for i in range(n_sides):
+                angle = 2 * _math.pi * i / n_sides - _math.pi / 2
+                pts.append(QPointF(center + r * _math.cos(angle), center + r * _math.sin(angle)))
+            painter.drawPolygon(QPolygonF(pts))
 
         painter.end()
         return pixmap
