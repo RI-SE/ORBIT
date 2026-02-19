@@ -25,7 +25,6 @@ from orbit.utils.logging_config import get_logger
 
 from .image_view import ImageView
 from .utils.message_helpers import ask_yes_no, show_error, show_info, show_warning
-from .utils.scale_utils import get_transformer
 from .widgets.adjustment_panel import AdjustmentPanel
 from .widgets.elements_tree import ElementsTreeWidget
 from .widgets.road_tree import RoadTreeWidget
@@ -723,12 +722,7 @@ class MainWindow(QMainWindow):
 
             # Update georef validation in project if we have control points
             if self.project.has_georeferencing():
-                from orbit.export import create_transformer
-                transformer = create_transformer(
-                    self.project.control_points,
-                    self.project.transform_method,
-                    use_validation=True,
-                )
+                transformer = self._create_transformer(use_validation=True)
                 if transformer:
                     # Update stored validation results
                     training_points = [cp for cp in self.project.control_points if not cp.is_validation]
@@ -805,12 +799,7 @@ class MainWindow(QMainWindow):
         try:
             # Create transformer for pixel→geo conversion (needed for connecting
             # roads that only have pixel coordinates, e.g. roundabout entries/exits)
-            from orbit.utils.coordinate_transform import create_transformer
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            transformer = self._create_transformer(use_validation=True)
 
             success, message, _stats = export_to_osm(
                 self.project, _Path(file_path), transformer=transformer
@@ -825,7 +814,7 @@ class MainWindow(QMainWindow):
 
     def export_georeferencing(self):
         """Export georeferencing parameters to JSON file."""
-        from orbit.export import create_transformer, export_georeferencing
+        from orbit.export import export_georeferencing
 
         # Check if we have enough control points
         if len(self.project.control_points) < 3:
@@ -851,11 +840,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-        transformer = create_transformer(
-            self.project.control_points,
-            self.project.transform_method,
-            use_validation=True,
-        )
+        transformer = self._create_transformer(use_validation=True)
         if not transformer:
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
@@ -1045,7 +1030,6 @@ class MainWindow(QMainWindow):
         from PyQt6.QtCore import QCoreApplication
         from PyQt6.QtWidgets import QProgressDialog
 
-        from orbit.export import create_transformer
         from orbit.models.project import ControlPoint
 
         has_georef = len(self.project.control_points) >= 3
@@ -1056,13 +1040,7 @@ class MainWindow(QMainWindow):
             image_width = int(self.image_view.image_item.pixmap().width())
             image_height = int(self.image_view.image_item.pixmap().height())
 
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-                image_width=image_width,
-                image_height=image_height,
-            )
+            transformer = self._create_transformer(use_validation=True)
             if not transformer:
                 show_error(self, "Failed to create coordinate transformer.\n"
                     "Please check your control points.", "Transformation Error")
@@ -1123,11 +1101,7 @@ class MainWindow(QMainWindow):
             self.project.transform_method = 'affine'
             self._cached_transformer = None
 
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=False,
-            )
+            transformer = self._create_transformer(use_validation=False)
             if not transformer:
                 show_error(self, "Failed to create coordinate transformer from synthetic control points.",
                     "Transformation Error")
@@ -1274,8 +1248,6 @@ class MainWindow(QMainWindow):
         from PyQt6.QtCore import QCoreApplication
         from PyQt6.QtWidgets import QProgressDialog
 
-        from orbit.export import create_transformer
-
         has_image = self.image_view.image_item is not None
 
         # Get image dimensions (if available)
@@ -1290,11 +1262,7 @@ class MainWindow(QMainWindow):
         transformer = None
         has_georeferencing = len(self.project.control_points) >= 3
         if has_georeferencing:
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            transformer = self._create_transformer(use_validation=True)
 
         # Show import dialog
         dialog = OpenDriveImportDialog(has_georeferencing, self.verbose, self)
@@ -1501,7 +1469,7 @@ class MainWindow(QMainWindow):
         # Get scale factor if georeferenced
         scale_factor = None
         if self.project.has_georeferencing():
-            transformer = get_transformer(self.project)
+            transformer = self._create_transformer(use_validation=True)
             if transformer:
                 scale_factor = transformer.get_scale_factor()[0]  # scale_x
 
@@ -1796,6 +1764,27 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage("Ready")
 
+    def _create_transformer(self, **kwargs):
+        """Create a coordinate transformer with image dimensions for hybrid blending.
+
+        Centralises transformer creation so that the HybridTransformer
+        (homography inside the image, affine outside) is used consistently
+        across all code paths — not just OSM import.
+        """
+        from orbit.utils.coordinate_transform import create_transformer
+
+        image_width, image_height = 0, 0
+        if self.image_view.image_item:
+            image_width = int(self.image_view.image_item.pixmap().width())
+            image_height = int(self.image_view.image_item.pixmap().height())
+        return create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            image_width=image_width,
+            image_height=image_height,
+            **kwargs,
+        )
+
     def on_mouse_moved(self, x: float, y: float):
         """Handle mouse movement in image view."""
         # Sentinel (-1, -1) is emitted on leaveEvent; show N/A.
@@ -1813,10 +1802,7 @@ class MainWindow(QMainWindow):
             try:
                 # Use cached transformer for performance
                 if self._cached_transformer is None:
-                    from orbit.export import create_transformer
-                    self._cached_transformer = create_transformer(
-                        self.project.control_points,
-                        self.project.transform_method,
+                    self._cached_transformer = self._create_transformer(
                         use_validation=True,
                     )
 
@@ -1839,8 +1825,6 @@ class MainWindow(QMainWindow):
 
         # Calculate average scale from control points
         try:
-            from orbit.export import create_transformer
-
             if self.verbose:
                 logger.debug("="*60)
                 logger.debug("SCALE CALCULATION DEBUG")
@@ -1853,11 +1837,7 @@ class MainWindow(QMainWindow):
                           f"Geo=(Lon={cp.longitude:.6f}, Lat={cp.latitude:.6f}) "
                           f"Type={'GVP' if cp.is_validation else 'GCP'}")
 
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            transformer = self._create_transformer(use_validation=True)
 
             if transformer is None:
                 self.scale_label.setText("Scale: N/A (transform failed)")
@@ -2334,7 +2314,7 @@ class MainWindow(QMainWindow):
 
         # Invalidate and rebuild transformer
         self._cached_transformer = None
-        self._cached_transformer = get_transformer(self.project)
+        self._cached_transformer = self._create_transformer(use_validation=True)
 
         # Refresh geometry with new transformation
         self.refresh_imported_geometry()
@@ -2393,17 +2373,12 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            from orbit.utils import create_transformer
             from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             from .graphics.uncertainty_overlay import UncertaintyOverlay
 
             # Create transformer
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            transformer = self._create_transformer(use_validation=True)
 
             if not transformer:
                 show_warning(self, "Failed to create coordinate transformer.", "Transform Error")
@@ -2467,12 +2442,7 @@ class MainWindow(QMainWindow):
             return None
 
         try:
-            from orbit.export import create_transformer
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            transformer = self._create_transformer(use_validation=True)
             if transformer:
                 return transformer.get_scale_factor()
         except Exception:
@@ -2499,13 +2469,8 @@ class MainWindow(QMainWindow):
             return
 
         # Get or create transformer
-        from orbit.export import create_transformer
         try:
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            transformer = self._create_transformer(use_validation=True)
             if not transformer:
                 return
         except Exception:
@@ -2635,11 +2600,7 @@ class MainWindow(QMainWindow):
         if not self.project.has_georeferencing():
             return
         try:
-            from orbit.export import create_transformer
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-            )
+            transformer = self._create_transformer()
             if transformer and conn_road.path:
                 conn_road.geo_path = [
                     transformer.pixel_to_geo(x, y) for x, y in conn_road.path

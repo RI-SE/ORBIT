@@ -725,10 +725,11 @@ with smooth blending in a transition zone.
 
 **When it activates:**
 
-The hybrid transformer is created automatically when OSM import uses a custom
-radius with an image loaded. Other code paths (export, display, uncertainty
-analysis) continue to use the plain homography — they only operate within the
-image and don't need extrapolation protection.
+The hybrid transformer is created automatically whenever an image is loaded and
+the transform method is homography. All code paths — OSM/xodr import and
+export, project load, scale display, uncertainty analysis, and connecting road
+sync — use the hybrid transformer so that points placed outside the image
+during large-radius imports round-trip correctly through pixel↔geo conversion.
 
 ```
 Inside image:        Pure homography (identical to before)
