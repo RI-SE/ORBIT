@@ -13,7 +13,6 @@ from lxml import etree
 
 from orbit.models import Junction, Project, Road
 from orbit.models.connecting_road import ConnectingRoad
-from orbit.models.object import ObjectType
 from orbit.utils import CoordinateTransformer
 from orbit.utils.logging_config import get_logger
 

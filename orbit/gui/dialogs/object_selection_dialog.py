@@ -229,9 +229,10 @@ class ObjectSelectionDialog(BaseDialog):
 
         elif object_type.get_shape_type() == "polygon":
             # Filled polygon shape (pentagon) for land use / parking types
+            import math as _math
+
             from PyQt6.QtCore import QPointF
             from PyQt6.QtGui import QPolygonF
-            import math as _math
             n_sides = 5
             r = (size - margin * 2) // 2
             pts = []

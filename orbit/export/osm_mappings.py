@@ -5,7 +5,7 @@ Used as fallback when original osm_tags are not available (e.g., manually create
 When osm_tags are preserved from import, those take priority over these mappings.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from orbit.models.lane import Lane
 from orbit.models.object import ObjectType, RoadObject
@@ -80,21 +80,21 @@ def _apply_lane_tags(road: Road, tags: Dict[str, str]) -> None:
 
     section = road.lane_sections[0]
     right_lanes: List[Lane] = sorted(
-        [l for l in section.lanes if l.id < 0], key=lambda l: abs(l.id)
+        [ln for ln in section.lanes if ln.id < 0], key=lambda ln: abs(ln.id)
     )
     left_lanes: List[Lane] = sorted(
-        [l for l in section.lanes if l.id > 0], key=lambda l: l.id
+        [ln for ln in section.lanes if ln.id > 0], key=lambda ln: ln.id
     )
 
     all_widths: List[float] = []
 
     if right_lanes:
-        widths = [l.width for l in right_lanes]
+        widths = [ln.width for ln in right_lanes]
         all_widths.extend(widths)
         tags['width:lanes:forward'] = '|'.join(f'{w:.1f}' for w in widths)
 
     if left_lanes:
-        widths = [l.width for l in left_lanes]
+        widths = [ln.width for ln in left_lanes]
         all_widths.extend(widths)
         tags['width:lanes:backward'] = '|'.join(f'{w:.1f}' for w in widths)
 

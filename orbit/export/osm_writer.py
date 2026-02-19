@@ -13,7 +13,6 @@ from typing import Dict, List, Optional, Tuple
 from orbit.models.object import RoadObject
 from orbit.models.parking import ParkingSpace
 from orbit.models.project import Project
-from orbit.models.signal import Signal
 from orbit.utils.logging_config import get_logger
 
 from .osm_mappings import (
