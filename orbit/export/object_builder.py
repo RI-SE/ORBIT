@@ -131,15 +131,23 @@ class ObjectBuilder:
         is_polygon = obj.type.get_shape_type() == "polygon"
 
         # For polygon objects with geo data, project directly in meter space
+        anchor_m = None
+        reconstructed_anchor = None
         if is_polygon and centerline_meters and self.transformer and obj.geo_position:
             ref_lon, ref_lat = obj.geo_position
             anchor_m = self.transformer.latlon_to_meters(ref_lat, ref_lon)
             s_meters, t_meters, road_hdg = self._project_onto_meter_centerline(
                 anchor_m, centerline_meters, road_length_meters
             )
-            # Use fitted geometry heading if available (matches planView exactly)
+            # Use fitted geometry position/heading (matches planView exactly)
             if geometry_elements:
-                road_hdg = self._heading_from_geometry(s_meters, geometry_elements)
+                road_x, road_y, road_hdg = self._sample_geometry(
+                    s_meters, geometry_elements
+                )
+                # Compute where the viewer will place this object from (s, t)
+                recon_x = road_x + t_meters * (-np.sin(road_hdg))
+                recon_y = road_y + t_meters * np.cos(road_hdg)
+                reconstructed_anchor = (recon_x, recon_y)
         else:
             # Standard pixel-space approach for non-polygon objects
             s_position_px, t_offset_px = obj.calculate_s_t_position(centerline_points_pixel)
@@ -168,7 +176,9 @@ class ObjectBuilder:
         self._set_type_attributes(object_elem, obj)
 
         # Add outline geometry
-        outline = self._create_object_outline(obj, road_hdg)
+        outline = self._create_object_outline(
+            obj, road_hdg, reconstructed_anchor
+        )
         if outline is not None:
             object_elem.append(outline)
 
@@ -281,11 +291,11 @@ class ObjectBuilder:
         return best_s, best_t, best_hdg
 
     @staticmethod
-    def _heading_from_geometry(s: float, geometry_elements) -> float:
-        """Get the road heading at s from fitted geometry elements.
+    def _sample_geometry(s: float, geometry_elements) -> tuple:
+        """Sample position and heading from fitted geometry at s.
 
-        This matches the heading used by the planView exactly, ensuring
-        cornerLocal u,v rotations are consistent with the xodr road geometry.
+        Returns:
+            Tuple of (x, y, heading) in meter space, matching the planView.
         """
         from orbit.export.reference_line_sampler import _sample_element
 
@@ -293,14 +303,18 @@ class ObjectBuilder:
         for elem in geometry_elements:
             if cumul_s + elem.length > s or elem is geometry_elements[-1]:
                 s_local = max(0.0, min(s - cumul_s, elem.length))
-                _, _, hdg = _sample_element(elem, s_local)
-                return hdg
+                return _sample_element(elem, s_local)
             cumul_s += elem.length
-        # Fallback: heading of last element at its end
+        # Fallback: end of last element
         if geometry_elements:
-            _, _, hdg = _sample_element(geometry_elements[-1], geometry_elements[-1].length)
-            return hdg
-        return 0.0
+            return _sample_element(geometry_elements[-1], geometry_elements[-1].length)
+        return 0.0, 0.0, 0.0
+
+    @staticmethod
+    def _heading_from_geometry(s: float, geometry_elements) -> float:
+        """Get the road heading at s from fitted geometry elements."""
+        _, _, hdg = ObjectBuilder._sample_geometry(s, geometry_elements)
+        return hdg
 
     def _set_type_attributes(self, object_elem: etree.Element, obj: RoadObject) -> None:
         """Set type-specific attributes on the object element."""
@@ -368,7 +382,8 @@ class ObjectBuilder:
             object_elem.set('height', '0.00')
 
     def _create_object_outline(
-        self, obj: RoadObject, road_hdg: float = 0.0
+        self, obj: RoadObject, road_hdg: float = 0.0,
+        reconstructed_anchor: tuple = None,
     ) -> Optional[etree.Element]:
         """Create outline geometry for an object.
 
@@ -379,6 +394,11 @@ class ObjectBuilder:
             obj: The road object.
             road_hdg: Road heading in radians at the object's s position,
                 used to rotate polygon outlines into road-local coordinates.
+            reconstructed_anchor: Optional (x, y) in meter space where the
+                viewer will place this object from (s, t). When provided,
+                cornerLocal offsets are computed relative to this position
+                instead of the object centroid, compensating for projection
+                error on distant objects.
         """
         outline = etree.Element('outline')
 
@@ -395,7 +415,9 @@ class ObjectBuilder:
             self._create_triangular_outline(outline, obj)
 
         elif obj.type.get_shape_type() == "polygon":
-            self._create_polygon_outline(outline, obj, road_hdg)
+            self._create_polygon_outline(
+                outline, obj, road_hdg, reconstructed_anchor
+            )
 
         return outline if len(outline) > 0 else None
 
@@ -465,19 +487,25 @@ class ObjectBuilder:
             corner.set('height', f'{height:.2f}')
 
     def _create_polygon_outline(
-        self, outline: etree.Element, obj: RoadObject, road_hdg: float = 0.0
+        self, outline: etree.Element, obj: RoadObject, road_hdg: float = 0.0,
+        reconstructed_anchor: tuple = None,
     ) -> None:
-        """Create polygon outline for land use areas and parking polygons.
+        """Create polygon outline for polygon objects.
 
         Converts polygon points to cornerLocal u,v coordinates in the road's
         local coordinate system (u along s-direction, v along t-direction).
-        Uses the centroid as reference point (matching calculate_s_t_position
-        which uses obj.position for polygon objects).
+
+        When reconstructed_anchor is provided, offsets are computed relative
+        to the position the viewer will reconstruct from (s, t), ensuring
+        vertices appear at their correct global positions even when the
+        object is far from its assigned road.
 
         Args:
             outline: Parent XML element to append corners to.
             obj: Object with polygon points/geo_points.
             road_hdg: Road heading in radians at the object's s position.
+            reconstructed_anchor: Optional (x, y) in meter space — the
+                position the viewer will derive from (s, t) on the road.
         """
         if not obj.points or len(obj.points) < 3:
             return
@@ -487,13 +515,18 @@ class ObjectBuilder:
         sin_h = np.sin(road_hdg)
 
         if obj.geo_points and self.transformer and len(obj.geo_points) == len(obj.points):
-            # Use geo centroid as reference (matches obj.geo_position from import)
-            if obj.geo_position:
+            # Compute reference point in meter space
+            if reconstructed_anchor:
+                # Use the reconstructed (s,t) position so that cornerLocal
+                # offsets compensate for any projection error
+                ref_m = reconstructed_anchor
+            elif obj.geo_position:
                 ref_lon, ref_lat = obj.geo_position
+                ref_m = self.transformer.latlon_to_meters(ref_lat, ref_lon)
             else:
                 ref_lon = sum(p[0] for p in obj.geo_points) / len(obj.geo_points)
                 ref_lat = sum(p[1] for p in obj.geo_points) / len(obj.geo_points)
-            ref_m = self.transformer.latlon_to_meters(ref_lat, ref_lon)
+                ref_m = self.transformer.latlon_to_meters(ref_lat, ref_lon)
             for lon, lat in obj.geo_points:
                 pt_m = self.transformer.latlon_to_meters(lat, lon)
                 dx = pt_m[0] - ref_m[0]
