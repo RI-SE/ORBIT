@@ -1,6 +1,12 @@
 # orbit-georef
 
-Standalone Python library for pixel↔geo coordinate transformation using georeferencing parameters exported from ORBIT.
+Standalone Python library for pixel↔geo coordinate transformation using georeferencing parameters exported from ORBIT. Supports transformation to any coordinate system that can be expressed via [PROJ strings](https://proj.org/en/stable/usage/quickstart.html).
+
+> [!NOTE]
+> This open source project is maintained by [RISE Research Institutes of Sweden](https://ri.se/). See [LICENSE](LICENSE) file for open source license information.
+
+> [!NOTE]
+> This is a beta version. Bugs and missing features should be expected. Github issues can be added for bug reports or feature requests.
 
 ## Installation
 
@@ -15,7 +21,7 @@ pip install -e .
 
 ## Usage
 
-### Load from ORBIT export
+### Load from ORBIT export and convert coordinates to desired coordinate system
 
 ```python
 from orbit_georef import load_georef
@@ -26,10 +32,13 @@ georef = load_georef("georef_params.json")
 # Convert pixel to geographic coordinates
 lon, lat = georef.pixel_to_geo(1234.5, 567.8)
 
-# Convert geographic to pixel coordinates
+# Convert pixel coordinates to a projected coordinate system via a PROJ string (https://proj.org/en/stable/usage/quickstart.html), e.g. WGS84
+x, y = georef.pixel_to_geo(1234.5, 567.8, proj_string="+proj=longlat +datum=WGS84 +no_defs")
+
+# Convert geographic to pixel coordinates (assumes WGS84 as input)
 px, py = georef.geo_to_pixel(12.945, 57.720)
 
-# Batch conversion
+# Batch conversion (as `pixel_to_geo()`, this supports also the optional `proj_string` argument)
 geo_coords = georef.pixels_to_geo_batch([(100, 200), (300, 400), (500, 600)])
 
 # Get scale factors (meters per pixel)
@@ -72,4 +81,28 @@ The JSON export format includes:
 
 ## License
 
-MIT
+This library is licensed under the [MIT License](LICENSE).
+
+### Dependencies and Their Licenses
+
+**Runtime dependencies:**
+- **NumPy** - BSD 3-Clause License
+- **pyproj** - MIT License
+
+**Development dependencies (optional):**
+- **pytest** - MIT License
+- **pytest-cov** - MIT License
+
+## Acknowledgement
+
+<br><div align="center">
+  <img src="../docs/synergies.svg" alt="Synergies logo" width="200"/>
+</div>
+
+This package is developed as part of the [SYNERGIES](https://synergies-ccam.eu/) project.
+
+<br><div align="center">
+  <img src="../docs/funded_by_eu.svg" alt="Funded by EU" width="200"/>
+</div>
+
+Funded by the European Union. Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or European Climate, Infrastructure and Environment Executive Agency (CINEA). Neither the European Union nor the granting authority can be held responsible for them.

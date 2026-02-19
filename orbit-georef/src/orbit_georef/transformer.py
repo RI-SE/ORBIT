@@ -9,6 +9,7 @@ import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+import pyproj
 
 from .models import ControlPoint
 
@@ -131,30 +132,66 @@ class GeoTransformer:
             control_points=control_points,
         )
 
-    def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
+    def pixel_to_geo(self, pixel_x: float, pixel_y: float, proj_string: str = None) -> Tuple[float, float]:
         """
         Convert pixel coordinates to geographic coordinates.
 
         Args:
             pixel_x: X coordinate in pixels
             pixel_y: Y coordinate in pixels
+            proj_string: Projection string for the output. If `None`, assumes WGS84 (lat/lon) as output.
 
         Returns:
-            Tuple of (longitude, latitude) in decimal degrees
+            Tuple of (x, y) in the target coordinate system. If `proj_string` is `None`, returns (longitude, latitude).
         """
         if self.method == "homography":
             # Homography: pixel → meters → geo
             pixel_homo = np.array([pixel_x, pixel_y, 1.0])
             ground_homo = self.transform_matrix @ pixel_homo
-            east = ground_homo[0] / ground_homo[2]
-            north = ground_homo[1] / ground_homo[2]
-            lat, lon = self._meters_to_latlon(east, north)
-            return lon, lat
+            mx = ground_homo[0] / ground_homo[2]
+            my = ground_homo[1] / ground_homo[2]
+
+            if proj_string:
+                return self._meters_to_proj(mx, my, proj_string)
+
+            else:
+                lat, lon = self._meters_to_latlon(mx, my)
+                return lon, lat
         else:
             # Affine: direct transformation
+            if proj_string is not None:
+                raise NotImplementedError("Affine transformation not supported in combination with `proj` string.")
             point = np.array([pixel_x, pixel_y, 1.0])
             result = self.transform_matrix @ point
             return result[0], result[1]  # lon, lat
+
+    def _meters_to_proj(self, mx: float, my: float, proj_string: str) -> Tuple[float, float]:
+        """
+        Convert meter offsets to a projected coordinate system.
+
+        Args:
+            mx: Meter offset x (easting)
+            my: Meter offset y (northing)
+            proj_string: PROJ string for the target coordinate system
+
+        Returns:
+            Tuple of (x, y) in the target coordinate system
+        """
+        # The local meter-based system used by ORBIT is an Equirectangular projection
+        # centered at the reference lat/lon, with the latitude of true scale
+        # set to the reference latitude. This is the correct projection to use
+        # as it precisely matches how the (mx, my) coordinates were calculated.
+        # See: https://proj.org/operations/projections/eqc.html
+        source_proj_string = (
+            f"+proj=eqc +lat_ts={self.reference_lat} +lat_0={self.reference_lat} "
+            f"+lon_0={self.reference_lon} +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+        )
+
+        # Create a transformer from the local CRS to the target CRS
+        transformer = pyproj.Transformer.from_crs(
+            source_proj_string, proj_string, always_xy=True
+        )
+        return transformer.transform(mx, my)
 
     def geo_to_pixel(self, longitude: float, latitude: float) -> Tuple[float, float]:
         """
@@ -180,18 +217,21 @@ class GeoTransformer:
             return result[0], result[1]
 
     def pixels_to_geo_batch(
-        self, points: List[Tuple[float, float]]
+        self,
+        points: List[Tuple[float, float]],
+        proj_string: str = None,
     ) -> List[Tuple[float, float]]:
         """
         Convert multiple pixel coordinates to geographic coordinates.
 
         Args:
             points: List of (pixel_x, pixel_y) tuples
+            proj_string: Optional PROJ string for output coordinate system. If none, assumes WGS84 for output.
 
         Returns:
-            List of (longitude, latitude) tuples
+            List of (longitude, latitude) or (x, y) tuples in the target coordinate system.
         """
-        return [self.pixel_to_geo(x, y) for x, y in points]
+        return [self.pixel_to_geo(x, y, proj_string=proj_string) for x, y in points]
 
     def geo_to_pixels_batch(
         self, points: List[Tuple[float, float]]

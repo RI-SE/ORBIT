@@ -284,14 +284,17 @@ class ExportDialog(BaseDialog):
 
     def browse_output_file(self):
         """Browse for output file location."""
+        start_dir = getattr(self.parent(), '_last_file_directory', str(Path.home()))
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export to OpenDrive",
-            str(Path.home()),
+            start_dir,
             "OpenDrive Files (*.xodr);;All Files (*)"
         )
 
         if file_path:
+            if hasattr(self.parent(), '_remember_directory'):
+                self.parent()._remember_directory(file_path)
             self.output_path = Path(file_path)
             # Ensure .xodr extension
             if self.output_path.suffix != '.xodr':

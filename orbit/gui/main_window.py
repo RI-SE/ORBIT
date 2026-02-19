@@ -52,6 +52,9 @@ class MainWindow(QMainWindow):
         # Cached transformer for real-time coordinate display
         self._cached_transformer = None
 
+        # Session-level last used directory for file dialogs
+        self._last_file_directory: str = str(Path.home())
+
         # Settings
         self.settings = QSettings()
 
@@ -563,6 +566,11 @@ class MainWindow(QMainWindow):
             self.update_scale_display()
             self.statusBar().showMessage("New project created")
 
+    def _remember_directory(self, file_path: str) -> None:
+        """Update last used directory from a file path selected by the user."""
+        if file_path:
+            self._last_file_directory = str(Path(file_path).parent)
+
     def open_project(self):
         """Open an existing project file."""
         if not self.check_unsaved_changes():
@@ -571,11 +579,12 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Open Project",
-            str(Path.home()),
+            self._last_file_directory,
             "ORBIT Projects (*.orbit *.json);;All Files (*)"
         )
 
         if file_path:
+            self._remember_directory(file_path)
             try:
                 self.project = Project.load(Path(file_path))
                 self.current_project_file = Path(file_path)
@@ -594,6 +603,11 @@ class MainWindow(QMainWindow):
                 # Load image if specified in project
                 if self.project.image_path:
                     self.load_image(self.project.image_path)
+                elif self.project.synthetic_canvas_width and self.project.synthetic_canvas_height:
+                    self.image_view.set_synthetic_canvas(
+                        self.project.synthetic_canvas_width,
+                        self.project.synthetic_canvas_height
+                    )
 
                 # Calculate scale BEFORE loading project (so lanes use correct scale)
                 scale_factors = self.get_current_scale()
@@ -637,11 +651,12 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Project As",
-            str(Path.home()),
+            self._last_file_directory,
             "ORBIT Projects (*.orbit);;JSON Files (*.json);;All Files (*)"
         )
 
         if file_path:
+            self._remember_directory(file_path)
             try:
                 self.current_project_file = Path(file_path)
                 self.project.save(self.current_project_file)
@@ -657,11 +672,12 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Load Image",
-            str(Path.home()),
+            self._last_file_directory,
             "Images (*.jpg *.jpeg *.png *.bmp *.tif *.tiff);;All Files (*)"
         )
 
         if file_path:
+            self._remember_directory(file_path)
             self.load_image(Path(file_path))
 
     def load_image(self, image_path: Path):
@@ -669,6 +685,10 @@ class MainWindow(QMainWindow):
         if image_path.exists():
             self.image_view.load_image(image_path)
             self.project.image_path = image_path
+
+            # Clear synthetic canvas metadata (real image replaces synthetic canvas)
+            self.project.synthetic_canvas_width = None
+            self.project.synthetic_canvas_height = None
 
             # Set default map name from image filename if not already set
             if not self.project.map_name:
@@ -796,20 +816,24 @@ class MainWindow(QMainWindow):
         default_name = ""
         if self.project.image_path:
             default_name = self.project.image_path.stem + "_georef.json"
+        if default_name:
+            default_path = str(Path(self._last_file_directory) / default_name)
+        else:
+            default_path = self._last_file_directory
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export Georeferencing Parameters",
-            default_name,
+            default_path,
             "JSON files (*.json);;All files (*.*)"
         )
 
         if not file_path:
             self.statusBar().showMessage("Export cancelled")
             return
+        self._remember_directory(file_path)
 
         # Export
-        from pathlib import Path
         if export_georeferencing(self.project, Path(file_path), transformer, image_size, self.current_project_file):
             self.statusBar().showMessage(f"Georeferencing exported to {file_path}")
         else:
@@ -905,17 +929,22 @@ class MainWindow(QMainWindow):
         default_name = ""
         if self.project.image_path:
             default_name = self.project.image_path.stem + "_layout_mask.png"
+        if default_name:
+            default_path = str(Path(self._last_file_directory) / default_name)
+        else:
+            default_path = self._last_file_directory
 
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export Layout Mask",
-            default_name,
+            default_path,
             "PNG files (*.png);;TIFF files (*.tif *.tiff);;All files (*.*)"
         )
 
         if not file_path:
             self.statusBar().showMessage("Export cancelled")
             return
+        self._remember_directory(file_path)
 
         # Run export
         self.statusBar().showMessage("Exporting layout mask...")
@@ -945,54 +974,102 @@ class MainWindow(QMainWindow):
         from .dialogs.osm_import_dialog import OSMImportDialog
         osm_import_module = importlib.import_module('orbit.import')
         osm_parser_module = importlib.import_module('orbit.import.osm_parser')
+        osm_to_orbit_module = importlib.import_module('orbit.import.osm_to_orbit')
         OSMImporter = osm_import_module.OSMImporter
         ImportOptions = osm_import_module.ImportOptions
         ImportMode = osm_import_module.ImportMode
         DetailLevel = osm_import_module.DetailLevel
         OSMParser = osm_parser_module.OSMParser
-        calculate_bbox_from_image = importlib.import_module('orbit.import.osm_to_orbit').calculate_bbox_from_image
+        calculate_bbox_from_image = osm_to_orbit_module.calculate_bbox_from_image
+        calculate_bbox_from_center = osm_to_orbit_module.calculate_bbox_from_center
         from PyQt6.QtCore import QCoreApplication
         from PyQt6.QtWidgets import QProgressDialog
 
         from orbit.export import create_transformer
+        from orbit.models.project import ControlPoint
 
-        # Check if georeferencing is set up
-        if len(self.project.control_points) < 3:
-            show_warning(self, "OpenStreetMap import requires georeferencing.\n\n"
-                "Please set up at least 3 control points before importing.\n"
-                "Use Tools → Georeferencing to add control points.", "Georeferencing Required")
-            return
+        has_georef = len(self.project.control_points) >= 3
+        has_image = self.image_view.image_item is not None
 
-        # Check if image is loaded
-        if not self.image_view.image_item:
-            show_warning(self, "Please load an image before importing OSM data.", "No Image Loaded")
-            return
+        # --- Branch: georef + image available ---
+        if has_georef and has_image:
+            transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+                use_validation=True,
+            )
+            if not transformer:
+                show_error(self, "Failed to create coordinate transformer.\n"
+                    "Please check your control points.", "Transformation Error")
+                return
 
-        # Create coordinate transformer
-        transformer = create_transformer(
-            self.project.control_points,
-            self.project.transform_method,
-            use_validation=True,
-        )
-        if not transformer:
-            show_error(self, "Failed to create coordinate transformer.\n"
-                "Please check your control points.", "Transformation Error")
-            return
-
-        # Calculate bounding box (needed for dialog, even if importing from file)
-        try:
             image_width = int(self.image_view.image_item.pixmap().width())
             image_height = int(self.image_view.image_item.pixmap().height())
-            bbox = calculate_bbox_from_image(image_width, image_height, transformer)
-        except Exception as e:
-            show_error(self, f"Failed to calculate bounding box:\n{e}", "Error")
-            return
 
-        # Show import dialog
-        dialog = OSMImportDialog(bbox, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            self.statusBar().showMessage("OSM import cancelled")
-            return
+            try:
+                bbox = calculate_bbox_from_image(image_width, image_height, transformer)
+            except Exception as e:
+                show_error(self, f"Failed to calculate bounding box:\n{e}", "Error")
+                return
+
+            # Show dialog with georef mode (custom radius option available)
+            dialog = OSMImportDialog(bbox, self, has_georef=True)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                self.statusBar().showMessage("OSM import cancelled")
+                return
+
+            # Check if custom radius was requested
+            custom_radius = dialog.get_custom_radius()
+            if custom_radius is not None:
+                # Compute image center in geo coords
+                center_lon, center_lat = transformer.pixel_to_geo(
+                    image_width / 2.0, image_height / 2.0
+                )
+                bbox = calculate_bbox_from_center(center_lat, center_lon, custom_radius)
+
+        # --- Branch: no georef or no image -> coordinate mode ---
+        else:
+            # Dummy bbox for dialog (will be replaced by user input)
+            dialog = OSMImportDialog((0, 0, 0, 0), self, has_georef=False)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                self.statusBar().showMessage("OSM import cancelled")
+                return
+
+            coord_params = dialog.get_coordinate_params()
+            if not coord_params:
+                return
+            center_lat, center_lon, radius_m, scale_px_per_m = coord_params
+
+            bbox = calculate_bbox_from_center(center_lat, center_lon, radius_m)
+
+            # Create synthetic canvas
+            canvas_size = max(int(2 * radius_m * scale_px_per_m), 2000)
+            image_width = canvas_size
+            image_height = canvas_size
+            self.image_view.set_synthetic_canvas(image_width, image_height)
+            self.project.synthetic_canvas_width = image_width
+            self.project.synthetic_canvas_height = image_height
+
+            # Create synthetic control points at canvas corners mapped to bbox corners
+            min_lat, min_lon, max_lat, max_lon = bbox
+            self.project.control_points = [
+                ControlPoint(pixel_x=0, pixel_y=0, longitude=min_lon, latitude=max_lat),
+                ControlPoint(pixel_x=image_width, pixel_y=0, longitude=max_lon, latitude=max_lat),
+                ControlPoint(pixel_x=image_width, pixel_y=image_height, longitude=max_lon, latitude=min_lat),
+                ControlPoint(pixel_x=0, pixel_y=image_height, longitude=min_lon, latitude=min_lat),
+            ]
+            self.project.transform_method = 'affine'
+            self._cached_transformer = None
+
+            transformer = create_transformer(
+                self.project.control_points,
+                self.project.transform_method,
+                use_validation=False,
+            )
+            if not transformer:
+                show_error(self, "Failed to create coordinate transformer from synthetic control points.",
+                    "Transformation Error")
+                return
 
         # Get import source and options
         source_data = dialog.get_import_source()
@@ -1130,19 +1207,22 @@ class MainWindow(QMainWindow):
         OpenDriveImporter = opendrive_import_module.OpenDriveImporter
         ImportOptions = opendrive_import_module.ImportOptions
         ImportMode = opendrive_import_module.ImportMode
+        opendrive_parser_module = importlib.import_module('orbit.import.opendrive_parser')
+        OpenDriveParser = opendrive_parser_module.OpenDriveParser
         from PyQt6.QtCore import QCoreApplication
         from PyQt6.QtWidgets import QProgressDialog
 
         from orbit.export import create_transformer
 
-        # Check if image is loaded
-        if not self.image_view.image_item:
-            show_warning(self, "Please load an image before importing OpenDrive data.", "No Image Loaded")
-            return
+        has_image = self.image_view.image_item is not None
 
-        # Get image dimensions
-        image_width = int(self.image_view.image_item.pixmap().width())
-        image_height = int(self.image_view.image_item.pixmap().height())
+        # Get image dimensions (if available)
+        if has_image:
+            image_width = int(self.image_view.image_item.pixmap().width())
+            image_height = int(self.image_view.image_item.pixmap().height())
+        else:
+            image_width = 0
+            image_height = 0
 
         # Create coordinate transformer if available
         transformer = None
@@ -1171,6 +1251,36 @@ class MainWindow(QMainWindow):
         # Override transformer if forcing synthetic mode
         if force_synthetic:
             transformer = None
+
+        # If no image loaded, create a synthetic canvas from OpenDrive data bounds
+        if not has_image:
+            try:
+                parser = OpenDriveParser()
+                odr_data = parser.parse_file(file_path)
+
+                # Collect geometry start points to compute data bounds
+                xs, ys = [], []
+                for road in odr_data.roads:
+                    for geom in road.geometry:
+                        xs.append(geom.x)
+                        ys.append(geom.y)
+
+                if not xs:
+                    show_warning(self, "OpenDrive file contains no road geometry.", "Empty File")
+                    return
+
+                margin = 50  # pixels margin
+                data_width = (max(xs) - min(xs)) * scale
+                data_height = (max(ys) - min(ys)) * scale
+                image_width = max(int(data_width + 2 * margin), 2000)
+                image_height = max(int(data_height + 2 * margin), 2000)
+
+                self.image_view.set_synthetic_canvas(image_width, image_height)
+                self.project.synthetic_canvas_width = image_width
+                self.project.synthetic_canvas_height = image_height
+            except Exception as e:
+                show_error(self, f"Failed to pre-parse OpenDrive file:\n{e}", "Parse Error")
+                return
 
         # Build import options
         options = ImportOptions(
@@ -1209,8 +1319,12 @@ class MainWindow(QMainWindow):
             show_opendrive_import_report(result, self)
 
             if result.success:
+                # Align connecting road paths to lane centers before rendering
+                scale_factors = self.get_current_scale()
+                self._align_all_junction_connecting_roads(scale_factors)
+
                 # Update UI
-                self.image_view.load_project(self.project)
+                self.image_view.load_project(self.project, scale_factors)
                 self.road_tree.set_project(self.project)
                 self.road_tree.refresh_tree()
                 self.elements_tree.set_project(self.project)
