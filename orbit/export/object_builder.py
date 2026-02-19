@@ -291,7 +291,7 @@ class ObjectBuilder:
 
         cumul_s = 0.0
         for elem in geometry_elements:
-            if cumul_s + elem.length >= s or elem is geometry_elements[-1]:
+            if cumul_s + elem.length > s or elem is geometry_elements[-1]:
                 s_local = max(0.0, min(s - cumul_s, elem.length))
                 _, _, hdg = _sample_element(elem, s_local)
                 return hdg
@@ -324,9 +324,6 @@ class ObjectBuilder:
             object_elem.set('type', 'building')
             object_elem.set('subtype', '')
             object_elem.set('height', f"{obj.dimensions.get('height', 10.0):.2f}")
-            object_elem.set('width', f"{obj.dimensions.get('width', 20.0):.2f}")
-            object_elem.set('length', f"{obj.dimensions.get('length', 30.0):.2f}")
-            object_elem.set('hdg', f'{np.radians(obj.orientation):.6f}')
 
         elif obj.type in (ObjectType.TREE_BROADLEAF, ObjectType.TREE_CONIFER):
             object_elem.set('type', 'vegetation')

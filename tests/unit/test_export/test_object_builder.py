@@ -367,7 +367,7 @@ class TestSetTypeAttributes:
         assert length == pytest.approx(10.0, abs=0.1)
 
     def test_building_attributes(self, builder):
-        """Building type attributes."""
+        """Building type attributes - only height, no width/length/hdg for polygon buildings."""
         elem = etree.Element('object')
         obj = RoadObject(position=(0, 0), object_type=ObjectType.BUILDING)
         obj.dimensions = {'height': 10.0, 'width': 20.0, 'length': 30.0}
@@ -378,8 +378,10 @@ class TestSetTypeAttributes:
         assert elem.get('type') == 'building'
         assert elem.get('subtype') == ''
         assert elem.get('height') == '10.00'
-        assert elem.get('width') == '20.00'
-        assert elem.get('length') == '30.00'
+        # Polygon buildings don't set width/length/hdg - shape comes from outline
+        assert elem.get('width') is None
+        assert elem.get('length') is None
+        assert elem.get('hdg') is None
 
     def test_tree_broadleaf_attributes(self, builder):
         """Broadleaf tree attributes."""
