@@ -1881,6 +1881,178 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     return R * c
 
 
+def _clip_segment_to_bbox(
+    x1: float, y1: float, x2: float, y2: float,
+    xmin: float, ymin: float, xmax: float, ymax: float,
+) -> Optional[Tuple[float, float, float, float]]:
+    """Clip a line segment to an axis-aligned rectangle (Cohen-Sutherland).
+
+    Args:
+        x1, y1, x2, y2: Segment endpoints
+        xmin, ymin, xmax, ymax: Rectangle bounds
+
+    Returns:
+        Clipped (x1, y1, x2, y2) or None if entirely outside
+    """
+    INSIDE, LEFT, RIGHT, BOTTOM, TOP = 0, 1, 2, 4, 8
+
+    def outcode(x, y):
+        code = INSIDE
+        if x < xmin:
+            code |= LEFT
+        elif x > xmax:
+            code |= RIGHT
+        if y < ymin:
+            code |= BOTTOM
+        elif y > ymax:
+            code |= TOP
+        return code
+
+    oc1, oc2 = outcode(x1, y1), outcode(x2, y2)
+    while True:
+        if not (oc1 | oc2):
+            return (x1, y1, x2, y2)
+        if oc1 & oc2:
+            return None
+        oc_out = oc1 or oc2
+        if oc_out & TOP:
+            x = x1 + (x2 - x1) * (ymax - y1) / (y2 - y1)
+            y = ymax
+        elif oc_out & BOTTOM:
+            x = x1 + (x2 - x1) * (ymin - y1) / (y2 - y1)
+            y = ymin
+        elif oc_out & RIGHT:
+            y = y1 + (y2 - y1) * (xmax - x1) / (x2 - x1)
+            x = xmax
+        else:
+            y = y1 + (y2 - y1) * (xmin - x1) / (x2 - x1)
+            x = xmin
+        if oc_out == oc1:
+            x1, y1 = x, y
+            oc1 = outcode(x1, y1)
+        else:
+            x2, y2 = x, y
+            oc2 = outcode(x2, y2)
+
+
+def clip_polyline_to_bbox(
+    coords: List[Tuple[float, float]],
+    bbox: Tuple[float, float, float, float],
+) -> List[Tuple[float, float]]:
+    """Clip a polyline to an axis-aligned bounding box.
+
+    Points outside the bbox are replaced with intersection points at the
+    bbox boundary. Consecutive segments that are entirely outside are
+    dropped, which may break the polyline into disjoint parts; only the
+    longest contiguous run is returned.
+
+    Args:
+        coords: List of (x, y) points (lon/lat or pixel)
+        bbox: (xmin, ymin, xmax, ymax)
+
+    Returns:
+        Clipped list of (x, y) points (may be shorter or empty)
+    """
+    if len(coords) < 2:
+        return list(coords)
+
+    xmin, ymin, xmax, ymax = bbox
+    # Build list of contiguous runs of clipped segments
+    runs: List[List[Tuple[float, float]]] = []
+    current_run: List[Tuple[float, float]] = []
+
+    for i in range(len(coords) - 1):
+        x1, y1 = coords[i]
+        x2, y2 = coords[i + 1]
+        clipped = _clip_segment_to_bbox(x1, y1, x2, y2, xmin, ymin, xmax, ymax)
+        if clipped is None:
+            # Segment entirely outside — break the run
+            if current_run:
+                runs.append(current_run)
+                current_run = []
+            continue
+        cx1, cy1, cx2, cy2 = clipped
+        if not current_run:
+            current_run.append((cx1, cy1))
+        else:
+            # Check continuity — if the start of this clipped segment
+            # doesn't match the end of the current run, break
+            last = current_run[-1]
+            if abs(last[0] - cx1) > 1e-9 or abs(last[1] - cy1) > 1e-9:
+                current_run.append((cx1, cy1))
+        current_run.append((cx2, cy2))
+
+    if current_run:
+        runs.append(current_run)
+
+    if not runs:
+        return []
+
+    # Return the longest contiguous run
+    return max(runs, key=len)
+
+
+def clip_polygon_to_bbox(
+    coords: List[Tuple[float, float]],
+    bbox: Tuple[float, float, float, float],
+) -> List[Tuple[float, float]]:
+    """Clip a polygon to an axis-aligned bounding box (Sutherland-Hodgman).
+
+    Args:
+        coords: List of (x, y) vertices (the polygon is implicitly closed)
+        bbox: (xmin, ymin, xmax, ymax)
+
+    Returns:
+        Clipped polygon vertices (may be empty if entirely outside)
+    """
+    if len(coords) < 3:
+        return list(coords)
+
+    xmin, ymin, xmax, ymax = bbox
+
+    def clip_edge(polygon, edge_fn, inside_fn):
+        """Clip polygon against one edge."""
+        if not polygon:
+            return []
+        output = []
+        prev = polygon[-1]
+        prev_inside = inside_fn(prev)
+        for curr in polygon:
+            curr_inside = inside_fn(curr)
+            if curr_inside:
+                if not prev_inside:
+                    output.append(edge_fn(prev, curr))
+                output.append(curr)
+            elif prev_inside:
+                output.append(edge_fn(prev, curr))
+            prev = curr
+            prev_inside = curr_inside
+        return output
+
+    def intersect_left(a, b):
+        t = (xmin - a[0]) / (b[0] - a[0]) if b[0] != a[0] else 0
+        return (xmin, a[1] + t * (b[1] - a[1]))
+
+    def intersect_right(a, b):
+        t = (xmax - a[0]) / (b[0] - a[0]) if b[0] != a[0] else 0
+        return (xmax, a[1] + t * (b[1] - a[1]))
+
+    def intersect_bottom(a, b):
+        t = (ymin - a[1]) / (b[1] - a[1]) if b[1] != a[1] else 0
+        return (a[0] + t * (b[0] - a[0]), ymin)
+
+    def intersect_top(a, b):
+        t = (ymax - a[1]) / (b[1] - a[1]) if b[1] != a[1] else 0
+        return (a[0] + t * (b[0] - a[0]), ymax)
+
+    result = list(coords)
+    result = clip_edge(result, intersect_left, lambda p: p[0] >= xmin)
+    result = clip_edge(result, intersect_right, lambda p: p[0] <= xmax)
+    result = clip_edge(result, intersect_bottom, lambda p: p[1] >= ymin)
+    result = clip_edge(result, intersect_top, lambda p: p[1] <= ymax)
+    return result
+
+
 def shorten_geo_points(
     geo_points: List[Tuple[float, float]],
     offset_start_meters: float,

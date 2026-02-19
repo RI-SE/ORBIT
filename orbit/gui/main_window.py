@@ -1053,18 +1053,20 @@ class MainWindow(QMainWindow):
 
         # --- Branch: georef + image available ---
         if has_georef and has_image:
+            image_width = int(self.image_view.image_item.pixmap().width())
+            image_height = int(self.image_view.image_item.pixmap().height())
+
             transformer = create_transformer(
                 self.project.control_points,
                 self.project.transform_method,
                 use_validation=True,
+                image_width=image_width,
+                image_height=image_height,
             )
             if not transformer:
                 show_error(self, "Failed to create coordinate transformer.\n"
                     "Please check your control points.", "Transformation Error")
                 return
-
-            image_width = int(self.image_view.image_item.pixmap().width())
-            image_height = int(self.image_view.image_item.pixmap().height())
 
             try:
                 bbox = calculate_bbox_from_image(image_width, image_height, transformer)
@@ -1187,14 +1189,14 @@ class MainWindow(QMainWindow):
             importer = OSMImporter(self.project, transformer, image_width, image_height)
 
             if source_type == 'api':
-                # Import from Overpass API
-                result = importer.import_osm_data(options)
+                # Import from Overpass API (pass bbox for custom radius support)
+                result = importer.import_osm_data(options, bbox=bbox)
             else:
                 # Import from file
                 with open(file_path, 'r', encoding='utf-8') as f:
                     xml_content = f.read()
                 osm_data = OSMParser.parse_xml(xml_content)
-                result = importer._import_from_osm_data(osm_data, options)
+                result = importer._import_from_osm_data(osm_data, options, bbox=bbox)
 
             progress.close()
 

@@ -2683,19 +2683,25 @@ class ImageView(QGraphicsView):
             ):
                 result["signal_ids"].append(signal.id)
 
-        # Objects: point or polyline shapes
+        # Objects: point, polyline, or polygon shapes
         for obj in self.project.objects:
-            if obj.type.get_shape_type() == "polyline" and obj.points:
+            shape = obj.type.get_shape_type()
+            has_polygon_points = obj.points and len(obj.points) >= 3
+            if (shape in ("polyline", "polygon") or (shape == "rectangle" and has_polygon_points)) and obj.points:
                 found = False
                 for px, py in obj.points:
                     if rect.contains(QPointF(px, py)):
                         found = True
                         break
                 if not found:
-                    for i in range(len(obj.points) - 1):
+                    n = len(obj.points)
+                    # For polygons, also check closing segment
+                    end = n if shape != "polyline" else n - 1
+                    for i in range(end):
+                        j = (i + 1) % n
                         if self._segment_intersects_rect(
                             obj.points[i][0], obj.points[i][1],
-                            obj.points[i + 1][0], obj.points[i + 1][1],
+                            obj.points[j][0], obj.points[j][1],
                             rect,
                         ):
                             found = True
@@ -2776,22 +2782,56 @@ class ImageView(QGraphicsView):
 
             return False
 
+        # For polygon objects (buildings with points, land use areas), check inside or near edge
+        if obj.type.get_shape_type() == "polygon" or (
+            obj.type.get_shape_type() == "rectangle" and obj.points and len(obj.points) >= 3
+        ):
+            if obj.points and len(obj.points) >= 3:
+                # Point-in-polygon test (ray casting)
+                x, y = scene_pos.x(), scene_pos.y()
+                inside = False
+                n = len(obj.points)
+                j = n - 1
+                for i in range(n):
+                    xi, yi = obj.points[i]
+                    xj, yj = obj.points[j]
+                    if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+                        inside = not inside
+                    j = i
+                if inside:
+                    return True
+                # Also check near edges
+                for i in range(n):
+                    x1, y1 = obj.points[i]
+                    x2, y2 = obj.points[(i + 1) % n]
+                    dx = x2 - x1
+                    dy = y2 - y1
+                    length_sq = dx * dx + dy * dy
+                    if length_sq == 0:
+                        continue
+                    t = max(0, min(1, ((x - x1) * dx + (y - y1) * dy) / length_sq))
+                    proj_x = x1 + t * dx
+                    proj_y = y1 + t * dy
+                    dist = ((x - proj_x) ** 2 + (y - proj_y) ** 2) ** 0.5
+                    if dist <= tolerance:
+                        return True
+                return False
+
         # For point objects, check if click is within tolerance radius of the object position
-        else:
-            obj_x, obj_y = obj.position
-            dist = ((scene_pos.x() - obj_x) ** 2 + (scene_pos.y() - obj_y) ** 2) ** 0.5
+        obj_x, obj_y = obj.position
+        dist = ((scene_pos.x() - obj_x) ** 2 + (scene_pos.y() - obj_y) ** 2) ** 0.5
 
-            # Use larger tolerance for point objects based on their dimensions
-            radius = tolerance
-            if obj.type.get_shape_type() == "circle":
-                radius = max(tolerance, obj.dimensions.get('radius', 1.0) * 10)  # Assuming ~10 px per meter
-            elif obj.type.get_shape_type() in ("rectangle", "cylinder"):
-                # Use larger dimension as radius
-                width = obj.dimensions.get('width', 1.0) * 10
-                length = obj.dimensions.get('length', 1.0) * 10
-                radius = max(tolerance, max(width, length) / 2)
+        # Use larger tolerance for point objects based on their dimensions
+        radius = tolerance
+        if obj.type.get_shape_type() == "circle":
+            radius = max(tolerance, obj.dimensions.get('radius', 1.0) * 10)  # Assuming ~10 px per meter
+        elif obj.type.get_shape_type() in ("rectangle", "cylinder"):
+            # Use larger dimension as radius
+            width = obj.dimensions.get('width', 1.0) * 10
+            length = obj.dimensions.get('length', 1.0) * 10
+            radius = max(tolerance, max(width, length) / 2)
 
-            return dist <= radius
+        return dist <= radius
 
     def _show_object_menu(self, view_pos, object_id: str, scene_pos=None):
         """

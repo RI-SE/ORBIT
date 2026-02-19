@@ -947,11 +947,155 @@ class HomographyTransformer(CoordinateTransformer):
         return scale_x, scale_y
 
 
+class HybridTransformer(CoordinateTransformer):
+    """Hybrid transformer: homography inside image bounds, affine outside.
+
+    Wraps HomographyTransformer + AffineTransformer fitted to the same
+    control points. Blends smoothly in a transition zone around the image
+    boundary to avoid discontinuities. Prevents homography extrapolation
+    artifacts (w->0 singularity) for points far from control points.
+    """
+
+    def __init__(self, control_points: List['ControlPoint'],
+                 use_validation: bool = True,
+                 export_proj_string: Optional[str] = None,
+                 image_width: int = 0, image_height: int = 0):
+        # Don't call super().__init__ — we delegate to sub-transformers
+        self.all_control_points = control_points
+        self._export_proj_string = export_proj_string
+        self._export_proj = None
+
+        # Create both sub-transformers from the same control points
+        self._homography = HomographyTransformer(
+            control_points, use_validation, export_proj_string)
+        self._affine = AffineTransformer(
+            control_points, use_validation=False,
+            export_proj_string=export_proj_string)
+
+        # Copy shared state from homography (it's the "primary")
+        self.training_points = self._homography.training_points
+        self.validation_points = self._homography.validation_points
+        self.transform_matrix = self._homography.transform_matrix
+        self.inverse_matrix = self._homography.inverse_matrix
+        self.reference_lat = self._homography.reference_lat
+        self.reference_lon = self._homography.reference_lon
+        self.reprojection_error = self._homography.reprojection_error
+        self.validation_error = self._homography.validation_error
+        self.adjustment = None
+
+        # Image bounds for blend zone
+        self._image_width = image_width
+        self._image_height = image_height
+        self._margin = 0.2 * min(image_width, image_height) if image_width > 0 else 0
+
+    def _signed_distance_from_bounds(self, px: float, py: float) -> float:
+        """Signed distance from image boundary. Positive = inside."""
+        if self._image_width <= 0 or self._image_height <= 0:
+            return float('inf')
+        dx = min(px, self._image_width - px)
+        dy = min(py, self._image_height - py)
+        return min(dx, dy)
+
+    @staticmethod
+    def _smoothstep(t: float) -> float:
+        """Smoothstep for C1-continuous blending."""
+        t = max(0.0, min(1.0, t))
+        return t * t * (3 - 2 * t)
+
+    def _blend_factor(self, homo_px: float, homo_py: float,
+                      w_component: float = 1.0) -> float:
+        """Compute blend factor: 1.0 = pure homography, 0.0 = pure affine."""
+        if w_component < 0.01:
+            return 0.0
+        if self._margin <= 0:
+            return 1.0
+        d = self._signed_distance_from_bounds(homo_px, homo_py)
+        if d > self._margin:
+            return 1.0
+        if d < -self._margin:
+            return 0.0
+        return self._smoothstep((d + self._margin) / (2 * self._margin))
+
+    def geo_to_pixel(self, longitude: float, latitude: float) -> Tuple[float, float]:
+        """Blended geo->pixel: homography inside image, affine outside."""
+        # Compute homography result with w check
+        east, north = self.latlon_to_meters(latitude, longitude)
+        ground_homo = np.array([east, north, 1.0])
+        pixel_homo = self._homography.inverse_matrix @ ground_homo
+        w = pixel_homo[2]
+
+        if abs(w) < 1e-10:
+            return self._affine.geo_to_pixel(longitude, latitude)
+
+        hpx, hpy = pixel_homo[0] / w, pixel_homo[1] / w
+        t = self._blend_factor(hpx, hpy, w)
+
+        if t >= 1.0:
+            px, py = hpx, hpy
+        elif t <= 0.0:
+            px, py = self._affine.geo_to_pixel(longitude, latitude)
+        else:
+            apx, apy = self._affine.geo_to_pixel(longitude, latitude)
+            px = t * hpx + (1 - t) * apx
+            py = t * hpy + (1 - t) * apy
+
+        if self.adjustment is not None:
+            px, py = self.adjustment.apply_to_point(px, py)
+        return px, py
+
+    def geo_to_pixel_unadjusted(self, longitude: float, latitude: float) -> Tuple[float, float]:
+        """Blended geo->pixel without adjustment."""
+        east, north = self.latlon_to_meters(latitude, longitude)
+        ground_homo = np.array([east, north, 1.0])
+        pixel_homo = self._homography.inverse_matrix @ ground_homo
+        w = pixel_homo[2]
+
+        if abs(w) < 1e-10:
+            return self._affine.geo_to_pixel_unadjusted(longitude, latitude)
+
+        hpx, hpy = pixel_homo[0] / w, pixel_homo[1] / w
+        t = self._blend_factor(hpx, hpy, w)
+
+        if t >= 1.0:
+            return hpx, hpy
+        elif t <= 0.0:
+            return self._affine.geo_to_pixel_unadjusted(longitude, latitude)
+        else:
+            apx, apy = self._affine.geo_to_pixel_unadjusted(longitude, latitude)
+            return t * hpx + (1 - t) * apx, t * hpy + (1 - t) * apy
+
+    def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
+        """Blended pixel->geo: homography inside image, affine outside."""
+        t = self._blend_factor(pixel_x, pixel_y)
+
+        if t >= 1.0:
+            return self._homography.pixel_to_geo(pixel_x, pixel_y)
+        elif t <= 0.0:
+            return self._affine.pixel_to_geo(pixel_x, pixel_y)
+        else:
+            h_lon, h_lat = self._homography.pixel_to_geo(pixel_x, pixel_y)
+            a_lon, a_lat = self._affine.pixel_to_geo(pixel_x, pixel_y)
+            return t * h_lon + (1 - t) * a_lon, t * h_lat + (1 - t) * a_lat
+
+    def compute_transformation(self):
+        """Delegated to sub-transformers in __init__."""
+        pass
+
+    def get_scale_factor(self) -> Tuple[float, float]:
+        return self._homography.get_scale_factor()
+
+    def set_adjustment(self, adjustment):
+        """Set adjustment on the hybrid transformer only (not sub-transformers)."""
+        self.adjustment = adjustment
+
+
 def create_transformer(
     control_points: List['ControlPoint'],
     method: Union[str, TransformMethod] = TransformMethod.HOMOGRAPHY,
     use_validation: bool = True,
-    export_proj_string: Optional[str] = None
+    export_proj_string: Optional[str] = None,
+    image_width: int = 0,
+    image_height: int = 0,
 ) -> Optional[CoordinateTransformer]:
     """
     Create a coordinate transformer from control points.
@@ -987,6 +1131,11 @@ def create_transformer(
 
     try:
         if method == TransformMethod.HOMOGRAPHY:
+            if image_width > 0 and image_height > 0:
+                return HybridTransformer(
+                    control_points, use_validation,
+                    export_proj_string=export_proj_string,
+                    image_width=image_width, image_height=image_height)
             return HomographyTransformer(control_points, use_validation,
                                          export_proj_string=export_proj_string)
         else:
