@@ -66,6 +66,7 @@ class RoundaboutInfo:
         connection_points: List of entry/exit points sorted by angle
         ring_node_ids: OSM node IDs in ring order
         ring_points: Pixel coordinates in ring order
+        ring_geo_points: Geographic coordinates (lon, lat) in ring order
         tags: Original OSM tags for reference
     """
     osm_way_id: int
@@ -78,6 +79,7 @@ class RoundaboutInfo:
     connection_points: List[ConnectionPoint] = field(default_factory=list)
     ring_node_ids: List[int] = field(default_factory=list)
     ring_points: List[Tuple[float, float]] = field(default_factory=list)
+    ring_geo_points: List[Tuple[float, float]] = field(default_factory=list)
     tags: Dict[str, str] = field(default_factory=dict)
 
 
@@ -165,8 +167,9 @@ def analyze_roundabout(
     Returns:
         RoundaboutInfo with analyzed geometry and connection points
     """
-    # Convert ring nodes to pixel coordinates
+    # Convert ring nodes to pixel coordinates (and keep geo coordinates)
     ring_points = []
+    ring_geo_points = []
     ring_node_ids = []
 
     for node_id in osm_way.nodes:
@@ -174,6 +177,7 @@ def analyze_roundabout(
         if osm_node:
             px, py = transformer.geo_to_pixel(osm_node.lon, osm_node.lat)
             ring_points.append((px, py))
+            ring_geo_points.append((osm_node.lon, osm_node.lat))
             ring_node_ids.append(node_id)
 
     if len(ring_points) < 3:
@@ -262,6 +266,7 @@ def analyze_roundabout(
         connection_points=connection_points,
         ring_node_ids=ring_node_ids,
         ring_points=ring_points,
+        ring_geo_points=ring_geo_points,
         tags=dict(osm_way.tags)
     )
 
@@ -310,12 +315,17 @@ def create_ring_segments(
                 roundabout.ring_points[start_idx:] +
                 roundabout.ring_points[:end_idx + 1]
             )
+            segment_geo_points = (
+                roundabout.ring_geo_points[start_idx:] +
+                roundabout.ring_geo_points[:end_idx + 1]
+            )
             segment_node_ids = (
                 roundabout.ring_node_ids[start_idx:] +
                 roundabout.ring_node_ids[:end_idx + 1]
             )
         else:
             segment_points = roundabout.ring_points[start_idx:end_idx + 1]
+            segment_geo_points = roundabout.ring_geo_points[start_idx:end_idx + 1]
             segment_node_ids = roundabout.ring_node_ids[start_idx:end_idx + 1]
 
         if len(segment_points) < 2:
@@ -326,6 +336,7 @@ def create_ring_segments(
         # Create polyline for this segment
         polyline = Polyline(
             points=list(segment_points),
+            geo_points=list(segment_geo_points),
             line_type=LineType.CENTERLINE,
             road_mark_type=RoadMarkType.SOLID,
             osm_node_ids=list(segment_node_ids),
@@ -341,6 +352,7 @@ def create_ring_segments(
             speed_limit=roundabout.speed_limit
         )
         road.add_polyline(polyline.id)
+        road.osm_tags = dict(roundabout.tags)
 
         # Mark as ring segment (for export handling)
         road.is_ring_segment = True  # type: ignore
@@ -374,6 +386,7 @@ def _create_single_ring_road(
     """Create a single road for the entire ring (when < 2 connections)."""
     polyline = Polyline(
         points=list(roundabout.ring_points),
+        geo_points=list(roundabout.ring_geo_points),
         line_type=LineType.CENTERLINE,
         road_mark_type=RoadMarkType.SOLID,
         osm_node_ids=list(roundabout.ring_node_ids),

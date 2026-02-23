@@ -27,6 +27,13 @@ class ObjectType(Enum):
     TREE_BROADLEAF = "tree_broadleaf"
     TREE_CONIFER = "tree_conifer"
     BUSH = "bush"
+    # Land use / natural area types (for OSM import of area polygons)
+    LANDUSE_FOREST = "landuse_forest"
+    LANDUSE_FARMLAND = "landuse_farmland"
+    LANDUSE_MEADOW = "landuse_meadow"
+    LANDUSE_SCRUB = "landuse_scrub"
+    NATURAL_WATER = "natural_water"
+    NATURAL_WETLAND = "natural_wetland"
     # Parking types (for OSM import of parking facilities)
     PARKING_SURFACE = "parking_surface"
     PARKING_UNDERGROUND = "parking_underground"
@@ -49,6 +56,10 @@ class ObjectType(Enum):
         elif self in (ObjectType.BUILDING, ObjectType.TREE_BROADLEAF,
                      ObjectType.TREE_CONIFER, ObjectType.BUSH):
             return "road_environment"
+        elif self in (ObjectType.LANDUSE_FOREST, ObjectType.LANDUSE_FARMLAND,
+                     ObjectType.LANDUSE_MEADOW, ObjectType.LANDUSE_SCRUB,
+                     ObjectType.NATURAL_WATER, ObjectType.NATURAL_WETLAND):
+            return "land_use"
         elif self in (ObjectType.PARKING_SURFACE, ObjectType.PARKING_UNDERGROUND,
                      ObjectType.PARKING_MULTI_STOREY, ObjectType.PARKING_ROOFTOP):
             return "parking"
@@ -73,6 +84,13 @@ class ObjectType(Enum):
             ObjectType.TREE_BROADLEAF: {"radius": 2.5, "height": 8.0},
             ObjectType.TREE_CONIFER: {"radius": 1.5, "height": 12.0},
             ObjectType.BUSH: {"radius": 1.0, "height": 1.5},
+            # Land use areas - polygon-based, dimensions are placeholders
+            ObjectType.LANDUSE_FOREST: {"width": 100.0, "length": 100.0, "height": 0.0},
+            ObjectType.LANDUSE_FARMLAND: {"width": 100.0, "length": 100.0, "height": 0.0},
+            ObjectType.LANDUSE_MEADOW: {"width": 100.0, "length": 100.0, "height": 0.0},
+            ObjectType.LANDUSE_SCRUB: {"width": 100.0, "length": 100.0, "height": 0.0},
+            ObjectType.NATURAL_WATER: {"width": 100.0, "length": 100.0, "height": 0.0},
+            ObjectType.NATURAL_WETLAND: {"width": 100.0, "length": 100.0, "height": 0.0},
             # Parking facilities - polygon-based, dimensions are lot size
             ObjectType.PARKING_SURFACE: {"width": 50.0, "length": 30.0, "height": 0.0},
             ObjectType.PARKING_UNDERGROUND: {"width": 50.0, "length": 30.0, "height": 3.0},
@@ -98,10 +116,17 @@ class ObjectType(Enum):
         shape_map = {
             ObjectType.LAMPPOST: "cylinder",
             ObjectType.GUARDRAIL: "polyline",
-            ObjectType.BUILDING: "rectangle",
+            ObjectType.BUILDING: "polygon",
             ObjectType.TREE_BROADLEAF: "circle",
             ObjectType.TREE_CONIFER: "cone",
             ObjectType.BUSH: "circle",
+            # Land use - polygon outlines
+            ObjectType.LANDUSE_FOREST: "polygon",
+            ObjectType.LANDUSE_FARMLAND: "polygon",
+            ObjectType.LANDUSE_MEADOW: "polygon",
+            ObjectType.LANDUSE_SCRUB: "polygon",
+            ObjectType.NATURAL_WATER: "polygon",
+            ObjectType.NATURAL_WETLAND: "polygon",
             # Parking - polygon outlines
             ObjectType.PARKING_SURFACE: "polygon",
             ObjectType.PARKING_UNDERGROUND: "polygon",
@@ -187,6 +212,8 @@ class RoadObject:
         # OpenDRIVE orientation angles for round-trip preservation
         self.pitch: float = 0.0  # Pitch angle in radians
         self.roll: float = 0.0  # Roll angle in radians
+        # Original OSM tags for round-trip export
+        self.osm_tags: Optional[Dict[str, str]] = None
 
     def has_geo_coords(self) -> bool:
         """Check if this object has geographic coordinates stored."""
@@ -271,6 +298,8 @@ class RoadObject:
             data['pitch'] = self.pitch
         if self.roll != 0.0:
             data['roll'] = self.roll
+        if self.osm_tags:
+            data['osm_tags'] = self.osm_tags
         return data
 
     @classmethod
@@ -310,6 +339,8 @@ class RoadObject:
         # OpenDRIVE orientation angles
         obj.pitch = data.get('pitch', 0.0)
         obj.roll = data.get('roll', 0.0)
+        # OSM tags
+        obj.osm_tags = data.get('osm_tags')
 
         return obj
 
@@ -318,6 +349,68 @@ class RoadObject:
         if self.name:
             return self.name
         return format_enum_name(self.type)
+
+    def insert_point(self, index: int, pixel_point: Tuple[float, float],
+                     geo_point: Optional[Tuple[float, float]] = None):
+        """Insert a vertex at the given index in the polygon/polyline points.
+
+        Args:
+            index: Position to insert at
+            pixel_point: (x, y) pixel coordinates
+            geo_point: Optional (lon, lat) geographic coordinates
+        """
+        self.points.insert(index, pixel_point)
+        if self.geo_points is not None:
+            if geo_point is not None:
+                self.geo_points.insert(index, geo_point)
+            else:
+                # Insert None placeholder — caller should compute geo coords
+                self.geo_points.insert(index, (0.0, 0.0))
+        self.update_centroid()
+
+    def remove_point(self, index: int):
+        """Remove a vertex at the given index (enforces minimum 3 points for polygons).
+
+        Args:
+            index: Index of point to remove
+
+        Returns:
+            True if point was removed, False if minimum vertex count would be violated
+        """
+        min_points = 3 if self.type.get_shape_type() == "polygon" else 2
+        if len(self.points) <= min_points:
+            return False
+        self.points.pop(index)
+        if self.geo_points is not None and index < len(self.geo_points):
+            self.geo_points.pop(index)
+        self.update_centroid()
+        return True
+
+    def update_point(self, index: int, pixel_point: Tuple[float, float],
+                     geo_point: Optional[Tuple[float, float]] = None):
+        """Update a vertex at the given index.
+
+        Args:
+            index: Index of point to update
+            pixel_point: New (x, y) pixel coordinates
+            geo_point: Optional new (lon, lat) geographic coordinates
+        """
+        if 0 <= index < len(self.points):
+            self.points[index] = pixel_point
+        if geo_point is not None and self.geo_points is not None and index < len(self.geo_points):
+            self.geo_points[index] = geo_point
+        self.update_centroid()
+
+    def update_centroid(self):
+        """Recalculate position and geo_position from polygon/polyline points."""
+        if self.points:
+            cx = sum(p[0] for p in self.points) / len(self.points)
+            cy = sum(p[1] for p in self.points) / len(self.points)
+            self.position = (cx, cy)
+        if self.geo_points:
+            gx = sum(p[0] for p in self.geo_points) / len(self.geo_points)
+            gy = sum(p[1] for p in self.geo_points) / len(self.geo_points)
+            self.geo_position = (gx, gy)
 
     def calculate_s_t_position(
         self, centerline_points: List[Tuple[float, float]],
@@ -337,8 +430,10 @@ class RoadObject:
         if not centerline_points or len(centerline_points) < 2:
             return None, None
 
-        # Use first point for polyline objects, position for point objects
-        if self.points:
+        # Use centroid for polygon objects, first point for polylines, position for points
+        if self.points and self.type.get_shape_type() == "polygon":
+            px, py = self.position  # centroid stored at import time
+        elif self.points:
             px, py = self.points[0]
         else:
             px, py = self.position

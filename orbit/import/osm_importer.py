@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Set
 from orbit.models import Junction, Project, Road
 from orbit.models.polyline import Polyline
 from orbit.utils import CoordinateTransformer
+from orbit.utils.geometry import clip_polygon_to_bbox, clip_polyline_to_bbox
 from orbit.utils.logging_config import get_logger
 
 from .junction_analyzer import create_connecting_roads_from_patterns
@@ -19,6 +20,7 @@ from .osm_parser import OSMData, OSMParser
 from .osm_query import OverpassAPIClient, OverpassAPIError
 from .osm_to_orbit import (
     calculate_bbox_from_image,
+    create_landuse_from_osm,
     create_object_from_osm,
     create_parking_from_osm,
     create_road_from_osm,
@@ -115,12 +117,114 @@ class OSMImporter:
         # Track mapping from Signal ID to OSM node ID for road attachment
         self.signal_to_osm_node: Dict[str, int] = {}
 
-    def import_osm_data(self, options: ImportOptions = None) -> ImportResult:
+        # Clip bbox in (min_lon, min_lat, max_lon, max_lat) format.
+        # Set by import_osm_data / _import_from_osm_data from the query bbox.
+        # Falls back to image bounds if not set.
+        self._clip_geo_bbox: Optional[tuple] = None
+
+    def _ensure_clip_bbox(self, import_bbox: Optional[tuple] = None) -> None:
+        """Set the geo clip bbox for geometry clipping.
+
+        When the transformer handles extrapolation safely (HybridTransformer),
+        uses only the query bbox — no image-bounds intersection needed.
+        Otherwise falls back to intersecting with image geo bounds (with 100%
+        buffer) to prevent homography extrapolation artifacts.
+
+        Args:
+            import_bbox: (min_lat, min_lon, max_lat, max_lon) from Overpass query.
+                         If None, only image bounds are used.
+        """
+        from orbit.utils.coordinate_transform import HybridTransformer
+
+        # HybridTransformer blends to affine outside image — no clip needed
+        uses_hybrid = isinstance(self.transformer, HybridTransformer)
+
+        # Step 1: Compute image geo bbox with generous buffer (skip for hybrid)
+        image_geo_bbox = None
+        if not uses_hybrid:
+            corners = [
+                (0, 0), (self.image_width, 0),
+                (self.image_width, self.image_height), (0, self.image_height),
+            ]
+            try:
+                lons, lats = [], []
+                for px, py in corners:
+                    lon, lat = self.transformer.pixel_to_geo(px, py)
+                    lons.append(lon)
+                    lats.append(lat)
+                min_lon, max_lon = min(lons), max(lons)
+                min_lat, max_lat = min(lats), max(lats)
+                lon_buf = (max_lon - min_lon)
+                lat_buf = (max_lat - min_lat)
+                image_geo_bbox = (min_lon - lon_buf, min_lat - lat_buf,
+                                  max_lon + lon_buf, max_lat + lat_buf)
+            except Exception:
+                pass
+
+        # Step 2: Convert import bbox if provided
+        query_geo_bbox = None
+        if import_bbox is not None:
+            min_lat, min_lon, max_lat, max_lon = import_bbox
+            query_geo_bbox = (min_lon, min_lat, max_lon, max_lat)
+
+        # Step 3: Combine — intersect only when image bbox clipping is active
+        if image_geo_bbox and query_geo_bbox:
+            self._clip_geo_bbox = (
+                max(image_geo_bbox[0], query_geo_bbox[0]),
+                max(image_geo_bbox[1], query_geo_bbox[1]),
+                min(image_geo_bbox[2], query_geo_bbox[2]),
+                min(image_geo_bbox[3], query_geo_bbox[3]),
+            )
+        elif image_geo_bbox:
+            self._clip_geo_bbox = image_geo_bbox
+        elif query_geo_bbox:
+            self._clip_geo_bbox = query_geo_bbox
+        else:
+            self._clip_geo_bbox = None
+
+    def _clip_resolved_coords(self, coords: List) -> List:
+        """Clip (lat, lon) resolved_coords to the clip bbox.
+
+        Args:
+            coords: List of (lat, lon) tuples from OSM way
+
+        Returns:
+            Clipped list of (lat, lon) tuples
+        """
+        if not self._clip_geo_bbox or len(coords) < 2:
+            return coords
+
+        min_lon, min_lat, max_lon, max_lat = self._clip_geo_bbox
+        lonlat_coords = [(lon, lat) for lat, lon in coords]
+        clipped = clip_polyline_to_bbox(lonlat_coords, (min_lon, min_lat, max_lon, max_lat))
+        return [(lat, lon) for lon, lat in clipped]
+
+    def _clip_resolved_coords_polygon(self, coords: List) -> List:
+        """Clip (lat, lon) resolved_coords polygon to the clip bbox.
+
+        Args:
+            coords: List of (lat, lon) tuples from OSM way (polygon)
+
+        Returns:
+            Clipped list of (lat, lon) tuples
+        """
+        if not self._clip_geo_bbox or len(coords) < 3:
+            return coords
+
+        min_lon, min_lat, max_lon, max_lat = self._clip_geo_bbox
+        lonlat_coords = [(lon, lat) for lat, lon in coords]
+        clipped = clip_polygon_to_bbox(lonlat_coords, (min_lon, min_lat, max_lon, max_lat))
+        return [(lat, lon) for lon, lat in clipped]
+
+    def import_osm_data(self, options: ImportOptions = None,
+                        bbox: Optional[tuple] = None) -> ImportResult:
         """
         Import OSM data into project.
 
         Args:
             options: Import options
+            bbox: Optional pre-computed bounding box (min_lat, min_lon, max_lat, max_lon).
+                  If None, calculated from image bounds.
 
         Returns:
             ImportResult with statistics and status
@@ -130,17 +234,21 @@ class OSMImporter:
 
         result = ImportResult()
 
-        # Step 1: Calculate bounding box
-        try:
-            bbox = calculate_bbox_from_image(
-                self.image_width,
-                self.image_height,
-                self.transformer,
-                buffer_percent=5.0
-            )
-        except Exception as e:
-            result.error_message = f"Failed to calculate bounding box: {e}"
-            return result
+        # Step 1: Calculate bounding box (use provided bbox or derive from image)
+        if bbox is None:
+            try:
+                bbox = calculate_bbox_from_image(
+                    self.image_width,
+                    self.image_height,
+                    self.transformer,
+                    buffer_percent=5.0
+                )
+            except Exception as e:
+                result.error_message = f"Failed to calculate bounding box: {e}"
+                return result
+
+        # Set clip boundary from the query bbox
+        self._ensure_clip_bbox(bbox)
 
         # Step 2: Query Overpass API
         client = OverpassAPIClient(timeout=options.timeout)
@@ -258,11 +366,15 @@ class OSMImporter:
         if options.detail_level == DetailLevel.FULL:
             self._import_objects(osm_data, options, result)
 
-        # Step 9a: Auto-attach objects to nearest roads
+        # Step 9a: Import land use areas (full only)
+        if options.detail_level == DetailLevel.FULL:
+            self._import_landuse(osm_data, options, result)
+
+        # Step 9b: Auto-attach objects to nearest roads
         if options.detail_level == DetailLevel.FULL:
             self._attach_objects_to_roads(options)
 
-        # Step 9b: Import parking facilities (full only)
+        # Step 9c: Import parking facilities (full only)
         if options.detail_level == DetailLevel.FULL:
             self._import_parking(osm_data, options, result)
 
@@ -286,7 +398,8 @@ class OSMImporter:
 
         return result
 
-    def _import_from_osm_data(self, osm_data: OSMData, options: ImportOptions) -> ImportResult:
+    def _import_from_osm_data(self, osm_data: OSMData, options: ImportOptions,
+                             bbox: Optional[tuple] = None) -> ImportResult:
         """
         Import from already-parsed OSM data (e.g., from XML file).
 
@@ -295,11 +408,16 @@ class OSMImporter:
         Args:
             osm_data: Parsed OSM data
             options: Import options
+            bbox: Optional bounding box (min_lat, min_lon, max_lat, max_lon)
+                  for clipping. Falls back to image bounds if None.
 
         Returns:
             ImportResult with statistics and status
         """
         result = ImportResult()
+
+        # Set clip boundary
+        self._ensure_clip_bbox(bbox)
 
         # Step 1: Handle import mode
         if options.import_mode == ImportMode.REPLACE:
@@ -367,11 +485,15 @@ class OSMImporter:
         if options.detail_level == DetailLevel.FULL:
             self._import_objects(osm_data, options, result)
 
-        # Step 6a: Auto-attach objects to nearest roads
+        # Step 6a: Import land use areas (full only)
+        if options.detail_level == DetailLevel.FULL:
+            self._import_landuse(osm_data, options, result)
+
+        # Step 6b: Auto-attach objects to nearest roads
         if options.detail_level == DetailLevel.FULL:
             self._attach_objects_to_roads(options)
 
-        # Step 6b: Import parking facilities (full only)
+        # Step 6c: Import parking facilities (full only)
         if options.detail_level == DetailLevel.FULL:
             self._import_parking(osm_data, options, result)
 
@@ -424,6 +546,20 @@ class OSMImporter:
                 if options.verbose:
                     logger.debug("Skipping roundabout way %s (will process separately)", osm_way.id)
                 continue
+
+            # Clip road geometry to image geo bounds to prevent homography
+            # extrapolation artifacts far from control points
+            if self._clip_geo_bbox and osm_way.resolved_coords:
+                original_len = len(osm_way.resolved_coords)
+                osm_way.resolved_coords = self._clip_resolved_coords(
+                    osm_way.resolved_coords
+                )
+                if len(osm_way.resolved_coords) < 2:
+                    continue
+                # If clipping changed the geometry, invalidate node IDs
+                # (interpolated boundary points have no OSM node)
+                if len(osm_way.resolved_coords) != original_len:
+                    osm_way.nodes = []
 
             road_result = create_road_from_osm(
                 osm_way,
@@ -1050,6 +1186,14 @@ class OSMImporter:
         # Guardrails
         guardrails = OSMParser.get_guardrail_ways(osm_data)
         for osm_way in guardrails:
+            # Clip guardrail polyline to image geo bounds
+            if self._clip_geo_bbox and osm_way.resolved_coords:
+                osm_way.resolved_coords = self._clip_resolved_coords(
+                    osm_way.resolved_coords
+                )
+                if len(osm_way.resolved_coords) < 2:
+                    continue
+
             obj = create_object_from_osm(
                 osm_way,
                 self.transformer,
@@ -1068,6 +1212,14 @@ class OSMImporter:
         # Buildings
         buildings = OSMParser.get_building_ways(osm_data)
         for osm_way in buildings:
+            # Clip building polygon to image geo bounds
+            if self._clip_geo_bbox and osm_way.resolved_coords:
+                osm_way.resolved_coords = self._clip_resolved_coords_polygon(
+                    osm_way.resolved_coords
+                )
+                if len(osm_way.resolved_coords) < 3:
+                    continue
+
             obj = create_object_from_osm(
                 osm_way,
                 self.transformer,
@@ -1082,6 +1234,38 @@ class OSMImporter:
             self.project.add_object(obj)
             self.imported_way_ids.add(osm_way.id)
             result.objects_imported += 1
+
+    def _import_landuse(self, osm_data: OSMData, options: ImportOptions,
+                        result: ImportResult) -> None:
+        """Import land use / natural area polygons (full mode only)."""
+        landuse_ways = OSMParser.get_landuse_ways(osm_data)
+
+        if options.verbose:
+            logger.debug("Found %d land use ways in OSM data", len(landuse_ways))
+
+        for osm_way in landuse_ways:
+            # Clip land use polygon to image geo bounds
+            if self._clip_geo_bbox and osm_way.resolved_coords:
+                osm_way.resolved_coords = self._clip_resolved_coords_polygon(
+                    osm_way.resolved_coords
+                )
+                if len(osm_way.resolved_coords) < 3:
+                    if options.verbose:
+                        logger.debug("Skipping land use way %s - entirely outside image bounds", osm_way.id)
+                    continue
+
+            obj = create_landuse_from_osm(
+                osm_way, self.transformer, self.imported_way_ids
+            )
+            if obj is None:
+                continue
+
+            self.project.add_object(obj)
+            self.imported_way_ids.add(osm_way.id)
+            result.objects_imported += 1
+
+            if options.verbose:
+                logger.debug("Imported land use '%s' (%s)", obj.name, obj.type.value)
 
     def _import_parking(self, osm_data: OSMData, options: ImportOptions,
                         result: ImportResult) -> None:

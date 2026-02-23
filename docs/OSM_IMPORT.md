@@ -1,20 +1,23 @@
-# OpenStreetMap Import Guide
+# OpenStreetMap Import & Export Guide
 
 ## Overview
 
-The OSM Import feature allows you to automatically import road network data from OpenStreetMap into ORBIT. This feature queries the Overpass API to retrieve road geometries, lane configurations, traffic signals, and roadside objects, then converts them to ORBIT's native format.
+ORBIT can **import** road network data from OpenStreetMap and **export** annotated map data back to OSM XML format. Import queries the Overpass API to retrieve road geometries, lane configurations, traffic signals, and roadside objects, then converts them to ORBIT's native format. Export writes ORBIT roads, signals, and objects to a standard `.osm` file.
 
-**Status**: ✅ Implemented and ready for testing (2025-11-06)
+**Status**: ✅ Import and Export implemented (2026-02)
 
 ---
 
 ## Quick Start
 
 ### Prerequisites
-1. **Loaded Image**: You must have an aerial/satellite image loaded in ORBIT
-2. **Georeferencing**: Set up at least 3 control points with pixel ↔ lat/lon mappings
-   - Go to: **Tools → Georeferencing**
-   - Add control points by clicking on image and entering coordinates
+
+Import supports two modes:
+
+1. **Image + Georeferencing** (recommended): A loaded image with at least 4 control points.
+   The bounding box is derived from the image extent.
+2. **Coordinate mode** (no image): Specify a center coordinate, radius, and pixel scale.
+   ORBIT creates a synthetic canvas and affine transform automatically.
 
 ### Import Process
 1. **Open Import Dialog**: File → Import OpenStreetMap Data (`Ctrl+Shift+I`)
@@ -24,8 +27,18 @@ The OSM Import feature allows you to automatically import road network data from
    - **Detail Level**: Moderate (roads + signals) or Full (+ objects)
    - **Lane Width**: Default width when not specified in OSM (2.0-5.0m)
    - **Junctions**: Toggle junction detection and section splitting
+   - **Custom Radius** (georef mode): Override the image-derived bbox with a radius
+     in meters around the image center. Useful for importing context beyond the image.
 4. **Click Import**: Progress dialog shows during import
 5. **Review Results**: Success dialog displays import statistics
+
+### Custom Radius and the Hybrid Transformer
+
+When a custom radius extends beyond the image, ORBIT uses a **hybrid transformer**
+that blends homography (inside the image) with affine (outside) to prevent
+coordinate distortion. This is automatic — no configuration needed. See
+[GEOREFERENCING.md](GEOREFERENCING.md#hybrid-transformer-homography--affine-blending)
+for technical details.
 
 ---
 
@@ -83,11 +96,19 @@ The OSM Import feature allows you to automatically import road network data from
 ```
 import/
 ├── __init__.py              # Module exports
-├── osm_mappings.py          # OSM tag → ORBIT/OpenDrive mappings
+├── osm_mappings.py          # OSM tag → ORBIT/OpenDrive mappings (import side)
 ├── osm_query.py             # Overpass API client
 ├── osm_parser.py            # JSON parser for OSM data
 ├── osm_to_orbit.py          # Feature converters (OSM → ORBIT)
-└── osm_importer.py          # Main orchestrator
+└── osm_importer.py          # Main import orchestrator
+
+export/
+├── osm_writer.py            # OSM XML writer (ORBIT → .osm)
+└── osm_mappings.py          # ORBIT → OSM tag mappings (export side)
+
+utils/
+└── coordinate_transform.py  # AffineTransformer, HomographyTransformer,
+                             # HybridTransformer, create_transformer
 ```
 
 ### Overpass API
@@ -98,10 +119,12 @@ import/
 - **Rate Limiting**: Automatic retry with backup endpoint on failure
 
 ### Coordinate Transformation
-- Uses existing `CoordinateTransformer` from export module
-- Calculates bounding box from image corners with 5% buffer
+- Uses `CoordinateTransformer` from the utils module
+- Calculates bounding box from image corners with 5% buffer (or from user-specified center + radius)
 - Transforms OSM lat/lon coordinates to pixel space
-- Maintains consistency with OpenDrive export
+- When custom radius exceeds image bounds, a `HybridTransformer` blends homography
+  (inside image) with affine (outside) to prevent projective distortion artifacts
+- Maintains consistency with OpenDrive and OSM export
 
 ### OSM Tag Mappings
 
@@ -195,12 +218,10 @@ After import, you'll see:
 2. Add at least 3 control points with pixel and lat/lon coordinates
 3. Ensure points are not collinear (form a triangle or polygon)
 
-### "No Image Loaded" Error
-**Cause**: No image currently loaded in ORBIT
-
-**Solution**:
-1. Use **File → Load Image** to load an aerial/satellite image
-2. Then try import again
+### No Image Loaded
+An image is no longer required. Without an image, the import dialog switches to
+**coordinate mode** where you enter a center lat/lon, radius, and pixel scale.
+ORBIT creates a synthetic canvas with an affine transform from those parameters.
 
 ### "Overpass API Error" or "Request timed out"
 **Cause**: Network issue, API overload, or very large area
@@ -269,6 +290,62 @@ After import, you'll see:
 - **Tag Consistency**: Tag usage varies by region and mapper preferences.
 - **Lane Data**: Many roads lack `lanes` tags; defaults are applied.
 - **Speed Limits**: Often missing; type-based defaults used as fallback.
+
+---
+
+## OSM Export
+
+### Overview
+
+Export writes ORBIT project data to a standard OpenStreetMap XML file (`.osm`).
+This allows round-tripping data through OSM-compatible tools (JOSM, Valhalla,
+SUMO, etc.) and sharing annotated maps with others.
+
+**Menu**: File → Export → Export to OSM...
+
+### What Gets Exported
+
+| Feature | OSM Element | Key Tags |
+|---------|-------------|----------|
+| Roads | `way` | `highway`, `lanes`, `maxspeed`, `name`, `oneway` |
+| Connecting roads | `way` | Inherits `highway` from connected road |
+| Traffic signals | `node` | `highway=traffic_signals` |
+| Stop / give-way signs | `node` | `highway=stop` / `highway=give_way` |
+| Speed limit signs | `node` | `traffic_sign=maxspeed`, `maxspeed` |
+| Buildings | `way` (closed) | `building=yes` |
+| Guardrails | `way` (open) | `barrier=guard_rail` |
+| Trees | `node` | `natural=tree` |
+| Street lamps | `node` | `highway=street_lamp` |
+| Forest, farmland, etc. | `way` (closed) | `landuse=forest`, `landuse=farmland`, etc. |
+| Parking spaces | `way` or `node` | `amenity=parking` |
+
+### Lane Width Tags
+
+Road exports include per-lane width information:
+
+- `lanes`, `lanes:forward`, `lanes:backward` — lane counts
+- `width:lanes:forward` — pipe-separated widths for forward (right) lanes, e.g. `3.5|3.5`
+- `width:lanes:backward` — pipe-separated widths for backward (left) lanes
+- `width` — total road width
+
+### OSM Tag Preservation
+
+Features originally imported from OSM retain their original tags. When
+exporting, these preserved tags are written back, with lane/width tags
+updated from the current ORBIT model. Manually created features use
+default tag mappings from `osm_mappings.py`.
+
+### Requirements
+
+- At least one road with geographic coordinates (georeferencing required)
+- A coordinate transformer is created automatically for converting any
+  pixel-only geometries (e.g. connecting roads) to geographic coordinates
+
+### Node Deduplication
+
+The exporter uses a grid-based spatial index (~0.5 m threshold) to merge
+nearby nodes, producing cleaner output. All node IDs are negative per OSM
+convention for unsaved data.
 
 ---
 
@@ -398,7 +475,13 @@ bbox = calculate_bbox_from_image(
 
 ## Version History
 
-### 2025-11-06 - Initial Implementation
+### 2026-02 - OSM Export and Hybrid Transformer
+- OSM export to `.osm` XML (roads, signals, objects, parking, lane widths)
+- Custom radius import with hybrid homography/affine transformer
+- No-image coordinate mode for importing without a loaded image
+- Expanded object types (forest, farmland, meadow, wetland, etc.)
+
+### 2025-11 - Initial Implementation
 - Complete OSM import functionality
 - Overpass API client with error handling
 - Road network import with lane configuration

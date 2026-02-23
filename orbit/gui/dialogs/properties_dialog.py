@@ -94,6 +94,22 @@ class RoadPropertiesDialog(QDialog):
         self.speed_limit_spin.setValue(0)
         basic_layout.addRow("Speed Limit:", self.speed_limit_spin)
 
+        # Surface and condition dropdowns (syncs OSM tags and lane materials)
+        import importlib
+        _osm_mappings = importlib.import_module('orbit.import.osm_mappings')
+
+        self.surface_combo = QComboBox()
+        self.surface_combo.addItem("—", None)
+        for key in _osm_mappings.OSM_SURFACE_TO_MATERIAL:
+            self.surface_combo.addItem(key.replace('_', ' ').title(), key)
+        basic_layout.addRow("Surface:", self.surface_combo)
+
+        self.smoothness_combo = QComboBox()
+        self.smoothness_combo.addItem("—", None)
+        for key in _osm_mappings.OSM_SMOOTHNESS_TO_ROUGHNESS:
+            self.smoothness_combo.addItem(key.replace('_', ' ').title(), key)
+        basic_layout.addRow("Condition:", self.smoothness_combo)
+
         basic_group.setLayout(basic_layout)
         layout.addWidget(basic_group)
 
@@ -503,6 +519,47 @@ class RoadPropertiesDialog(QDialog):
         else:
             self.speed_limit_spin.setValue(0)
 
+        # Set surface and condition combos from OSM tags or lane materials
+        import importlib
+        _osm_mappings = importlib.import_module('orbit.import.osm_mappings')
+
+        surface_key = None
+        roughness_val = None
+        for section in self.road.lane_sections:
+            for lane in section.lanes:
+                if lane.materials:
+                    _, _friction, roughness, sname = lane.materials[0]
+                    if roughness is not None:
+                        roughness_val = roughness
+                    if sname:
+                        # Reverse-lookup surface_name to OSM key
+                        for k, (_, _, sn) in _osm_mappings.OSM_SURFACE_TO_MATERIAL.items():
+                            if sn == sname:
+                                surface_key = k
+                                break
+                    break
+            if surface_key:
+                break
+
+        # OSM tags take priority over lane material reverse-lookup
+        if self.road.osm_tags:
+            if 'surface' in self.road.osm_tags:
+                surface_key = self.road.osm_tags['surface']
+            if 'smoothness' in self.road.osm_tags:
+                smoothness_key = self.road.osm_tags['smoothness']
+                set_combo_by_data(self.smoothness_combo, smoothness_key)
+            elif roughness_val is not None:
+                smoothness_name = _osm_mappings.get_roughness_smoothness(roughness_val)
+                if smoothness_name:
+                    set_combo_by_data(self.smoothness_combo, smoothness_name)
+        elif roughness_val is not None:
+            smoothness_name = _osm_mappings.get_roughness_smoothness(roughness_val)
+            if smoothness_name:
+                set_combo_by_data(self.smoothness_combo, smoothness_name)
+
+        if surface_key:
+            set_combo_by_data(self.surface_combo, surface_key)
+
         # Set centerline selection (if project available)
         if self.project and hasattr(self, 'centerline_combo'):
             # If road already has a centerline_id set, select it
@@ -567,6 +624,41 @@ class RoadPropertiesDialog(QDialog):
         # Speed limit
         speed = self.speed_limit_spin.value()
         self.road.speed_limit = speed if speed > 0 else None
+
+        # Surface and condition
+        import importlib
+        _osm_mappings = importlib.import_module('orbit.import.osm_mappings')
+
+        if not self.road.osm_tags:
+            self.road.osm_tags = {}
+
+        surface_key = self.surface_combo.currentData()
+        smoothness_key = self.smoothness_combo.currentData()
+
+        if surface_key:
+            self.road.osm_tags['surface'] = surface_key
+            friction, roughness, surface_name = _osm_mappings.OSM_SURFACE_TO_MATERIAL[surface_key]
+            # Override roughness if smoothness is also selected
+            if smoothness_key:
+                roughness = _osm_mappings.OSM_SMOOTHNESS_TO_ROUGHNESS[smoothness_key]
+            for section in self.road.lane_sections:
+                for lane in section.lanes:
+                    lane.materials = [(0.0, friction, roughness, surface_name)]
+        else:
+            self.road.osm_tags.pop('surface', None)
+
+        if smoothness_key:
+            self.road.osm_tags['smoothness'] = smoothness_key
+            # Update roughness on existing materials even without surface change
+            if not surface_key:
+                roughness = _osm_mappings.OSM_SMOOTHNESS_TO_ROUGHNESS[smoothness_key]
+                for section in self.road.lane_sections:
+                    for lane in section.lanes:
+                        if lane.materials:
+                            s, f, _r, sn = lane.materials[0]
+                            lane.materials = [(s, f, roughness, sn)]
+        else:
+            self.road.osm_tags.pop('smoothness', None)
 
         # Centerline selection (if project available)
         if self.project and hasattr(self, 'centerline_combo'):

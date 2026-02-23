@@ -45,26 +45,37 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         self.selection_item.setVisible(False)
         self.addToGroup(self.selection_item)
 
-        # Point handles for polyline objects (guardrails)
+        # Point handles for polyline/polygon objects
         self.point_items = []
         self.visible_point_indices = []  # Track which points have visible handles
 
         # Make item selectable, movable (only for point objects), and focusable
         self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsSelectable, True)
-        # Polyline objects (guardrails) and polygon buildings should not be draggable as a whole
-        # Instead, individual points are dragged
+        # Polyline objects (guardrails) and polygon objects should not be draggable as a whole
+        is_polygon = (obj.type.get_shape_type() == "polygon" and obj.points and len(obj.points) >= 3)
         is_polygon_building = (obj.type == ObjectType.BUILDING and obj.points and len(obj.points) >= 3)
-        if obj.type.get_shape_type() != "polyline" and not is_polygon_building:
+        if obj.type.get_shape_type() != "polyline" and not is_polygon_building and not is_polygon:
             self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setAcceptHoverEvents(True)
 
         # Set position and update graphics
-        # Don't use setPos for polylines or polygon buildings - they're in scene coordinates
-        if obj.type.get_shape_type() != "polyline" and not is_polygon_building:
+        # Don't use setPos for polylines or polygon objects - they're in scene coordinates
+        if obj.type.get_shape_type() != "polyline" and not is_polygon_building and not is_polygon:
             self.setPos(obj.position[0], obj.position[1])
 
         self.update_graphics()
+
+    def _is_polygon_with_points(self) -> bool:
+        """Check if this object is a polygon type with actual polygon points."""
+        shape = self.obj.type.get_shape_type()
+        has_points = self.obj.points and len(self.obj.points) >= 3
+        if shape == "polygon" and has_points:
+            return True
+        if shape == "rectangle" and has_points:
+            # Building with OSM polygon points
+            return True
+        return False
 
     def update_graphics(self):
         """Update visual representation based on object properties."""
@@ -103,6 +114,12 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
                 if self.obj.type.has_orientation():
                     path = rotate_path(path, self.obj.orientation)
 
+        elif shape_type == "polygon":  # Land use areas, parking
+            if self.obj.points and len(self.obj.points) >= 3:
+                path = create_polygon_path(self.obj.points)
+            else:
+                path = create_tree_circle_path(1.0, self.scale_factor)
+
         elif shape_type == "circle":  # Trees, bush
             radius = self.obj.dimensions.get('radius', 1.0)
             path = create_tree_circle_path(radius, self.scale_factor)
@@ -123,6 +140,10 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         # Draw point handles for polyline objects (guardrails)
         if shape_type == "polyline" and self.obj.points:
             self._draw_point_handles()
+
+        # Draw vertex handles for polygon objects when selected
+        if self._is_polygon_with_points() and self.isSelected():
+            self._draw_polygon_vertex_handles()
 
         # Update selection highlight
         self._update_selection_highlight(path)
@@ -182,6 +203,27 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
             # Update last handle position
             last_handle_pos = (x, y)
 
+    def _draw_polygon_vertex_handles(self):
+        """Draw draggable vertex handles at all polygon vertices (shown when selected)."""
+        point_color = QColor(255, 165, 0)  # Orange
+        point_pen = QPen(QColor(255, 255, 255), 2)  # White outline
+        point_brush = QBrush(point_color)
+        radius = 5  # Slightly larger than polyline handles for easier grabbing
+
+        for i, (x, y) in enumerate(self.obj.points):
+            self.visible_point_indices.append(i)
+
+            point_item = QGraphicsPathItem()
+            from PyQt6.QtGui import QPainterPath
+            path = QPainterPath()
+            path.addEllipse(x - radius, y - radius, radius * 2, radius * 2)
+            point_item.setPath(path)
+            point_item.setPen(point_pen)
+            point_item.setBrush(point_brush)
+
+            self.addToGroup(point_item)
+            self.point_items.append(point_item)
+
     def _update_selection_highlight(self, base_path):
         """Update selection highlight to match object shape."""
         from PyQt6.QtGui import QPainterPathStroker
@@ -213,6 +255,9 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         elif change == QGraphicsItemGroup.GraphicsItemChange.ItemSelectedHasChanged:
             # Update selection highlight visibility
             self.selection_item.setVisible(self.isSelected())
+            # Show/hide polygon vertex handles based on selection
+            if self._is_polygon_with_points():
+                self.update_graphics()
 
         return super().itemChange(change, value)
 
@@ -242,7 +287,8 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
 
     def hoverEnterEvent(self, event):
         """Change cursor on hover."""
-        if self.obj.type.get_shape_type() != "polyline":
+        shape = self.obj.type.get_shape_type()
+        if shape not in ("polyline",) and not self._is_polygon_with_points():
             self.setCursor(Qt.CursorShape.OpenHandCursor)
         super().hoverEnterEvent(event)
 
@@ -252,7 +298,18 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         super().hoverLeaveEvent(event)
 
     def mousePressEvent(self, event):
-        """Handle mouse press."""
+        """Handle mouse press.
+
+        For polygon objects, ignore the event unless clicking on a vertex
+        handle, so the view can use it for panning. Selection and dragging
+        of polygon vertices is handled by the ImageView mouse handler.
+        """
+        if self._is_polygon_with_points() and event.button() == Qt.MouseButton.LeftButton:
+            scene_pos = event.scenePos()
+            if self.get_point_at(scene_pos) < 0:
+                # Not near a vertex — let the event pass through for panning
+                event.ignore()
+                return
         if event.button() == Qt.MouseButton.LeftButton:
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
         super().mousePressEvent(event)
@@ -275,16 +332,19 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
 
     def get_point_at(self, scene_pos: QPointF, tolerance: float = 10.0) -> int:
         """
-        Check if scene position is near any visible guardrail point handle.
+        Check if scene position is near any visible point handle.
+
+        Works for both polyline (guardrail) and polygon objects.
 
         Args:
             scene_pos: Position in scene coordinates
-            tolerance: Distance tolerance in pixels (default 10 to match point handle size)
+            tolerance: Distance tolerance in pixels
 
         Returns:
             Index of point if found, -1 otherwise
         """
-        if self.obj.type.get_shape_type() != "polyline":
+        shape = self.obj.type.get_shape_type()
+        if shape not in ("polyline",) and not self._is_polygon_with_points():
             return -1
 
         # Only check points that have visible handles
@@ -299,7 +359,10 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
 
     def get_segment_at(self, scene_pos: QPointF, tolerance: float = 8.0) -> int:
         """
-        Check if scene position is near any guardrail segment.
+        Check if scene position is near any segment (edge between consecutive vertices).
+
+        Works for both polyline and polygon objects. For polygons, also checks the
+        closing edge from the last vertex back to the first.
 
         Args:
             scene_pos: Position in scene coordinates
@@ -308,12 +371,17 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         Returns:
             Index of first point of segment if found, -1 otherwise
         """
-        if self.obj.type.get_shape_type() != "polyline":
+        shape = self.obj.type.get_shape_type()
+        if shape not in ("polyline",) and not self._is_polygon_with_points():
             return -1
 
-        for i in range(len(self.obj.points) - 1):
+        n = len(self.obj.points)
+        # For polygons, include the closing edge (last→first)
+        num_segments = n if self._is_polygon_with_points() else n - 1
+
+        for i in range(num_segments):
             x1, y1 = self.obj.points[i]
-            x2, y2 = self.obj.points[i + 1]
+            x2, y2 = self.obj.points[(i + 1) % n]
 
             # Point to line segment distance
             dx = x2 - x1

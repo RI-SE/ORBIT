@@ -364,6 +364,19 @@ class OSMParser:
         return len(way.nodes) > 2 and way.nodes[0] == way.nodes[-1]
 
     @staticmethod
+    def get_landuse_ways(data: OSMData) -> List[OSMWay]:
+        """Extract ways representing land use / natural areas."""
+        landuse_tags = {'forest', 'farmland', 'meadow', 'grass'}
+        natural_tags = {'wood', 'water', 'wetland', 'scrub', 'heath'}
+        return [
+            way for way in data.ways.values()
+            if way.tags.get('landuse') in landuse_tags
+            or way.tags.get('natural') in natural_tags
+            or way.tags.get('waterway') == 'riverbank'
+            or 'water' in way.tags
+        ]
+
+    @staticmethod
     def get_parking_ways(data: OSMData) -> List[OSMWay]:
         """
         Extract ways representing parking facilities.

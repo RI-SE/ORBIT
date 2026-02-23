@@ -41,7 +41,8 @@ class OpenDriveWriter:
         use_german_codes: bool = False,
         offset_x: float = 0.0,
         offset_y: float = 0.0,
-        geo_reference_string: Optional[str] = None
+        geo_reference_string: Optional[str] = None,
+        export_object_types: Optional[set] = None
     ):
         """
         Initialize OpenDrive writer.
@@ -59,6 +60,8 @@ class OpenDriveWriter:
             offset_y: Y offset subtracted from all exported coordinates (projected northing)
             geo_reference_string: Explicit proj string for the geoReference element.
                 Takes priority over use_tmerc / imported_geo_reference when set.
+            export_object_types: If set, only export objects whose type is in this set.
+                If None (default), all objects are exported.
         """
         self.project = project
         self.transformer = transformer
@@ -69,6 +72,7 @@ class OpenDriveWriter:
         self.offset_x = offset_x
         self.offset_y = offset_y
         self.geo_reference_string = geo_reference_string
+        self.export_object_types = export_object_types
 
         # Build lookup maps
         self.polyline_map = {p.id: p for p in project.polylines}
@@ -213,6 +217,9 @@ class OpenDriveWriter:
                     # Fallback for non-numeric IDs (shouldn't happen after migration)
                     self.junction_numeric_ids[junction.id] = idx + 1
 
+        # Pre-pass: filter and auto-assign objects to nearest roads
+        self._export_objects = self._get_export_objects()
+
         # Export order:
         # 1. Regular roads (junction="-1")
         # 2. Connecting roads for each junction (junction="<id>")
@@ -266,6 +273,72 @@ class OpenDriveWriter:
                 root.append(jg_elem)
 
         return root
+
+    def _get_export_objects(self) -> list:
+        """Get filtered list of objects to export based on export_object_types.
+
+        Also auto-assigns unassigned objects to the nearest road by centroid
+        distance to road centerline.
+        """
+        objects = self.project.objects
+        if self.export_object_types is not None:
+            objects = [obj for obj in objects if obj.type in self.export_object_types]
+
+        # Auto-assign unassigned objects to nearest road
+        for obj in objects:
+            if obj.road_id is not None:
+                continue
+            # Use centroid (position) to find nearest road
+            pos = obj.position
+            if obj.points and len(obj.points) >= 3:
+                # Recalculate centroid from polygon points
+                pos = (
+                    sum(p[0] for p in obj.points) / len(obj.points),
+                    sum(p[1] for p in obj.points) / len(obj.points),
+                )
+            closest_road_id = self._find_nearest_road(pos)
+            if closest_road_id:
+                obj.road_id = closest_road_id
+                road = self.road_map.get(closest_road_id)
+                if road and road.centerline_id:
+                    centerline = self.polyline_map.get(road.centerline_id)
+                    if centerline:
+                        s, t = obj.calculate_s_t_position(centerline.points)
+                        obj.s_position = s
+                        obj.t_offset = t
+
+        return objects
+
+    def _find_nearest_road(self, position: tuple) -> Optional[str]:
+        """Find the nearest road to a pixel position by centerline distance."""
+        min_dist = float('inf')
+        closest_id = None
+        px, py = position
+
+        for road in self.project.roads:
+            if not road.centerline_id:
+                continue
+            centerline = self.polyline_map.get(road.centerline_id)
+            if not centerline or len(centerline.points) < 2:
+                continue
+
+            # Find minimum distance to any segment
+            for i in range(len(centerline.points) - 1):
+                x1, y1 = centerline.points[i]
+                x2, y2 = centerline.points[i + 1]
+                dx, dy = x2 - x1, y2 - y1
+                length_sq = dx * dx + dy * dy
+                if length_sq == 0:
+                    continue
+                t = max(0, min(1, ((px - x1) * dx + (py - y1) * dy) / length_sq))
+                proj_x = x1 + t * dx
+                proj_y = y1 + t * dy
+                dist = ((px - proj_x) ** 2 + (py - proj_y) ** 2) ** 0.5
+                if dist < min_dist:
+                    min_dist = dist
+                    closest_id = road.id
+
+        return closest_id
 
     def _find_junction_for_road_endpoint(self, road_id: str, is_predecessor: bool) -> Optional[int]:
         """
@@ -599,7 +672,13 @@ class OpenDriveWriter:
             road_elem.append(signals)
 
         # Add objects for this road (including parking spaces)
-        objects = self.object_builder.create_objects(road, self.project.objects, centerline_points_pixel)
+        export_objects = getattr(self, '_export_objects', None)
+        if export_objects is None:
+            export_objects = self._get_export_objects()
+        objects = self.object_builder.create_objects(
+            road, export_objects, centerline_points_pixel,
+            geometry_elements=geometry_elements, road_length=road_length,
+        )
 
         # Create parking objects for this road
         parking_objects = self.parking_builder.create_parking_objects(
@@ -1398,7 +1477,8 @@ def export_to_opendrive(
     use_german_codes: bool = False,
     offset_x: float = 0.0,
     offset_y: float = 0.0,
-    geo_reference_string: Optional[str] = None
+    geo_reference_string: Optional[str] = None,
+    export_object_types: Optional[set] = None
 ) -> bool:
     """
     Export project to OpenDrive format.
@@ -1418,6 +1498,8 @@ def export_to_opendrive(
         offset_x: X offset subtracted from all exported coordinates (projected easting)
         offset_y: Y offset subtracted from all exported coordinates (projected northing)
         geo_reference_string: Explicit proj string for the geoReference element
+        export_object_types: If set, only export objects whose type is in this set.
+            If None (default), all objects are exported.
 
     Returns:
         True if successful
@@ -1426,7 +1508,7 @@ def export_to_opendrive(
     writer = OpenDriveWriter(
         project, transformer, curve_fitter, right_hand_traffic,
         country_code, use_tmerc, use_german_codes,
-        offset_x, offset_y, geo_reference_string
+        offset_x, offset_y, geo_reference_string, export_object_types
     )
     return writer.write(output_path)
 
