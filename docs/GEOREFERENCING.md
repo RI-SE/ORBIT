@@ -696,6 +696,55 @@ Recompute Monte Carlo analysis after any changes for updated estimates.
 - Use multiple overlapping images
 - Apply terrain correction with DEM
 
+### Hybrid Transformer (Homography + Affine Blending)
+
+When importing OSM data with a custom radius larger than the image extent
+(e.g. 700 m around an image that covers ~100 m), the homography transform
+produces wildly distorted coordinates for points far from the control points.
+This happens because the homogeneous divisor `w` in the projective transform
+can approach zero or go negative, sending points to infinity or flipping them
+to the opposite side of the image.
+
+ORBIT solves this with a **HybridTransformer** that wraps both a
+`HomographyTransformer` and an `AffineTransformer` fitted to the same control
+points. It uses the homography inside the image bounds and the affine outside,
+with smooth blending in a transition zone.
+
+**How it works:**
+
+1. Both transforms are fitted to the same control points, so they agree near
+   the control-point cluster.
+2. For each coordinate conversion, the hybrid transformer computes both results
+   and selects or blends between them based on position relative to the image
+   boundary.
+3. A **smoothstep** function (3t² − 2t³) provides C1-continuous blending in a
+   transition zone (20% of the shorter image dimension) around the boundary,
+   avoiding visible discontinuities.
+4. As a safety net, if the homography's `w` component is near zero or negative
+   (`w < 0.01`), the affine result is used regardless of position.
+
+**When it activates:**
+
+The hybrid transformer is created automatically whenever an image is loaded and
+the transform method is homography. All code paths — OSM/xodr import and
+export, project load, scale display, uncertainty analysis, and connecting road
+sync — use the hybrid transformer so that points placed outside the image
+during large-radius imports round-trip correctly through pixel↔geo conversion.
+
+```
+Inside image:        Pure homography (identical to before)
+Transition zone:     Smoothstep blend (imperceptible for typical drone images)
+Outside image:       Pure affine (linear, no blow-up)
+```
+
+**Why affine works outside the image:**
+
+Affine transformation is a linear map — it extrapolates predictably and never
+produces singularities. While it cannot model perspective distortion, the
+perspective effect is small for typical drone altitudes, and outside the image
+there are no pixels to match anyway. Roads placed by the affine transform
+maintain correct relative positions and distances.
+
 ---
 
 ## Summary: Quick Reference
@@ -733,7 +782,7 @@ Recompute Monte Carlo analysis after any changes for updated estimates.
 ## Files and References
 
 ### Implementation Files
-- **`utils/coordinate_transform.py`**: Homography computation (DLT algorithm)
+- **`utils/coordinate_transform.py`**: Homography, affine, and hybrid transformer implementations (DLT algorithm)
 - **`utils/uncertainty_estimator.py`**: Monte Carlo uncertainty analysis
 - **`gui/georeference_dialog.py`**: Main georeferencing dialog
 - **`gui/csv_import_dialog.py`**: CSV import functionality

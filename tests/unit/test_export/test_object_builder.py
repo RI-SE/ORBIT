@@ -78,19 +78,23 @@ class TestCalculatePixelLength:
 
 
 class TestCalculateRoadLengthMeters:
-    """Tests for _calculate_road_length_meters method."""
+    """Tests for _get_meter_centerline method."""
 
     def test_no_transformer_returns_zero(self):
         """Returns 0 when no transformer."""
         builder = ObjectBuilder()
         mock_road = Mock()
-        assert builder._calculate_road_length_meters(mock_road) == 0.0
+        pts, length = builder._get_meter_centerline(mock_road)
+        assert length == 0.0
+        assert pts == []
 
     def test_no_curve_fitter_returns_zero(self):
         """Returns 0 when no curve fitter."""
         builder = ObjectBuilder(transformer=Mock())
         mock_road = Mock()
-        assert builder._calculate_road_length_meters(mock_road) == 0.0
+        pts, length = builder._get_meter_centerline(mock_road)
+        assert length == 0.0
+        assert pts == []
 
     def test_no_centerline_returns_zero(self):
         """Returns 0 when centerline not in polyline map."""
@@ -104,7 +108,9 @@ class TestCalculateRoadLengthMeters:
         mock_road = Mock()
         mock_road.centerline_id = "cl1"
 
-        assert builder._calculate_road_length_meters(mock_road) == 0.0
+        pts, length = builder._get_meter_centerline(mock_road)
+        assert length == 0.0
+        assert pts == []
 
     def test_calculates_length_from_pixel_coords(self):
         """Calculates road length from pixel coordinates."""
@@ -128,7 +134,7 @@ class TestCalculateRoadLengthMeters:
         mock_road = Mock()
         mock_road.centerline_id = "cl1"
 
-        length = builder._calculate_road_length_meters(mock_road)
+        pts, length = builder._get_meter_centerline(mock_road)
         assert length == 10.0
 
     def test_uses_geo_points_when_available(self):
@@ -153,7 +159,7 @@ class TestCalculateRoadLengthMeters:
         mock_road = Mock()
         mock_road.centerline_id = "cl1"
 
-        length = builder._calculate_road_length_meters(mock_road)
+        pts, length = builder._get_meter_centerline(mock_road)
         assert length == 15.0
         mock_transformer.latlon_to_meters.assert_called()
 
@@ -361,7 +367,7 @@ class TestSetTypeAttributes:
         assert length == pytest.approx(10.0, abs=0.1)
 
     def test_building_attributes(self, builder):
-        """Building type attributes."""
+        """Building type attributes - only height, no width/length/hdg for polygon buildings."""
         elem = etree.Element('object')
         obj = RoadObject(position=(0, 0), object_type=ObjectType.BUILDING)
         obj.dimensions = {'height': 10.0, 'width': 20.0, 'length': 30.0}
@@ -372,8 +378,10 @@ class TestSetTypeAttributes:
         assert elem.get('type') == 'building'
         assert elem.get('subtype') == ''
         assert elem.get('height') == '10.00'
-        assert elem.get('width') == '20.00'
-        assert elem.get('length') == '30.00'
+        # Polygon buildings don't set width/length/hdg - shape comes from outline
+        assert elem.get('width') is None
+        assert elem.get('length') is None
+        assert elem.get('hdg') is None
 
     def test_tree_broadleaf_attributes(self, builder):
         """Broadleaf tree attributes."""
@@ -461,16 +469,26 @@ class TestCreateObjectOutline:
         corners = result.findall('cornerLocal')
         assert len(corners) == 3
 
-    def test_building_rectangular_outline(self, builder):
-        """Building gets rectangular outline."""
+    def test_building_polygon_outline(self, builder):
+        """Building gets polygon outline from its points."""
         obj = RoadObject(position=(0, 0), object_type=ObjectType.BUILDING)
         obj.dimensions = {'width': 20.0, 'length': 30.0, 'height': 10.0}
+        obj.points = [(0, 0), (10, 0), (10, 5), (5, 5), (5, 10), (0, 10)]
 
         result = builder._create_object_outline(obj)
 
         assert result is not None
         corners = result.findall('cornerLocal')
-        assert len(corners) == 4
+        assert len(corners) == 6
+
+    def test_building_without_points_no_outline(self, builder):
+        """Building without polygon points gets no outline."""
+        obj = RoadObject(position=(0, 0), object_type=ObjectType.BUILDING)
+        obj.dimensions = {'width': 20.0, 'length': 30.0, 'height': 10.0}
+
+        result = builder._create_object_outline(obj)
+
+        assert result is None
 
     def test_tree_broadleaf_circular_outline(self, builder):
         """Broadleaf tree gets circular outline."""

@@ -214,7 +214,7 @@ def should_import_highway(highway_type: str) -> bool:
         True if should be imported
     """
     excluded_types = {
-        'steps', 'pedestrian',
+        'steps', 'pedestrian', 'platform',
         'bridleway', 'corridor', 'construction', 'proposed'
     }
     return highway_type not in excluded_types
@@ -512,6 +512,43 @@ OSM_SURFACE_TO_MATERIAL = {
 }
 
 
+# OSM smoothness values mapped to roughness adjustments.
+# These modify the base roughness from the surface material.
+# See https://wiki.openstreetmap.org/wiki/Key:smoothness
+OSM_SMOOTHNESS_TO_ROUGHNESS = {
+    'excellent': 0.005,
+    'good': 0.01,
+    'intermediate': 0.025,
+    'bad': 0.05,
+    'very_bad': 0.08,
+    'horrible': 0.12,
+    'very_horrible': 0.15,
+    'impassable': 0.20,
+}
+
+
+def get_roughness_smoothness(roughness: float) -> str | None:
+    """Reverse-lookup: get OSM smoothness label from a roughness value."""
+    for tag, val in OSM_SMOOTHNESS_TO_ROUGHNESS.items():
+        if abs(val - roughness) < 1e-6:
+            return tag
+    return None
+
+
+def get_smoothness_roughness(smoothness_tag: str) -> float | None:
+    """Get roughness value from OSM smoothness tag.
+
+    Args:
+        smoothness_tag: Value of OSM smoothness tag
+
+    Returns:
+        Roughness value or None if unknown
+    """
+    if not smoothness_tag:
+        return None
+    return OSM_SMOOTHNESS_TO_ROUGHNESS.get(smoothness_tag.strip().lower())
+
+
 def get_surface_material(surface_tag: str) -> tuple[float, float, str] | None:
     """
     Get OpenDrive material properties from OSM surface tag.
@@ -590,6 +627,42 @@ OSM_PARKING_ACCESS_MAP = {
     'disabled': ParkingAccess.DISABLED,
     'no': ParkingAccess.PRIVATE,  # No access = private
 }
+
+
+def get_landuse_type_from_osm(tags: dict) -> Optional[ObjectType]:
+    """Determine ORBIT land use ObjectType from OSM tags.
+
+    Separate from get_object_type_from_osm() to avoid conflicts with
+    node-level mappings (e.g. natural=scrub -> BUSH for nodes).
+
+    Args:
+        tags: OSM element tags dictionary
+
+    Returns:
+        ObjectType for land use areas, or None if not recognized
+    """
+    landuse = tags.get('landuse')
+    if landuse == 'forest':
+        return ObjectType.LANDUSE_FOREST
+    if landuse == 'farmland':
+        return ObjectType.LANDUSE_FARMLAND
+    if landuse in ('meadow', 'grass'):
+        return ObjectType.LANDUSE_MEADOW
+
+    natural = tags.get('natural')
+    if natural == 'wood':
+        return ObjectType.LANDUSE_FOREST
+    if natural == 'water':
+        return ObjectType.NATURAL_WATER
+    if natural == 'wetland':
+        return ObjectType.NATURAL_WETLAND
+    if natural in ('scrub', 'heath'):
+        return ObjectType.LANDUSE_SCRUB
+
+    if tags.get('waterway') == 'riverbank' or 'water' in tags:
+        return ObjectType.NATURAL_WATER
+
+    return None
 
 
 def get_parking_type_from_osm(tags: dict) -> Optional[ParkingType]:

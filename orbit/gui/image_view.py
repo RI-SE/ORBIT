@@ -72,6 +72,7 @@ class ImageView(QGraphicsView):
     object_placement_requested = pyqtSignal(float, float, object)  # Emits x, y coordinates and ObjectType
     parking_placement_requested = pyqtSignal(float, float, object, object)  # Emits x, y, ParkingType, ParkingAccess
     parking_polygon_completed = pyqtSignal(list, object, object)  # Emits points list, ParkingType, ParkingAccess
+    object_polygon_completed = pyqtSignal(list, object)  # Emits points list, ObjectType
     section_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index
     road_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index for splitting road
     section_modified = pyqtSignal(str)  # Emits road ID
@@ -155,6 +156,9 @@ class ImageView(QGraphicsView):
         self.adjustment_mode = False  # Transform adjustment mode for aligning imported data
         self.current_adjustment: Optional[TransformAdjustment] = None  # Current adjustment values
         self.object_type_to_place: Optional[ObjectType] = None  # Type of object to place
+        self.object_polygon_mode = False  # True for polygon drawing (land use objects)
+        self.object_polygon_points: List[Tuple[float, float]] = []  # Points for current object polygon
+        self.object_polygon_preview: Optional[QGraphicsPathItem] = None  # Preview item
         self.drawing_guardrail = False  # True when dragging to create guardrail
         self.guardrail_points: List[Tuple[float, float]] = []  # Points for current guardrail
         self.pick_point_mode = False
@@ -167,6 +171,8 @@ class ImageView(QGraphicsView):
         self.drag_junction_id: Optional[str] = None
         self.dragging_guardrail_point = False
         self.drag_object_id: Optional[str] = None
+        self._drag_start_obj_points: Optional[list] = None
+        self._drag_start_obj_geo_points: Optional[list] = None
         # drag_point_index is shared with polyline and connecting road dragging
         self.dragging_connecting_road_point = False
         self.drag_connecting_road_id: Optional[str] = None
@@ -534,6 +540,60 @@ class ImageView(QGraphicsView):
         if self.parking_polygon_preview:
             self.safe_remove_item(self.parking_polygon_preview)
             self.parking_polygon_preview = None
+
+    def _add_object_polygon_point(self, x: float, y: float):
+        """Add a point to the current object polygon being drawn."""
+        from PyQt6.QtGui import QPainterPath
+
+        from orbit.gui.graphics.object_graphics import get_object_color
+
+        self.object_polygon_points.append((x, y))
+
+        # Update or create preview with the object type's color
+        if self.object_polygon_preview is None:
+            self.object_polygon_preview = QGraphicsPathItem()
+            color = get_object_color(self.object_type_to_place)
+            self.object_polygon_preview.setPen(QPen(color.darker(120), 2, Qt.PenStyle.DashLine))
+            fill = QColor(color)
+            fill.setAlpha(80)
+            self.object_polygon_preview.setBrush(QBrush(fill))
+            self.scene.addItem(self.object_polygon_preview)
+
+        # Draw polygon preview
+        path = QPainterPath()
+        if self.object_polygon_points:
+            path.moveTo(self.object_polygon_points[0][0], self.object_polygon_points[0][1])
+            for px, py in self.object_polygon_points[1:]:
+                path.lineTo(px, py)
+            if len(self.object_polygon_points) > 2:
+                path.closeSubpath()
+
+        self.object_polygon_preview.setPath(path)
+
+    def _finish_object_polygon(self):
+        """Finish drawing the object polygon and emit completion signal."""
+        if len(self.object_polygon_points) < 3:
+            self._cancel_object_polygon()
+            return
+
+        self.object_polygon_completed.emit(
+            list(self.object_polygon_points),
+            self.object_type_to_place
+        )
+
+        self._clear_object_polygon_preview()
+        self.object_polygon_points.clear()
+
+    def _cancel_object_polygon(self):
+        """Cancel the current object polygon drawing."""
+        self.object_polygon_points.clear()
+        self._clear_object_polygon_preview()
+
+    def _clear_object_polygon_preview(self):
+        """Remove the object polygon preview from the scene."""
+        if self.object_polygon_preview:
+            self.safe_remove_item(self.object_polygon_preview)
+            self.object_polygon_preview = None
 
     def _get_geo_transformer(self):
         """Get the cached geo transformer from the parent MainWindow, if available."""
@@ -1536,6 +1596,11 @@ class ImageView(QGraphicsView):
         """Enable or disable object placement mode."""
         self.object_mode = enabled
         self.object_type_to_place = object_type
+        # Enable polygon drawing for polygon-shaped objects (land use, parking types)
+        self.object_polygon_mode = (
+            enabled and object_type is not None
+            and object_type.get_shape_type() == "polygon"
+        )
         if enabled:
             self.setDragMode(QGraphicsView.DragMode.NoDrag)
         else:
@@ -1544,6 +1609,8 @@ class ImageView(QGraphicsView):
             if self.drawing_guardrail:
                 self.drawing_guardrail = False
                 self.guardrail_points.clear()
+            # Clean up any partial object polygon
+            self._cancel_object_polygon()
 
     def set_parking_mode(self, enabled: bool, parking_type=None, access_type=None, polygon_mode: bool = False):
         """Enable or disable parking placement mode."""
@@ -2683,19 +2750,25 @@ class ImageView(QGraphicsView):
             ):
                 result["signal_ids"].append(signal.id)
 
-        # Objects: point or polyline shapes
+        # Objects: point, polyline, or polygon shapes
         for obj in self.project.objects:
-            if obj.type.get_shape_type() == "polyline" and obj.points:
+            shape = obj.type.get_shape_type()
+            has_polygon_points = obj.points and len(obj.points) >= 3
+            if (shape in ("polyline", "polygon") or (shape == "rectangle" and has_polygon_points)) and obj.points:
                 found = False
                 for px, py in obj.points:
                     if rect.contains(QPointF(px, py)):
                         found = True
                         break
                 if not found:
-                    for i in range(len(obj.points) - 1):
+                    n = len(obj.points)
+                    # For polygons, also check closing segment
+                    end = n if shape != "polyline" else n - 1
+                    for i in range(end):
+                        j = (i + 1) % n
                         if self._segment_intersects_rect(
                             obj.points[i][0], obj.points[i][1],
-                            obj.points[i + 1][0], obj.points[i + 1][1],
+                            obj.points[j][0], obj.points[j][1],
                             rect,
                         ):
                             found = True
@@ -2776,27 +2849,61 @@ class ImageView(QGraphicsView):
 
             return False
 
+        # For polygon objects (buildings with points, land use areas), check inside or near edge
+        if obj.type.get_shape_type() == "polygon" or (
+            obj.type.get_shape_type() == "rectangle" and obj.points and len(obj.points) >= 3
+        ):
+            if obj.points and len(obj.points) >= 3:
+                # Point-in-polygon test (ray casting)
+                x, y = scene_pos.x(), scene_pos.y()
+                inside = False
+                n = len(obj.points)
+                j = n - 1
+                for i in range(n):
+                    xi, yi = obj.points[i]
+                    xj, yj = obj.points[j]
+                    if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+                        inside = not inside
+                    j = i
+                if inside:
+                    return True
+                # Also check near edges
+                for i in range(n):
+                    x1, y1 = obj.points[i]
+                    x2, y2 = obj.points[(i + 1) % n]
+                    dx = x2 - x1
+                    dy = y2 - y1
+                    length_sq = dx * dx + dy * dy
+                    if length_sq == 0:
+                        continue
+                    t = max(0, min(1, ((x - x1) * dx + (y - y1) * dy) / length_sq))
+                    proj_x = x1 + t * dx
+                    proj_y = y1 + t * dy
+                    dist = ((x - proj_x) ** 2 + (y - proj_y) ** 2) ** 0.5
+                    if dist <= tolerance:
+                        return True
+                return False
+
         # For point objects, check if click is within tolerance radius of the object position
-        else:
-            obj_x, obj_y = obj.position
-            dist = ((scene_pos.x() - obj_x) ** 2 + (scene_pos.y() - obj_y) ** 2) ** 0.5
+        obj_x, obj_y = obj.position
+        dist = ((scene_pos.x() - obj_x) ** 2 + (scene_pos.y() - obj_y) ** 2) ** 0.5
 
-            # Use larger tolerance for point objects based on their dimensions
-            radius = tolerance
-            if obj.type.get_shape_type() == "circle":
-                radius = max(tolerance, obj.dimensions.get('radius', 1.0) * 10)  # Assuming ~10 px per meter
-            elif obj.type.get_shape_type() in ("rectangle", "cylinder"):
-                # Use larger dimension as radius
-                width = obj.dimensions.get('width', 1.0) * 10
-                length = obj.dimensions.get('length', 1.0) * 10
-                radius = max(tolerance, max(width, length) / 2)
+        # Use larger tolerance for point objects based on their dimensions
+        radius = tolerance
+        if obj.type.get_shape_type() == "circle":
+            radius = max(tolerance, obj.dimensions.get('radius', 1.0) * 10)  # Assuming ~10 px per meter
+        elif obj.type.get_shape_type() in ("rectangle", "cylinder"):
+            # Use larger dimension as radius
+            width = obj.dimensions.get('width', 1.0) * 10
+            length = obj.dimensions.get('length', 1.0) * 10
+            radius = max(tolerance, max(width, length) / 2)
 
-            return dist <= radius
+        return dist <= radius
 
     def _show_object_menu(self, view_pos, object_id: str, scene_pos=None):
         """
         Show context menu for object with Edit and Remove options.
-        For guardrails, also shows Delete Point option if over a point.
+        For polyline/polygon objects, also shows vertex manipulation options.
 
         Args:
             view_pos: Position in view coordinates
@@ -2806,16 +2913,28 @@ class ImageView(QGraphicsView):
         menu = QMenu()
         edit_action = menu.addAction("Edit Properties...")
 
-        # Check if this is a guardrail and if we're over a point
+        # Check if this is a polyline/polygon and if we're over a point or edge
         delete_point_action = None
+        insert_point_action = None
         point_index = -1
+        segment_index = -1
         if scene_pos and object_id in self.object_items:
             item = self.object_items[object_id]
-            if item.obj.type.get_shape_type() == "polyline":
+            is_polyline = item.obj.type.get_shape_type() == "polyline"
+            is_polygon = item._is_polygon_with_points()
+
+            if is_polyline or is_polygon:
                 point_index = item.get_point_at(scene_pos)
                 if point_index >= 0:
-                    delete_point_action = menu.addAction("Delete Point")
-                    menu.addSeparator()
+                    min_pts = 3 if is_polygon else 2
+                    if len(item.obj.points) > min_pts:
+                        delete_point_action = menu.addAction("Delete Vertex")
+                else:
+                    # Check if over an edge for inserting
+                    segment_index = item.get_segment_at(scene_pos)
+                    if segment_index >= 0:
+                        insert_point_action = menu.addAction("Insert Vertex Here")
+                menu.addSeparator()
 
         remove_action = menu.addAction("Remove Object")
 
@@ -2827,7 +2946,9 @@ class ImageView(QGraphicsView):
         elif action == remove_action:
             self.object_deleted.emit(object_id)
         elif delete_point_action and action == delete_point_action:
-            self._delete_guardrail_point(object_id, point_index)
+            self._delete_object_point(object_id, point_index)
+        elif insert_point_action and action == insert_point_action:
+            self._insert_object_point(object_id, segment_index, scene_pos)
 
     def _show_centerline_point_menu(self, view_pos, polyline_id: str, point_index: int):
         """
@@ -3083,11 +3204,14 @@ class ImageView(QGraphicsView):
                 self._update_soffset_labels(polyline_id)
 
     def _delete_guardrail_point(self, object_id: str, point_index: int):
-        """
-        Delete a point from a guardrail.
+        """Delete a point from a guardrail (legacy, calls _delete_object_point)."""
+        self._delete_object_point(object_id, point_index)
+
+    def _delete_object_point(self, object_id: str, point_index: int):
+        """Delete a vertex from a polyline or polygon object.
 
         Args:
-            object_id: ID of the guardrail object
+            object_id: ID of the object
             point_index: Index of the point to delete
         """
         if object_id not in self.object_items:
@@ -3096,16 +3220,17 @@ class ImageView(QGraphicsView):
         item = self.object_items[object_id]
         obj = item.obj
 
-        # Don't delete if only 2 points left (minimum for a line)
-        if len(obj.points) <= 2:
-            show_warning(self, "A guardrail must have at least 2 points.", "Cannot Delete Point")
+        if not obj.remove_point(point_index):
+            min_pts = 3 if obj.type.get_shape_type() == "polygon" else 2
+            show_warning(
+                self,
+                f"This object must have at least {min_pts} points.",
+                "Cannot Delete Vertex",
+            )
             return
 
-        # Delete the point
-        obj.points.pop(point_index)
-
-        # Update validity length
-        if obj.points and len(obj.points) >= 2:
+        # Update validity length for guardrails
+        if obj.type.get_shape_type() == "polyline" and obj.points and len(obj.points) >= 2:
             total_length = 0.0
             for i in range(len(obj.points) - 1):
                 x1, y1 = obj.points[i]
@@ -3113,7 +3238,33 @@ class ImageView(QGraphicsView):
                 total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
             obj.validity_length = total_length
 
-        # Refresh graphics
+        item.update_graphics()
+        self.object_modified.emit(object_id)
+
+    def _insert_object_point(self, object_id: str, segment_index: int, scene_pos):
+        """Insert a vertex on a polygon/polyline edge at the clicked position.
+
+        Args:
+            object_id: ID of the object
+            segment_index: Index of the first point of the edge
+            scene_pos: Scene position where the click occurred
+        """
+        if object_id not in self.object_items:
+            return
+
+        item = self.object_items[object_id]
+        obj = item.obj
+        insert_idx = segment_index + 1
+
+        # Compute geo coords for the new point
+        geo_point = None
+        transformer = self._get_geo_transformer()
+        if transformer:
+            lon, lat = transformer.pixel_to_geo(scene_pos.x(), scene_pos.y())
+            geo_point = (lon, lat)
+
+        obj.insert_point(insert_idx, (scene_pos.x(), scene_pos.y()), geo_point)
+
         item.update_graphics()
         self.object_modified.emit(object_id)
 
@@ -3147,11 +3298,14 @@ class ImageView(QGraphicsView):
                 self.signal_placement_requested.emit(scene_pos.x(), scene_pos.y())
 
             elif self.object_mode:
-                # Object placement - handle differently for guardrails (polyline) vs point objects
+                # Object placement - handle differently by shape type
                 if self.object_type_to_place and self.object_type_to_place.get_shape_type() == "polyline":
                     # Start drawing guardrail polyline
                     self.drawing_guardrail = True
                     self.guardrail_points = [(scene_pos.x(), scene_pos.y())]
+                elif self.object_polygon_mode:
+                    # Polygon mode - add point to object polygon
+                    self._add_object_polygon_point(scene_pos.x(), scene_pos.y())
                 else:
                     # Point object - emit request to open dialog (MainWindow will create object)
                     self.object_placement_requested.emit(scene_pos.x(), scene_pos.y(), self.object_type_to_place)
@@ -3193,25 +3347,24 @@ class ImageView(QGraphicsView):
 
                 # Check if Ctrl+Click on a line segment to insert a point
                 elif event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-                    # First check guardrails
+                    # First check object polylines and polygons
                     for object_id, object_item in self.object_items.items():
-                        if object_item.obj.type.get_shape_type() == "polyline":
+                        is_polyline = object_item.obj.type.get_shape_type() == "polyline"
+                        is_polygon = object_item._is_polygon_with_points()
+                        if is_polyline or is_polygon:
                             segment_index = object_item.get_segment_at(scene_pos)
                             if segment_index >= 0:
-                                insert_index = segment_index + 1
-                                obj = object_item.obj
-                                # Insert point after the first point of the segment
-                                obj.points.insert(insert_index, (scene_pos.x(), scene_pos.y()))
-                                # Update validity length
-                                if obj.points and len(obj.points) >= 2:
-                                    total_length = 0.0
-                                    for i in range(len(obj.points) - 1):
-                                        x1, y1 = obj.points[i]
-                                        x2, y2 = obj.points[i + 1]
-                                        total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-                                    obj.validity_length = total_length
-                                object_item.update_graphics()
-                                self.object_modified.emit(object_id)
+                                self._insert_object_point(object_id, segment_index, scene_pos)
+                                # Update validity length for guardrails
+                                if is_polyline:
+                                    obj = object_item.obj
+                                    if obj.points and len(obj.points) >= 2:
+                                        total_length = 0.0
+                                        for i in range(len(obj.points) - 1):
+                                            x1, y1 = obj.points[i]
+                                            x2, y2 = obj.points[i + 1]
+                                            total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+                                        obj.validity_length = total_length
                                 return
 
                     # Then check polylines
@@ -3319,14 +3472,19 @@ class ImageView(QGraphicsView):
                         self.drag_junction_id = junction_id
                         return
 
-                # Check if clicking on a guardrail point to drag
+                # Check if clicking on a guardrail/polygon vertex to drag
                 for object_id, item in self.object_items.items():
-                    if item.obj.type.get_shape_type() == "polyline":
+                    if item.obj.type.get_shape_type() == "polyline" or item._is_polygon_with_points():
                         point_index = item.get_point_at(scene_pos)
                         if point_index >= 0:
                             self.dragging_guardrail_point = True
                             self.drag_object_id = object_id
                             self.drag_point_index = point_index
+                            # Store original points for undo
+                            self._drag_start_obj_points = list(item.obj.points)
+                            self._drag_start_obj_geo_points = (
+                                list(item.obj.geo_points) if item.obj.geo_points else None
+                            )
                             return
 
                 # Check if clicking on a point to drag
@@ -3583,13 +3741,12 @@ class ImageView(QGraphicsView):
                 (scene_pos.y() - self.guardrail_points[-1][1])**2) > 100:  # Min 10px spacing
                 self.guardrail_points.append((scene_pos.x(), scene_pos.y()))
         elif self.dragging_guardrail_point and self.drag_object_id:
-            # Dragging a guardrail point
+            # Dragging a guardrail/polygon vertex
             item = self.object_items[self.drag_object_id]
             obj = item.obj
             if self.drag_point_index >= 0 and self.drag_point_index < len(obj.points):
-                # Update the point position
                 obj.points[self.drag_point_index] = (scene_pos.x(), scene_pos.y())
-                # Refresh graphics
+                obj.update_centroid()
                 item.update_graphics()
         elif self.dragging_junction and self.drag_junction_id:
             # Update junction position directly through the junction item
@@ -3679,16 +3836,27 @@ class ImageView(QGraphicsView):
         elif self.dragging_guardrail_point:
             self.dragging_guardrail_point = False
             if self.drag_object_id:
-                # Update validity length after dragging
                 item = self.object_items[self.drag_object_id]
                 obj = item.obj
-                if obj.points and len(obj.points) >= 2:
+                # Update validity length for guardrails
+                if obj.type.get_shape_type() == "polyline" and obj.points and len(obj.points) >= 2:
                     total_length = 0.0
                     for i in range(len(obj.points) - 1):
                         x1, y1 = obj.points[i]
                         x2, y2 = obj.points[i + 1]
                         total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
                     obj.validity_length = total_length
+                # Update geo coords for polygon vertex drags
+                if item._is_polygon_with_points():
+                    transformer = self._get_geo_transformer()
+                    if transformer and self.drag_point_index >= 0 and self.drag_point_index < len(obj.points):
+                        px, py = obj.points[self.drag_point_index]
+                        lon, lat = transformer.pixel_to_geo(px, py)
+                        if obj.geo_points and self.drag_point_index < len(obj.geo_points):
+                            obj.geo_points[self.drag_point_index] = (lon, lat)
+                        # Update geo_position centroid
+                        if obj.geo_points:
+                            obj.update_centroid()
                 # Emit modification signal
                 self.object_modified.emit(self.drag_object_id)
             self.drag_object_id = None
@@ -3789,6 +3957,9 @@ class ImageView(QGraphicsView):
         elif self.parking_mode and self.parking_polygon_mode and event.button() == Qt.MouseButton.LeftButton:
             # Finish parking polygon on double-click
             self._finish_parking_polygon()
+        elif self.object_mode and self.object_polygon_mode and event.button() == Qt.MouseButton.LeftButton:
+            # Finish object polygon on double-click
+            self._finish_object_polygon()
         elif event.button() == Qt.MouseButton.LeftButton:
             scene_pos = self.mapToScene(event.pos())
 
@@ -3797,6 +3968,16 @@ class ImageView(QGraphicsView):
                 if item.is_at_position(scene_pos):
                     self.junction_edit_requested.emit(junction_id)
                     return
+
+            # Check if double-clicking on a polygon/polyline edge to insert vertex
+            for object_id, item in self.object_items.items():
+                if item._is_polygon_with_points() or item.obj.type.get_shape_type() == "polyline":
+                    # Only insert if clicking on an edge (not a vertex)
+                    if item.get_point_at(scene_pos) < 0:
+                        segment_index = item.get_segment_at(scene_pos)
+                        if segment_index >= 0:
+                            self._insert_object_point(object_id, segment_index, scene_pos)
+                            return
 
             # Check if double-clicking on an object to edit
             for object_id, item in self.object_items.items():
@@ -3848,11 +4029,14 @@ class ImageView(QGraphicsView):
                     self._clear_measurements()
         elif self.parking_mode and self.parking_polygon_mode:
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                # Finish polygon
                 self._finish_parking_polygon()
             elif event.key() == Qt.Key.Key_Escape:
-                # Cancel polygon
                 self._cancel_parking_polygon()
+        elif self.object_mode and self.object_polygon_mode:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self._finish_object_polygon()
+            elif event.key() == Qt.Key.Key_Escape:
+                self._cancel_object_polygon()
         else:
             if event.key() == Qt.Key.Key_Delete:
                 # Delete selected polyline

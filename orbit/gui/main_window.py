@@ -25,7 +25,6 @@ from orbit.utils.logging_config import get_logger
 
 from .image_view import ImageView
 from .utils.message_helpers import ask_yes_no, show_error, show_info, show_warning
-from .utils.scale_utils import get_transformer
 from .widgets.adjustment_panel import AdjustmentPanel
 from .widgets.elements_tree import ElementsTreeWidget
 from .widgets.road_tree import RoadTreeWidget
@@ -108,6 +107,7 @@ class MainWindow(QMainWindow):
         self.image_view.object_placement_requested.connect(self.on_object_placement_requested)
         self.image_view.parking_placement_requested.connect(self.on_parking_placement_requested)
         self.image_view.parking_polygon_completed.connect(self.on_parking_polygon_completed)
+        self.image_view.object_polygon_completed.connect(self.on_object_polygon_completed)
         self.image_view.section_split_requested.connect(self.on_section_split_requested)
         self.image_view.road_split_requested.connect(self.on_road_split_requested)
         self.image_view.section_modified.connect(self.on_section_modified)
@@ -195,6 +195,10 @@ class MainWindow(QMainWindow):
         self.export_layout_mask_action = QAction("Export Layout &Mask...", self)
         self.export_layout_mask_action.setStatusTip("Export lane segmentation mask and metadata")
         self.export_layout_mask_action.triggered.connect(self.export_layout_mask)
+
+        self.export_osm_action = QAction("Export to &OSM...", self)
+        self.export_osm_action.setStatusTip("Export map data to OpenStreetMap format (.osm)")
+        self.export_osm_action.triggered.connect(self.export_to_osm)
 
         self.import_osm_action = QAction("Import &OpenStreetMap Data...", self)
         self.import_osm_action.setShortcut(QKeySequence("Ctrl+Shift+I"))
@@ -382,6 +386,7 @@ class MainWindow(QMainWindow):
         # Export submenu
         export_menu = file_menu.addMenu("&Export")
         export_menu.addAction(self.export_action)
+        export_menu.addAction(self.export_osm_action)
         export_menu.addAction(self.export_georef_action)
         export_menu.addAction(self.export_layout_mask_action)
         file_menu.addSeparator()
@@ -718,12 +723,7 @@ class MainWindow(QMainWindow):
 
             # Update georef validation in project if we have control points
             if self.project.has_georeferencing():
-                from orbit.export import create_transformer
-                transformer = create_transformer(
-                    self.project.control_points,
-                    self.project.transform_method,
-                    use_validation=True,
-                )
+                transformer = self._create_transformer(use_validation=True)
                 if transformer:
                     # Update stored validation results
                     training_points = [cp for cp in self.project.control_points if not cp.is_validation]
@@ -763,9 +763,59 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage("Export cancelled")
 
+    def export_to_osm(self):
+        """Export project to OpenStreetMap XML format (.osm)."""
+        from pathlib import Path as _Path
+
+        from orbit.export.osm_writer import export_to_osm
+
+        # Check if any element has geo coordinates
+        has_geo = any(
+            project_polyline.has_geo_coords()
+            for road in self.project.roads
+            if road.centerline_id
+            for project_polyline in [self.project.get_polyline(road.centerline_id)]
+            if project_polyline is not None
+        )
+        if not has_geo:
+            show_warning(
+                self,
+                "Cannot export to OSM: No roads with geographic coordinates found.\n"
+                "Import from OSM or set control points first.",
+                "No Geo Data",
+            )
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export to OSM",
+            self._last_file_directory,
+            "OpenStreetMap Files (*.osm);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        self._remember_directory(file_path)
+
+        try:
+            # Create transformer for pixel→geo conversion (needed for connecting
+            # roads that only have pixel coordinates, e.g. roundabout entries/exits)
+            transformer = self._create_transformer(use_validation=True)
+
+            success, message, _stats = export_to_osm(
+                self.project, _Path(file_path), transformer=transformer
+            )
+            if success:
+                show_info(self, message, "OSM Export")
+                self.statusBar().showMessage("OSM export completed")
+            else:
+                show_warning(self, message, "OSM Export")
+        except Exception as e:
+            show_error(self, f"OSM export failed:\n{e}", "Export Error")
+
     def export_georeferencing(self):
         """Export georeferencing parameters to JSON file."""
-        from orbit.export import create_transformer, export_georeferencing
+        from orbit.export import export_georeferencing
 
         # Check if we have enough control points
         if len(self.project.control_points) < 3:
@@ -791,11 +841,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-        transformer = create_transformer(
-            self.project.control_points,
-            self.project.transform_method,
-            use_validation=True,
-        )
+        transformer = self._create_transformer(use_validation=True)
         if not transformer:
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
@@ -985,7 +1031,6 @@ class MainWindow(QMainWindow):
         from PyQt6.QtCore import QCoreApplication
         from PyQt6.QtWidgets import QProgressDialog
 
-        from orbit.export import create_transformer
         from orbit.models.project import ControlPoint
 
         has_georef = len(self.project.control_points) >= 3
@@ -993,18 +1038,14 @@ class MainWindow(QMainWindow):
 
         # --- Branch: georef + image available ---
         if has_georef and has_image:
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            image_width = int(self.image_view.image_item.pixmap().width())
+            image_height = int(self.image_view.image_item.pixmap().height())
+
+            transformer = self._create_transformer(use_validation=True)
             if not transformer:
                 show_error(self, "Failed to create coordinate transformer.\n"
                     "Please check your control points.", "Transformation Error")
                 return
-
-            image_width = int(self.image_view.image_item.pixmap().width())
-            image_height = int(self.image_view.image_item.pixmap().height())
 
             try:
                 bbox = calculate_bbox_from_image(image_width, image_height, transformer)
@@ -1061,11 +1102,7 @@ class MainWindow(QMainWindow):
             self.project.transform_method = 'affine'
             self._cached_transformer = None
 
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=False,
-            )
+            transformer = self._create_transformer(use_validation=False)
             if not transformer:
                 show_error(self, "Failed to create coordinate transformer from synthetic control points.",
                     "Transformation Error")
@@ -1127,14 +1164,14 @@ class MainWindow(QMainWindow):
             importer = OSMImporter(self.project, transformer, image_width, image_height)
 
             if source_type == 'api':
-                # Import from Overpass API
-                result = importer.import_osm_data(options)
+                # Import from Overpass API (pass bbox for custom radius support)
+                result = importer.import_osm_data(options, bbox=bbox)
             else:
                 # Import from file
                 with open(file_path, 'r', encoding='utf-8') as f:
                     xml_content = f.read()
                 osm_data = OSMParser.parse_xml(xml_content)
-                result = importer._import_from_osm_data(osm_data, options)
+                result = importer._import_from_osm_data(osm_data, options, bbox=bbox)
 
             progress.close()
 
@@ -1212,8 +1249,6 @@ class MainWindow(QMainWindow):
         from PyQt6.QtCore import QCoreApplication
         from PyQt6.QtWidgets import QProgressDialog
 
-        from orbit.export import create_transformer
-
         has_image = self.image_view.image_item is not None
 
         # Get image dimensions (if available)
@@ -1228,11 +1263,7 @@ class MainWindow(QMainWindow):
         transformer = None
         has_georeferencing = len(self.project.control_points) >= 3
         if has_georeferencing:
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            transformer = self._create_transformer(use_validation=True)
 
         # Show import dialog
         dialog = OpenDriveImportDialog(has_georeferencing, self.verbose, self)
@@ -1439,7 +1470,7 @@ class MainWindow(QMainWindow):
         # Get scale factor if georeferenced
         scale_factor = None
         if self.project.has_georeferencing():
-            transformer = get_transformer(self.project)
+            transformer = self._create_transformer(use_validation=True)
             if transformer:
                 scale_factor = transformer.get_scale_factor()[0]  # scale_x
 
@@ -1551,6 +1582,10 @@ class MainWindow(QMainWindow):
 
                 if object_type.get_shape_type() == "polyline":
                     self.statusBar().showMessage("Click and drag to draw guardrail. Release to finish.")
+                elif object_type.get_shape_type() == "polygon":
+                    self.statusBar().showMessage(
+                        "Click to place polygon vertices. Double-click or Enter to finish. Esc to cancel."
+                    )
                 else:
                     self.statusBar().showMessage(f"Click on the map to place {object_type.value.replace('_', ' ')}")
         else:
@@ -1734,6 +1769,27 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage("Ready")
 
+    def _create_transformer(self, **kwargs):
+        """Create a coordinate transformer with image dimensions for hybrid blending.
+
+        Centralises transformer creation so that the HybridTransformer
+        (homography inside the image, affine outside) is used consistently
+        across all code paths — not just OSM import.
+        """
+        from orbit.utils.coordinate_transform import create_transformer
+
+        image_width, image_height = 0, 0
+        if self.image_view.image_item:
+            image_width = int(self.image_view.image_item.pixmap().width())
+            image_height = int(self.image_view.image_item.pixmap().height())
+        return create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            image_width=image_width,
+            image_height=image_height,
+            **kwargs,
+        )
+
     def on_mouse_moved(self, x: float, y: float):
         """Handle mouse movement in image view."""
         # Sentinel (-1, -1) is emitted on leaveEvent; show N/A.
@@ -1751,10 +1807,7 @@ class MainWindow(QMainWindow):
             try:
                 # Use cached transformer for performance
                 if self._cached_transformer is None:
-                    from orbit.export import create_transformer
-                    self._cached_transformer = create_transformer(
-                        self.project.control_points,
-                        self.project.transform_method,
+                    self._cached_transformer = self._create_transformer(
                         use_validation=True,
                     )
 
@@ -1777,8 +1830,6 @@ class MainWindow(QMainWindow):
 
         # Calculate average scale from control points
         try:
-            from orbit.export import create_transformer
-
             if self.verbose:
                 logger.debug("="*60)
                 logger.debug("SCALE CALCULATION DEBUG")
@@ -1791,11 +1842,7 @@ class MainWindow(QMainWindow):
                           f"Geo=(Lon={cp.longitude:.6f}, Lat={cp.latitude:.6f}) "
                           f"Type={'GVP' if cp.is_validation else 'GCP'}")
 
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            transformer = self._create_transformer(use_validation=True)
 
             if transformer is None:
                 self.scale_label.setText("Scale: N/A (transform failed)")
@@ -2272,7 +2319,7 @@ class MainWindow(QMainWindow):
 
         # Invalidate and rebuild transformer
         self._cached_transformer = None
-        self._cached_transformer = get_transformer(self.project)
+        self._cached_transformer = self._create_transformer(use_validation=True)
 
         # Refresh geometry with new transformation
         self.refresh_imported_geometry()
@@ -2331,17 +2378,12 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            from orbit.utils import create_transformer
             from orbit.utils.uncertainty_estimator import UncertaintyEstimator
 
             from .graphics.uncertainty_overlay import UncertaintyOverlay
 
             # Create transformer
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            transformer = self._create_transformer(use_validation=True)
 
             if not transformer:
                 show_warning(self, "Failed to create coordinate transformer.", "Transform Error")
@@ -2405,12 +2447,7 @@ class MainWindow(QMainWindow):
             return None
 
         try:
-            from orbit.export import create_transformer
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            transformer = self._create_transformer(use_validation=True)
             if transformer:
                 return transformer.get_scale_factor()
         except Exception:
@@ -2437,13 +2474,8 @@ class MainWindow(QMainWindow):
             return
 
         # Get or create transformer
-        from orbit.export import create_transformer
         try:
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
+            transformer = self._create_transformer(use_validation=True)
             if not transformer:
                 return
         except Exception:
@@ -2573,11 +2605,7 @@ class MainWindow(QMainWindow):
         if not self.project.has_georeferencing():
             return
         try:
-            from orbit.export import create_transformer
-            transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-            )
+            transformer = self._create_transformer()
             if transformer and conn_road.path:
                 conn_road.geo_path = [
                     transformer.pixel_to_geo(x, y) for x, y in conn_road.path
@@ -3404,6 +3432,69 @@ class MainWindow(QMainWindow):
 
         self.update_elements_tree()
         self.statusBar().showMessage("Guardrail added. Click and drag to add another or toggle off to finish.")
+
+    def on_object_polygon_completed(self, points: list, object_type):
+        """Handle object polygon completion from ImageView (for land use etc.)."""
+        from orbit.models import RoadObject
+
+        if len(points) < 3:
+            self.statusBar().showMessage("Polygon needs at least 3 points")
+            return
+
+        # Calculate centroid for position
+        centroid_x = sum(p[0] for p in points) / len(points)
+        centroid_y = sum(p[1] for p in points) / len(points)
+
+        # Create object with polygon points
+        obj = RoadObject(
+            object_id=self.project.next_id('object'),
+            position=(centroid_x, centroid_y),
+            object_type=object_type
+        )
+        obj.points = list(points)
+
+        # Find closest road and assign
+        closest_road_id = self.project.find_closest_road((centroid_x, centroid_y))
+        if closest_road_id:
+            obj.road_id = closest_road_id
+            road = self.project.get_road(closest_road_id)
+            if road and road.centerline_id:
+                centerline = self.project.get_polyline(road.centerline_id)
+                if centerline:
+                    s, t = obj.calculate_s_t_position(centerline.points)
+                    obj.s_position = s
+                    obj.t_offset = t
+
+        # Convert pixel coords to geo coords if transformer available
+        if self._cached_transformer:
+            lon, lat = self._cached_transformer.pixel_to_geo(centroid_x, centroid_y)
+            obj.geo_position = (lon, lat)
+            geo_points = []
+            for px, py in points:
+                lon, lat = self._cached_transformer.pixel_to_geo(px, py)
+                geo_points.append((lon, lat))
+            obj.geo_points = geo_points
+
+        # Get scale factor for graphics
+        scale_factor = 0.0
+        if hasattr(self, '_cached_transformer') and self._cached_transformer:
+            scale_x, scale_y = self._cached_transformer.get_scale_factor()
+            scale_factor = scale_x if scale_x else 0.0
+
+        # Add to project and view
+        self.project.add_object(obj)
+        self.image_view.add_object_graphics(obj, scale_factor)
+
+        # Push undo command
+        from .undo_commands import AddObjectCommand
+        cmd = AddObjectCommand(self, obj)
+        self.undo_stack.push(cmd)
+
+        self.update_elements_tree()
+        self.statusBar().showMessage(
+            f"Added {obj.get_display_name()}. "
+            f"Draw another or toggle off to finish."
+        )
 
     def on_object_modified(self, object_id):
         """Handle object modified signal (legacy, for non-undo modifications)."""

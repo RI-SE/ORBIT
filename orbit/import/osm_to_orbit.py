@@ -17,6 +17,7 @@ from orbit.models.polyline import LineType, Polyline, RoadMarkType
 from orbit.models.road import RoadType
 from orbit.models.signal import SignalType
 from orbit.utils import CoordinateTransformer
+from orbit.utils.enum_formatting import format_enum_name
 from orbit.utils.geometry import calculate_path_length, find_point_at_distance_along_path, shorten_geo_points
 from orbit.utils.logging_config import get_logger
 
@@ -30,6 +31,7 @@ from .osm_mappings import (
     get_path_width_from_osm,
     get_road_type_for_highway,
     get_signal_type_from_osm,
+    get_smoothness_roughness,
     get_surface_material,
     is_oneway,
     is_reverse_oneway,
@@ -1376,6 +1378,8 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
 
         road.lane_sections.append(section)
 
+        road.osm_tags = dict(osm_way.tags)
+        road.osm_way_id = osm_way.id
         return (road, centerline)
 
     # Normal road processing (not a path)
@@ -1452,6 +1456,18 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
     surface_material = None
     if 'surface' in osm_way.tags:
         surface_material = get_surface_material(osm_way.tags['surface'])
+
+    # Apply smoothness tag to override roughness if available
+    if 'smoothness' in osm_way.tags:
+        smoothness_roughness = get_smoothness_roughness(osm_way.tags['smoothness'])
+        if smoothness_roughness is not None:
+            if surface_material:
+                # Override roughness from surface with smoothness-derived value
+                friction, _, surface_name = surface_material
+                surface_material = (friction, smoothness_roughness, surface_name)
+            else:
+                # No surface tag — use smoothness alone with default friction
+                surface_material = (0.8, smoothness_roughness, 'unknown')
 
     # Create single lane section spanning entire road
     section = LaneSection(
@@ -1542,6 +1558,8 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
 
     road.lane_sections.append(section)
 
+    road.osm_tags = dict(osm_way.tags)
+    road.osm_way_id = osm_way.id
     return (road, centerline)
 
 
@@ -1739,6 +1757,7 @@ def create_signal_from_osm(osm_node: OSMNode, transformer: CoordinateTransformer
     # Note: Signal will be automatically attached to a road if its OSM node is part of a road way
     # during the import process. Manual adjustment can be done in the signal properties dialog.
 
+    signal.osm_tags = dict(osm_node.tags)
     return signal
 
 
@@ -1775,6 +1794,7 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
             geo_position=geo_position,  # Store geo coords as source of truth
         )
         obj.name = osm_element.tags.get('name', f"OSM Object {osm_element.id}")
+        obj.osm_tags = dict(osm_element.tags)
         return obj
 
     # Handle ways (polyline objects like guardrails or buildings)
@@ -1801,6 +1821,7 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
             obj.points = pixel_points
             obj.geo_points = geo_points  # Store geo coords as source of truth
             obj.name = osm_element.tags.get('name', f"OSM Guardrail {osm_element.id}")
+            obj.osm_tags = dict(osm_element.tags)
             return obj
 
         # For buildings, store polygon and use centroid as position
@@ -1840,9 +1861,62 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
                 'height': 6.0  # Default height in meters
             }
 
+            obj.osm_tags = dict(osm_element.tags)
             return obj
 
     return None
+
+
+def create_landuse_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
+                            existing_osm_ids: Set[int] = None) -> Optional[RoadObject]:
+    """Create RoadObject from OSM land use/natural area way.
+
+    Args:
+        osm_way: OSM way representing a land use area
+        transformer: Coordinate transformer
+        existing_osm_ids: Set of already-imported OSM IDs
+
+    Returns:
+        RoadObject or None
+    """
+    from .osm_mappings import get_landuse_type_from_osm
+
+    if existing_osm_ids is not None and osm_way.id in existing_osm_ids:
+        return None
+
+    object_type = get_landuse_type_from_osm(osm_way.tags)
+    if not object_type:
+        return None
+
+    # Convert coords (same pattern as building import)
+    pixel_points = []
+    geo_points = []
+    for lat, lon in osm_way.resolved_coords:
+        px, py = transformer.geo_to_pixel(lon, lat)
+        pixel_points.append((px, py))
+        geo_points.append((lon, lat))
+
+    if len(pixel_points) < 3:
+        return None
+
+    # Centroid
+    avg_x = sum(p[0] for p in pixel_points) / len(pixel_points)
+    avg_y = sum(p[1] for p in pixel_points) / len(pixel_points)
+    avg_lon = sum(p[0] for p in geo_points) / len(geo_points)
+    avg_lat = sum(p[1] for p in geo_points) / len(geo_points)
+
+    obj = RoadObject(
+        position=(avg_x, avg_y),
+        object_type=object_type,
+        geo_position=(avg_lon, avg_lat),
+    )
+    obj.points = pixel_points
+    obj.geo_points = geo_points
+    obj.name = osm_way.tags.get(
+        'name', f"OSM {format_enum_name(object_type)} {osm_way.id}"
+    )
+    obj.osm_tags = dict(osm_way.tags)
+    return obj
 
 
 def create_parking_from_osm(osm_element, transformer: CoordinateTransformer,
@@ -1882,6 +1956,7 @@ def create_parking_from_osm(osm_element, transformer: CoordinateTransformer,
             geo_position=geo_position,
         )
         parking.name = osm_element.tags.get('name', f"Parking {osm_element.id}")
+        parking.osm_tags = dict(osm_element.tags)
 
         # Extract capacity if available
         if 'capacity' in osm_element.tags:
@@ -1918,6 +1993,7 @@ def create_parking_from_osm(osm_element, transformer: CoordinateTransformer,
             geo_position=(avg_lon, avg_lat),
         )
         parking.name = osm_element.tags.get('name', f"Parking {osm_element.id}")
+        parking.osm_tags = dict(osm_element.tags)
 
         # Store polygon points
         parking.points = pixel_points

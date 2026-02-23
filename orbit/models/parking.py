@@ -106,6 +106,8 @@ class ParkingSpace:
         self.capacity: Optional[int] = None
         self.points: List[Tuple[float, float]] = []  # pixel polygon
         self.geo_points: Optional[List[Tuple[float, float]]] = None  # geo polygon
+        # Original OSM tags for round-trip export
+        self.osm_tags: Optional[Dict[str, str]] = None
 
     def has_geo_coords(self) -> bool:
         """Check if this parking space has geographic coordinates stored."""
@@ -208,6 +210,8 @@ class ParkingSpace:
         # Optional fields
         if self.capacity is not None:
             data['capacity'] = self.capacity
+        if self.osm_tags:
+            data['osm_tags'] = self.osm_tags
 
         return data
 
@@ -246,6 +250,8 @@ class ParkingSpace:
             space.points = [tuple(p) for p in data['points']]
         geo_points_raw = data.get('geo_points')
         space.geo_points = [tuple(p) for p in geo_points_raw] if geo_points_raw else None
+        # OSM tags
+        space.osm_tags = data.get('osm_tags')
 
         return space
 

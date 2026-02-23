@@ -19,6 +19,13 @@ COLORS = {
     ObjectType.BUSH: QColor(34, 139, 34, 77),             # Forest green
     ObjectType.GUARDRAIL: QColor(25, 25, 112, 77),        # Dark blue
     ObjectType.LAMPPOST: QColor(255, 255, 255, 77),       # White
+    # Land use areas
+    ObjectType.LANDUSE_FOREST: QColor(0, 100, 0, 77),       # Dark green
+    ObjectType.LANDUSE_FARMLAND: QColor(210, 180, 100, 77), # Wheat/tan
+    ObjectType.LANDUSE_MEADOW: QColor(144, 238, 144, 77),   # Light green
+    ObjectType.LANDUSE_SCRUB: QColor(128, 128, 0, 77),      # Olive
+    ObjectType.NATURAL_WATER: QColor(70, 130, 180, 77),     # Steel blue
+    ObjectType.NATURAL_WETLAND: QColor(0, 128, 128, 77),    # Teal
 }
 
 
