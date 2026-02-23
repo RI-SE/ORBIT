@@ -79,6 +79,191 @@ class LayoutMaskExporter:
         self.preserve_geometry = preserve_geometry
         self.lane_polygons = lane_polygons or []
 
+    def _enhance_connecting_lane_links(
+        self,
+        region_map: Dict[Tuple, int],
+        region_info: Dict[str, dict],
+    ) -> None:
+        """Ensure connecting_lane successor/predecessor links are populated.
+
+        Uses the ORBIT junction model to resolve which regular lanes connect to
+        each connecting lane, rather than relying solely on pixel adjacency.
+        Assumes region_info entries already contain road_id and lane_id fields.
+        """
+
+        # Build lane lookup: (road, lane, section) -> regionID
+        lane_lookup = {}
+        for key, rid in region_map.items():
+            road, section, lane, is_conn = key
+            if not is_conn:  # regular lane
+                lane_lookup[(road, lane)] = str(rid)
+
+        # Iterate connecting-lane regions
+        for rid_str, info in region_info.items():
+            if info.get("type") != "connecting_lane":
+                continue
+
+            cr_id = info["road_id"]
+            lane_id = info["lane_id"]
+            # Identify the ORBIT CR object:
+            cr_obj = None
+            for j in self.project.junctions:
+                for cr in j.connecting_roads:
+                    if cr.id == cr_id:
+                        cr_obj = cr
+                        break
+
+            if not cr_obj:
+                continue
+
+            # ---- predecessor links ----
+            pred_road = cr_obj.predecessor_road_id
+            if pred_road:
+                tup = (pred_road, lane_id)
+                if tup in lane_lookup:
+                    region_info[rid_str]["predecessors"].append(lane_lookup[tup])
+                    region_info[lane_lookup[tup]]["successors"].append(rid_str)
+
+            # ---- successor links ----
+            succ_road = cr_obj.successor_road_id
+            if succ_road:
+                tup = (succ_road, lane_id)
+                if tup in lane_lookup:
+                    region_info[rid_str]["successors"].append(lane_lookup[tup])
+                    region_info[lane_lookup[tup]]["predecessors"].append(rid_str)
+
+        # Deduplicate lists
+        for rid_str, info in region_info.items():
+            if isinstance(info, dict):
+                info["successors"] = sorted(set(info.get("successors", [])), key=str)
+                info["predecessors"] = sorted(set(info.get("predecessors", [])), key=str)
+
+    def _apply_adjacency_fixscript_like(
+        self,
+        region_map: Dict[Tuple, int],
+        region_info: Dict[str, dict],
+    ) -> None:
+        """
+        Apply adjacency with the same logic as fix_json_lane_links.py (geometry-free):
+        • lanes/connecting_lanes on the same road & section with |Δ lane_id| == 1,
+            excluding pairs that are succ/pred neighbors;
+        • connecting_lanes on the same connecting road with |Δ lane_id| == 1;
+        • for each overlap, make all members mutually adjacent (on the member nodes).
+        """
+        # ---- prep lookups ----
+        # id → info (convenience)
+        regions = region_info
+
+        # succ/pred maps (string IDs)
+        succ_map = {rid: set(map(str, (info.get("successors") or [])))
+                    for rid, info in regions.items() if isinstance(info, dict)}
+        pred_map = {rid: set(map(str, (info.get("predecessors") or [])))
+                    for rid, info in regions.items() if isinstance(info, dict)}
+
+        # Collect lane and connecting_lanes by (road_id, section_number)
+        by_road_section: Dict[Tuple[str, int], Dict[int, str]] = {}
+        # Collect connecting_lanes by connecting road id
+        by_conn_road: Dict[str, Dict[int, str]] = {}
+
+        for rid, info in regions.items():
+            if not isinstance(info, dict):
+                continue
+            t = info.get("type")
+            if t in ("lane", "connecting_lane"):
+                road_id = str(info.get("road_id"))
+                lane_id = info.get("lane_id")
+                try:
+                    lane_id = int(lane_id)
+                except Exception:
+                    continue
+                section = int(info.get("section_number", 1))
+
+                if t == "lane":
+                    by_road_section.setdefault((road_id, section), {})[lane_id] = rid
+                else:  # connecting_lane
+                    by_conn_road.setdefault(road_id, {})[lane_id] = rid
+
+        # Accumulate adjacency for lanes/connecting_lanes
+        adj: Dict[str, set] = {rid: set() for rid, info in regions.items()
+                            if isinstance(info, dict) and info.get("type") in ("lane", "connecting_lane")}
+
+        def add_adj(a: str, b: str):
+            # Exclude longitudinal neighbors (succ/pred) like the fix script
+            if b in succ_map.get(a, set()) or a in succ_map.get(b, set()) \
+            or b in pred_map.get(a, set()) or a in pred_map.get(b, set()):
+                return
+            adj.setdefault(a, set()).add(b)
+            adj.setdefault(b, set()).add(a)
+
+        # ---- Rule A: same road & section, |Δ lane_id| == 1 ----
+        for (road_id, section), lane_map in by_road_section.items():
+            for lid, rid in lane_map.items():
+                for other in (lid - 1, lid + 1):
+                    if other in lane_map:
+                        add_adj(rid, lane_map[other])
+
+        # ---- Rule B: connecting road mates, |Δ lane_id| == 1 ----
+        for road_id, lane_map in by_conn_road.items():
+            for lid, rid in lane_map.items():
+                for other in (lid - 1, lid + 1):
+                    if other in lane_map:
+                        add_adj(rid, lane_map[other])
+
+        # ---- Rule C: overlap members become mutually adjacent (members only) ----
+        for oid, oinfo in regions.items():
+            if not isinstance(oinfo, dict) or oinfo.get("type") != "overlap":
+                continue
+            members = [str(m) for m in (oinfo.get("members") or [])]
+            for i in range(len(members)):
+                for j in range(i + 1, len(members)):
+                    a, b = members[i], members[j]
+                    if a in adj and b in adj:
+                        add_adj(a, b)
+
+        # ---- Write adjacency lists ----
+        for rid, info in regions.items():
+            if not isinstance(info, dict):
+                continue
+            if info.get("type") in ("lane", "connecting_lane"):
+                # sort numerically when possible (like the fix script)
+                s = set(str(x) for x in adj.get(rid, set()))
+                info["adjacent"] = sorted(s, key=lambda v: int(v) if v.isdigit() else v)
+            else:
+                info["adjacent"] = []
+
+    def _populate_overlap_links(self, region_info: Dict[str, dict]) -> None:
+        """
+        For every 'overlap' node, set its successors/predecessors to the
+        union of member lanes' successors/predecessors EXCLUDING other members.
+        Sorted, unique lists — same as fix_json_lane_links.py.
+        """
+        regions = region_info
+
+        def sort_ids(ids):
+            s = set(str(x) for x in ids)
+            return sorted(s, key=lambda v: int(v) if v.isdigit() else v)
+
+        for oid, oinfo in regions.items():
+            if not isinstance(oinfo, dict) or oinfo.get("type") != "overlap":
+                continue
+            members = [str(m) for m in (oinfo.get("members") or [])]
+
+            succ_u, pred_u = set(), set()
+            for m in members:
+                minfo = regions.get(m, {})
+                for s in (minfo.get("successors") or []):
+                    s = str(s)
+                    if s not in members:
+                        succ_u.add(s)
+                for p in (minfo.get("predecessors") or []):
+                    p = str(p)
+                    if p not in members:
+                        pred_u.add(p)
+
+            oinfo["successors"] = sort_ids(succ_u)
+            oinfo["predecessors"] = sort_ids(pred_u)
+
+
     def export(self, output_path: str, geotiff: bool = False) -> bool:
         """Run the full export pipeline.
 
@@ -99,10 +284,12 @@ class LayoutMaskExporter:
             mask = self._render_mask_with_overlaps(polygons, region_map, region_info)
             self._encode_junctions(mask, region_info, region_map)
 
-            adjacency = self._compute_adjacency(mask)
-            self._apply_adjacency(region_info, adjacency)
-
             self._compute_connectivity(region_map, region_info)
+            self._enhance_connecting_lane_links(region_map, region_info)
+            # ---- adjacency using fix-script-like rules ----
+            self._apply_adjacency_fixscript_like(region_map, region_info)
+            # ---- overlap successor/predecessor unions (same as fix script) ----
+            self._populate_overlap_links(region_info)
             self._compute_junction_grouping(region_map, region_info)
             self._compute_distances(region_map, region_info)
 
@@ -445,6 +632,7 @@ class LayoutMaskExporter:
                     "previous_junction_ids": [],
                     "distance_to_next_junction_m": None,
                     "distance_to_prev_junction_m": None,
+                    "polygon": [[float(px), float(py)] for (px, py) in poly.points]
                 }
                 next_id += 1
 
@@ -541,7 +729,6 @@ class LayoutMaskExporter:
                             "members": member_strs,
                             "adjacent": [],
                         }
-
                     # Paint overlap pixels with combo ID
                     overlap_pixel_mask = new_pixels & (mask == old_id)
                     mask[overlap_pixel_mask] = combo_id
@@ -589,66 +776,8 @@ class LayoutMaskExporter:
                     "junction_id": junction.id,
                     "junction_name": junction.name,
                     "adjacent": [],
+                    "polygon": [[float(px), float(py)] for (px, py) in boundary_pts]
                 }
-
-    # ---- Adjacency (numpy vectorized) ----
-
-    def _compute_adjacency(self, mask: np.ndarray) -> Dict[int, Set[int]]:
-        """Compute spatial adjacency between regions using vectorized comparison.
-
-        Checks horizontal and vertical neighbor pairs. Two regions are adjacent
-        if they share at least one edge pixel boundary.
-        """
-        # Horizontal pairs
-        left = mask[:, :-1]
-        right = mask[:, 1:]
-        h_diff = left != right
-        if np.any(h_diff):
-            h_pairs = np.column_stack([left[h_diff], right[h_diff]])
-        else:
-            h_pairs = np.empty((0, 2), dtype=mask.dtype)
-
-        # Vertical pairs
-        top = mask[:-1, :]
-        bottom = mask[1:, :]
-        v_diff = top != bottom
-        if np.any(v_diff):
-            v_pairs = np.column_stack([top[v_diff], bottom[v_diff]])
-        else:
-            v_pairs = np.empty((0, 2), dtype=mask.dtype)
-
-        if h_pairs.shape[0] == 0 and v_pairs.shape[0] == 0:
-            return {}
-
-        all_pairs = np.vstack([h_pairs, v_pairs])
-        # Filter out background (0)
-        valid = (all_pairs[:, 0] != 0) & (all_pairs[:, 1] != 0)
-        all_pairs = all_pairs[valid]
-
-        if all_pairs.shape[0] == 0:
-            return {}
-
-        # Normalize pair order and deduplicate
-        sorted_pairs = np.sort(all_pairs, axis=1)
-        unique_pairs = np.unique(sorted_pairs, axis=0)
-
-        adjacency: Dict[int, Set[int]] = {}
-        for a, b in unique_pairs:
-            a, b = int(a), int(b)
-            if a == b:
-                continue
-            adjacency.setdefault(a, set()).add(b)
-            adjacency.setdefault(b, set()).add(a)
-        return adjacency
-
-    def _apply_adjacency(
-        self, region_info: Dict[str, dict], adjacency: Dict[int, Set[int]],
-    ) -> None:
-        """Write adjacency sets into region_info."""
-        for region_id, neighbors in adjacency.items():
-            key = str(region_id)
-            if key in region_info:
-                region_info[key]["adjacent"] = sorted(str(n) for n in neighbors)
 
     # ---- Connectivity ----
 
@@ -685,7 +814,6 @@ class LayoutMaskExporter:
             except Exception:
                 logger.debug("find_connected_lanes failed for %s/%d/%d", road_id, section_number, lane_id)
                 continue
-
             # Road lane connections -> successors/predecessors
             for conn_road_id, conn_section, conn_lane_id in connected.get('road_lanes', []):
                 target_id = lane_lookup.get((conn_road_id, conn_section, conn_lane_id))
@@ -706,18 +834,6 @@ class LayoutMaskExporter:
                             # Generic connection
                             if target_str not in info["successors"]:
                                 info["successors"].append(target_str)
-
-            # Connecting road lane connections
-            for cr_id, cr_lane_id in connected.get('connecting_road_lanes', []):
-                # Find region ID for connecting road lane (section 1)
-                target_id = lane_lookup.get((cr_id, 1, cr_lane_id))
-                if target_id is None:
-                    # Try section 0
-                    target_id = lane_lookup.get((cr_id, 0, cr_lane_id))
-                if target_id is not None:
-                    target_str = str(target_id)
-                    if target_str not in info["successors"]:
-                        info["successors"].append(target_str)
 
         # Build direct successors/predecessors (across junctions)
         self._compute_direct_connections(region_map, region_info, lane_lookup)
