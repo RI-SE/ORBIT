@@ -38,67 +38,6 @@ def _noop_get_cr_lane_id(*args, **kwargs):
     return -1
 
 
-class TestComputeAdjacency:
-    """Tests for _compute_adjacency method."""
-
-    def test_simple_three_regions(self):
-        """10x10 mask with 3 regions correctly identifies neighbor pairs."""
-        mask = np.zeros((10, 10), dtype=np.int32)
-        mask[:, 0:3] = 1
-        mask[:, 3:7] = 2
-        mask[:, 7:10] = 3
-
-        project = _make_project_with_road()
-        exporter = LayoutMaskExporter(
-            image_size=(10, 10), project=project,
-            find_connected_lanes=_noop_find_connected,
-            get_connecting_road_lane_id=_noop_get_cr_lane_id,
-        )
-
-        adjacency = exporter._compute_adjacency(mask)
-
-        # Region 1 and 2 are adjacent, 2 and 3 are adjacent
-        assert 2 in adjacency.get(1, set())
-        assert 1 in adjacency.get(2, set())
-        assert 3 in adjacency.get(2, set())
-        assert 2 in adjacency.get(3, set())
-        # Region 1 and 3 are NOT adjacent (separated by region 2)
-        assert 3 not in adjacency.get(1, set())
-
-    def test_no_background_in_result(self):
-        """Background (0) is excluded from adjacency results."""
-        mask = np.zeros((10, 10), dtype=np.int32)
-        mask[2:5, 2:5] = 1
-        mask[5:8, 2:5] = 2
-
-        project = _make_project_with_road()
-        exporter = LayoutMaskExporter(
-            image_size=(10, 10), project=project,
-            find_connected_lanes=_noop_find_connected,
-            get_connecting_road_lane_id=_noop_get_cr_lane_id,
-        )
-
-        adjacency = exporter._compute_adjacency(mask)
-
-        assert 0 not in adjacency
-        for neighbors in adjacency.values():
-            assert 0 not in neighbors
-
-    def test_empty_mask(self):
-        """Empty mask returns empty adjacency."""
-        mask = np.zeros((10, 10), dtype=np.int32)
-
-        project = _make_project_with_road()
-        exporter = LayoutMaskExporter(
-            image_size=(10, 10), project=project,
-            find_connected_lanes=_noop_find_connected,
-            get_connecting_road_lane_id=_noop_get_cr_lane_id,
-        )
-
-        adjacency = exporter._compute_adjacency(mask)
-        assert adjacency == {}
-
-
 class TestBuildRegionMap:
     """Tests for _build_region_map method."""
 

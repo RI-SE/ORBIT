@@ -79,17 +79,16 @@ class LayoutMaskExporter:
         self.preserve_geometry = preserve_geometry
         self.lane_polygons = lane_polygons or []
 
-    def _enhance_connecting_lane_links(self, region_map, region_info):
-        """
-        Minimal patch: ensure connecting_lane successor/predecessor links
-        
+    def _enhance_connecting_lane_links(
+        self,
+        region_map: Dict[Tuple, int],
+        region_info: Dict[str, dict],
+    ) -> None:
+        """Ensure connecting_lane successor/predecessor links are populated.
 
-        Logic:
-        • For each connecting_lane region (CR):
-            - Successors are lanes whose road_id == CR.successor_road_id
-            and lane_id matches ORBIT's lane connection resolver.
-            - Predecessors are lanes whose road_id == CR.predecessor_road_id.
-        • For each regular lane, unify connections to/from connecting lanes.
+        Uses the ORBIT junction model to resolve which regular lanes connect to
+        each connecting lane, rather than relying solely on pixel adjacency.
+        Assumes region_info entries already contain road_id and lane_id fields.
         """
 
         # Build lane lookup: (road, lane, section) -> regionID
@@ -151,7 +150,7 @@ class LayoutMaskExporter:
         • connecting_lanes on the same connecting road with |Δ lane_id| == 1;
         • for each overlap, make all members mutually adjacent (on the member nodes).
         """
-        # ----- prep lookups -----
+        # ---- prep lookups ----
         # id → info (convenience)
         regions = region_info
 
@@ -262,7 +261,7 @@ class LayoutMaskExporter:
                         pred_u.add(p)
 
             oinfo["successors"] = sort_ids(succ_u)
-            oinfo["predecessors"] = sort_ids(pred_u)        
+            oinfo["predecessors"] = sort_ids(pred_u)
 
 
     def export(self, output_path: str, geotiff: bool = False) -> bool:
@@ -285,17 +284,14 @@ class LayoutMaskExporter:
             mask = self._render_mask_with_overlaps(polygons, region_map, region_info)
             self._encode_junctions(mask, region_info, region_map)
 
-
-
             self._compute_connectivity(region_map, region_info)
             self._enhance_connecting_lane_links(region_map, region_info)
-            # --- adjacency using fix-script-like rules  ---
+            # ---- adjacency using fix-script-like rules ----
             self._apply_adjacency_fixscript_like(region_map, region_info)
-            # --- overlap successor/predecessor unions (same as fix script) ---
+            # ---- overlap successor/predecessor unions (same as fix script) ----
             self._populate_overlap_links(region_info)
             self._compute_junction_grouping(region_map, region_info)
             self._compute_distances(region_map, region_info)
-
 
             self._save_mask(mask, output_path)
             self._save_colorized_mask(mask, output_path)
@@ -783,79 +779,7 @@ class LayoutMaskExporter:
                     "polygon": [[float(px), float(py)] for (px, py) in boundary_pts]
                 }
 
-    # ---- Adjacency (numpy vectorized) ----
-
-    def _compute_adjacency(self, mask: np.ndarray) -> Dict[int, Set[int]]:
-        """Compute spatial adjacency between regions using vectorized comparison.
-
-        Checks horizontal and vertical neighbor pairs. Two regions are adjacent
-        if they share at least one edge pixel boundary.
-        """
-        # Horizontal pairs
-        left = mask[:, :-1]
-        right = mask[:, 1:]
-        h_diff = left != right
-        if np.any(h_diff):
-            h_pairs = np.column_stack([left[h_diff], right[h_diff]])
-        else:
-            h_pairs = np.empty((0, 2), dtype=mask.dtype)
-
-        # Vertical pairs
-        top = mask[:-1, :]
-        bottom = mask[1:, :]
-        v_diff = top != bottom
-        if np.any(v_diff):
-            v_pairs = np.column_stack([top[v_diff], bottom[v_diff]])
-        else:
-            v_pairs = np.empty((0, 2), dtype=mask.dtype)
-
-        if h_pairs.shape[0] == 0 and v_pairs.shape[0] == 0:
-            return {}
-
-        all_pairs = np.vstack([h_pairs, v_pairs])
-        # Filter out background (0)
-        valid = (all_pairs[:, 0] != 0) & (all_pairs[:, 1] != 0)
-        all_pairs = all_pairs[valid]
-
-        if all_pairs.shape[0] == 0:
-            return {}
-
-        # Normalize pair order and deduplicate
-        sorted_pairs = np.sort(all_pairs, axis=1)
-        unique_pairs = np.unique(sorted_pairs, axis=0)
-
-        adjacency: Dict[int, Set[int]] = {}
-        for a, b in unique_pairs:
-            a, b = int(a), int(b)
-            if a == b:
-                continue
-            adjacency.setdefault(a, set()).add(b)
-            adjacency.setdefault(b, set()).add(a)
-        return adjacency
-
-    def _apply_adjacency(
-        self, region_info: Dict[str, dict], adjacency: Dict[int, Set[int]],
-    ) -> None:
-        """Write adjacency sets into region_info."""
-        for region_id, neighbors in adjacency.items():
-            key = str(region_id)
-            if key in region_info:
-                region_info[key]["adjacent"] = sorted(str(n) for n in neighbors)
-
     # ---- Connectivity ----
-
-    def _link(info_src, info_dst, src_id_str, dst_id_str, as_successor: bool):
-        if as_successor:
-            if dst_id_str not in info_src["successors"]:
-                info_src["successors"].append(dst_id_str)
-            if src_id_str not in info_dst["predecessors"]:
-                info_dst["predecessors"].append(src_id_str)
-        else:
-            if dst_id_str not in info_src["predecessors"]:
-                info_src["predecessors"].append(dst_id_str)
-            if src_id_str not in info_dst["successors"]:
-                info_dst["successors"].append(src_id_str)
-
 
     def _compute_connectivity(
         self,
