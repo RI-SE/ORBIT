@@ -209,7 +209,14 @@ def export_to_osm(
         return False, "Nothing to export: no elements have geographic coordinates.", stats
 
     # --- Build XML tree ---
-    root = ET.Element('osm', version='0.6', generator='ORBIT')
+    osm_attribs = {
+        'version': '0.6',
+        'generator': 'ORBIT (https://github.com/RI-SE/ORBIT)',
+        'license': 'http://opendatacommons.org/licenses/odbl/1-0/',
+    }
+    if project.openstreetmap_used:
+        osm_attribs['attribution'] = 'Map data from OpenStreetMap (http://www.openstreetmap.org/copyright)'
+    root = ET.Element('osm', **osm_attribs)
 
     # Add bounds element from node extents
     if nodes:
