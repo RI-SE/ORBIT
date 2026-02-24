@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<osm version="0.6" generator="ORBIT">
+<osm version="0.6" generator="ORBIT (https://github.com/RI-SE/ORBIT)" license="http://opendatacommons.org/licenses/odbl/1-0/" attribution="Map data from OpenStreetMap (http://www.openstreetmap.org/copyright)">
   <bounds minlat="57.4837879" minlon="12.0077177" maxlat="57.4845495" maxlon="12.0110176" />
   <node id="-2" lat="57.4841156" lon="12.0089360" visible="true" />
   <node id="-3" lat="57.4840911" lon="12.0089393" visible="true" />
@@ -251,13 +251,13 @@
   <node id="-266" lat="57.4842063" lon="12.0088773" visible="true" />
   <node id="-267" lat="57.4842034" lon="12.0088799" visible="true" />
   <node id="-268" lat="57.4842006" lon="12.0088825" visible="true" />
-  <node id="-269" lat="57.4841950" lon="12.0088875" visible="true" />
+  <node id="-269" lat="57.4841949" lon="12.0088875" visible="true" />
   <node id="-270" lat="57.4841922" lon="12.0088899" visible="true" />
   <node id="-271" lat="57.4841868" lon="12.0088945" visible="true" />
-  <node id="-272" lat="57.4841815" lon="12.0088989" visible="true" />
+  <node id="-272" lat="57.4841815" lon="12.0088990" visible="true" />
   <node id="-273" lat="57.4841763" lon="12.0089031" visible="true" />
   <node id="-274" lat="57.4841713" lon="12.0089071" visible="true" />
-  <node id="-275" lat="57.4841689" lon="12.0089089" visible="true" />
+  <node id="-275" lat="57.4841689" lon="12.0089090" visible="true" />
   <node id="-276" lat="57.4841664" lon="12.0089108" visible="true" />
   <node id="-277" lat="57.4841640" lon="12.0089125" visible="true" />
   <node id="-278" lat="57.4841617" lon="12.0089142" visible="true" />
@@ -266,11 +266,11 @@
   <node id="-281" lat="57.4841504" lon="12.0089219" visible="true" />
   <node id="-282" lat="57.4841483" lon="12.0089232" visible="true" />
   <node id="-283" lat="57.4841462" lon="12.0089245" visible="true" />
-  <node id="-284" lat="57.4841420" lon="12.0089269" visible="true" />
-  <node id="-285" lat="57.4841400" lon="12.0089280" visible="true" />
-  <node id="-286" lat="57.4841361" lon="12.0089300" visible="true" />
+  <node id="-284" lat="57.4841421" lon="12.0089269" visible="true" />
+  <node id="-285" lat="57.4841401" lon="12.0089280" visible="true" />
+  <node id="-286" lat="57.4841362" lon="12.0089300" visible="true" />
   <node id="-287" lat="57.4841324" lon="12.0089318" visible="true" />
-  <node id="-288" lat="57.4841305" lon="12.0089326" visible="true" />
+  <node id="-288" lat="57.4841306" lon="12.0089326" visible="true" />
   <node id="-289" lat="57.4841270" lon="12.0089340" visible="true" />
   <node id="-290" lat="57.4841219" lon="12.0089356" visible="true" />
   <node id="-292" lat="57.4841606" lon="12.0091492" visible="true" />
@@ -308,7 +308,7 @@
   <node id="-324" lat="57.4841737" lon="12.0093080" visible="true" />
   <node id="-325" lat="57.4841761" lon="12.0093163" visible="true" />
   <node id="-326" lat="57.4841773" lon="12.0093205" visible="true" />
-  <node id="-328" lat="57.4840788" lon="12.0091344" visible="true" />
+  <node id="-328" lat="57.4840787" lon="12.0091344" visible="true" />
   <node id="-329" lat="57.4840931" lon="12.0091694" visible="true" />
   <node id="-330" lat="57.4841055" lon="12.0092090" visible="true" />
   <node id="-331" lat="57.4841188" lon="12.0092521" visible="true" />
