@@ -360,8 +360,9 @@ class OpenDriveWriter:
         if not centerline or len(centerline.points) < 2:
             return None
 
-        # Get the endpoint we're checking
-        check_point = centerline.points[0] if is_predecessor else centerline.points[-1]
+        start_point = centerline.points[0]
+        end_point = centerline.points[-1]
+        check_point = start_point if is_predecessor else end_point
 
         # Check each junction to see if THIS endpoint is at the junction
         for junction in self.project.junctions:
@@ -373,13 +374,18 @@ class OpenDriveWriter:
                 continue
 
             if junction.center_point:
-                # Calculate distance from endpoint to junction center
-                dx = check_point[0] - junction.center_point[0]
-                dy = check_point[1] - junction.center_point[1]
-                dist = math.sqrt(dx*dx + dy*dy)
-
-                # If within tolerance (15 pixels), this endpoint is at this junction
-                if dist < 15.0:
+                # Determine which road end is closer to the junction center.
+                # Road endpoints may be tens or hundreds of pixels from the junction
+                # center (the junction covers an area, not a point), so a fixed
+                # proximity threshold is unreliable.  Instead, return this junction
+                # only when the correct end (start for predecessor, end for
+                # successor) is the closer of the two ends.
+                d_start = math.sqrt((start_point[0] - junction.center_point[0])**2 +
+                                    (start_point[1] - junction.center_point[1])**2)
+                d_end = math.sqrt((end_point[0] - junction.center_point[0])**2 +
+                                  (end_point[1] - junction.center_point[1])**2)
+                closer_is_start = d_start < d_end
+                if closer_is_start == is_predecessor:
                     return junction_numeric_id
             else:
                 # No center_point — check endpoints of other connected roads
