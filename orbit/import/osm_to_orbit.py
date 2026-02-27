@@ -1844,16 +1844,19 @@ def create_object_from_osm(osm_element, transformer: CoordinateTransformer,
             obj.points = pixel_points
             obj.geo_points = geo_points  # Store geo coords as source of truth
 
-            # Calculate building dimensions from bounding box
-            xs = [p[0] for p in pixel_points]
-            ys = [p[1] for p in pixel_points]
-            width_pixels = max(xs) - min(xs)
-            length_pixels = max(ys) - min(ys)
-
-            # Convert from pixels to meters using transformer scale
-            scale_x, scale_y = transformer.get_scale_factor()
-            width_meters = width_pixels * scale_x
-            length_meters = length_pixels * scale_y
+            # Calculate building dimensions from metric bounding box (accurate for angled images)
+            try:
+                meters_points = [transformer.latlon_to_meters(lat, lon) for lon, lat in geo_points]
+                xs_m = [p[0] for p in meters_points]
+                ys_m = [p[1] for p in meters_points]
+                width_meters = max(xs_m) - min(xs_m)
+                length_meters = max(ys_m) - min(ys_m)
+            except (TypeError, AttributeError):
+                scale_x, scale_y = transformer.get_scale_factor()
+                xs = [p[0] for p in pixel_points]
+                ys = [p[1] for p in pixel_points]
+                width_meters = (max(xs) - min(xs)) * scale_x
+                length_meters = (max(ys) - min(ys)) * scale_y
 
             obj.dimensions = {
                 'width': width_meters,
@@ -2006,16 +2009,19 @@ def create_parking_from_osm(osm_element, transformer: CoordinateTransformer,
             except ValueError:
                 pass
 
-        # Calculate dimensions from bounding box
-        xs = [p[0] for p in pixel_points]
-        ys = [p[1] for p in pixel_points]
-        width_pixels = max(xs) - min(xs)
-        length_pixels = max(ys) - min(ys)
-
-        # Convert from pixels to meters using transformer scale
-        scale_x, scale_y = transformer.get_scale_factor()
-        parking.width = width_pixels * scale_x
-        parking.length = length_pixels * scale_y
+        # Calculate dimensions from metric bounding box (accurate for angled images)
+        try:
+            meters_points = [transformer.latlon_to_meters(lat, lon) for lon, lat in geo_points]
+            xs_m = [p[0] for p in meters_points]
+            ys_m = [p[1] for p in meters_points]
+            parking.width = max(xs_m) - min(xs_m)
+            parking.length = max(ys_m) - min(ys_m)
+        except (TypeError, AttributeError):
+            scale_x, scale_y = transformer.get_scale_factor()
+            xs = [p[0] for p in pixel_points]
+            ys = [p[1] for p in pixel_points]
+            parking.width = (max(xs) - min(xs)) * scale_x
+            parking.length = (max(ys) - min(ys)) * scale_y
 
         return parking
 

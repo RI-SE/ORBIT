@@ -376,7 +376,8 @@ class LayoutMaskExporter:
             road_ref_headings[(road.id, "start")] = ref_points[0][2]
             road_ref_headings[(road.id, "end")] = ref_points[-1][2]
 
-            # Estimate scale (meters per pixel)
+            # Estimate scale (meters per pixel) — still needed as fallback for sections
+            # without end_point_index
             total_px = sum(
                 math.sqrt((polyline.points[i+1][0] - polyline.points[i][0])**2 +
                            (polyline.points[i+1][1] - polyline.points[i][1])**2)
@@ -389,8 +390,15 @@ class LayoutMaskExporter:
             )
             scale_x = total_m / total_px if total_px > 0 else 0.058
 
+            # Compute cumulative metric arc-length at each polyline point index
+            cumulative_metric_s = [0.0]
+            for i in range(len(meter_points) - 1):
+                dx = meter_points[i + 1][0] - meter_points[i][0]
+                dy = meter_points[i + 1][1] - meter_points[i][1]
+                cumulative_metric_s.append(cumulative_metric_s[-1] + math.sqrt(dx * dx + dy * dy))
+
             # Compute lane polygons in meters
-            lane_polys = compute_lane_polygons(ref_points, road, scale_x)
+            lane_polys = compute_lane_polygons(ref_points, road, scale_x, cumulative_metric_s)
 
             # Convert to pixel coordinates
             for lp in lane_polys:

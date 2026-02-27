@@ -100,7 +100,8 @@ class OpenDriveWriter:
         self.signal_builder = SignalBuilder(
             scale_x=self.scale_x,
             country_code=country_code,
-            use_german_codes=use_german_codes
+            use_german_codes=use_german_codes,
+            transformer=transformer,
         )
         self.object_builder = ObjectBuilder(
             scale_x=self.scale_x,
@@ -360,8 +361,9 @@ class OpenDriveWriter:
         if not centerline or len(centerline.points) < 2:
             return None
 
-        # Get the endpoint we're checking
-        check_point = centerline.points[0] if is_predecessor else centerline.points[-1]
+        start_point = centerline.points[0]
+        end_point = centerline.points[-1]
+        check_point = start_point if is_predecessor else end_point
 
         # Check each junction to see if THIS endpoint is at the junction
         for junction in self.project.junctions:
@@ -373,13 +375,18 @@ class OpenDriveWriter:
                 continue
 
             if junction.center_point:
-                # Calculate distance from endpoint to junction center
-                dx = check_point[0] - junction.center_point[0]
-                dy = check_point[1] - junction.center_point[1]
-                dist = math.sqrt(dx*dx + dy*dy)
-
-                # If within tolerance (15 pixels), this endpoint is at this junction
-                if dist < 15.0:
+                # Determine which road end is closer to the junction center.
+                # Road endpoints may be tens or hundreds of pixels from the junction
+                # center (the junction covers an area, not a point), so a fixed
+                # proximity threshold is unreliable.  Instead, return this junction
+                # only when the correct end (start for predecessor, end for
+                # successor) is the closer of the two ends.
+                d_start = math.sqrt((start_point[0] - junction.center_point[0])**2 +
+                                    (start_point[1] - junction.center_point[1])**2)
+                d_end = math.sqrt((end_point[0] - junction.center_point[0])**2 +
+                                  (end_point[1] - junction.center_point[1])**2)
+                closer_is_start = d_start < d_end
+                if closer_is_start == is_predecessor:
                     return junction_numeric_id
             else:
                 # No center_point — check endpoints of other connected roads
@@ -547,6 +554,15 @@ class OpenDriveWriter:
         ex, ey, ehdg = _sample_element(last_elem, last_elem.length)
         self._road_curve_endpoints[(road.id, "end")] = (ex, ey, ehdg)
 
+        # Compute cumulative metric arc-length at each polyline point index.
+        # Used by lane_builder to convert pixel-based section boundaries to meters
+        # without the scale_x error introduced by angled roads.
+        cumulative_metric_s = [0.0]
+        for i in range(len(all_points_meters) - 1):
+            dx = all_points_meters[i + 1][0] - all_points_meters[i][0]
+            dy = all_points_meters[i + 1][1] - all_points_meters[i][1]
+            cumulative_metric_s.append(cumulative_metric_s[-1] + math.sqrt(dx * dx + dy * dy))
+
         # Calculate total road length
         road_length = sum(elem.length for elem in geometry_elements)
 
@@ -663,11 +679,13 @@ class OpenDriveWriter:
         boundary_infos, warning = self.lane_analyzer.analyze_road(road)
 
         # Add lanes (with boundary info if available)
-        lanes = self.lane_builder.create_lanes(road, road_length, boundary_infos)
+        lanes = self.lane_builder.create_lanes(road, road_length, boundary_infos, cumulative_metric_s)
         road_elem.append(lanes)
 
-        # Add signals for this road
-        signals = self.signal_builder.create_signals(road, self.project.signals, centerline_points_pixel)
+        # Add signals for this road (pass metric centerline for accurate s/t projection)
+        signals = self.signal_builder.create_signals(
+            road, self.project.signals, centerline_points_pixel, all_points_meters
+        )
         if signals is not None:
             road_elem.append(signals)
 

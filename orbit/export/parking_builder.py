@@ -4,6 +4,7 @@ Parking XML builder for OpenDRIVE export.
 Handles creation of parking space-related XML elements.
 """
 
+import math
 from typing import List, Optional
 
 import numpy as np
@@ -11,6 +12,39 @@ from lxml import etree
 
 from orbit.models import Road
 from orbit.models.parking import ParkingSpace
+
+
+def _project_point_onto_polyline(px: float, py: float, pts: List[tuple]):
+    """Project (px, py) onto a polyline, returning (s, t) in the same coordinate system.
+
+    s: arc-length distance along the polyline to the closest foot point.
+    t: signed lateral offset (positive = left of travel direction).
+    Assumes pts are in a consistent coordinate system (e.g. metric).
+    """
+    min_dist = float('inf')
+    best_s = 0.0
+    best_t = 0.0
+    cumulative_s = 0.0
+
+    for i in range(len(pts) - 1):
+        x1, y1 = pts[i]
+        x2, y2 = pts[i + 1]
+        dx, dy = x2 - x1, y2 - y1
+        seg_len = math.sqrt(dx * dx + dy * dy)
+        if seg_len < 1e-9:
+            continue
+        t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / (seg_len * seg_len)))
+        cx = x1 + t * dx
+        cy = y1 + t * dy
+        dist = math.sqrt((px - cx) ** 2 + (py - cy) ** 2)
+        if dist < min_dist:
+            min_dist = dist
+            best_s = cumulative_s + t * seg_len
+            cross = (px - x1) * dy - (py - y1) * dx
+            best_t = (1.0 if cross >= 0 else -1.0) * dist
+        cumulative_s += seg_len
+
+    return best_s, best_t
 
 
 class ParkingBuilder:
@@ -63,13 +97,14 @@ class ParkingBuilder:
         # Calculate total pixel length of centerline
         pixel_length = self._calculate_pixel_length(centerline_points_pixel)
 
-        # Get actual road length in meters from geometry
-        road_length_meters = self._calculate_road_length_meters(road)
+        # Get actual road length and metric centerline for accurate t-offset
+        road_length_meters, centerline_meters = self._get_road_metrics(road)
 
         parking_elements = []
         for parking in road_parking:
             obj_elem = self._create_parking_object(
-                parking, centerline_points_pixel, pixel_length, road_length_meters
+                parking, centerline_points_pixel, pixel_length,
+                road_length_meters, centerline_meters
             )
             if obj_elem is not None:
                 parking_elements.append(obj_elem)
@@ -85,14 +120,20 @@ class ParkingBuilder:
             pixel_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
         return pixel_length
 
-    def _calculate_road_length_meters(self, road: Road) -> float:
-        """Calculate actual road length in meters from geometry."""
+    def _get_road_metrics(self, road: Road):
+        """Get road length in meters and metric centerline points.
+
+        Returns:
+            Tuple of (road_length_meters, centerline_meters) where
+            centerline_meters is a list of (x, y) in meters. Both are
+            empty / 0.0 when transformer or centerline are unavailable.
+        """
         if not self.transformer or not self.curve_fitter:
-            return 0.0
+            return 0.0, []
 
         centerline = self.polyline_map.get(road.centerline_id)
         if not centerline:
-            return 0.0
+            return 0.0, []
 
         # Use geo coords directly if available (more precise)
         if centerline.geo_points:
@@ -103,14 +144,20 @@ class ParkingBuilder:
         else:
             all_points_meters = self.transformer.pixels_to_meters_batch(centerline.points)
         geometry_elements = self.curve_fitter.fit_polyline(all_points_meters)
-        return sum(elem.length for elem in geometry_elements)
+        return sum(elem.length for elem in geometry_elements), all_points_meters
+
+    def _calculate_road_length_meters(self, road: Road) -> float:
+        """Return road length in meters. Kept for backward compatibility."""
+        road_length, _ = self._get_road_metrics(road)
+        return road_length
 
     def _create_parking_object(
         self,
         parking: ParkingSpace,
         centerline_points_pixel: List[tuple],
         pixel_length: float,
-        road_length_meters: float
+        road_length_meters: float,
+        centerline_meters: List[tuple] = None,
     ) -> Optional[etree.Element]:
         """Create a single parking object element with parkingSpace child."""
         # Calculate s and t coordinates
@@ -122,8 +169,22 @@ class ParkingBuilder:
         s_ratio = s_position_px / pixel_length if pixel_length > 0 else 0
         s_meters = s_ratio * road_length_meters
 
-        # Convert t-offset from pixels to meters
-        t_meters = t_offset_px * self.scale_x if t_offset_px else 0.0
+        # Convert t-offset from pixels to meters.
+        # Project anchor in metric space when transformer + metric centerline are available
+        # to avoid the scale_x error on angled roads.
+        if self.transformer and centerline_meters and len(centerline_meters) >= 2:
+            if parking.points:
+                anchor_px = sum(p[0] for p in parking.points) / len(parking.points)
+                anchor_py = sum(p[1] for p in parking.points) / len(parking.points)
+            else:
+                anchor_px, anchor_py = parking.position
+            try:
+                anchor_m = self.transformer.pixel_to_meters(anchor_px, anchor_py)
+                _, t_meters = _project_point_onto_polyline(anchor_m[0], anchor_m[1], centerline_meters)
+            except (TypeError, AttributeError):
+                t_meters = t_offset_px * self.scale_x if t_offset_px else 0.0
+        else:
+            t_meters = t_offset_px * self.scale_x if t_offset_px else 0.0
 
         # Create object element
         object_elem = etree.Element('object')
@@ -171,19 +232,28 @@ class ParkingBuilder:
 
         outline = etree.Element('outline')
 
-        # Calculate centroid to use as reference point
-        ref_x = sum(p[0] for p in parking.points) / len(parking.points)
-        ref_y = sum(p[1] for p in parking.points) / len(parking.points)
-
-        for px, py in parking.points:
-            # Convert to local coordinates (relative to centroid, in meters)
-            u = (px - ref_x) * self.scale_x
-            v = (py - ref_y) * self.scale_x
-
-            corner = etree.SubElement(outline, 'cornerLocal')
-            corner.set('u', f'{u:.4f}')
-            corner.set('v', f'{v:.4f}')
-            corner.set('z', '0.0')
-            corner.set('height', '0.0')
+        if self.transformer:
+            pts_m = [self.transformer.pixel_to_meters(px, py) for px, py in parking.points]
+            ref_mx = sum(p[0] for p in pts_m) / len(pts_m)
+            ref_my = sum(p[1] for p in pts_m) / len(pts_m)
+            for pt_m in pts_m:
+                u = pt_m[0] - ref_mx
+                v = pt_m[1] - ref_my
+                corner = etree.SubElement(outline, 'cornerLocal')
+                corner.set('u', f'{u:.4f}')
+                corner.set('v', f'{v:.4f}')
+                corner.set('z', '0.0')
+                corner.set('height', '0.0')
+        else:
+            ref_x = sum(p[0] for p in parking.points) / len(parking.points)
+            ref_y = sum(p[1] for p in parking.points) / len(parking.points)
+            for px, py in parking.points:
+                u = (px - ref_x) * self.scale_x
+                v = (py - ref_y) * self.scale_x
+                corner = etree.SubElement(outline, 'cornerLocal')
+                corner.set('u', f'{u:.4f}')
+                corner.set('v', f'{v:.4f}')
+                corner.set('z', '0.0')
+                corner.set('height', '0.0')
 
         return outline if len(outline) > 0 else None
