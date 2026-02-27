@@ -149,14 +149,31 @@ class ObjectBuilder:
                 recon_y = road_y + t_meters * np.cos(road_hdg)
                 reconstructed_anchor = (recon_x, recon_y)
         else:
-            # Standard pixel-space approach for non-polygon objects
+            # Non-polygon objects: project anchor in metric space when possible for
+            # accurate t-offset (scale_x alone is wrong for angled roads).
             s_position_px, t_offset_px = obj.calculate_s_t_position(centerline_points_pixel)
             if s_position_px is None:
                 return None
-            s_ratio = s_position_px / pixel_length if pixel_length > 0 else 0
-            s_meters = s_ratio * road_length_meters
-            t_meters = t_offset_px * self.scale_x
-            road_hdg = self._get_road_heading_at(centerline_points_pixel, obj)
+            if self.transformer and centerline_meters and len(centerline_meters) >= 2:
+                if obj.points and obj.type.get_shape_type() != "polygon":
+                    anchor_px, anchor_py = obj.points[0]
+                else:
+                    anchor_px, anchor_py = obj.position
+                try:
+                    anchor_m = self.transformer.pixel_to_meters(anchor_px, anchor_py)
+                    s_meters, t_meters, road_hdg = self._project_onto_meter_centerline(
+                        anchor_m, centerline_meters, road_length_meters
+                    )
+                except (TypeError, AttributeError):
+                    s_ratio = s_position_px / pixel_length if pixel_length > 0 else 0
+                    s_meters = s_ratio * road_length_meters
+                    t_meters = t_offset_px * self.scale_x
+                    road_hdg = self._get_road_heading_at(centerline_points_pixel, obj)
+            else:
+                s_ratio = s_position_px / pixel_length if pixel_length > 0 else 0
+                s_meters = s_ratio * road_length_meters
+                t_meters = t_offset_px * self.scale_x
+                road_hdg = self._get_road_heading_at(centerline_points_pixel, obj)
 
         # Create object element
         object_elem = etree.Element('object')
@@ -331,7 +348,16 @@ class ObjectBuilder:
             object_elem.set('height', f"{obj.dimensions.get('height', 0.81):.2f}")
             object_elem.set('width', f"{obj.dimensions.get('width', 0.3):.2f}")
             if obj.validity_length:
-                length_meters = obj.validity_length * self.scale_x
+                if self.transformer and obj.points and len(obj.points) >= 2:
+                    # Compute metric arc-length from the actual guardrail polyline
+                    pts_m = [self.transformer.pixel_to_meters(px, py) for px, py in obj.points]
+                    length_meters = sum(
+                        np.sqrt((pts_m[i + 1][0] - pts_m[i][0]) ** 2 +
+                                (pts_m[i + 1][1] - pts_m[i][1]) ** 2)
+                        for i in range(len(pts_m) - 1)
+                    )
+                else:
+                    length_meters = obj.validity_length * self.scale_x
                 object_elem.set('length', f'{length_meters:.2f}')
 
         elif obj.type == ObjectType.BUILDING:
@@ -454,16 +480,28 @@ class ObjectBuilder:
             return
 
         height = obj.dimensions.get('height', 0.81)
-        ref_x, ref_y = obj.points[0]
 
-        for px, py in obj.points:
-            u = (px - ref_x) * self.scale_x
-            v = (py - ref_y) * self.scale_x
-            corner = etree.SubElement(outline, 'cornerLocal')
-            corner.set('u', f'{u:.4f}')
-            corner.set('v', f'{v:.4f}')
-            corner.set('z', '0.0')
-            corner.set('height', f'{height:.2f}')
+        if self.transformer:
+            pts_m = [self.transformer.pixel_to_meters(px, py) for px, py in obj.points]
+            ref_mx, ref_my = pts_m[0]
+            for pt_m in pts_m:
+                u = pt_m[0] - ref_mx
+                v = pt_m[1] - ref_my
+                corner = etree.SubElement(outline, 'cornerLocal')
+                corner.set('u', f'{u:.4f}')
+                corner.set('v', f'{v:.4f}')
+                corner.set('z', '0.0')
+                corner.set('height', f'{height:.2f}')
+        else:
+            ref_x, ref_y = obj.points[0]
+            for px, py in obj.points:
+                u = (px - ref_x) * self.scale_x
+                v = (py - ref_y) * self.scale_x
+                corner = etree.SubElement(outline, 'cornerLocal')
+                corner.set('u', f'{u:.4f}')
+                corner.set('v', f'{v:.4f}')
+                corner.set('z', '0.0')
+                corner.set('height', f'{height:.2f}')
 
     def _create_rectangular_outline(self, outline: etree.Element, obj: RoadObject) -> None:
         """Create rectangular outline for buildings."""
@@ -542,16 +580,30 @@ class ObjectBuilder:
         else:
             # Fallback: pixel centroid as reference (matches obj.position)
             ref_x, ref_y = obj.position
-            for px, py in obj.points:
-                dx = (px - ref_x) * self.scale_x
-                dy = (py - ref_y) * self.scale_x
-                u = dx * cos_h + dy * sin_h
-                v = -dx * sin_h + dy * cos_h
-                corner = etree.SubElement(outline, 'cornerLocal')
-                corner.set('u', f'{u:.4f}')
-                corner.set('v', f'{v:.4f}')
-                corner.set('z', '0.0')
-                corner.set('height', f'{height:.2f}')
+            if self.transformer:
+                ref_m = self.transformer.pixel_to_meters(ref_x, ref_y)
+                for px, py in obj.points:
+                    pt_m = self.transformer.pixel_to_meters(px, py)
+                    dx = pt_m[0] - ref_m[0]
+                    dy = pt_m[1] - ref_m[1]
+                    u = dx * cos_h + dy * sin_h
+                    v = -dx * sin_h + dy * cos_h
+                    corner = etree.SubElement(outline, 'cornerLocal')
+                    corner.set('u', f'{u:.4f}')
+                    corner.set('v', f'{v:.4f}')
+                    corner.set('z', '0.0')
+                    corner.set('height', f'{height:.2f}')
+            else:
+                for px, py in obj.points:
+                    dx = (px - ref_x) * self.scale_x
+                    dy = (py - ref_y) * self.scale_x
+                    u = dx * cos_h + dy * sin_h
+                    v = -dx * sin_h + dy * cos_h
+                    corner = etree.SubElement(outline, 'cornerLocal')
+                    corner.set('u', f'{u:.4f}')
+                    corner.set('v', f'{v:.4f}')
+                    corner.set('z', '0.0')
+                    corner.set('height', f'{height:.2f}')
 
     def _create_triangular_outline(self, outline: etree.Element, obj: RoadObject) -> None:
         """Create triangular outline for conifers."""

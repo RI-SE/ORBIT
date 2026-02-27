@@ -554,6 +554,15 @@ class OpenDriveWriter:
         ex, ey, ehdg = _sample_element(last_elem, last_elem.length)
         self._road_curve_endpoints[(road.id, "end")] = (ex, ey, ehdg)
 
+        # Compute cumulative metric arc-length at each polyline point index.
+        # Used by lane_builder to convert pixel-based section boundaries to meters
+        # without the scale_x error introduced by angled roads.
+        cumulative_metric_s = [0.0]
+        for i in range(len(all_points_meters) - 1):
+            dx = all_points_meters[i + 1][0] - all_points_meters[i][0]
+            dy = all_points_meters[i + 1][1] - all_points_meters[i][1]
+            cumulative_metric_s.append(cumulative_metric_s[-1] + math.sqrt(dx * dx + dy * dy))
+
         # Calculate total road length
         road_length = sum(elem.length for elem in geometry_elements)
 
@@ -670,7 +679,7 @@ class OpenDriveWriter:
         boundary_infos, warning = self.lane_analyzer.analyze_road(road)
 
         # Add lanes (with boundary info if available)
-        lanes = self.lane_builder.create_lanes(road, road_length, boundary_infos)
+        lanes = self.lane_builder.create_lanes(road, road_length, boundary_infos, cumulative_metric_s)
         road_elem.append(lanes)
 
         # Add signals for this road (pass metric centerline for accurate s/t projection)

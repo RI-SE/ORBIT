@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <OpenDRIVE xmlns="http://code.asam.net/simulation/standard/opendrive_schema">
-  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-02-12T21:14:17.752396" north="41.2761" south="-46.4881" east="84.3235" west="-112.2221" vendor="ORBIT by RISE Research Institutes of Sweden">
+  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-02-27T13:49:00.699375" north="41.2761" south="-46.4881" east="84.3235" west="-112.2221" vendor="ORBIT by RISE Research Institutes of Sweden">
     <geoReference>+proj=utm +zone=33 +north +ellps=WGS84 +datum=WGS84 +units=m +no_defs +lat_0=57.48422286 +lon_0=12.00961678</geoReference>
     <offset x="320740.8226" y="6375235.5107" z="0.0000" hdg="0.000000"/>
     <userData code="tool">Produced by ORBIT (https://github.com/RI-SE/ORBIT)</userData>
@@ -8,7 +8,9 @@
     <userData code="sourceAttribution">Map data from OpenStreetMap (https://www.openstreetmap.org/copyright)</userData>
   </header>
   <road id="1" name="Valldavägen (seg 1/2)" length="35.9016" junction="-1">
-    <link/>
+    <link>
+      <predecessor elementType="junction" elementId="3"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="13.89" unit="m/s"/>
     </type>
@@ -61,7 +63,9 @@
     </lanes>
   </road>
   <road id="3" name="Säröleden" length="60.8775" junction="-1">
-    <link/>
+    <link>
+      <predecessor elementType="junction" elementId="1"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
@@ -117,7 +121,9 @@
     </lanes>
   </road>
   <road id="6" name="Säröleden" length="63.1266" junction="-1">
-    <link/>
+    <link>
+      <successor elementType="junction" elementId="2"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
@@ -172,11 +178,13 @@
       </laneSection>
     </lanes>
     <signals>
-      <signal id="3" s="64.673221" t="-6.320911" name="OSM Signal 1609681052 (give_way)" dynamic="no" orientation="+" hOffset="-1.570796" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
+      <signal id="3" s="55.365053" t="7.135638" name="OSM Signal 1609681052 (give_way)" dynamic="no" orientation="+" hOffset="-1.570796" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
     </signals>
   </road>
   <road id="15" name="Säröleden" length="76.9040" junction="-1">
-    <link/>
+    <link>
+      <predecessor elementType="junction" elementId="5"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
@@ -232,7 +240,7 @@
           </lane>
         </right>
       </laneSection>
-      <laneSection s="74.900818">
+      <laneSection s="76.904046">
         <center>
           <lane id="0" type="none" level="false">
             <roadMark sOffset="0.0" type="none" weight="standard" color="white" width="0.12"/>
@@ -250,7 +258,10 @@
     </lanes>
   </road>
   <road id="21" name="Säröleden Ring 1" length="11.3386" junction="-1">
-    <link/>
+    <link>
+      <predecessor elementType="junction" elementId="1"/>
+      <successor elementType="junction" elementId="2"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
@@ -298,7 +309,10 @@
     </lanes>
   </road>
   <road id="22" name="Säröleden Ring 2" length="3.0309" junction="-1">
-    <link/>
+    <link>
+      <predecessor elementType="junction" elementId="2"/>
+      <successor elementType="junction" elementId="3"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
@@ -334,7 +348,10 @@
     </lanes>
   </road>
   <road id="23" name="Säröleden Ring 3" length="9.0385" junction="-1">
-    <link/>
+    <link>
+      <predecessor elementType="junction" elementId="3"/>
+      <successor elementType="junction" elementId="4"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
@@ -379,7 +396,10 @@
     </lanes>
   </road>
   <road id="24" name="Säröleden Ring 4" length="3.0261" junction="-1">
-    <link/>
+    <link>
+      <predecessor elementType="junction" elementId="4"/>
+      <successor elementType="junction" elementId="5"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
@@ -415,7 +435,10 @@
     </lanes>
   </road>
   <road id="25" name="Säröleden Ring 5" length="13.6108" junction="-1">
-    <link/>
+    <link>
+      <predecessor elementType="junction" elementId="5"/>
+      <successor elementType="junction" elementId="6"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
@@ -463,7 +486,10 @@
     </lanes>
   </road>
   <road id="26" name="Säröleden Ring 6" length="27.1842" junction="-1">
-    <link/>
+    <link>
+      <predecessor elementType="junction" elementId="6"/>
+      <successor elementType="junction" elementId="1"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
@@ -529,7 +555,9 @@
     </lanes>
   </road>
   <road id="45" name="Säröleden (seg 2/2)" length="81.9830" junction="-1">
-    <link/>
+    <link>
+      <successor elementType="junction" elementId="6"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="19.44" unit="m/s"/>
     </type>
@@ -578,11 +606,13 @@
       </laneSection>
     </lanes>
     <signals>
-      <signal id="4" s="77.985235" t="-6.110802" name="OSM Signal 1609681090 (give_way)" dynamic="no" orientation="+" hOffset="-1.919862" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
+      <signal id="4" s="81.552500" t="6.596896" name="OSM Signal 1609681090 (give_way)" dynamic="no" orientation="+" hOffset="-1.919862" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
     </signals>
   </road>
   <road id="46" name="Valldavägen (seg 2/2)" length="34.0622" junction="-1">
-    <link/>
+    <link>
+      <successor elementType="junction" elementId="4"/>
+    </link>
     <type s="0.0" type="rural">
       <speed max="13.89" unit="m/s"/>
     </type>
@@ -628,7 +658,7 @@
       </laneSection>
     </lanes>
     <signals>
-      <signal id="2" s="26.093039" t="-7.792634" name="OSM Signal 1609680977 (give_way)" dynamic="no" orientation="+" hOffset="0.000000" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
+      <signal id="2" s="34.062200" t="8.134818" name="OSM Signal 1609680977 (give_way)" dynamic="no" orientation="+" hOffset="0.000000" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
     </signals>
   </road>
   <road id="27" name="" length="10.3683" junction="1">
@@ -820,14 +850,14 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="32" name="" length="14.5240" junction="3">
+  <road id="32" name="" length="14.5245" junction="3">
     <link>
       <predecessor elementType="road" elementId="22" contactPoint="end"/>
       <successor elementType="road" elementId="1" contactPoint="start"/>
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="-46.0469" y="3.4761" hdg="-1.120147" length="14.5240">
+      <geometry s="0.0000" x="-46.0469" y="3.4761" hdg="-1.120147" length="14.5245">
         <paramPoly3 aU="0.0000000000" bU="21.6463347771" cU="-20.0066450096" dU="12.7003229910" aV="0.0000000000" bV="0.0000000000" cV="4.0447133685" dV="-5.6616907923" pRange="normalized"/>
       </geometry>
     </planView>
@@ -846,7 +876,7 @@
               <predecessor id="-2"/>
               <successor id="-1"/>
             </link>
-            <width sOffset="0.0" a="3.5000" b="-0.017213" c="0.000000" d="0.000000"/>
+            <width sOffset="0.0" a="3.5000" b="-0.017212" c="0.000000" d="0.000000"/>
             <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12"/>
           </lane>
         </right>
@@ -894,29 +924,29 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="34" name="" length="17.2719" junction="4">
+  <road id="34" name="" length="17.2721" junction="4">
     <link>
       <predecessor elementType="road" elementId="46" contactPoint="end"/>
       <successor elementType="road" elementId="24" contactPoint="start"/>
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="-30.9272" y="-15.9585" hdg="0.743037" length="1.7860">
+      <geometry s="0.0000" x="-30.9272" y="-15.9585" hdg="0.743564" length="1.7871">
         <line/>
       </geometry>
-      <geometry s="1.7860" x="-29.6120" y="-14.7502" hdg="0.604976" length="2.6347">
+      <geometry s="1.7871" x="-29.6118" y="-14.7487" hdg="0.604650" length="2.6339">
         <line/>
       </geometry>
-      <geometry s="4.4207" x="-27.4449" y="-13.2517" hdg="0.482045" length="2.7500">
+      <geometry s="4.4210" x="-27.4449" y="-13.2514" hdg="0.481955" length="2.7498">
         <line/>
       </geometry>
-      <geometry s="7.1707" x="-25.0083" y="-11.9769" hdg="0.476633" length="2.9817">
+      <geometry s="7.1708" x="-25.0083" y="-11.9769" hdg="0.476633" length="2.9817">
         <line/>
       </geometry>
-      <geometry s="10.1523" x="-22.3590" y="-10.6089" hdg="0.424365" length="2.8191">
+      <geometry s="10.1525" x="-22.3590" y="-10.6089" hdg="0.424365" length="2.8191">
         <line/>
       </geometry>
-      <geometry s="12.9714" x="-19.7900" y="-9.4482" hdg="0.524912" length="4.3005">
+      <geometry s="12.9716" x="-19.7900" y="-9.4482" hdg="0.524912" length="4.3005">
         <line/>
       </geometry>
     </planView>

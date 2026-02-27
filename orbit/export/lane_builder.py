@@ -4,7 +4,7 @@ Lane XML builder for OpenDRIVE export.
 Handles creation of lane-related XML elements.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from lxml import etree
 
@@ -52,7 +52,8 @@ class LaneBuilder:
         self,
         road: Road,
         road_length: float,
-        boundary_infos: List[BoundaryInfo]
+        boundary_infos: List[BoundaryInfo],
+        cumulative_metric_s: Optional[Sequence[float]] = None,
     ) -> etree.Element:
         """
         Create lanes element with data-driven road marks from boundaries.
@@ -61,6 +62,9 @@ class LaneBuilder:
             road: Road object
             road_length: Total road length in meters (unused, kept for API compatibility)
             boundary_infos: List of boundary info for road mark types
+            cumulative_metric_s: Metric arc-length at each centerline polyline point index.
+                When provided, section boundaries are looked up from this list using
+                end_point_index instead of being estimated with scale_x.
 
         Returns:
             XML lanes element
@@ -81,7 +85,7 @@ class LaneBuilder:
         # Build map of lane_id to boundary info for quick lookup
         boundary_map = {b.lane_id: b for b in boundary_infos if b.lane_id is not None}
 
-        self._create_section_based_lanes(lanes, road, boundary_map)
+        self._create_section_based_lanes(lanes, road, boundary_map, cumulative_metric_s)
 
         return lanes
 
@@ -89,7 +93,8 @@ class LaneBuilder:
         self,
         lanes: etree.Element,
         road: Road,
-        boundary_map: dict
+        boundary_map: dict,
+        cumulative_metric_s: Optional[Sequence[float]] = None,
     ) -> None:
         """Create lane elements using lane sections."""
         # Determine if default lane links are needed at road boundaries.
@@ -103,11 +108,29 @@ class LaneBuilder:
         )
         num_sections = len(road.lane_sections)
 
+        # Track which cumulative_metric_s index the previous section ended at
+        prev_end_idx = 0
+
         for idx, section in enumerate(road.lane_sections):
             lane_section = etree.SubElement(lanes, 'laneSection')
 
-            # Convert pixel s-coordinates to meters
-            s_meters = section.s_start * self.scale_x
+            # Compute s_start and section_length in meters.
+            # Prefer looking up the exact metric arc-length via end_point_index when
+            # cumulative_metric_s is available — this avoids the scale_x error on
+            # angled roads where the x-direction scale under-/over-estimates distances.
+            if cumulative_metric_s and section.end_point_index is not None:
+                n = len(cumulative_metric_s) - 1
+                start_idx = min(prev_end_idx, n)
+                end_idx = min(section.end_point_index, n)
+                s_meters = cumulative_metric_s[start_idx]
+                s_end_m = cumulative_metric_s[end_idx]
+                section_length_m = max(0.0, s_end_m - s_meters)
+                prev_end_idx = section.end_point_index
+            else:
+                s_meters = section.s_start * self.scale_x
+                section_length_px = section.s_end - section.s_start
+                section_length_m = section_length_px * self.scale_x
+
             lane_section.set('s', f'{s_meters:.6f}')
 
             # Add singleSide attribute if set
@@ -119,10 +142,6 @@ class LaneBuilder:
 
             # OpenDRIVE requires elements in order: left, center, right
             # Only add left/right if there are lanes
-
-            # Calculate section length in meters for width polynomial
-            section_length_px = section.s_end - section.s_start
-            section_length_m = section_length_px * self.scale_x
 
             # First section needs predecessor lane links, last needs successor
             add_pred = (idx == 0) and has_road_predecessor

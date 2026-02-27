@@ -227,6 +227,7 @@ def compute_lane_polygons(
     reference_points: List[Tuple[float, float, float]],
     road: Road,
     scale_x: float,
+    cumulative_metric_s: List[float] = None,
 ) -> List[LanePolygonData]:
     """Compute lane boundary polygons from reference line samples and lane widths.
 
@@ -236,7 +237,10 @@ def compute_lane_polygons(
     Args:
         reference_points: (x, y, heading) samples in meters from sample_reference_line()
         road: Road model with lane_sections containing lane widths
-        scale_x: Meters per pixel scale factor (for converting section boundaries)
+        scale_x: Meters per pixel scale factor (fallback for section boundary conversion)
+        cumulative_metric_s: Metric arc-length at each centerline polyline point index.
+            When provided, section boundaries are looked up via end_point_index instead
+            of the scale_x approximation, giving correct positions on angled roads.
 
     Returns:
         List of LanePolygonData with polygon vertices in meter coordinates.
@@ -257,11 +261,22 @@ def compute_lane_polygons(
     ref_s_arr = np.array(ref_s)
 
     polygons = []
+    prev_end_idx = 0
 
     for section in road.lane_sections:
-        # Convert section boundaries from pixel-space to meters
-        s_start_m = section.s_start * scale_x
-        s_end_m = section.s_end * scale_x if section.end_point_index is not None else total_ref_length
+        # Convert section boundaries to meters.
+        # Use cumulative_metric_s + end_point_index when available for accuracy;
+        # fall back to scale_x estimation otherwise.
+        if cumulative_metric_s and section.end_point_index is not None:
+            n = len(cumulative_metric_s) - 1
+            start_idx = min(prev_end_idx, n)
+            end_idx = min(section.end_point_index, n)
+            s_start_m = cumulative_metric_s[start_idx]
+            s_end_m = cumulative_metric_s[end_idx]
+            prev_end_idx = section.end_point_index
+        else:
+            s_start_m = section.s_start * scale_x
+            s_end_m = section.s_end * scale_x if section.end_point_index is not None else total_ref_length
         # Clamp to reference line range
         s_start_m = max(0.0, min(s_start_m, total_ref_length))
         s_end_m = max(s_start_m, min(s_end_m, total_ref_length))
