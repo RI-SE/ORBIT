@@ -100,7 +100,8 @@ class OpenDriveWriter:
         self.signal_builder = SignalBuilder(
             scale_x=self.scale_x,
             country_code=country_code,
-            use_german_codes=use_german_codes
+            use_german_codes=use_german_codes,
+            transformer=transformer,
         )
         self.object_builder = ObjectBuilder(
             scale_x=self.scale_x,
@@ -672,8 +673,10 @@ class OpenDriveWriter:
         lanes = self.lane_builder.create_lanes(road, road_length, boundary_infos)
         road_elem.append(lanes)
 
-        # Add signals for this road
-        signals = self.signal_builder.create_signals(road, self.project.signals, centerline_points_pixel)
+        # Add signals for this road (pass metric centerline for accurate s/t projection)
+        signals = self.signal_builder.create_signals(
+            road, self.project.signals, centerline_points_pixel, all_points_meters
+        )
         if signals is not None:
             road_elem.append(signals)
 
