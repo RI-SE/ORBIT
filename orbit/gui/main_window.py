@@ -10,6 +10,7 @@ from typing import Optional
 from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QAction, QKeySequence, QUndoStack
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QDockWidget,
     QFileDialog,
@@ -50,6 +51,13 @@ class MainWindow(QMainWindow):
 
         # Cached transformer for real-time coordinate display
         self._cached_transformer = None
+
+        # Aerial view state
+        self._aerial_view_active = False
+        self._original_image_np = None  # Saved original background
+        self._original_transformer = None  # Saved original transformer
+        self._aerial_transformer = None  # Transformer for aerial tile image
+        self._aerial_zoom = 18  # Default tile zoom level
 
         # Session-level last used directory for file dialogs
         self._last_file_directory: str = str(Path.home())
@@ -295,6 +303,17 @@ class MainWindow(QMainWindow):
         self.toggle_uncertainty_action.setChecked(False)
         self.toggle_uncertainty_action.triggered.connect(self.toggle_uncertainty_overlay)
 
+        # Aerial map view action
+        self.toggle_aerial_action = QAction("&Aerial Map View", self)
+        self.toggle_aerial_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
+        self.toggle_aerial_action.setStatusTip(
+            "Toggle between original image and aerial satellite imagery"
+        )
+        self.toggle_aerial_action.setCheckable(True)
+        self.toggle_aerial_action.setChecked(False)
+        self.toggle_aerial_action.setEnabled(False)  # Enabled when georef available
+        self.toggle_aerial_action.triggered.connect(self.toggle_aerial_view)
+
         # Tools actions
         self.new_polyline_action = QAction("New &Polyline", self)
         self.new_polyline_action.setShortcut(QKeySequence("Ctrl+P"))
@@ -416,6 +435,8 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.toggle_soffsets_action)
         view_menu.addAction(self.toggle_junction_debug_action)
         view_menu.addAction(self.toggle_uncertainty_action)
+        view_menu.addSeparator()
+        view_menu.addAction(self.toggle_aerial_action)
 
         # Draw menu (drawing/placement tools)
         draw_menu = menubar.addMenu("&Draw")
@@ -1824,7 +1845,11 @@ class MainWindow(QMainWindow):
 
     def update_scale_display(self):
         """Update the scale display based on georeferencing."""
-        if not self.project.has_georeferencing() or len(self.project.control_points) < 2:
+        has_georef = self.project.has_georeferencing() and len(self.project.control_points) >= 2
+        if hasattr(self, 'toggle_aerial_action'):
+            self.toggle_aerial_action.setEnabled(has_georef and not self._aerial_view_active)
+
+        if not has_georef:
             self.scale_label.setText("Scale: N/A (no georef)")
             return
 
@@ -2435,6 +2460,157 @@ class MainWindow(QMainWindow):
         except Exception as e:
             show_error(self, f"Failed to create uncertainty overlay: {str(e)}", "Error")
             self.toggle_uncertainty_action.setChecked(False)
+
+    # ── Aerial Map View ──────────────────────────────────────────────
+
+    def toggle_aerial_view(self, checked: bool):
+        """Toggle between original image and aerial satellite imagery."""
+        if checked:
+            self._switch_to_aerial()
+        else:
+            self._switch_to_original()
+
+    def _get_project_geo_bbox(self):
+        """Return (min_lon, min_lat, max_lon, max_lat) from control points."""
+        cps = self.project.control_points
+        if not cps:
+            return None
+        lons = [cp.longitude for cp in cps]
+        lats = [cp.latitude for cp in cps]
+        return (min(lons), min(lats), max(lons), max(lats))
+
+    def _switch_to_aerial(self):
+        """Fetch aerial tiles and switch to aerial view."""
+        from orbit.utils.coordinate_transform import create_transformer_from_bounds
+        from orbit.utils.reproject import reproject_project_geometry
+        from orbit.utils.tile_fetcher import fetch_aerial_image
+
+        bbox = self._get_project_geo_bbox()
+        if bbox is None:
+            show_warning(self, "No control points — cannot determine geographic extent.")
+            self.toggle_aerial_action.setChecked(False)
+            return
+
+        # Save original state
+        self._original_transformer = self._create_transformer(use_validation=True)
+        if self._original_transformer is None:
+            show_warning(self, "Cannot create coordinate transformer.")
+            self.toggle_aerial_action.setChecked(False)
+            return
+        self._original_image_np = self.image_view.image_np.copy() if self.image_view.image_np is not None else None
+
+        # Determine cache directory (alongside project file, or temp)
+        cache_dir = None
+        if self.current_project_file:
+            cache_dir = self.current_project_file.parent / "tiles" / "esri"
+        else:
+            import tempfile
+            cache_dir = Path(tempfile.gettempdir()) / "orbit_tiles" / "esri"
+
+        try:
+            self.statusBar().showMessage("Fetching aerial imagery...")
+            QApplication.processEvents()
+
+            result = fetch_aerial_image(
+                bbox[1], bbox[0], bbox[3], bbox[2],
+                zoom=self._aerial_zoom,
+                cache_dir=cache_dir,
+            )
+        except Exception as e:
+            show_error(self, f"Failed to fetch aerial imagery:\n{e}", "Error")
+            self.toggle_aerial_action.setChecked(False)
+            self._original_image_np = None
+            self._original_transformer = None
+            return
+
+        # Build affine transformer from tile image bounds
+        h, w = result.image.shape[:2]
+        min_lon, min_lat, max_lon, max_lat = result.geo_bbox
+        self._aerial_transformer = create_transformer_from_bounds(
+            w, h, min_lon, min_lat, max_lon, max_lat,
+        )
+        if self._aerial_transformer is None:
+            show_error(self, "Failed to build transformer for aerial image.", "Error")
+            self.toggle_aerial_action.setChecked(False)
+            self._original_image_np = None
+            self._original_transformer = None
+            return
+
+        # Re-project all geometry into the aerial pixel space
+        count = reproject_project_geometry(
+            self.project, self._original_transformer, self._aerial_transformer,
+        )
+
+        # Capture original scale (m/px) before swapping
+        orig_scale_x, _ = self._original_transformer.get_scale_factor()
+        aerial_scale_x, _ = self._aerial_transformer.get_scale_factor()
+
+        # Swap background and refresh display
+        self.image_view.swap_background(result.image)
+        self._cached_transformer = self._aerial_transformer
+        self._aerial_view_active = True
+
+        # Refresh all scene items from updated pixel coords
+        scale_factors = self._aerial_transformer.get_scale_factor()
+        self.image_view.load_project(self.project, scale_factors)
+
+        # Fit to window then adjust zoom to keep same geographic scale
+        # (so fixed-size scene elements don't appear disproportionately large/small)
+        self.image_view.fit_to_window()
+        if orig_scale_x > 0 and aerial_scale_x > 0:
+            # Viewport pixels per meter should stay the same:
+            # At fit_to_window: 1 scene px = aerial_scale_x m shown at viewport_scale
+            # To match original: scale view by (orig_scale_x / aerial_scale_x)
+            scale_ratio = orig_scale_x / aerial_scale_x
+            self.image_view.scale(scale_ratio, scale_ratio)
+
+        self.toggle_aerial_action.setText("&Original Image View")
+        self.statusBar().showMessage(
+            f"Aerial view: {result.tile_count} tiles at zoom {result.zoom}, "
+            f"{count} entities re-projected"
+        )
+
+    def _switch_to_original(self):
+        """Switch back to the original drone/source image."""
+        from orbit.utils.reproject import reproject_project_geometry
+
+        if self._original_image_np is None or self._original_transformer is None:
+            self._aerial_view_active = False
+            self.toggle_aerial_action.setText("&Aerial Map View")
+            return
+
+        # Capture aerial scale before swapping back
+        aerial_scale_x, _ = self._aerial_transformer.get_scale_factor()
+        orig_scale_x, _ = self._original_transformer.get_scale_factor()
+
+        # Re-project geometry back to original pixel space
+        reproject_project_geometry(
+            self.project, self._aerial_transformer, self._original_transformer,
+        )
+
+        # Restore background
+        self.image_view.swap_background(self._original_image_np)
+        self._cached_transformer = self._original_transformer
+        self._aerial_view_active = False
+
+        # Refresh scene
+        scale_factors = self._original_transformer.get_scale_factor()
+        self.image_view.load_project(self.project, scale_factors)
+
+        # Restore geographic zoom
+        self.image_view.fit_to_window()
+        if aerial_scale_x > 0 and orig_scale_x > 0:
+            scale_ratio = aerial_scale_x / orig_scale_x
+            self.image_view.scale(scale_ratio, scale_ratio)
+
+        # Cleanup
+        self._original_image_np = None
+        self._original_transformer = None
+        self._aerial_transformer = None
+
+        self.toggle_aerial_action.setText("&Aerial Map View")
+        self.toggle_aerial_action.setEnabled(True)
+        self.statusBar().showMessage("Restored original image view")
 
     def get_current_scale(self):
         """

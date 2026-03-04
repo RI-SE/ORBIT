@@ -1146,6 +1146,57 @@ def create_transformer(
         return None
 
 
+def create_transformer_from_bounds(
+    image_width: int,
+    image_height: int,
+    min_lon: float,
+    min_lat: float,
+    max_lon: float,
+    max_lat: float,
+    export_proj_string: Optional[str] = None,
+) -> Optional[AffineTransformer]:
+    """
+    Create an AffineTransformer from image dimensions and geographic bounds.
+
+    Synthesizes corner control points mapping image corners to geographic
+    coordinates. Ideal for nadir (orthophoto/satellite) imagery where the
+    relationship between pixels and geography is a simple affine transform.
+
+    Image layout convention: pixel (0,0) = top-left = (min_lon, max_lat),
+    pixel (W,H) = bottom-right = (max_lon, min_lat).
+
+    Args:
+        image_width: Width of the image in pixels.
+        image_height: Height of the image in pixels.
+        min_lon, min_lat, max_lon, max_lat: Geographic bounding box (WGS84).
+        export_proj_string: Optional pyproj string for metric conversions.
+
+    Returns:
+        AffineTransformer if successful, None on error.
+    """
+    from orbit.models.project import ControlPoint
+
+    corners = [
+        ControlPoint(pixel_x=0.0, pixel_y=0.0,
+                     longitude=min_lon, latitude=max_lat, name="NW"),
+        ControlPoint(pixel_x=float(image_width), pixel_y=0.0,
+                     longitude=max_lon, latitude=max_lat, name="NE"),
+        ControlPoint(pixel_x=float(image_width), pixel_y=float(image_height),
+                     longitude=max_lon, latitude=min_lat, name="SE"),
+        ControlPoint(pixel_x=0.0, pixel_y=float(image_height),
+                     longitude=min_lon, latitude=min_lat, name="SW"),
+    ]
+
+    try:
+        return AffineTransformer(
+            corners, use_validation=False,
+            export_proj_string=export_proj_string,
+        )
+    except (ValueError, np.linalg.LinAlgError) as e:
+        logger.error(f"Error creating bounds transformer: {e}")
+        return None
+
+
 # For backwards compatibility with existing code
 def get_rms_error_meters(transformer: CoordinateTransformer, latitude: float = 0.0) -> float:
     """

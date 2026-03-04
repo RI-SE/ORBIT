@@ -277,6 +277,33 @@ class ImageView(QGraphicsView):
         # Fit to view
         self.fit_to_window()
 
+    def swap_background(self, image_rgb: np.ndarray):
+        """Replace the background image without clearing scene items.
+
+        All polyline/junction/signal items remain in the scene; only the
+        background pixmap is swapped.
+
+        Args:
+            image_rgb: H×W×3 RGB numpy array for the new background.
+        """
+        height, width = image_rgb.shape[:2]
+        bytes_per_line = 3 * width
+        q_image = QImage(
+            image_rgb.data,
+            width,
+            height,
+            bytes_per_line,
+            QImage.Format.Format_RGB888,
+        )
+        pixmap = QPixmap.fromImage(q_image)
+
+        if self.image_item is not None:
+            self.scene.removeItem(self.image_item)
+
+        self.image_item = self.scene.addPixmap(pixmap)
+        self.image_item.setZValue(0)
+        self.image_np = image_rgb
+
     def load_project(self, project: Project, scale_factors: tuple = None):
         """
         Load polylines, junctions, control points, and road lanes from a project.
