@@ -2523,11 +2523,36 @@ class MainWindow(QMainWindow):
             self._original_transformer = None
             return
 
-        # Build affine transformer from tile image bounds
+        # Build initial affine transformer from raw tile image bounds
         h, w = result.image.shape[:2]
         min_lon, min_lat, max_lon, max_lat = result.geo_bbox
-        self._aerial_transformer = create_transformer_from_bounds(
+        aerial_transformer_raw = create_transformer_from_bounds(
             w, h, min_lon, min_lat, max_lon, max_lat,
+        )
+        if aerial_transformer_raw is None:
+            show_error(self, "Failed to build transformer for aerial image.", "Error")
+            self.toggle_aerial_action.setChecked(False)
+            self._original_image_np = None
+            self._original_transformer = None
+            return
+
+        # Resize aerial image so its pixels/meter matches the original image.
+        # This keeps fixed-size scene elements (dots, labels, arrows) proportional.
+        import cv2 as _cv2
+        orig_scale_x, orig_scale_y = self._original_transformer.get_scale_factor()
+        aerial_scale_x, aerial_scale_y = aerial_transformer_raw.get_scale_factor()
+        aerial_image = result.image
+        if orig_scale_x > 0 and aerial_scale_x > 0:
+            resize_ratio = aerial_scale_x / orig_scale_x  # > 1 → upscale; < 1 → downscale
+            if abs(resize_ratio - 1.0) > 0.01:  # only resize if meaningfully different
+                new_w = max(1, round(w * resize_ratio))
+                new_h = max(1, round(h * resize_ratio))
+                interp = _cv2.INTER_AREA if resize_ratio < 1.0 else _cv2.INTER_LINEAR
+                aerial_image = _cv2.resize(aerial_image, (new_w, new_h), interpolation=interp)
+                # Rebuild transformer for the resized dimensions (same geo bbox)
+        self._aerial_transformer = create_transformer_from_bounds(
+            aerial_image.shape[1], aerial_image.shape[0],
+            min_lon, min_lat, max_lon, max_lat,
         )
         if self._aerial_transformer is None:
             show_error(self, "Failed to build transformer for aerial image.", "Error")
@@ -2541,28 +2566,15 @@ class MainWindow(QMainWindow):
             self.project, self._original_transformer, self._aerial_transformer,
         )
 
-        # Capture original scale (m/px) before swapping
-        orig_scale_x, _ = self._original_transformer.get_scale_factor()
-        aerial_scale_x, _ = self._aerial_transformer.get_scale_factor()
-
         # Swap background and refresh display
-        self.image_view.swap_background(result.image)
+        self.image_view.swap_background(aerial_image)
         self._cached_transformer = self._aerial_transformer
         self._aerial_view_active = True
 
         # Refresh all scene items from updated pixel coords
         scale_factors = self._aerial_transformer.get_scale_factor()
         self.image_view.load_project(self.project, scale_factors)
-
-        # Fit to window then adjust zoom to keep same geographic scale
-        # (so fixed-size scene elements don't appear disproportionately large/small)
         self.image_view.fit_to_window()
-        if orig_scale_x > 0 and aerial_scale_x > 0:
-            # Viewport pixels per meter should stay the same:
-            # At fit_to_window: 1 scene px = aerial_scale_x m shown at viewport_scale
-            # To match original: scale view by (orig_scale_x / aerial_scale_x)
-            scale_ratio = orig_scale_x / aerial_scale_x
-            self.image_view.scale(scale_ratio, scale_ratio)
 
         self.toggle_aerial_action.setText("&Original Image View")
         self.statusBar().showMessage(
@@ -2579,10 +2591,6 @@ class MainWindow(QMainWindow):
             self.toggle_aerial_action.setText("&Aerial Map View")
             return
 
-        # Capture aerial scale before swapping back
-        aerial_scale_x, _ = self._aerial_transformer.get_scale_factor()
-        orig_scale_x, _ = self._original_transformer.get_scale_factor()
-
         # Re-project geometry back to original pixel space
         reproject_project_geometry(
             self.project, self._aerial_transformer, self._original_transformer,
@@ -2596,12 +2604,7 @@ class MainWindow(QMainWindow):
         # Refresh scene
         scale_factors = self._original_transformer.get_scale_factor()
         self.image_view.load_project(self.project, scale_factors)
-
-        # Restore geographic zoom
         self.image_view.fit_to_window()
-        if aerial_scale_x > 0 and orig_scale_x > 0:
-            scale_ratio = aerial_scale_x / orig_scale_x
-            self.image_view.scale(scale_ratio, scale_ratio)
 
         # Cleanup
         self._original_image_np = None
