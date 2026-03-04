@@ -119,6 +119,19 @@ class OpenDriveCoordinateTransform:
         if self.opendrive_geo_reference and not self.orbit_transformer:
             self.mode = TransformMode.AUTO_GEOREFERENCE
 
+            # Set centering offsets so synthetic fallback renders data centered
+            if metric_points:
+                data_center_x = (self.data_min_x + self.data_max_x) / 2
+                data_center_y = (self.data_min_y + self.data_max_y) / 2
+                self.offset_x = -data_center_x
+                self.offset_y = -data_center_y
+                data_width = self.data_max_x - self.data_min_x
+                data_height = self.data_max_y - self.data_min_y
+                if data_width > 0 and data_height > 0:
+                    scale_x = (self.image_width * 0.9) / data_width
+                    scale_y = (self.image_height * 0.9) / data_height
+                    self.scale_pixels_per_meter = min(scale_x, scale_y)
+
             # Generate suggested control points
             # Create 3-4 control points at corners of OpenDrive data
             suggested_points = self._generate_suggested_control_points()
