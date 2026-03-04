@@ -313,8 +313,7 @@ class OpenDriveImporter:
         self._track_unsupported_features(result)
 
         # Step 8: Preserve geoReference for round-trip export
-        if self.odr_data.geo_reference:
-            self.project.imported_geo_reference = self.odr_data.geo_reference
+        self._preserve_geo_reference()
 
         # Step 9: Clear stale cross-junction road links
         # Roads in junctions should not have predecessor/successor pointing to each other
@@ -325,6 +324,25 @@ class OpenDriveImporter:
 
         result.success = True
         return result
+
+    def _preserve_geo_reference(self) -> None:
+        """Preserve geoReference from the imported file and back-project the header offsets."""
+        if not self.odr_data.geo_reference:
+            return
+        self.project.imported_geo_reference = self.odr_data.geo_reference
+        # Back-project header offsets to lat/lon so the export dialog can offer
+        # the original origin as a pre-filled "Custom coordinates" default.
+        offset_x = self.odr_data.header.offset_x
+        offset_y = self.odr_data.header.offset_y
+        if offset_x != 0.0 or offset_y != 0.0:
+            try:
+                from pyproj import Proj
+                proj = Proj(self.odr_data.geo_reference)
+                lon, lat = proj(offset_x, offset_y, inverse=True)
+                self.project.imported_origin_longitude = float(lon)
+                self.project.imported_origin_latitude = float(lat)
+            except Exception:
+                logger.warning("Could not back-project OpenDRIVE header offset to lat/lon")
 
     def _collect_sample_points(self) -> List[tuple]:
         """Collect sample points from all roads for transform setup."""

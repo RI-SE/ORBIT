@@ -143,7 +143,33 @@ class ExportDialog(BaseDialog):
             "The projected coordinates of this point become the offset,\n"
             "producing small local coordinates in the exported file."
         )
+        self.origin_combo.addItem("Custom coordinates", "custom")
         options_layout.addRow("Origin Point:", self.origin_combo)
+
+        # Custom origin lat/lon spinboxes (always visible, enabled only when "Custom" is selected)
+        self.origin_lat_spin = QDoubleSpinBox()
+        self.origin_lat_spin.setRange(-90.0, 90.0)
+        self.origin_lat_spin.setDecimals(8)
+        self.origin_lat_spin.setSingleStep(0.0001)
+        self.origin_lat_spin.setToolTip("Latitude of the custom origin point (−90 to 90).")
+        options_layout.addRow("Origin Latitude:", self.origin_lat_spin)
+
+        self.origin_lon_spin = QDoubleSpinBox()
+        self.origin_lon_spin.setRange(-180.0, 180.0)
+        self.origin_lon_spin.setDecimals(8)
+        self.origin_lon_spin.setSingleStep(0.0001)
+        self.origin_lon_spin.setToolTip("Longitude of the custom origin point (−180 to 180).")
+        options_layout.addRow("Origin Longitude:", self.origin_lon_spin)
+
+        # Pre-fill custom fields from imported origin if available, and default to it
+        if self.project.imported_origin_latitude is not None:
+            self.origin_lat_spin.setValue(self.project.imported_origin_latitude)
+            self.origin_lon_spin.setValue(self.project.imported_origin_longitude)
+            # Default the combo to "Custom coordinates" (last item added)
+            self.origin_combo.setCurrentIndex(self.origin_combo.count() - 1)
+
+        self.origin_combo.currentIndexChanged.connect(self._on_origin_changed)
+        self._on_origin_changed()  # set initial enabled state
 
         # German codes checkbox
         self.use_german_codes_checkbox = QCheckBox("Use German (DE) equivalent codes for signals")
@@ -330,6 +356,12 @@ class ExportDialog(BaseDialog):
         self.line_tolerance_spin.setEnabled(not preserve)
         self.arc_tolerance_spin.setEnabled(not preserve)
 
+    def _on_origin_changed(self):
+        """Enable/disable the custom lat/lon spinboxes based on origin selection."""
+        is_custom = self.origin_combo.currentData() == "custom"
+        self.origin_lat_spin.setEnabled(is_custom)
+        self.origin_lon_spin.setEnabled(is_custom)
+
     def browse_output_file(self):
         """Browse for output file location."""
         start_dir = getattr(self.parent(), '_last_file_directory', str(Path.home()))
@@ -424,6 +456,9 @@ class ExportDialog(BaseDialog):
             if origin_selection == "mean":
                 origin_lat = sum(cp.latitude for cp in self.project.control_points) / len(self.project.control_points)
                 origin_lon = sum(cp.longitude for cp in self.project.control_points) / len(self.project.control_points)
+            elif origin_selection == "custom":
+                origin_lat = self.origin_lat_spin.value()
+                origin_lon = self.origin_lon_spin.value()
             else:
                 cp = self.project.control_points[origin_selection]
                 origin_lat = cp.latitude
