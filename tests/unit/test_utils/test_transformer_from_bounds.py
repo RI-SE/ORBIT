@@ -1,10 +1,9 @@
 """Tests for create_transformer_from_bounds and geometry re-projection."""
 
-import numpy as np
 import pytest
 
-from orbit.models.project import ControlPoint, Project
 from orbit.models.polyline import Polyline
+from orbit.models.project import ControlPoint, Project
 from orbit.utils.coordinate_transform import create_transformer_from_bounds
 
 
