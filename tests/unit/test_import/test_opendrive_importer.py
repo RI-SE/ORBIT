@@ -1090,3 +1090,70 @@ class TestImportResultGeometryConversions:
         )
 
         assert result.control_points_created == 4
+
+
+class TestImportedOriginBackProjection:
+    """Tests for back-projection of OpenDRIVE header offsets to lat/lon."""
+
+    @pytest.fixture
+    def importer_with_georef(self):
+        """Importer whose odr_data carries a geo_reference and non-zero header offsets."""
+        project = Project()
+        imp = OpenDriveImporter(project, None, 1000, 800)
+        imp.odr_data = Mock()
+        imp.odr_data.geo_reference = "+proj=tmerc +lat_0=57.0 +lon_0=15.0 +datum=WGS84 +units=m"
+        imp.odr_data.header = Mock()
+        return imp
+
+    def test_back_project_non_zero_offsets(self, importer_with_georef):
+        """Non-zero header offsets are back-projected and stored on project."""
+        from pyproj import Proj
+        proj = Proj(importer_with_georef.odr_data.geo_reference)
+        # Forward-project a known point so we can round-trip it
+        expected_lon, expected_lat = 15.01, 57.01
+        x, y = proj(expected_lon, expected_lat)
+
+        imp = importer_with_georef
+        imp.odr_data.header.offset_x = x
+        imp.odr_data.header.offset_y = y
+        imp.odr_data.header.offset_z = 0.0
+        imp.odr_data.header.offset_hdg = 0.0
+        imp.odr_data.roads = []
+        imp.odr_data.junctions = []
+        imp.odr_data.junction_groups = []
+        imp.odr_data.signals = []
+        imp.odr_data.objects = []
+        imp.odr_data.parkings = []
+
+        imp._preserve_geo_reference()
+
+        assert imp.project.imported_origin_latitude == pytest.approx(expected_lat, abs=1e-6)
+        assert imp.project.imported_origin_longitude == pytest.approx(expected_lon, abs=1e-6)
+
+    def test_zero_offsets_not_stored(self, importer_with_georef):
+        """Zero header offsets do not populate imported_origin fields."""
+        imp = importer_with_georef
+        imp.odr_data.header.offset_x = 0.0
+        imp.odr_data.header.offset_y = 0.0
+        imp.odr_data.header.offset_z = 0.0
+        imp.odr_data.header.offset_hdg = 0.0
+
+        imp._preserve_geo_reference()
+
+        assert imp.project.imported_origin_latitude is None
+        assert imp.project.imported_origin_longitude is None
+
+    def test_bad_proj_string_does_not_raise(self):
+        """A malformed geo_reference is handled gracefully."""
+        project = Project()
+        imp = OpenDriveImporter(project, None, 1000, 800)
+        imp.odr_data = Mock()
+        imp.odr_data.geo_reference = "INVALID_PROJ_STRING"
+        imp.odr_data.header = Mock()
+        imp.odr_data.header.offset_x = 1000.0
+        imp.odr_data.header.offset_y = 2000.0
+
+        imp._preserve_geo_reference()  # Must not raise
+
+        assert project.imported_origin_latitude is None
+        assert project.imported_origin_longitude is None

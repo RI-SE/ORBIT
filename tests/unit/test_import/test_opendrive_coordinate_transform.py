@@ -213,6 +213,29 @@ class TestSetupTransformAutoGeoreference:
         assert "control points" in result.error_message.lower()
         assert result.suggested_control_points is not None
 
+    def test_auto_georeference_centers_data_in_fallback(self):
+        """Data center should map to canvas center when falling back to synthetic rendering.
+
+        Regression test: AUTO_GEOREFERENCE mode was not setting centering offsets,
+        causing imported roads to appear offset from canvas center.
+        """
+        # Simulate data with positive offset from projection origin (like GbgSaroRound.xodr)
+        # Data spans x=[50, 2350], y=[100, 2500] — center at (1200, 1300)
+        transform = OpenDriveCoordinateTransform(
+            image_width=1000, image_height=800,
+            opendrive_geo_reference="+proj=tmerc +lat_0=57.47 +lon_0=11.98"
+        )
+        points = [(50, 100), (2350, 2500)]
+        transform.setup_transform(points)
+
+        data_center_x = (50 + 2350) / 2  # 1200
+        data_center_y = (100 + 2500) / 2  # 1300
+
+        # The data center should map to canvas center
+        px, py = transform.metric_to_pixel(data_center_x, data_center_y)
+        assert px == pytest.approx(500.0, abs=1.0)  # canvas center x
+        assert py == pytest.approx(400.0, abs=1.0)  # canvas center y
+
 
 class TestMetricToPixelSynthetic:
     """Tests for metric_to_pixel in synthetic mode."""

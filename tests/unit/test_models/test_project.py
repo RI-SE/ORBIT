@@ -244,8 +244,30 @@ class TestProjectSerialization:
         assert project.polylines == []
         assert project.roads == []
 
+    def test_imported_origin_roundtrip(self):
+        """Test that imported_origin_latitude/longitude survive to_dict/from_dict."""
+        project = Project(
+            imported_geo_reference="+proj=utm +zone=33 +datum=WGS84",
+            imported_origin_latitude=57.123456,
+            imported_origin_longitude=15.654321,
+        )
+        data = project.to_dict()
+        assert data['imported_origin_latitude'] == pytest.approx(57.123456)
+        assert data['imported_origin_longitude'] == pytest.approx(15.654321)
 
-class TestProjectSaveLoad:
+        restored = Project.from_dict(data)
+        assert restored.imported_origin_latitude == pytest.approx(57.123456)
+        assert restored.imported_origin_longitude == pytest.approx(15.654321)
+
+    def test_imported_origin_defaults_to_none(self):
+        """Test that imported_origin fields default to None when absent from dict."""
+        data = {'metadata': {}, 'polylines': [], 'roads': []}
+        project = Project.from_dict(data)
+        assert project.imported_origin_latitude is None
+        assert project.imported_origin_longitude is None
+
+
+
     """Test project save/load to .orbit files."""
 
     def test_save_project(self, sample_project: Project, tmp_path: Path):

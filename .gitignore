@@ -2,6 +2,8 @@
 test_projects/
 dev_plans/
 CLAUDE.md
+copilot-instructions.md
+tiles/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

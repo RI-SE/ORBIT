@@ -126,6 +126,8 @@ class Project:
     baseline_uncertainty_m: float = 0.05  # Baseline position uncertainty (meters)
     gcp_suggestion_threshold: float = 0.2  # Threshold for GCP suggestions (meters)
     imported_geo_reference: Optional[str] = None  # Preserved geoReference from OpenDRIVE import
+    imported_origin_latitude: Optional[float] = None  # Back-projected origin lat from imported OpenDRIVE header offset
+    imported_origin_longitude: Optional[float] = None  # Back-projected origin lon from imported OpenDRIVE header offset
     enabled_sign_libraries: List[str] = field(default_factory=lambda: ['se'])  # Enabled sign library IDs
     synthetic_canvas_width: Optional[int] = None  # Synthetic canvas width in pixels (no real image)
     synthetic_canvas_height: Optional[int] = None  # Synthetic canvas height in pixels (no real image)
@@ -1490,6 +1492,8 @@ class Project:
             'baseline_uncertainty_m': self.baseline_uncertainty_m,
             'gcp_suggestion_threshold': self.gcp_suggestion_threshold,
             'imported_geo_reference': self.imported_geo_reference,
+            'imported_origin_latitude': self.imported_origin_latitude,
+            'imported_origin_longitude': self.imported_origin_longitude,
             'enabled_sign_libraries': self.enabled_sign_libraries,
             'synthetic_canvas_width': self.synthetic_canvas_width,
             'synthetic_canvas_height': self.synthetic_canvas_height,
@@ -1581,6 +1585,8 @@ class Project:
             baseline_uncertainty_m=data.get('baseline_uncertainty_m', 0.05),
             gcp_suggestion_threshold=data.get('gcp_suggestion_threshold', 0.2),
             imported_geo_reference=data.get('imported_geo_reference'),
+            imported_origin_latitude=data.get('imported_origin_latitude'),
+            imported_origin_longitude=data.get('imported_origin_longitude'),
             enabled_sign_libraries=data.get('enabled_sign_libraries', ['se']),  # Default to Swedish library
             synthetic_canvas_width=data.get('synthetic_canvas_width'),
             synthetic_canvas_height=data.get('synthetic_canvas_height'),
