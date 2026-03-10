@@ -3284,6 +3284,7 @@ class MainWindow(QMainWindow):
         self.modified = True
         self.image_view.refresh_signal_graphics(signal_id)
         self.update_elements_tree()
+        self.road_tree.refresh_tree()
         self.update_window_title()
 
     def on_signal_deleted(self, signal_id):

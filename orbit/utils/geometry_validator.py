@@ -22,6 +22,61 @@ class GeometryIssue:
     severity: str = "warning"  # "error" | "warning"
 
 
+def _s_from_position(position, centerline_points) -> Optional[float]:
+    """
+    Project a pixel position onto the centerline and return the s-coordinate.
+
+    Unlike Signal.calculate_s_position, this allows the result to exceed
+    [0, road_length]: if the position projects beyond the far endpoint of the
+    last segment (t > 1), the extrapolated value is returned so callers can
+    detect signals/objects dragged past the road end.
+    """
+    if not centerline_points or len(centerline_points) < 2:
+        return None
+
+    px, py = position
+    min_dist = float("inf")
+    closest_idx = 0
+    closest_t_clamped = 0.0
+
+    for i in range(len(centerline_points) - 1):
+        x1, y1 = centerline_points[i]
+        x2, y2 = centerline_points[i + 1]
+        dx, dy = x2 - x1, y2 - y1
+        length_sq = dx * dx + dy * dy
+        t = 0.0 if length_sq == 0 else ((px - x1) * dx + (py - y1) * dy) / length_sq
+        t_c = max(0.0, min(1.0, t))
+        proj_x, proj_y = x1 + t_c * dx, y1 + t_c * dy
+        dist = ((px - proj_x) ** 2 + (py - proj_y) ** 2) ** 0.5
+        if dist < min_dist:
+            min_dist = dist
+            closest_idx = i
+            closest_t_clamped = t_c
+
+    # Cumulative length up to the closest segment
+    s = 0.0
+    for i in range(closest_idx):
+        x1, y1 = centerline_points[i]
+        x2, y2 = centerline_points[i + 1]
+        s += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+
+    x1, y1 = centerline_points[closest_idx]
+    x2, y2 = centerline_points[closest_idx + 1]
+    dx, dy = x2 - x1, y2 - y1
+    length_sq = dx * dx + dy * dy
+    seg_length = length_sq ** 0.5
+
+    last_idx = len(centerline_points) - 2
+    if closest_idx == last_idx and closest_t_clamped == 1.0 and length_sq > 0:
+        # Position projects past the road end — use unclamped t so s > road_length
+        t_unclamped = ((px - x1) * dx + (py - y1) * dy) / length_sq
+        s += t_unclamped * seg_length
+    else:
+        s += closest_t_clamped * seg_length
+
+    return s
+
+
 def validate_project_geometry(project: "Project") -> List[GeometryIssue]:
     """
     Validate project geometry and return a list of issues found.
@@ -96,17 +151,26 @@ def validate_project_geometry(project: "Project") -> List[GeometryIssue]:
 
     # Check signals outside road
     for signal in project.signals:
-        if signal.s_position is None or not signal.road_id:
+        if not signal.road_id:
             continue
         road = project.get_road(signal.road_id)
         if not road:
             continue
         length = get_road_length(road)
-        if length is not None and signal.s_position > length:
+        if length is None:
+            continue
+        # Prefer live projection from pixel position (unclamped) so a signal
+        # dragged past the road end is detected even though s_position is clamped.
+        centerline = project.get_polyline(road.centerline_id) if road.centerline_id else None
+        if centerline and signal.position:
+            s = _s_from_position(signal.position, centerline.points)
+        else:
+            s = signal.s_position
+        if s is not None and s > length:
             issues.append(GeometryIssue(
                 message=(
-                    f"Signal '{signal.name or signal.id}' s_position={signal.s_position:.2f} "
-                    f"exceeds road length={length:.2f}"
+                    f"Signal '{signal.name or signal.id}' is beyond the road end "
+                    f"(s={s:.2f}, road length={length:.2f})"
                 ),
                 road_id=signal.road_id,
                 severity="warning",
@@ -114,17 +178,24 @@ def validate_project_geometry(project: "Project") -> List[GeometryIssue]:
 
     # Check road objects outside road
     for obj in project.objects:
-        if obj.s_position is None or not obj.road_id:
+        if not obj.road_id:
             continue
         road = project.get_road(obj.road_id)
         if not road:
             continue
         length = get_road_length(road)
-        if length is not None and obj.s_position > length:
+        if length is None:
+            continue
+        centerline = project.get_polyline(road.centerline_id) if road.centerline_id else None
+        if centerline and obj.position:
+            s = _s_from_position(obj.position, centerline.points)
+        else:
+            s = obj.s_position
+        if s is not None and s > length:
             issues.append(GeometryIssue(
                 message=(
-                    f"Object '{obj.name or obj.id}' s_position={obj.s_position:.2f} "
-                    f"exceeds road length={length:.2f}"
+                    f"Object '{obj.name or obj.id}' is beyond the road end "
+                    f"(s={s:.2f}, road length={length:.2f})"
                 ),
                 road_id=obj.road_id,
                 severity="warning",
