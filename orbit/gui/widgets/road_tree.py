@@ -10,10 +10,13 @@ from PyQt6.QtCore import QEvent, QMimeData, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QDrag
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QHBoxLayout,
     QLineEdit,
     QMenu,
+    QMessageBox,
     QPushButton,
+    QStyle,
     QTreeWidget,
     QTreeWidgetItem,
     QTreeWidgetItemIterator,
@@ -22,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 
 from orbit.models import LaneType, Polyline, Project, Road
+from orbit.utils.geometry_validator import GeometryIssue, validate_project_geometry
 
 from ..utils.message_helpers import ask_yes_no, show_info
 
@@ -164,6 +168,7 @@ class RoadTreeWidget(QWidget):
     polyline_deleted = pyqtSignal(str)  # Emits polyline ID (legacy)
     polyline_delete_requested = pyqtSignal(str)  # Emits polyline ID - handler does deletion
     lane_selected = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id
+    section_delete_requested = pyqtSignal(str, int, bool)  # Emits road_id, section_number, re_snap
 
     def __init__(self, project: Project, parent=None, verbose: bool = False):
         super().__init__(parent)
@@ -172,6 +177,7 @@ class RoadTreeWidget(QWidget):
         self.verbose = verbose
         self._cached_scale_factor: float | None = None
         self._scale_factor_computed = False
+        self._geometry_issues: List[GeometryIssue] = []
         self.setup_ui()
         self.refresh_tree()
 
@@ -304,6 +310,7 @@ class RoadTreeWidget(QWidget):
     def refresh_tree(self):
         """Refresh the entire tree from project data."""
         self._scale_factor_computed = False  # Invalidate cache on refresh
+        self._geometry_issues = validate_project_geometry(self.project)
         self.tree.clear()
 
         # Add roads as top-level items
@@ -328,6 +335,25 @@ class RoadTreeWidget(QWidget):
             if item.data(0, Qt.ItemDataRole.UserRole) != "unassigned":
                 item.setExpanded(True)
 
+    def _issues_for_road(self, road_id: str) -> List[GeometryIssue]:
+        """Return all geometry issues for a given road."""
+        return [i for i in self._geometry_issues if i.road_id == road_id]
+
+    def _issues_for_section(self, road_id: str, section_number: int) -> List[GeometryIssue]:
+        """Return geometry issues for a specific lane section."""
+        return [
+            i for i in self._geometry_issues
+            if i.road_id == road_id and i.section_number == section_number
+        ]
+
+    def _apply_warning_icon(self, item: QTreeWidgetItem, issues: List[GeometryIssue]) -> None:
+        """Set warning icon and tooltip on a tree item if issues exist."""
+        if not issues:
+            return
+        icon = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning)
+        item.setIcon(0, icon)
+        item.setToolTip(0, "\n".join(i.message for i in issues))
+
     def create_road_item(self, road: Road) -> QTreeWidgetItem:
         """Create a tree item for a road."""
         # Format display text with ID (shortened to 8 chars)
@@ -343,6 +369,10 @@ class RoadTreeWidget(QWidget):
             if polyline:
                 polyline_item = self.create_polyline_item(polyline, road)
                 item.addChild(polyline_item)
+
+        # Apply warning icon if any issues exist for this road
+        road_issues = self._issues_for_road(road.id)
+        self._apply_warning_icon(item, road_issues)
 
         return item
 
@@ -407,6 +437,10 @@ class RoadTreeWidget(QWidget):
             "section_number": section.section_number,
             "road_id": road_id
         })
+
+        # Apply warning icon if this section has geometry issues
+        section_issues = self._issues_for_section(road_id, section.section_number)
+        self._apply_warning_icon(item, section_issues)
 
         # Add lanes as children
         for lane in section.get_lanes_sorted():  # Left to right order
@@ -601,6 +635,13 @@ class RoadTreeWidget(QWidget):
             ))
             menu.addAction(edit_action)
 
+            road = self.project.get_road(data["road_id"])
+            if road and len(road.lane_sections) > 1:
+                delete_action = QAction("Delete Section", self)
+                delete_action.triggered.connect(lambda checked=False, sn=data["section_number"],
+                                                rid=data["road_id"]: self.delete_section(sn, rid))
+                menu.addAction(delete_action)
+
         elif data["type"] == "lane":
             # Lane context menu
             edit_action = QAction("Edit Lane Properties", self)
@@ -620,6 +661,29 @@ class RoadTreeWidget(QWidget):
             "Assigned polylines will also be deleted.", "Delete Road"):
             # Emit request signal - main_window will handle deletion with undo support
             self.road_delete_requested.emit(road_id)
+
+    def delete_section(self, section_number: int, road_id: str):
+        """Delete a lane section from a road."""
+        road = self.project.get_road(road_id)
+        if not road:
+            return
+
+        if not ask_yes_no(
+            self,
+            f"Delete Section {section_number} from road '{road.name}'?",
+            "Delete Section",
+        ):
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Recalculate Boundaries",
+            "Recalculate remaining section boundaries to close any gaps?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        re_snap = reply == QMessageBox.StandardButton.Yes
+
+        self.section_delete_requested.emit(road_id, section_number, re_snap)
 
     def unassign_polyline(self, polyline_id: str):
         """Unassign a polyline from its road."""

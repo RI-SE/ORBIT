@@ -699,6 +699,38 @@ class ModifySectionCommand(QUndoCommand):
         self.main_window._refresh_trees()
 
 
+class DeleteSectionCommand(QUndoCommand):
+    """Command for deleting a lane section."""
+
+    def __init__(self, main_window: 'MainWindow', road_id: str,
+                 old_road_data: dict, new_road_data: dict):
+        super().__init__("Delete Section")
+        self.main_window = main_window
+        self.road_id = road_id
+        self.old_road_data = old_road_data
+        self.new_road_data = new_road_data
+        self._first_redo = True
+
+    def redo(self):
+        if self._first_redo:
+            self._first_redo = False
+            return
+        self._apply_road_data(self.new_road_data)
+
+    def undo(self):
+        self._apply_road_data(self.old_road_data)
+
+    def _apply_road_data(self, data: dict):
+        self.main_window.image_view.remove_road_lanes(self.road_id)
+        self.main_window.project.remove_road(self.road_id)
+        road = Road.from_dict(data)
+        self.main_window.project.add_road(road)
+        if road.centerline_id:
+            scale_factors = self.main_window.get_current_scale()
+            self.main_window.image_view.add_road_lanes_graphics(road, scale_factors)
+        self.main_window._refresh_trees()
+
+
 class SplitRoadCommand(QUndoCommand):
     """Command for splitting a road into two roads."""
 
