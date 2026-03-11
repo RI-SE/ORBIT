@@ -1004,17 +1004,24 @@ class HybridTransformer(CoordinateTransformer):
 
     def _blend_factor(self, homo_px: float, homo_py: float,
                       w_component: float = 1.0) -> float:
-        """Compute blend factor: 1.0 = pure homography, 0.0 = pure affine."""
+        """Compute blend factor: 1.0 = pure homography, 0.0 = pure affine.
+
+        The blend zone is entirely outside the image boundary so that points
+        inside the image always use the (more accurate) homography.  Blending
+        in affine only starts once d < 0, transitioning smoothly to pure affine
+        at d = -margin.  This prevents visible road bends near image edges that
+        occurred when the previous ±margin zone mixed affine into interior points.
+        """
         if w_component < 0.01:
             return 0.0
         if self._margin <= 0:
             return 1.0
         d = self._signed_distance_from_bounds(homo_px, homo_py)
-        if d > self._margin:
+        if d >= 0:
             return 1.0
         if d < -self._margin:
             return 0.0
-        return self._smoothstep((d + self._margin) / (2 * self._margin))
+        return self._smoothstep((d + self._margin) / self._margin)
 
     def geo_to_pixel(self, longitude: float, latitude: float) -> Tuple[float, float]:
         """Blended geo->pixel: homography inside image, affine outside."""

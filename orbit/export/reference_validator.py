@@ -118,18 +118,20 @@ def validate_references(project: Project) -> List[str]:
                         f"BoundarySegment in {label}: road_id '{seg.road_id}' not found in roads"
                     )
 
-    # --- Signal → Road ---
+    # --- Signal → Road (or connecting road) ---
     for signal in project.signals:
-        if signal.road_id and signal.road_id not in road_ids:
+        if signal.road_id and signal.road_id not in road_ids \
+                and signal.road_id not in connecting_road_ids:
             warnings.append(
                 f"Signal '{signal.name or signal.id}' "
                 f"(id={signal.id}): road_id "
                 f"'{signal.road_id}' not found in roads"
             )
 
-    # --- RoadObject → Road ---
+    # --- RoadObject → Road (or connecting road) ---
     for obj in project.objects:
-        if obj.road_id and obj.road_id not in road_ids:
+        if obj.road_id and obj.road_id not in road_ids \
+                and obj.road_id not in connecting_road_ids:
             warnings.append(f"RoadObject (id={obj.id}): road_id '{obj.road_id}' not found in roads")
 
     # --- ParkingSpace → Road ---

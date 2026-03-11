@@ -1397,6 +1397,60 @@ class Project:
 
         return closest_road_id
 
+    def find_closest_road_or_cr(self, position: Tuple[float, float]) -> Optional[str]:
+        """
+        Find the road or connecting road closest to a given position.
+
+        Considers both regular roads (by centerline) and connecting roads (by path).
+        Connecting road IDs can be resolved with get_connecting_road().
+
+        Args:
+            position: (x, y) pixel coordinates
+
+        Returns:
+            ID of the closest road or connecting road, or None if none exist
+        """
+        min_distance = float('inf')
+        closest_id = None
+
+        for road in self.roads:
+            if not road.centerline_id:
+                continue
+            polyline = self.get_polyline(road.centerline_id)
+            if not polyline or not polyline.points:
+                continue
+            distance = self._point_to_polyline_distance(position, polyline.points)
+            if distance < min_distance:
+                min_distance = distance
+                closest_id = road.id
+
+        for junction in self.junctions:
+            for cr in junction.connecting_roads:
+                if len(cr.path) < 2:
+                    continue
+                distance = self._point_to_polyline_distance(position, cr.path)
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_id = cr.id
+
+        return closest_id
+
+    def get_connecting_road(self, cr_id: str):
+        """
+        Get a connecting road by ID, searching all junctions.
+
+        Args:
+            cr_id: Connecting road ID
+
+        Returns:
+            ConnectingRoad if found, None otherwise
+        """
+        for junction in self.junctions:
+            for cr in junction.connecting_roads:
+                if cr.id == cr_id:
+                    return cr
+        return None
+
     def _point_to_polyline_distance(self, point: Tuple[float, float],
                                     polyline_points: List[Tuple[float, float]]) -> float:
         """

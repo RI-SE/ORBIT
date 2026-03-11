@@ -547,6 +547,7 @@ class MainWindow(QMainWindow):
         self.road_tree.polyline_delete_requested.connect(self.on_polyline_delete_requested)
         self.road_tree.lane_selected.connect(self.on_lane_selected_in_tree)
         self.road_tree.roads_merge_requested.connect(self.on_roads_merge_requested)
+        self.road_tree.section_delete_requested.connect(self.on_section_delete_requested)
 
         # Adjustment dock for transform adjustment
         self.adjustment_dock = QDockWidget("Alignment Adjustment", self)
@@ -1426,17 +1427,12 @@ class MainWindow(QMainWindow):
             show_warning(self, "Please select a polyline first before creating a road.", "No Polyline Selected")
             return
 
-        # Create a new road
-        road = RoadPropertiesDialog.create_road(self.project, self, verbose=self.verbose)
+        # Pre-assign the selected polyline so the dialog's centerline combo is populated
+        road = RoadPropertiesDialog.create_road(
+            self.project, self, verbose=self.verbose,
+            initial_polyline_ids=[selected_polyline_id],
+        )
         if road:
-            # Add the selected polyline
-            road.add_polyline(selected_polyline_id)
-
-            # Automatically detect and set centerline
-            polyline = self.project.get_polyline(selected_polyline_id)
-            if polyline and polyline.line_type == LineType.CENTERLINE:
-                road.centerline_id = selected_polyline_id
-
             # Check if road has a centerline
             if not road.has_centerline():
                 if not ask_yes_no(
@@ -3239,8 +3235,8 @@ class MainWindow(QMainWindow):
                         signal.sign_width = sign_def.default_width
                         signal.sign_height = sign_def.default_height
 
-                # Find closest road and assign
-                closest_road_id = self.project.find_closest_road((x, y))
+                # Find closest road or connecting road and assign
+                closest_road_id = self.project.find_closest_road_or_cr((x, y))
                 if closest_road_id:
                     signal.road_id = closest_road_id
                     road = self.project.get_road(closest_road_id)
@@ -3250,6 +3246,10 @@ class MainWindow(QMainWindow):
                             # Calculate s-position
                             # Note: Orientation defaults to '+' (forward) and can be adjusted in properties dialog
                             signal.s_position = signal.calculate_s_position(centerline_polyline.points)
+                    else:
+                        cr = self.project.get_connecting_road(closest_road_id)
+                        if cr and cr.path:
+                            signal.s_position = signal.calculate_s_position(cr.path)
 
                 # Convert pixel position to geo coords if transformer available
                 if self._cached_transformer:
@@ -3283,6 +3283,7 @@ class MainWindow(QMainWindow):
         self.modified = True
         self.image_view.refresh_signal_graphics(signal_id)
         self.update_elements_tree()
+        self.road_tree.refresh_tree()
         self.update_window_title()
 
     def on_signal_deleted(self, signal_id):
@@ -3767,6 +3768,38 @@ class MainWindow(QMainWindow):
                 "outside section boundaries.",
                 "Split Failed",
             )
+
+    def on_section_delete_requested(self, road_id: str, section_number: int, re_snap: bool):
+        """
+        Handle section delete request from RoadTreeWidget.
+
+        Args:
+            road_id: ID of the road whose section should be deleted
+            section_number: Section number to delete
+            re_snap: Whether to recalculate remaining section boundaries
+        """
+        from .undo_commands import DeleteSectionCommand
+
+        road = self.project.get_road(road_id)
+        if not road:
+            return
+
+        old_data = road.to_dict()
+
+        road.delete_section(section_number)
+
+        if re_snap and road.centerline_id:
+            centerline = self.project.get_polyline(road.centerline_id)
+            if centerline:
+                road.update_section_boundaries(centerline.points)
+
+        new_data = road.to_dict()
+        cmd = DeleteSectionCommand(self, road_id, old_data, new_data)
+        self.undo_stack.push(cmd)
+
+        self.road_tree.refresh_tree()
+        self.statusBar().showMessage(f"Section {section_number} deleted")
+        self.update_affected_road_lanes()
 
     def on_road_split_requested(self, road_id: str, polyline_id: str, point_index: int):
         """

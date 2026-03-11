@@ -129,11 +129,13 @@ class RoadPropertiesDialog(QDialog):
             self.centerline_combo = QComboBox()
             self.centerline_combo.addItem("(No road reference line selected)", None)
 
-            # Add ONLY centerline polylines assigned to this road
+            # Add all polylines assigned to this road; selecting one marks it
+            # as the road reference line regardless of its current line_type.
             for polyline_id in self.road.polyline_ids:
                 polyline = self.project.get_polyline(polyline_id)
-                if polyline and polyline.line_type == LineType.CENTERLINE:
-                    display_text = f"Polyline ({polyline.point_count()} pts)"
+                if polyline:
+                    type_tag = "ref" if polyline.line_type == LineType.CENTERLINE else "boundary"
+                    display_text = f"Polyline ({polyline.point_count()} pts, {type_tag})"
                     self.centerline_combo.addItem(display_text, polyline_id)
 
             centerline_layout.addRow("Road Reference Line:", self.centerline_combo)
@@ -143,7 +145,10 @@ class RoadPropertiesDialog(QDialog):
             self.centerline_warning_label.setWordWrap(True)
             centerline_layout.addRow("", self.centerline_warning_label)
 
-            # Update warning initially
+            # Update warning on selection change and initially
+            self.centerline_combo.currentIndexChanged.connect(
+                lambda: self.update_centerline_warning()
+            )
             self.update_centerline_warning()
 
             centerline_main_layout.addLayout(centerline_layout)
@@ -566,17 +571,16 @@ class RoadPropertiesDialog(QDialog):
             if self.road.centerline_id:
                 set_combo_by_data(self.centerline_combo, self.road.centerline_id)
             else:
-                # Auto-select if there's exactly one centerline polyline
-                centerline_polylines = []
-                for polyline_id in self.road.polyline_ids:
-                    polyline = self.project.get_polyline(polyline_id)
-                    if polyline and polyline.line_type == LineType.CENTERLINE:
-                        centerline_polylines.append(polyline_id)
-
+                # Auto-select: prefer the single CENTERLINE polyline,
+                # otherwise auto-select if only one polyline is assigned.
+                centerline_polylines = [
+                    pid for pid in self.road.polyline_ids
+                    if (p := self.project.get_polyline(pid)) and p.line_type == LineType.CENTERLINE
+                ]
                 if len(centerline_polylines) == 1:
-                    # Auto-select the single centerline
-                    single_centerline_id = centerline_polylines[0]
-                    set_combo_by_data(self.centerline_combo, single_centerline_id)
+                    set_combo_by_data(self.centerline_combo, centerline_polylines[0])
+                elif len(self.road.polyline_ids) == 1:
+                    set_combo_by_data(self.centerline_combo, self.road.polyline_ids[0])
 
         # Set road links (if project available)
         if self.project and hasattr(self, 'predecessor_combo'):
@@ -662,7 +666,17 @@ class RoadPropertiesDialog(QDialog):
 
         # Centerline selection (if project available)
         if self.project and hasattr(self, 'centerline_combo'):
-            self.road.centerline_id = self.centerline_combo.currentData()
+            selected_cl_id = self.centerline_combo.currentData()
+            self.road.centerline_id = selected_cl_id
+            # Mark the selected polyline as CENTERLINE (and others as LANE_BOUNDARY)
+            if selected_cl_id:
+                for pid in self.road.polyline_ids:
+                    polyline = self.project.get_polyline(pid)
+                    if polyline:
+                        polyline.line_type = (
+                            LineType.CENTERLINE if pid == selected_cl_id
+                            else LineType.LANE_BOUNDARY
+                        )
 
         # Road links (if project available)
         if self.project and hasattr(self, 'predecessor_combo'):
@@ -700,48 +714,38 @@ class RoadPropertiesDialog(QDialog):
         self.road.surface_crg = self._get_crg_from_table()
 
     def update_centerline_warning(self):
-        """Update the centerline warning based on how many centerlines exist."""
+        """Update the centerline warning based on combo selection."""
         if not self.project or not hasattr(self, 'centerline_warning_label'):
             return
 
-        # Count centerline polylines in this road
-        centerline_count = 0
-        for polyline_id in self.road.polyline_ids:
-            polyline = self.project.get_polyline(polyline_id)
-            if polyline and polyline.line_type == LineType.CENTERLINE:
-                centerline_count += 1
+        has_polylines = len(self.road.polyline_ids) > 0
+        has_selection = self.centerline_combo.currentData() is not None
 
-        # Display warning based on count
-        if centerline_count == 0:
+        if not has_polylines:
             self.centerline_warning_label.setText(
-                "<b style='color: #ff6600;'>⚠ Warning: No road reference lines found among road's polylines.</b><br>"
-                "Mark one polyline as a road reference line (double-click the polyline)."
+                "<b style='color: #ff6600;'>No polylines assigned to this road.</b>"
             )
             self.centerline_warning_label.setStyleSheet(
                 "QLabel { padding: 5px; "
                 "background-color: #fff3cd; border-radius: 3px; }"
             )
-        elif centerline_count == 1:
+        elif not has_selection:
+            self.centerline_warning_label.setText(
+                "<b style='color: #ff6600;'>Please select a road reference line above.</b>"
+            )
+            self.centerline_warning_label.setStyleSheet(
+                "QLabel { padding: 5px; "
+                "background-color: #fff3cd; border-radius: 3px; }"
+            )
+        else:
             self.centerline_warning_label.setText(
                 "<b style='color: #28a745;'>"
-                "✓ Good: Exactly one road reference line found."
+                "Road reference line selected."
                 "</b>"
             )
             self.centerline_warning_label.setStyleSheet(
                 "QLabel { padding: 5px; "
                 "background-color: #d4edda; border-radius: 3px; }"
-            )
-        else:  # centerline_count > 1
-            self.centerline_warning_label.setText(
-                f"<b style='color: #dc3545;'>"
-                f"✗ Error: {centerline_count} road reference lines "
-                f"found, but only 1 is allowed.</b><br>"
-                "Change extra road reference lines to lane "
-                "boundaries (double-click polylines)."
-            )
-            self.centerline_warning_label.setStyleSheet(
-                "QLabel { padding: 5px; "
-                "background-color: #f8d7da; border-radius: 3px; }"
             )
 
     def update_total_lanes(self):
@@ -861,7 +865,13 @@ class RoadPropertiesDialog(QDialog):
         return None
 
     @classmethod
-    def create_road(cls, project: Optional[Project] = None, parent=None, verbose: bool = False) -> Optional[Road]:
+    def create_road(
+        cls,
+        project: Optional[Project] = None,
+        parent=None,
+        verbose: bool = False,
+        initial_polyline_ids: Optional[list] = None,
+    ) -> Optional[Road]:
         """
         Show dialog to create a new road.
 
@@ -869,11 +879,17 @@ class RoadPropertiesDialog(QDialog):
             project: Project to contain the new road (optional)
             parent: Parent widget
             verbose: Enable verbose output for debugging
+            initial_polyline_ids: Polyline IDs to pre-assign before opening the dialog,
+                so the centerline combo is populated on first open.
 
         Returns:
             The new road if accepted, None if cancelled
         """
-        dialog = cls(None, project, parent, verbose=verbose)
+        road = Road(id=project.next_id('road') if project else "")
+        if initial_polyline_ids:
+            for pid in initial_polyline_ids:
+                road.add_polyline(pid)
+        dialog = cls(road, project, parent, verbose=verbose)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             return dialog.get_road()
         return None

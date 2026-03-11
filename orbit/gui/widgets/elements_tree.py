@@ -8,8 +8,10 @@ Displays hierarchical view of junctions and other project elements with manageme
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
+    QApplication,
     QLineEdit,
     QMenu,
+    QStyle,
     QTreeWidget,
     QTreeWidgetItem,
     QTreeWidgetItemIterator,
@@ -19,6 +21,7 @@ from PyQt6.QtWidgets import (
 
 from orbit.models import Junction, ParkingSpace, Project, Signal
 from orbit.utils.enum_formatting import format_snake_case
+from orbit.utils.geometry_validator import validate_project_geometry
 
 from ..utils.message_helpers import ask_yes_no
 
@@ -47,6 +50,8 @@ class ElementsTreeWidget(QWidget):
         super().__init__(parent)
 
         self.project = project
+        self._geometry_issues = []
+        self._element_issues = {}
         self.setup_ui()
         self.refresh_tree()
 
@@ -132,8 +137,22 @@ class ElementsTreeWidget(QWidget):
         self.project = project
         self.refresh_tree()
 
+    def _apply_warning_icon(self, item: QTreeWidgetItem, issues: list) -> None:
+        """Set warning icon and tooltip on a tree item if issues exist."""
+        if not issues:
+            return
+        icon = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning)
+        item.setIcon(0, icon)
+        item.setToolTip(0, "\n".join(i.message for i in issues))
+
     def refresh_tree(self):
         """Refresh the entire tree from project data."""
+        self._geometry_issues = validate_project_geometry(self.project)
+        self._element_issues = {
+            i.element_id: i
+            for i in self._geometry_issues
+            if i.element_id is not None
+        }
         self.tree.clear()
 
         # Add Junctions category
@@ -297,18 +316,24 @@ class ElementsTreeWidget(QWidget):
         # Build display text
         display_name = signal.get_display_name()
 
-        # Add road info if assigned
+        # Add road info if assigned (handles both regular roads and connecting roads)
         road_info = ""
         if signal.road_id and self.project:
             road = self.project.get_road(signal.road_id)
             if road:
                 road_name = road.name or f"Road {road.id[:8]}"
                 road_info = f" → {road_name}"
+            else:
+                cr = self.project.get_connecting_road(signal.road_id)
+                if cr:
+                    road_info = f" → CR {cr.id[:8]}"
 
         text = f"{display_name}{road_info}"
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "signal", "id": signal.id})
+        issue = self._element_issues.get(signal.id)
+        self._apply_warning_icon(item, [issue] if issue else [])
         return item
 
     def create_object_item(self, obj) -> QTreeWidgetItem:
@@ -317,7 +342,7 @@ class ElementsTreeWidget(QWidget):
         # Build display text
         display_name = obj.get_display_name()
 
-        # Add category and road info
+        # Add category and road info (handles both regular roads and connecting roads)
         category = format_snake_case(obj.type.get_category())
         road_info = ""
         if obj.road_id and self.project:
@@ -325,11 +350,17 @@ class ElementsTreeWidget(QWidget):
             if road:
                 road_name = road.name or f"Road {road.id[:8]}"
                 road_info = f" → {road_name}"
+            else:
+                cr = self.project.get_connecting_road(obj.road_id)
+                if cr:
+                    road_info = f" → CR {cr.id[:8]}"
 
         text = f"{display_name} ({category}){road_info}"
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "object", "id": obj.id})
+        issue = self._element_issues.get(obj.id)
+        self._apply_warning_icon(item, [issue] if issue else [])
         return item
 
     def create_parking_item(self, parking: ParkingSpace) -> QTreeWidgetItem:
