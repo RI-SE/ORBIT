@@ -230,6 +230,23 @@ class ImageView(QGraphicsView):
                                 image_width + 2 * pad_x,
                                 image_height + 2 * pad_y)
 
+    def _expand_scene_rect_to_items(self):
+        """Expand the scene rect to encompass all scene items with padding.
+
+        Called after loading a project so that imported map data extending
+        beyond the image (e.g. large-radius OSM import) is fully pannable.
+        """
+        items_rect = self.scene.itemsBoundingRect()
+        if items_rect.isNull():
+            return
+        current = self.scene.sceneRect()
+        united = current.united(items_rect)
+        # Add 20% padding around the united rect
+        pad_x = united.width() * 0.2
+        pad_y = united.height() * 0.2
+        united.adjust(-pad_x, -pad_y, pad_x, pad_y)
+        self.scene.setSceneRect(united)
+
     def set_synthetic_canvas(self, width: int, height: int, color=None):
         """Create a grey canvas as a synthetic image substitute.
 
@@ -388,6 +405,9 @@ class ImageView(QGraphicsView):
                 connecting_road = project.get_road(cr_id)
                 if connecting_road:
                     self.add_connecting_road_graphics(connecting_road, scale_factors)
+
+        # Expand scene rect so items outside the image are pannable
+        self._expand_scene_rect_to_items()
 
     def add_polyline_graphics(self, polyline: Polyline):
         """Add a polyline to the graphics scene."""

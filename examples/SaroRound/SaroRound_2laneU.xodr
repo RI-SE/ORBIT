@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <OpenDRIVE xmlns="http://code.asam.net/simulation/standard/opendrive_schema">
-  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-03-11T09:54:44.198915" north="47.1288" south="-53.6954" east="98.6098" west="-135.0248" vendor="ORBIT by RISE Research Institutes of Sweden">
+  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-03-11T11:13:55.676381" north="47.6199" south="-53.6954" east="98.6098" west="-133.6477" vendor="ORBIT by RISE Research Institutes of Sweden">
     <geoReference>+proj=utm +zone=33 +north +ellps=WGS84 +datum=WGS84 +units=m +no_defs +lat_0=57.48422286 +lon_0=12.00961678</geoReference>
     <offset x="320740.8226" y="6375235.5107" z="0.0000" hdg="0.000000"/>
     <userData code="tool">Produced by ORBIT (https://github.com/RI-SE/ORBIT)</userData>
@@ -65,7 +65,7 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="3" name="Säröleden" length="59.1410" junction="-1">
+  <road id="3" name="Säröleden" length="58.6429" junction="-1">
     <link>
       <predecessor elementType="junction" elementId="1"/>
       <successor elementType="road" elementId="48" contactPoint="start"/>
@@ -98,7 +98,7 @@
       <geometry s="38.7260" x="-91.6051" y="33.0470" hdg="2.773145" length="8.6398">
         <line/>
       </geometry>
-      <geometry s="47.3658" x="-99.6650" y="36.1588" hdg="2.785290" length="11.7752">
+      <geometry s="47.3658" x="-99.6650" y="36.1588" hdg="2.774886" length="11.2771">
         <line/>
       </geometry>
     </planView>
@@ -126,7 +126,7 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="6" name="Säröleden" length="62.3082" junction="-1">
+  <road id="6" name="Säröleden" length="61.7505" junction="-1">
     <link>
       <predecessor elementType="road" elementId="48" contactPoint="end"/>
       <successor elementType="junction" elementId="2"/>
@@ -135,31 +135,31 @@
       <speed max="19.44" unit="m/s"/>
     </type>
     <planView>
-      <geometry s="0.0000" x="-111.7948" y="39.6234" hdg="-0.352036" length="13.3889">
+      <geometry s="0.0000" x="-111.3005" y="39.3507" hdg="-0.345375" length="12.8312">
         <line/>
       </geometry>
-      <geometry s="13.3889" x="-99.2270" y="35.0067" hdg="-0.406985" length="13.4924">
+      <geometry s="12.8312" x="-99.2270" y="35.0067" hdg="-0.406985" length="13.4924">
         <line/>
       </geometry>
-      <geometry s="26.8813" x="-86.8367" y="29.6659" hdg="-0.295244" length="12.8663">
+      <geometry s="26.3235" x="-86.8367" y="29.6659" hdg="-0.295244" length="12.8663">
         <line/>
       </geometry>
-      <geometry s="39.7475" x="-74.5272" y="25.9222" hdg="-0.251923" length="5.5795">
+      <geometry s="39.1898" x="-74.5272" y="25.9222" hdg="-0.251923" length="5.5795">
         <line/>
       </geometry>
-      <geometry s="45.3270" x="-69.1238" y="24.5314" hdg="-0.284967" length="7.2771">
+      <geometry s="44.7693" x="-69.1238" y="24.5314" hdg="-0.284967" length="7.2771">
         <line/>
       </geometry>
-      <geometry s="52.6041" x="-62.1402" y="22.4856" hdg="-0.291952" length="2.9272">
+      <geometry s="52.0464" x="-62.1402" y="22.4856" hdg="-0.291952" length="2.9272">
         <line/>
       </geometry>
-      <geometry s="55.5312" x="-59.3369" y="21.6431" hdg="-0.369367" length="2.8935">
+      <geometry s="54.9735" x="-59.3369" y="21.6431" hdg="-0.369367" length="2.8935">
         <line/>
       </geometry>
-      <geometry s="58.4248" x="-56.6385" y="20.5985" hdg="-0.537639" length="2.3844">
+      <geometry s="57.8671" x="-56.6385" y="20.5985" hdg="-0.537639" length="2.3844">
         <line/>
       </geometry>
-      <geometry s="60.8092" x="-54.5905" y="19.3774" hdg="-0.945318" length="1.4991">
+      <geometry s="60.2514" x="-54.5905" y="19.3774" hdg="-0.945318" length="1.4991">
         <line/>
       </geometry>
     </planView>
@@ -187,10 +187,10 @@
       </laneSection>
     </lanes>
     <signals>
-      <signal id="3" s="54.546685" t="7.135638" name="OSM Signal 1609681052 (give_way)" dynamic="no" orientation="+" hOffset="-1.570796" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
+      <signal id="3" s="53.988970" t="7.135638" name="OSM Signal 1609681052 (give_way)" dynamic="no" orientation="+" hOffset="-1.570796" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
     </signals>
   </road>
-  <road id="15" name="Säröleden" length="77.9300" junction="-1">
+  <road id="15" name="Säröleden" length="78.0046" junction="-1">
     <link>
       <predecessor elementType="junction" elementId="5"/>
       <successor elementType="road" elementId="47" contactPoint="start"/>
@@ -226,7 +226,7 @@
       <geometry s="49.9607" x="50.3107" y="7.2087" hdg="-0.114421" length="10.6706">
         <line/>
       </geometry>
-      <geometry s="60.6313" x="60.9115" y="5.9905" hdg="-0.156504" length="17.2987">
+      <geometry s="60.6313" x="60.9115" y="5.9905" hdg="-0.148496" length="17.3734">
         <line/>
       </geometry>
     </planView>
@@ -551,7 +551,7 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="45" name="Säröleden (seg 2/2)" length="80.1183" junction="-1">
+  <road id="45" name="Säröleden (seg 2/2)" length="78.6597" junction="-1">
     <link>
       <predecessor elementType="road" elementId="47" contactPoint="end"/>
       <successor elementType="junction" elementId="6"/>
@@ -560,25 +560,25 @@
       <speed max="19.44" unit="m/s"/>
     </type>
     <planView>
-      <geometry s="0.0000" x="82.4961" y="5.4196" hdg="3.001865" length="18.4894">
+      <geometry s="0.0000" x="81.0642" y="5.7128" hdg="3.007205" length="17.0309">
         <line/>
       </geometry>
-      <geometry s="18.4894" x="64.1868" y="7.9947" hdg="2.990518" length="11.4733">
+      <geometry s="17.0309" x="64.1868" y="7.9947" hdg="2.990518" length="11.4733">
         <line/>
       </geometry>
-      <geometry s="29.9627" x="52.8442" y="9.7214" hdg="3.023239" length="13.8301">
+      <geometry s="28.5042" x="52.8442" y="9.7214" hdg="3.023239" length="13.8301">
         <line/>
       </geometry>
-      <geometry s="43.7928" x="39.1109" y="11.3545" hdg="3.026688" length="14.2601">
+      <geometry s="42.3343" x="39.1109" y="11.3545" hdg="3.026688" length="14.2601">
         <line/>
       </geometry>
-      <geometry s="58.0529" x="24.9448" y="12.9894" hdg="2.992845" length="10.7499">
+      <geometry s="56.5944" x="24.9448" y="12.9894" hdg="2.992845" length="10.7499">
         <line/>
       </geometry>
-      <geometry s="68.8028" x="14.3137" y="14.5825" hdg="2.783663" length="6.3067">
+      <geometry s="67.3443" x="14.3137" y="14.5825" hdg="2.783663" length="6.3067">
         <line/>
       </geometry>
-      <geometry s="75.1094" x="8.4067" y="16.7920" hdg="2.632386" length="5.0088">
+      <geometry s="73.6509" x="8.4067" y="16.7920" hdg="2.632386" length="5.0088">
         <line/>
       </geometry>
     </planView>
@@ -606,7 +606,7 @@
       </laneSection>
     </lanes>
     <signals>
-      <signal id="4" s="79.687768" t="6.596896" name="OSM Signal 1609681090 (give_way)" dynamic="no" orientation="+" hOffset="-1.919862" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
+      <signal id="4" s="78.229259" t="6.596896" name="OSM Signal 1609681090 (give_way)" dynamic="no" orientation="+" hOffset="-1.919862" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
     </signals>
   </road>
   <road id="46" name="Valldavägen (seg 2/2)" length="34.0622" junction="-1">
@@ -661,71 +661,71 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="47" name="Uturn1" length="50.1724" junction="-1">
+  <road id="47" name="Uturn1" length="51.6919" junction="-1">
     <link>
       <predecessor elementType="road" elementId="15" contactPoint="end"/>
       <successor elementType="road" elementId="45" contactPoint="start"/>
     </link>
     <type s="0.0" type="townArterial"/>
     <planView>
-      <geometry s="0.0000" x="78.1951" y="3.3264" hdg="-0.157095" length="3.4261">
+      <geometry s="0.0000" x="78.1166" y="3.4184" hdg="-0.146678" length="2.9776">
         <line/>
       </geometry>
-      <geometry s="3.4261" x="81.5790" y="2.7904" hdg="-0.443489" length="1.5639">
+      <geometry s="2.9776" x="81.0622" y="2.9832" hdg="-0.420972" length="2.1140">
         <line/>
       </geometry>
-      <geometry s="4.9901" x="82.9916" y="2.1193" hdg="-0.292211" length="1.2509">
+      <geometry s="5.0916" x="82.9916" y="2.1193" hdg="-0.292211" length="1.2509">
         <line/>
       </geometry>
-      <geometry s="6.2410" x="84.1895" y="1.7589" hdg="-0.763077" length="1.5983">
+      <geometry s="6.3425" x="84.1895" y="1.7589" hdg="-0.763077" length="1.5983">
         <line/>
       </geometry>
-      <geometry s="7.8393" x="85.3447" y="0.6543" hdg="-0.931807" length="1.7083">
+      <geometry s="7.9408" x="85.3447" y="0.6543" hdg="-0.931807" length="1.7083">
         <line/>
       </geometry>
-      <geometry s="9.5476" x="86.3634" y="-0.7170" hdg="-0.926380" length="2.7849">
+      <geometry s="9.6491" x="86.3634" y="-0.7170" hdg="-0.926380" length="2.7849">
         <line/>
       </geometry>
-      <geometry s="12.3324" x="88.0364" y="-2.9433" hdg="-0.801804" length="3.0488">
+      <geometry s="12.4340" x="88.0364" y="-2.9433" hdg="-0.801804" length="3.0488">
         <line/>
       </geometry>
-      <geometry s="15.3813" x="90.1566" y="-5.1342" hdg="0.121742" length="2.7740">
+      <geometry s="15.4828" x="90.1566" y="-5.1342" hdg="0.121742" length="2.7740">
         <line/>
       </geometry>
-      <geometry s="18.1552" x="92.9100" y="-4.7974" hdg="0.511180" length="2.5319">
+      <geometry s="18.2568" x="92.9100" y="-4.7974" hdg="0.511180" length="2.5319">
         <line/>
       </geometry>
-      <geometry s="20.6872" x="95.1183" y="-3.5587" hdg="0.728800" length="2.2949">
+      <geometry s="20.7887" x="95.1183" y="-3.5587" hdg="0.728800" length="2.2949">
         <line/>
       </geometry>
-      <geometry s="22.9821" x="96.8303" y="-2.0304" hdg="1.233814" length="3.0471">
+      <geometry s="23.0836" x="96.8303" y="-2.0304" hdg="1.233814" length="3.0471">
         <line/>
       </geometry>
-      <geometry s="26.0292" x="97.8378" y="0.8454" hdg="1.426212" length="3.0825">
+      <geometry s="26.1307" x="97.8378" y="0.8454" hdg="1.426212" length="3.0825">
         <line/>
       </geometry>
-      <geometry s="29.1117" x="98.2819" y="3.8957" hdg="1.453433" length="2.8002">
+      <geometry s="29.2132" x="98.2819" y="3.8957" hdg="1.453433" length="2.8002">
         <line/>
       </geometry>
-      <geometry s="31.9119" x="98.6098" y="6.6766" hdg="2.152889" length="2.4773">
+      <geometry s="32.0134" x="98.6098" y="6.6766" hdg="2.152889" length="2.4773">
         <line/>
       </geometry>
-      <geometry s="34.3891" x="97.2478" y="8.7459" hdg="3.064157" length="2.7177">
+      <geometry s="34.4907" x="97.2478" y="8.7459" hdg="3.064157" length="2.7177">
         <line/>
       </geometry>
-      <geometry s="37.1068" x="94.5383" y="8.9561" hdg="-2.872221" length="3.7386">
+      <geometry s="37.2083" x="94.5383" y="8.9561" hdg="-2.872221" length="3.7386">
         <line/>
       </geometry>
-      <geometry s="40.8454" x="90.9345" y="7.9612" hdg="-2.568104" length="2.7978">
+      <geometry s="40.9470" x="90.9345" y="7.9612" hdg="-2.568104" length="2.7978">
         <line/>
       </geometry>
-      <geometry s="43.6433" x="88.5843" y="6.4432" hdg="-2.623243" length="2.4455">
+      <geometry s="43.7448" x="88.5843" y="6.4432" hdg="-2.623243" length="2.4455">
         <line/>
       </geometry>
-      <geometry s="46.0888" x="86.4600" y="5.2315" hdg="-3.023027" length="1.9114">
+      <geometry s="46.1903" x="86.4600" y="5.2315" hdg="3.107413" length="2.7987">
         <line/>
       </geometry>
-      <geometry s="48.0002" x="84.5620" y="5.0054" hdg="2.961890" length="2.1722">
+      <geometry s="48.9891" x="83.6629" y="5.3272" hdg="3.014281" length="2.7028">
         <line/>
       </geometry>
     </planView>
@@ -754,59 +754,59 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="48" name="Uturn2" length="56.9126" junction="-1">
+  <road id="48" name="Uturn2" length="54.7227" junction="-1">
     <link>
       <predecessor elementType="road" elementId="3" contactPoint="end"/>
       <successor elementType="road" elementId="6" contactPoint="start"/>
     </link>
     <type s="0.0" type="townArterial"/>
     <planView>
-      <geometry s="0.0000" x="-108.6649" y="40.2642" hdg="2.957168" length="3.4299">
+      <geometry s="0.0000" x="-108.6649" y="40.2642" hdg="3.032253" length="4.7499">
         <line/>
       </geometry>
-      <geometry s="3.4299" x="-112.0366" y="40.8932" hdg="2.680848" length="2.8728">
+      <geometry s="4.7499" x="-113.3864" y="40.7825" hdg="2.845738" length="6.0462">
         <line/>
       </geometry>
-      <geometry s="6.3027" x="-114.6099" y="42.1705" hdg="2.776543" length="4.0670">
+      <geometry s="10.7961" x="-119.1699" y="42.5453" hdg="2.747005" length="6.2607">
         <line/>
       </geometry>
-      <geometry s="10.3697" x="-118.4089" y="43.6224" hdg="2.557997" length="3.9253">
+      <geometry s="17.0568" x="-124.9495" y="44.9521" hdg="2.282822" length="2.3271">
         <line/>
       </geometry>
-      <geometry s="14.2950" x="-121.6845" y="45.7853" hdg="2.934994" length="5.0267">
+      <geometry s="19.3839" x="-126.4700" y="46.7138" hdg="2.594718" length="1.7425">
         <line/>
       </geometry>
-      <geometry s="19.3217" x="-126.6043" y="46.8165" hdg="3.065659" length="4.1176">
+      <geometry s="21.1263" x="-127.9583" y="47.6199" hdg="-2.823584" length="1.8755">
         <line/>
       </geometry>
-      <geometry s="23.4393" x="-130.7100" y="47.1288" hdg="-2.645372" length="3.7694">
+      <geometry s="23.0018" x="-129.7397" y="47.0335" hdg="-2.709363" length="2.8886">
         <line/>
       </geometry>
-      <geometry s="27.2087" x="-134.0248" y="45.3342" hdg="-1.922715" length="2.9011">
+      <geometry s="25.8904" x="-132.3627" y="45.8235" hdg="-1.715462" length="1.7682">
         <line/>
       </geometry>
-      <geometry s="30.1098" x="-135.0248" y="42.6109" hdg="-1.021733" length="2.5720">
+      <geometry s="27.6587" x="-132.6176" y="44.0737" hdg="-2.051458" length="2.2278">
         <line/>
       </geometry>
-      <geometry s="32.6818" x="-133.6825" y="40.4169" hdg="-0.241034" length="4.1546">
+      <geometry s="29.8864" x="-133.6477" y="42.0984" hdg="-0.589157" length="4.8108">
         <line/>
       </geometry>
-      <geometry s="36.8364" x="-129.6480" y="39.4252" hdg="-0.119326" length="3.3446">
+      <geometry s="34.6972" x="-129.6480" y="39.4252" hdg="-0.226179" length="1.6601">
         <line/>
       </geometry>
-      <geometry s="40.1810" x="-126.3272" y="39.0271" hdg="0.063062" length="3.3700">
+      <geometry s="36.3573" x="-128.0302" y="39.0529" hdg="-0.084228" length="1.1731">
         <line/>
       </geometry>
-      <geometry s="43.5510" x="-122.9639" y="39.2394" hdg="0.178534" length="3.8022">
+      <geometry s="37.5304" x="-126.8613" y="38.9542" hdg="0.094125" length="3.4298">
         <line/>
       </geometry>
-      <geometry s="47.3532" x="-119.2221" y="39.9147" hdg="0.049592" length="3.6843">
+      <geometry s="40.9601" x="-123.4467" y="39.2766" hdg="0.071358" length="4.7629">
         <line/>
       </geometry>
-      <geometry s="51.0376" x="-115.5423" y="40.0973" hdg="-0.061883" length="2.3522">
+      <geometry s="45.7230" x="-118.6959" y="39.6162" hdg="0.041497" length="4.2244">
         <line/>
       </geometry>
-      <geometry s="53.3897" x="-113.1946" y="39.9518" hdg="-0.159849" length="3.5229">
+      <geometry s="49.9474" x="-114.4752" y="39.7914" hdg="-0.083929" length="4.7753">
         <line/>
       </geometry>
     </planView>
@@ -834,50 +834,50 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="49" name="Uturn3" length="19.8324" junction="-1">
+  <road id="49" name="Uturn3" length="20.7531" junction="-1">
     <link>
       <predecessor elementType="road" elementId="1" contactPoint="end"/>
       <successor elementType="road" elementId="46" contactPoint="start"/>
     </link>
     <type s="0.0" type="townArterial"/>
     <planView>
-      <geometry s="0.0000" x="-48.3425" y="-45.4136" hdg="-1.895467" length="1.7873">
+      <geometry s="0.0000" x="-48.0360" y="-45.0454" hdg="-1.972749" length="2.2407">
         <line/>
       </geometry>
-      <geometry s="1.7873" x="-48.9126" y="-47.1076" hdg="-2.588995" length="1.2811">
+      <geometry s="2.2407" x="-48.9126" y="-47.1076" hdg="-2.588995" length="1.2811">
         <line/>
       </geometry>
-      <geometry s="3.0685" x="-50.0031" y="-47.7800" hdg="-2.566431" length="1.2851">
+      <geometry s="3.5219" x="-50.0031" y="-47.7800" hdg="-2.566431" length="1.2851">
         <line/>
       </geometry>
-      <geometry s="4.3536" x="-51.0814" y="-48.4791" hdg="-1.915414" length="1.5380">
+      <geometry s="4.8070" x="-51.0814" y="-48.4791" hdg="-1.915414" length="1.5380">
         <line/>
       </geometry>
-      <geometry s="5.8916" x="-51.6010" y="-49.9267" hdg="-1.700578" length="1.5543">
+      <geometry s="6.3450" x="-51.6010" y="-49.9267" hdg="-1.700578" length="1.5543">
         <line/>
       </geometry>
-      <geometry s="7.4459" x="-51.8022" y="-51.4679" hdg="-1.029480" length="1.6084">
+      <geometry s="7.8993" x="-51.8022" y="-51.4679" hdg="-1.029480" length="1.6084">
         <line/>
       </geometry>
-      <geometry s="9.0543" x="-50.9734" y="-52.8464" hdg="-0.355414" length="2.1448">
+      <geometry s="9.5077" x="-50.9734" y="-52.8464" hdg="-0.355414" length="2.1448">
         <line/>
       </geometry>
-      <geometry s="11.1991" x="-48.9627" y="-53.5927" hdg="-0.092408" length="1.1128">
+      <geometry s="11.6525" x="-48.9627" y="-53.5927" hdg="-0.092408" length="1.1128">
         <line/>
       </geometry>
-      <geometry s="12.3118" x="-47.8547" y="-53.6954" hdg="0.533481" length="1.2084">
+      <geometry s="12.7653" x="-47.8547" y="-53.6954" hdg="0.533481" length="1.2084">
         <line/>
       </geometry>
-      <geometry s="13.5202" x="-46.8142" y="-53.0809" hdg="1.237275" length="1.0291">
+      <geometry s="13.9736" x="-46.8142" y="-53.0809" hdg="1.237275" length="1.0291">
         <line/>
       </geometry>
-      <geometry s="14.5493" x="-46.4773" y="-52.1085" hdg="1.472624" length="1.7047">
+      <geometry s="15.0027" x="-46.4773" y="-52.1085" hdg="1.472624" length="1.7047">
         <line/>
       </geometry>
-      <geometry s="16.2540" x="-46.3102" y="-50.4120" hdg="1.542113" length="1.7696">
+      <geometry s="16.7074" x="-46.3102" y="-50.4120" hdg="1.542113" length="1.7696">
         <line/>
       </geometry>
-      <geometry s="18.0236" x="-46.2595" y="-48.6431" hdg="1.129890" length="1.8088">
+      <geometry s="18.4770" x="-46.2595" y="-48.6431" hdg="1.211621" length="2.2761">
         <line/>
       </geometry>
     </planView>
@@ -946,14 +946,14 @@
       </laneSection>
     </lanes>
   </road>
-  <road id="28" name="" length="20.8963" junction="1">
+  <road id="28" name="" length="20.8675" junction="1">
     <link>
       <predecessor elementType="road" elementId="26" contactPoint="end"/>
       <successor elementType="road" elementId="3" contactPoint="start"/>
     </link>
     <type s="0.0" type="town"/>
     <planView>
-      <geometry s="0.0000" x="-34.5930" y="37.3586" hdg="-2.787213" length="20.8963">
+      <geometry s="0.0000" x="-34.5930" y="37.3586" hdg="-2.787213" length="20.8675">
         <paramPoly3 aU="0.0000000000" bU="30.6720514813" cU="-30.6702876872" dU="20.4459531351" aV="0.0000000000" bV="0.0000000000" cV="0.7499573037" dV="-0.6360276185" pRange="normalized"/>
       </geometry>
     </planView>

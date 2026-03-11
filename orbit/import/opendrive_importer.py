@@ -738,7 +738,7 @@ class OpenDriveImporter:
                         break
 
         # Add to project and junction
-        self.project.roads.append(connecting_road)
+        self.project.add_road(connecting_road)
         junction.add_connecting_road(connecting_road.id)
 
         # Add predecessor/successor roads to junction's connected_road_ids

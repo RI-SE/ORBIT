@@ -1296,7 +1296,7 @@ def generate_all_roundabout_connectors(
         # Add to project and junction
         for cr in connectors:
             if project:
-                project.roads.append(cr)
+                project.add_road(cr)
             junction.add_connecting_road(cr.id)
 
         for lc in lane_conns:

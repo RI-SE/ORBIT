@@ -671,7 +671,7 @@ def create_connecting_roads_from_patterns(
             )
 
             if project:
-                project.roads.append(connecting_road)
+                project.add_road(connecting_road)
             junction.add_connecting_road(connecting_road.id)
 
             # Create lane connections for BOTH directions using the same connecting road
@@ -861,7 +861,7 @@ def create_connecting_roads_from_patterns(
         )
 
         if project:
-            project.roads.append(connecting_road)
+            project.add_road(connecting_road)
         junction.add_connecting_road(connecting_road.id)
 
         # Generate lane links
