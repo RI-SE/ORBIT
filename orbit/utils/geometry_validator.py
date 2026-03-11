@@ -20,6 +20,7 @@ class GeometryIssue:
     road_id: Optional[str] = None
     section_number: Optional[int] = None
     severity: str = "warning"  # "error" | "warning"
+    element_id: Optional[str] = None  # Signal or object ID for element-level issues
 
 
 def _s_from_position(position, centerline_points) -> Optional[float]:
@@ -27,9 +28,10 @@ def _s_from_position(position, centerline_points) -> Optional[float]:
     Project a pixel position onto the centerline and return the s-coordinate.
 
     Unlike Signal.calculate_s_position, this allows the result to exceed
-    [0, road_length]: if the position projects beyond the far endpoint of the
-    last segment (t > 1), the extrapolated value is returned so callers can
-    detect signals/objects dragged past the road end.
+    [0, road_length]: if the position projects beyond the road end (t > 1 on
+    last segment) or before the road start (t < 0 on first segment), the
+    extrapolated value is returned so callers can detect out-of-bounds placement
+    in both directions.
     """
     if not centerline_points or len(centerline_points) < 2:
         return None
@@ -69,6 +71,10 @@ def _s_from_position(position, centerline_points) -> Optional[float]:
     last_idx = len(centerline_points) - 2
     if closest_idx == last_idx and closest_t_clamped == 1.0 and length_sq > 0:
         # Position projects past the road end — use unclamped t so s > road_length
+        t_unclamped = ((px - x1) * dx + (py - y1) * dy) / length_sq
+        s += t_unclamped * seg_length
+    elif closest_idx == 0 and closest_t_clamped == 0.0 and length_sq > 0:
+        # Position projects before the road start — use unclamped t so s < 0
         t_unclamped = ((px - x1) * dx + (py - y1) * dy) / length_sq
         s += t_unclamped * seg_length
     else:
@@ -149,55 +155,75 @@ def validate_project_geometry(project: "Project") -> List[GeometryIssue]:
                                 severity="warning",
                             ))
 
-    # Check signals outside road
+    # Check signals outside road (regular roads and connecting roads)
     for signal in project.signals:
         if not signal.road_id:
             continue
         road = project.get_road(signal.road_id)
-        if not road:
-            continue
-        length = get_road_length(road)
-        if length is None:
-            continue
-        # Prefer live projection from pixel position (unclamped) so a signal
-        # dragged past the road end is detected even though s_position is clamped.
-        centerline = project.get_polyline(road.centerline_id) if road.centerline_id else None
-        if centerline and signal.position:
-            s = _s_from_position(signal.position, centerline.points)
+        if road:
+            length = get_road_length(road)
+            if length is None:
+                continue
+            # Prefer live projection from pixel position (unclamped) so a signal
+            # dragged past the road end is detected even though s_position is clamped.
+            centerline = project.get_polyline(road.centerline_id) if road.centerline_id else None
+            if centerline and signal.position:
+                s = _s_from_position(signal.position, centerline.points)
+            else:
+                s = signal.s_position
         else:
-            s = signal.s_position
-        if s is not None and s > length:
+            cr = project.get_connecting_road(signal.road_id)
+            if not cr or len(cr.path) < 2:
+                continue
+            length = cr.get_length_pixels()
+            if signal.position:
+                s = _s_from_position(signal.position, cr.path)
+            else:
+                s = signal.s_position
+        if s is not None and not (0 <= s <= length):
+            where = "beyond road end" if s > length else "before road start"
             issues.append(GeometryIssue(
                 message=(
-                    f"Signal '{signal.name or signal.id}' is beyond the road end "
+                    f"Signal '{signal.name or signal.id}' is {where} "
                     f"(s={s:.2f}, road length={length:.2f})"
                 ),
                 road_id=signal.road_id,
+                element_id=signal.id,
                 severity="warning",
             ))
 
-    # Check road objects outside road
+    # Check road objects outside road (regular roads and connecting roads)
     for obj in project.objects:
         if not obj.road_id:
             continue
         road = project.get_road(obj.road_id)
-        if not road:
-            continue
-        length = get_road_length(road)
-        if length is None:
-            continue
-        centerline = project.get_polyline(road.centerline_id) if road.centerline_id else None
-        if centerline and obj.position:
-            s = _s_from_position(obj.position, centerline.points)
+        if road:
+            length = get_road_length(road)
+            if length is None:
+                continue
+            centerline = project.get_polyline(road.centerline_id) if road.centerline_id else None
+            if centerline and obj.position:
+                s = _s_from_position(obj.position, centerline.points)
+            else:
+                s = obj.s_position
         else:
-            s = obj.s_position
-        if s is not None and s > length:
+            cr = project.get_connecting_road(obj.road_id)
+            if not cr or len(cr.path) < 2:
+                continue
+            length = cr.get_length_pixels()
+            if obj.position:
+                s = _s_from_position(obj.position, cr.path)
+            else:
+                s = obj.s_position
+        if s is not None and not (0 <= s <= length):
+            where = "beyond road end" if s > length else "before road start"
             issues.append(GeometryIssue(
                 message=(
-                    f"Object '{obj.name or obj.id}' is beyond the road end "
+                    f"Object '{obj.name or obj.id}' is {where} "
                     f"(s={s:.2f}, road length={length:.2f})"
                 ),
                 road_id=obj.road_id,
+                element_id=obj.id,
                 severity="warning",
             ))
 

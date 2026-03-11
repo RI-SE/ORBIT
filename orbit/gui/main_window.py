@@ -3240,8 +3240,8 @@ class MainWindow(QMainWindow):
                         signal.sign_width = sign_def.default_width
                         signal.sign_height = sign_def.default_height
 
-                # Find closest road and assign
-                closest_road_id = self.project.find_closest_road((x, y))
+                # Find closest road or connecting road and assign
+                closest_road_id = self.project.find_closest_road_or_cr((x, y))
                 if closest_road_id:
                     signal.road_id = closest_road_id
                     road = self.project.get_road(closest_road_id)
@@ -3251,6 +3251,10 @@ class MainWindow(QMainWindow):
                             # Calculate s-position
                             # Note: Orientation defaults to '+' (forward) and can be adjusted in properties dialog
                             signal.s_position = signal.calculate_s_position(centerline_polyline.points)
+                    else:
+                        cr = self.project.get_connecting_road(closest_road_id)
+                        if cr and cr.path:
+                            signal.s_position = signal.calculate_s_position(cr.path)
 
                 # Convert pixel position to geo coords if transformer available
                 if self._cached_transformer:

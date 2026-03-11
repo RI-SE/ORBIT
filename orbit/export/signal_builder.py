@@ -74,6 +74,37 @@ class SignalBuilder:
         self.use_german_codes = use_german_codes
         self.transformer = transformer
 
+    def create_signals_for_connecting_road(
+        self,
+        connecting_road,
+        signals: List[Signal],
+        path_pixel: List[tuple],
+        path_meters: Optional[List[tuple]] = None,
+    ) -> Optional[etree.Element]:
+        """
+        Create signals element for a connecting road.
+
+        Args:
+            connecting_road: ConnectingRoad object
+            signals: All signals in the project
+            path_pixel: Connecting road path in pixel coordinates
+            path_meters: Connecting road path in metric coordinates
+
+        Returns:
+            signals XML element or None if no signals assigned to this connecting road
+        """
+        road_signals = [s for s in signals if s.road_id == connecting_road.id]
+        if not road_signals:
+            return None
+
+        signals_elem = etree.Element('signals')
+        for signal in road_signals:
+            signal_elem = self._create_signal(signal, path_pixel, path_meters)
+            if signal_elem is not None:
+                signals_elem.append(signal_elem)
+
+        return signals_elem if len(signals_elem) > 0 else None
+
     def create_signals(
         self,
         road: Road,

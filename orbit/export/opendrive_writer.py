@@ -980,7 +980,12 @@ class OpenDriveWriter:
         )
         road_elem.append(lanes)
 
-        # No signals or objects for connecting roads
+        # Add signals assigned to this connecting road
+        cr_signals = self.signal_builder.create_signals_for_connecting_road(
+            connecting_road, self.project.signals, connecting_road.path, path_meters
+        )
+        if cr_signals is not None:
+            road_elem.append(cr_signals)
 
         return road_elem
 

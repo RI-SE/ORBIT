@@ -123,6 +123,15 @@ class SignalPropertiesDialog(BaseDialog):
             road_id_short = road.id[:8]
             label = f"{road.name} ({road_id_short})" if road.name else f"Road {road_id_short}"
             self.road_combo.addItem(label, road.id)
+        for junction in self.project.junctions:
+            for cr in junction.connecting_roads:
+                cr_id_short = cr.id[:8]
+                pred = self.project.get_road(cr.predecessor_road_id)
+                succ = self.project.get_road(cr.successor_road_id)
+                pred_name = pred.name if pred and pred.name else f"Road {cr.predecessor_road_id[:6]}"
+                succ_name = succ.name if succ and succ.name else f"Road {cr.successor_road_id[:6]}"
+                label = f"CR: {pred_name} → {succ_name} ({cr_id_short})"
+                self.road_combo.addItem(label, cr.id)
         self.road_combo.currentIndexChanged.connect(self.on_road_changed)
         road_layout.addRow("Assigned Road:", self.road_combo)
 
@@ -210,11 +219,18 @@ class SignalPropertiesDialog(BaseDialog):
                 if centerline_polyline:
                     s = self.signal.calculate_s_position(centerline_polyline.points)
                     if s is not None:
-                        # Show in pixels, and also in meters if georeferenced
                         scale = get_scale_factors(self.project)
                         scale_x = scale[0] if scale else None
-                        display_text = format_with_metric(s, scale_x)
-                        self.s_position_label.setText(display_text)
+                        self.s_position_label.setText(format_with_metric(s, scale_x))
+                        return
+            else:
+                cr = self.project.get_connecting_road(road_id)
+                if cr and cr.path:
+                    s = self.signal.calculate_s_position(cr.path)
+                    if s is not None:
+                        scale = get_scale_factors(self.project)
+                        scale_x = scale[0] if scale else None
+                        self.s_position_label.setText(format_with_metric(s, scale_x))
                         return
         self.s_position_label.setText("—")
 
@@ -254,6 +270,10 @@ class SignalPropertiesDialog(BaseDialog):
                 centerline_polyline = self.project.get_polyline(road.centerline_id)
                 if centerline_polyline:
                     self.signal.s_position = self.signal.calculate_s_position(centerline_polyline.points)
+            else:
+                cr = self.project.get_connecting_road(self.signal.road_id)
+                if cr and cr.path:
+                    self.signal.s_position = self.signal.calculate_s_position(cr.path)
 
         # Validity range
         if self.validity_checkbox.isChecked():
