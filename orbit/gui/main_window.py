@@ -542,6 +542,7 @@ class MainWindow(QMainWindow):
         self.road_tree.road_deleted.connect(self.on_road_deleted)
         self.road_tree.road_delete_requested.connect(self.on_road_delete_requested)
         self.road_tree.road_edit_requested.connect(self.on_road_edit_requested)
+        self.road_tree.road_selected.connect(self.on_road_selected_in_tree)
         self.road_tree.polyline_selected.connect(self.on_polyline_selected_in_tree)
         self.road_tree.polyline_deleted.connect(self.on_polyline_deleted_in_tree)
         self.road_tree.polyline_delete_requested.connect(self.on_polyline_delete_requested)
@@ -3018,6 +3019,11 @@ class MainWindow(QMainWindow):
                         self.image_view.update_connecting_road_graphics(
                             cr_id, scale_factors
                         )
+
+    def on_road_selected_in_tree(self, road_id: str):
+        """Handle road selection from tree — highlight all lanes and pan to it."""
+        self.clear_connecting_road_selection()
+        self.image_view.select_road(road_id)
 
     def on_polyline_selected_in_tree(self, polyline_id):
         """Handle polyline selection from tree."""

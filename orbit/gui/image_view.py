@@ -131,6 +131,7 @@ class ImageView(QGraphicsView):
         # Road lanes (visual representation of lanes)
         self.road_lanes_items: Dict[str, RoadLanesGraphicsItem] = {}
         self.selected_lane_key: Optional[Tuple[str, int, int]] = None  # (road_id, section_number, lane_id)
+        self.selected_road_id: Optional[str] = None  # Road whose lanes are all highlighted
         self.linked_lane_polygons: List = []  # Polygons currently highlighted as connected to selection
         self.project: Optional[Project] = None  # Reference to project for road lookups
 
@@ -2512,6 +2513,77 @@ class ImageView(QGraphicsView):
 
         return exporter.export(output_path, geotiff=geotiff)
 
+    def select_road(self, road_id: str):
+        """Select and highlight all lanes of a road, and pan to it.
+
+        Args:
+            road_id: ID of the road to highlight
+        """
+        # Clear previous linked lane highlights
+        for polygon in self.linked_lane_polygons:
+            try:
+                if hasattr(polygon, 'set_linked') and polygon.scene() is not None:
+                    polygon.set_linked(False)
+            except RuntimeError:
+                pass
+        self.linked_lane_polygons.clear()
+
+        # Deselect previous single-lane selection
+        if self.selected_lane_key:
+            prev_road_id, prev_section, prev_lane = self.selected_lane_key
+            if prev_road_id in self.road_lanes_items:
+                for lp in self.road_lanes_items[prev_road_id].lane_items:
+                    if (isinstance(lp, InteractiveLanePolygon)
+                            and lp.road_id == prev_road_id
+                            and lp.section_number == prev_section
+                            and lp.lane_id == prev_lane):
+                        lp.set_selected(False)
+            self.selected_lane_key = None
+
+        # Deselect previous road selection
+        if self.selected_road_id:
+            self.deselect_road(self.selected_road_id)
+
+        self.selected_road_id = road_id
+
+        # Highlight all lanes of the road
+        if road_id in self.road_lanes_items:
+            lanes_item = self.road_lanes_items[road_id]
+            for lane_polygon in lanes_item.lane_items:
+                if isinstance(lane_polygon, InteractiveLanePolygon):
+                    lane_polygon.set_selected(True)
+
+        # Also check connecting roads
+        if road_id in self.connecting_road_lanes_items:
+            lanes_item = self.connecting_road_lanes_items[road_id]
+            for lane_polygon in lanes_item.lane_items:
+                if isinstance(lane_polygon, InteractiveLanePolygon):
+                    lane_polygon.set_selected(True)
+
+        # Pan to the road
+        road = self.project.get_road(road_id) if self.project else None
+        if road:
+            points = road.get_reference_points(self.project)
+            if points:
+                xs = [p[0] for p in points]
+                ys = [p[1] for p in points]
+                self.centerOn(sum(xs) / len(xs), sum(ys) / len(ys))
+
+    def deselect_road(self, road_id: str):
+        """Deselect all lanes of a road.
+
+        Args:
+            road_id: ID of the road to deselect
+        """
+        if road_id in self.road_lanes_items:
+            for lp in self.road_lanes_items[road_id].lane_items:
+                if isinstance(lp, InteractiveLanePolygon):
+                    lp.set_selected(False)
+        if road_id in self.connecting_road_lanes_items:
+            for lp in self.connecting_road_lanes_items[road_id].lane_items:
+                if isinstance(lp, InteractiveLanePolygon):
+                    lp.set_selected(False)
+
     def select_lane(self, road_id: str, section_number: int, lane_id: int):
         """
         Select and highlight a lane on the map.
@@ -2533,6 +2605,11 @@ class ImageView(QGraphicsView):
                 # Qt object has been deleted, skip it
                 pass
         self.linked_lane_polygons.clear()
+
+        # Deselect previous whole-road selection
+        if self.selected_road_id:
+            self.deselect_road(self.selected_road_id)
+            self.selected_road_id = None
 
         # Deselect previous lane
         if self.selected_lane_key:
