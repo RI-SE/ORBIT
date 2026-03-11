@@ -1028,9 +1028,12 @@ class OpenDriveWriter:
                     primary_conn = conn
                     break
 
-        cr_lane_id = -1
         if primary_conn and primary_conn.connecting_lane_id is not None:
             cr_lane_id = primary_conn.connecting_lane_id
+        elif connecting_road.cr_lane_count_right > 0:
+            cr_lane_id = -1
+        else:
+            cr_lane_id = 1
 
         # Snap start to predecessor road endpoint
         pred_road = self.road_map.get(connecting_road.predecessor_id)

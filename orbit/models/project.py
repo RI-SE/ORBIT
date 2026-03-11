@@ -496,23 +496,21 @@ class Project:
                 if r.is_connecting_road and r.id in junction.connecting_road_ids
             ]
             for lc in junction.lane_connections:
-                if lc.connecting_road_id:
-                    continue  # Already linked
+                if not lc.connecting_road_id:
+                    for cr in cr_roads:
+                        if (cr.predecessor_id == lc.from_road_id and
+                                cr.successor_id == lc.to_road_id):
+                            lc.connecting_road_id = cr.id
+                            linked += 1
+                            break
 
-                for cr in cr_roads:
-                    if (cr.predecessor_id == lc.from_road_id and
-                            cr.successor_id == lc.to_road_id):
-                        lc.connecting_road_id = cr.id
-
-                        # Set connecting_lane_id: pick the lane on the CR
-                        # that matches the direction (right = negative,
-                        # left = positive).
-                        if lc.connecting_lane_id is None:
-                            lc.connecting_lane_id = (
-                                -1 if lc.from_lane_id < 0 else 1
-                            )
-                        linked += 1
-                        break
+                # Always set connecting_lane_id when missing, even for
+                # connections already linked (e.g. set during OSM import).
+                # Right lanes (negative IDs) → CR lane -1; left → +1.
+                if lc.connecting_lane_id is None:
+                    lc.connecting_lane_id = (
+                        -1 if lc.from_lane_id < 0 else 1
+                    )
 
         return linked
 

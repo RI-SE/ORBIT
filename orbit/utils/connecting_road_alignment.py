@@ -47,29 +47,50 @@ def align_connecting_road_paths(
         if not cr_conns:
             continue
         conn = cr_conns[0]
-        cr_lane_id = conn.connecting_lane_id if conn.connecting_lane_id is not None else -1
+        # Determine CR lane id: right lane (-1) or left lane (+1).
+        # Fall back to the CR's actual lane config when not explicitly set.
+        if conn.connecting_lane_id is not None:
+            cr_lane_id = conn.connecting_lane_id
+        elif cr.cr_lane_count_right > 0:
+            cr_lane_id = -1
+        else:
+            cr_lane_id = 1
 
-        # Predecessor end (CR start)
+        # Determine which lane to target at each CR endpoint.
+        # For use_left_lanes=True CRs the path is reversed (pred=to_road,
+        # succ=from_road); from/to lane ids must be assigned accordingly.
+        if cr.predecessor_id == conn.from_road_id:
+            pred_target_lane_id = conn.from_lane_id
+            succ_target_lane_id = conn.to_lane_id
+        else:  # predecessor is to_road (reversed path)
+            pred_target_lane_id = conn.to_lane_id
+            succ_target_lane_id = conn.from_lane_id
+
+        # Predecessor end (CR start) — forward direction is path[0]→path[1]
         start_shift = _compute_lane_alignment_shift(
             project=project,
             road_id=cr.predecessor_id,
             contact_point=cr.predecessor_contact,
-            target_lane_id=conn.from_lane_id,
+            target_lane_id=pred_target_lane_id,
             cr_lane_id=cr_lane_id,
             cr_lane_width=cr.lane_info.lane_width,
             cr_endpoint=cr.inline_path[0],
+            cr_fwd_p1=cr.inline_path[0],
+            cr_fwd_p2=cr.inline_path[1],
             scale=scale,
         )
 
-        # Successor end (CR end)
+        # Successor end (CR end) — forward direction is path[-2]→path[-1]
         end_shift = _compute_lane_alignment_shift(
             project=project,
             road_id=cr.successor_id,
             contact_point=cr.successor_contact,
-            target_lane_id=conn.to_lane_id,
+            target_lane_id=succ_target_lane_id,
             cr_lane_id=cr_lane_id,
             cr_lane_width=cr.lane_info.lane_width,
             cr_endpoint=cr.inline_path[-1],
+            cr_fwd_p1=cr.inline_path[-2],
+            cr_fwd_p2=cr.inline_path[-1],
             scale=scale,
         )
 
@@ -88,13 +109,16 @@ def _compute_lane_alignment_shift(
     cr_lane_id: int,
     cr_lane_width: float,
     cr_endpoint: Tuple[float, float],
+    cr_fwd_p1: Tuple[float, float],
+    cr_fwd_p2: Tuple[float, float],
     scale: float,
 ) -> Optional[Tuple[float, float]]:
     """Compute pixel shift to align a CR lane with a target lane on a connected road.
 
-    Calculates the absolute target position from the road's centerline
-    polyline endpoint, then returns the delta from the CR's current endpoint.
-    Uses calculate_perpendicular (identical to lane polygon rendering).
+    The road lane offset is measured along the road's perpendicular, while the
+    CR lane offset uses the CR's forward-direction perpendicular (matching how
+    lane polygons are rendered). cr_fwd_p1→cr_fwd_p2 defines the CR's forward
+    direction at this endpoint.
     """
     from orbit.utils.geometry import calculate_perpendicular
 
@@ -109,23 +133,28 @@ def _compute_lane_alignment_shift(
     # Road centerline position and perpendicular at the contact point
     if contact_point == "end":
         road_cl_pos = polyline.points[-1]
-        perp = calculate_perpendicular(polyline.points[-2], polyline.points[-1])
+        road_perp = calculate_perpendicular(polyline.points[-2], polyline.points[-1])
     else:
         road_cl_pos = polyline.points[0]
-        perp = calculate_perpendicular(polyline.points[0], polyline.points[1])
+        road_perp = calculate_perpendicular(polyline.points[0], polyline.points[1])
 
     road_lane_width = _get_road_lane_width(road, contact_point)
 
-    # How far from the road CL should the CR CL be?
-    # road_lane_offset: where the target lane center is relative to road CL
-    # cr_lane_offset:   where the CR lane center is relative to CR CL
-    # CR CL must sit at (road_lane_offset - cr_lane_offset) from road CL.
+    # Road lane center position (offset from road CL along road perpendicular)
     road_lane_off = _lane_center_offset(target_lane_id, road_lane_width)
-    cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width)
-    offset_px = (road_lane_off - cr_lane_off) / scale
+    road_off_px = road_lane_off / scale
+    lane_center_x = road_cl_pos[0] + road_off_px * road_perp[0]
+    lane_center_y = road_cl_pos[1] + road_off_px * road_perp[1]
 
-    target_x = road_cl_pos[0] + offset_px * perp[0]
-    target_y = road_cl_pos[1] + offset_px * perp[1]
+    # CR forward-direction perpendicular (same direction as lane rendering)
+    cr_perp = calculate_perpendicular(cr_fwd_p1, cr_fwd_p2)
+    cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width)
+    cr_off_px = cr_lane_off / scale
+
+    # CR CL must be placed so its lane center lands on road lane center:
+    # target_cr_cl = road_lane_center - cr_lane_offset along CR perpendicular
+    target_x = lane_center_x - cr_off_px * cr_perp[0]
+    target_y = lane_center_y - cr_off_px * cr_perp[1]
 
     dx = target_x - cr_endpoint[0]
     dy = target_y - cr_endpoint[1]
@@ -190,8 +219,19 @@ def regenerate_connecting_road_path(
         new_end = (new_end[0] + end_shift[0],
                    new_end[1] + end_shift[1])
 
-    start_heading = cr.get_start_heading()
-    end_heading = cr.get_end_heading()
+    # Derive headings from the current path (not stored headings) to
+    # preserve the path direction established by geo-first generation.
+    # Stored headings may be wrong for reversed-path CRs in older files.
+    import math
+    path = cr.inline_path
+    if path and len(path) >= 2:
+        start_heading = math.atan2(
+            path[1][1] - path[0][1], path[1][0] - path[0][0])
+        end_heading = math.atan2(
+            path[-1][1] - path[-2][1], path[-1][0] - path[-2][0])
+    else:
+        start_heading = cr.get_start_heading()
+        end_heading = cr.get_end_heading()
 
     if cr.geometry_type == "parampoly3" and start_heading is not None and end_heading is not None:
         try:

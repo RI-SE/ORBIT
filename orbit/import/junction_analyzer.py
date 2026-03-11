@@ -831,6 +831,15 @@ def create_connecting_roads_from_patterns(
         # Unpack ParamPoly3D coefficients
         aU, bU, cU, dU, aV, bV, cV, dV = coeffs
 
+        # Derive stored headings from the actual generated path so that
+        # regeneration (during alignment) preserves the correct direction.
+        # The geo path generator computes its own headings from direction_geo,
+        # which may differ from the raw pixel endpoint headings.
+        path_start_heading = math.atan2(
+            path[1][1] - path[0][1], path[1][0] - path[0][0])
+        path_end_heading = math.atan2(
+            path[-1][1] - path[-2][1], path[-1][0] - path[-2][0])
+
         # Create connecting road as a Road with junction_id
         connecting_road = Road(
             name=f"CR {junction.id}",
@@ -856,8 +865,8 @@ def create_connecting_roads_from_patterns(
             p_range=1.0,
             p_range_normalized=True,
             tangent_scale=1.0,
-            stored_start_heading=from_heading,
-            stored_end_heading=to_heading
+            stored_start_heading=path_start_heading,
+            stored_end_heading=path_end_heading
         )
 
         if project:

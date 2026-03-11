@@ -644,6 +644,10 @@ class MainWindow(QMainWindow):
                 # This ensures pixel coords match the current transformer state
                 self._initialize_and_refresh_geo_coords()
 
+                # Populate missing connecting_lane_id on lane connections
+                # (needed for projects saved before this field was set).
+                self.project.link_lane_connections_to_connecting_roads()
+
                 # Apply lane alignment to all junctions so CR visuals are
                 # correct immediately (without requiring the user to open the
                 # lane connection dialog first).
@@ -1199,6 +1203,10 @@ class MainWindow(QMainWindow):
             progress.close()
 
             if result.success:
+                # Align connecting road paths to lane centers before rendering
+                scale_factors = self.get_current_scale()
+                self._align_all_junction_connecting_roads(scale_factors)
+
                 # Show success message
                 if source_type == 'file':
                     msg = f"Successfully imported from {Path(file_path).name}:\n\n"
