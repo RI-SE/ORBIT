@@ -81,20 +81,23 @@ def reproject_project_geometry(
             count += 1
 
         # Re-project connecting roads within this junction
-        for conn_road in junction.connecting_roads:
+        for cr_id in junction.connecting_road_ids:
+            conn_road = project.get_road(cr_id)
+            if not conn_road:
+                continue
             if conn_road.has_geo_coords():
-                conn_road.path = [
+                conn_road.inline_path = [
                     new_transformer.geo_to_pixel(lon, lat)
-                    for lon, lat in conn_road.geo_path
+                    for lon, lat in conn_road.inline_geo_path
                 ]
                 count += 1
-            elif old_transformer and conn_road.path:
+            elif old_transformer and conn_road.inline_path:
                 geo_pts = [
                     old_transformer.pixel_to_geo(x, y)
-                    for x, y in conn_road.path
+                    for x, y in conn_road.inline_path
                 ]
-                conn_road.geo_path = geo_pts
-                conn_road.path = [
+                conn_road.inline_geo_path = geo_pts
+                conn_road.inline_path = [
                     new_transformer.geo_to_pixel(lon, lat)
                     for lon, lat in geo_pts
                 ]

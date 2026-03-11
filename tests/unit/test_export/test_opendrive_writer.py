@@ -8,7 +8,6 @@ from lxml import etree
 from orbit.export.curve_fitting import CurveFitter, GeometryElement, GeometryType
 from orbit.export.opendrive_writer import OpenDriveWriter, export_to_opendrive, validate_opendrive_file
 from orbit.models import Junction, LineType, Polyline, Project, Road
-from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.junction import LaneConnection
 from orbit.models.lane import Lane
 from orbit.models.lane import LaneType as ModelLaneType
@@ -718,11 +717,12 @@ class TestCreateJunction:
         junction.name = "Intersection"
         junction.connected_road_ids = ['road1', 'road2']
 
-        # Add a connecting road
-        conn_road = ConnectingRoad(id="1001", path=[(0, 0), (10, 10)])
-        conn_road.predecessor_road_id = 'road1'
-        conn_road.successor_road_id = 'road2'
-        junction.connecting_roads.append(conn_road)
+        # Add a connecting road (Road with junction_id set)
+        conn_road = Road(id="1001", junction_id="1",
+                         inline_path=[(0, 0), (10, 10)],
+                         predecessor_id='road1', successor_id='road2')
+        junction.connecting_road_ids.append(conn_road.id)
+        project.roads.append(conn_road)
 
         # Add lane connection
         lane_conn = LaneConnection(
@@ -814,12 +814,13 @@ class TestCreateConnectingRoad:
         """Create basic connecting road."""
         project = Project()
 
-        conn_road = ConnectingRoad(
+        conn_road = Road(
             id="100",
-            path=[(0, 0), (50, 50), (100, 100)]
+            inline_path=[(0, 0), (50, 50), (100, 100)],
+            junction_id="j1",
+            predecessor_id='road1',
+            successor_id='road2'
         )
-        conn_road.predecessor_road_id = 'road1'
-        conn_road.successor_road_id = 'road2'
 
         writer = OpenDriveWriter(project, mock_transformer)
         road_elem = writer._create_connecting_road(conn_road, junction_numeric_id=1)
@@ -832,7 +833,7 @@ class TestCreateConnectingRoad:
         """Connecting road with empty path returns None."""
         project = Project()
 
-        conn_road = ConnectingRoad(path=[])
+        conn_road = Road(inline_path=[], junction_id="j1")
 
         writer = OpenDriveWriter(project, mock_transformer)
         road_elem = writer._create_connecting_road(conn_road, junction_numeric_id=1)
@@ -843,7 +844,7 @@ class TestCreateConnectingRoad:
         """Connecting road with single point returns None."""
         project = Project()
 
-        conn_road = ConnectingRoad(path=[(0, 0)])
+        conn_road = Road(inline_path=[(0, 0)], junction_id="j1")
 
         writer = OpenDriveWriter(project, mock_transformer)
         road_elem = writer._create_connecting_road(conn_road, junction_numeric_id=1)
@@ -854,13 +855,14 @@ class TestCreateConnectingRoad:
         """Create connecting road with paramPoly3 geometry."""
         project = Project()
 
-        conn_road = ConnectingRoad(
+        conn_road = Road(
             id="101",
-            path=[(0, 0), (50, 25), (100, 0)]
+            inline_path=[(0, 0), (50, 25), (100, 0)],
+            junction_id="j1",
+            geometry_type="parampoly3",
+            predecessor_id='road1',
+            successor_id='road2'
         )
-        conn_road.geometry_type = "parampoly3"
-        conn_road.predecessor_road_id = 'road1'
-        conn_road.successor_road_id = 'road2'
 
         writer = OpenDriveWriter(project, mock_transformer)
         road_elem = writer._create_connecting_road(conn_road, junction_numeric_id=1)
@@ -1066,9 +1068,13 @@ class TestConnectingRoadLanes:
         """Create lanes for connecting road."""
         project = Project()
 
-        conn_road = ConnectingRoad(path=[(0, 0), (100, 100)])
+        conn_road = Road(
+            inline_path=[(0, 0), (100, 100)],
+            junction_id="j1",
+            cr_lane_count_right=1
+        )
         # Initialize lanes
-        conn_road.ensure_lanes_initialized()
+        conn_road.ensure_cr_lanes_initialized()
 
         writer = OpenDriveWriter(project, mock_transformer)
         lanes = writer._create_connecting_road_lanes(conn_road, road_length=100.0)
@@ -1085,15 +1091,24 @@ class TestConnectingRoadLanes:
 
     def test_create_connecting_road_lanes_with_left_right(self, mock_transformer):
         """Create lanes with left and right lanes."""
+        from orbit.models.lane_section import LaneSection
         project = Project()
 
-        conn_road = ConnectingRoad(path=[(0, 0), (100, 100)])
+        conn_road = Road(
+            inline_path=[(0, 0), (100, 100)],
+            junction_id="j1"
+        )
 
-        # Add custom lanes
+        # Add custom lanes via lane_sections
         left_lane = Lane(id=1, width=3.5, lane_type=ModelLaneType.DRIVING)
         right_lane = Lane(id=-1, width=3.5, lane_type=ModelLaneType.DRIVING)
         center_lane = Lane(id=0, width=0.0, lane_type=ModelLaneType.NONE)
-        conn_road.lanes = [left_lane, center_lane, right_lane]
+        conn_road.lane_sections = [LaneSection(
+            section_number=1,
+            s_start=0.0,
+            s_end=100.0,
+            lanes=[left_lane, center_lane, right_lane]
+        )]
 
         writer = OpenDriveWriter(project, mock_transformer)
         lanes = writer._create_connecting_road_lanes(conn_road, road_length=100.0)

@@ -555,12 +555,14 @@ class JunctionDialog(BaseDialog):
                 scale = 1.0
 
         # Clear existing connections
-        self.junction.connecting_roads.clear()
+        for cr_id in list(self.junction.connecting_road_ids):
+            self.project.remove_road(cr_id)
+        self.junction.connecting_road_ids.clear()
         self.junction.lane_connections.clear()
 
         # Generate connections
         try:
-            generate_junction_connections(self.junction, roads_dict, polylines_dict, scale)
+            generate_junction_connections(self.junction, roads_dict, polylines_dict, scale, project=self.project)
 
             # Update summary
             self.update_connection_summary()
@@ -574,7 +576,7 @@ class JunctionDialog(BaseDialog):
                 f"• Left turns: {summary['left']}\n"
                 f"• Right turns: {summary['right']}\n"
                 f"• U-turns: {summary['uturn']}\n\n"
-                f"Connecting roads: {len(self.junction.connecting_roads)}\n"
+                f"Connecting roads: {len(self.junction.connecting_road_ids)}\n"
                 f"Lane connections: {len(self.junction.lane_connections)}",
                 "Connections Generated"
             )

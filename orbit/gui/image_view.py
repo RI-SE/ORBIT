@@ -384,8 +384,10 @@ class ImageView(QGraphicsView):
 
         # Add connecting roads from all junctions
         for junction in project.junctions:
-            for connecting_road in junction.connecting_roads:
-                self.add_connecting_road_graphics(connecting_road, scale_factors)
+            for cr_id in junction.connecting_road_ids:
+                connecting_road = project.get_road(cr_id)
+                if connecting_road:
+                    self.add_connecting_road_graphics(connecting_road, scale_factors)
 
     def add_polyline_graphics(self, polyline: Polyline):
         """Add a polyline to the graphics scene."""
@@ -435,7 +437,7 @@ class ImageView(QGraphicsView):
             for conn_road_id in list(all_cr_ids_in_scene):
                 found_in_any_junction = False
                 for j in self.project.junctions:
-                    if any(cr.id == conn_road_id for cr in j.connecting_roads):
+                    if conn_road_id in j.connecting_road_ids:
                         found_in_any_junction = True
                         break
                 if not found_in_any_junction:
@@ -444,13 +446,15 @@ class ImageView(QGraphicsView):
             # Fully recreate connecting road graphics for this junction
             # to ensure path changes from lane alignment are reflected
             scale_factors = None
-            for cr in junction.connecting_roads:
+            for cr_id in junction.connecting_road_ids:
                 # Preserve scale_factors from existing item if available
-                if scale_factors is None and cr.id in self.connecting_road_lanes_items:
-                    scale_factors = self.connecting_road_lanes_items[cr.id].scale_factors
+                if scale_factors is None and cr_id in self.connecting_road_lanes_items:
+                    scale_factors = self.connecting_road_lanes_items[cr_id].scale_factors
 
-            for conn_road in junction.connecting_roads:
-                self.add_connecting_road_graphics(conn_road, scale_factors)
+            for cr_id in junction.connecting_road_ids:
+                conn_road = self.project.get_road(cr_id)
+                if conn_road:
+                    self.add_connecting_road_graphics(conn_road, scale_factors)
 
     def add_signal_graphics(self, signal: Signal):
         """Add a signal to the graphics scene."""
@@ -884,8 +888,9 @@ class ImageView(QGraphicsView):
                     self.junction_items[junction.id].update_graphics()
 
             # Update connecting roads within junctions
-            for connecting_road in junction.connecting_roads:
-                if connecting_road.has_geo_coords():
+            for cr_id in junction.connecting_road_ids:
+                connecting_road = self.project.get_road(cr_id) if self.project else None
+                if connecting_road and connecting_road.has_geo_coords():
                     connecting_road.update_pixel_path_from_geo(transformer)
                     # Update both centerline and lanes graphics
                     if connecting_road.id in self.connecting_road_centerline_items:
@@ -1015,7 +1020,7 @@ class ImageView(QGraphicsView):
         Add centerline and lane visualization for a connecting road.
 
         Args:
-            connecting_road: ConnectingRoad object
+            connecting_road: Road object (connecting road with inline_path)
             scale_factors: Tuple of (scale_x, scale_y) in m/px, or None for default
         """
         # Remove existing graphics if any
@@ -2275,13 +2280,13 @@ class ImageView(QGraphicsView):
         Returns:
             Lane ID to use on the connecting road, or None if no valid mapping
         """
-        conn_road = junction.get_connecting_road_by_id(connecting_road_id)
-        if not conn_road:
+        conn_road = self.project.get_road(connecting_road_id) if self.project else None
+        if not conn_road or not conn_road.is_connecting_road:
             return -1  # Default to first right lane
 
         # Get available lanes on the connecting road
-        right_lanes = list(range(-1, -(conn_road.lane_count_right + 1), -1))  # [-1, -2, ...]
-        left_lanes = list(range(1, conn_road.lane_count_left + 1))  # [1, 2, ...]
+        right_lanes = list(range(-1, -(conn_road.cr_lane_count_right + 1), -1))  # [-1, -2, ...]
+        left_lanes = list(range(1, conn_road.cr_lane_count_left + 1))  # [1, 2, ...]
 
         if source_lane_id < 0:
             # Source is a right lane, map to connecting road right lanes
@@ -2609,8 +2614,8 @@ class ImageView(QGraphicsView):
             for lane_conn in junction.lane_connections:
                 if lane_conn.connecting_road_id == connecting_road_id:
                     # Get the connecting road to check lane mapping
-                    conn_road = junction.get_connecting_road_by_id(connecting_road_id)
-                    if not conn_road:
+                    conn_road = self.project.get_road(connecting_road_id) if self.project else None
+                    if not conn_road or not conn_road.is_connecting_road:
                         continue
 
                     # Check if this lane connection corresponds to the selected lane
@@ -2762,20 +2767,21 @@ class ImageView(QGraphicsView):
                 QPointF(junction.center_point[0], junction.center_point[1])
             ):
                 found = True
-            if not found:
-                for conn_road in junction.connecting_roads:
-                    if not conn_road.path:
+            if not found and self.project:
+                for cr_id in junction.connecting_road_ids:
+                    conn_road = self.project.get_road(cr_id)
+                    if not conn_road or not conn_road.inline_path:
                         continue
-                    for px, py in conn_road.path:
+                    for px, py in conn_road.inline_path:
                         if rect.contains(QPointF(px, py)):
                             found = True
                             break
                     if found:
                         break
-                    for i in range(len(conn_road.path) - 1):
+                    for i in range(len(conn_road.inline_path) - 1):
                         if self._segment_intersects_rect(
-                            conn_road.path[i][0], conn_road.path[i][1],
-                            conn_road.path[i + 1][0], conn_road.path[i + 1][1],
+                            conn_road.inline_path[i][0], conn_road.inline_path[i][1],
+                            conn_road.inline_path[i + 1][0], conn_road.inline_path[i + 1][1],
                             rect,
                         ):
                             found = True
@@ -3484,28 +3490,16 @@ class ImageView(QGraphicsView):
                             continue  # Skip ParamPoly3D curves (read-only)
                         segment_index = item.get_segment_at(scene_pos)
                         if segment_index >= 0:
-                            # Find the connecting road in junctions
-                            connecting_road = None
-                            _parent_junction = None
-                            for junction in self.project.junctions:
-                                for cr in junction.connecting_roads:
-                                    if cr.id == conn_road_id:
-                                        connecting_road = cr
-                                        _parent_junction = junction
-                                        break
-                                if connecting_road:
-                                    break
-
-                            if connecting_road:
-                                insert_index = segment_index + 1
-                                # Insert point after the first point of the segment
-                                connecting_road.path.insert(insert_index, (scene_pos.x(), scene_pos.y()))
-                                item.update_graphics()
-                                # Update lane graphics
-                                if conn_road_id in self.connecting_road_lanes_items:
-                                    self.connecting_road_lanes_items[conn_road_id].update_graphics()
-                                self.connecting_road_modified.emit(conn_road_id)
-                                return
+                            connecting_road = item.connecting_road
+                            insert_index = segment_index + 1
+                            # Insert point after the first point of the segment
+                            connecting_road.inline_path.insert(insert_index, (scene_pos.x(), scene_pos.y()))
+                            item.update_graphics()
+                            # Update lane graphics
+                            if conn_road_id in self.connecting_road_lanes_items:
+                                self.connecting_road_lanes_items[conn_road_id].update_graphics()
+                            self.connecting_road_modified.emit(conn_road_id)
+                            return
 
                 # Check if clicking on a junction to drag
                 for junction_id, item in self.junction_items.items():
@@ -3739,8 +3733,8 @@ class ImageView(QGraphicsView):
                     if point_index >= 0:
                         # Delete the point from connecting road
                         connecting_road = item.connecting_road
-                        if len(connecting_road.path) > 2:  # Keep at least 2 points
-                            connecting_road.path.pop(point_index)
+                        if len(connecting_road.inline_path) > 2:  # Keep at least 2 points
+                            connecting_road.inline_path.pop(point_index)
                             item.update_graphics()
                             # Update lane graphics
                             if conn_road_id in self.connecting_road_lanes_items:
@@ -3822,9 +3816,9 @@ class ImageView(QGraphicsView):
             item = self.connecting_road_centerline_items[self.drag_connecting_road_id]
             # Find the connecting road
             connecting_road = item.connecting_road
-            if self.drag_point_index >= 0 and self.drag_point_index < len(connecting_road.path):
+            if self.drag_point_index >= 0 and self.drag_point_index < len(connecting_road.inline_path):
                 # Update the point position
-                connecting_road.path[self.drag_point_index] = (scene_pos.x(), scene_pos.y())
+                connecting_road.inline_path[self.drag_point_index] = (scene_pos.x(), scene_pos.y())
                 # Refresh centerline graphics
                 item.update_graphics()
                 # Refresh lane graphics

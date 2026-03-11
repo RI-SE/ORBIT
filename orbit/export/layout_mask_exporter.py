@@ -108,16 +108,15 @@ class LayoutMaskExporter:
             # Identify the ORBIT CR object:
             cr_obj = None
             for j in self.project.junctions:
-                for cr in j.connecting_roads:
-                    if cr.id == cr_id:
-                        cr_obj = cr
-                        break
+                if cr_id in j.connecting_road_ids:
+                    cr_obj = self.project.get_road(cr_id)
+                    break
 
             if not cr_obj:
                 continue
 
             # ---- predecessor links ----
-            pred_road = cr_obj.predecessor_road_id
+            pred_road = cr_obj.predecessor_id
             if pred_road:
                 tup = (pred_road, lane_id)
                 if tup in lane_lookup:
@@ -125,7 +124,7 @@ class LayoutMaskExporter:
                     region_info[lane_lookup[tup]]["successors"].append(rid_str)
 
             # ---- successor links ----
-            succ_road = cr_obj.successor_road_id
+            succ_road = cr_obj.successor_id
             if succ_road:
                 tup = (succ_road, lane_id)
                 if tup in lane_lookup:
@@ -412,8 +411,9 @@ class LayoutMaskExporter:
         # Connecting road polygons — transform to meters, offset lanes, convert back.
         # This matches the regular road pipeline so widths and angles are consistent.
         for junction in self.project.junctions:
-            for cr in junction.connecting_roads:
-                if len(cr.path) < 2:
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if not cr or not cr.inline_path or len(cr.inline_path) < 2:
                     continue
                 cr_polys = self._collect_connecting_road_polygons(
                     cr, road_ref_headings,
@@ -431,7 +431,7 @@ class LayoutMaskExporter:
         laterally using lane widths in meters, then converts back to pixels.
 
         Args:
-            cr: ConnectingRoad with path and lane configuration
+            cr: Road (with junction_id set) containing path and lane configuration
             road_ref_headings: {(road_id, contact_point): heading} from
                 curve-fitted reference lines. Used to override CR endpoint
                 headings so lane edges align with road lane edges at
@@ -439,7 +439,7 @@ class LayoutMaskExporter:
         """
         # Transform path to meters
         path_meters = []
-        for px, py in cr.path:
+        for px, py in cr.inline_path:
             mx, my = self.transformer.pixel_to_meters(px, py)
             path_meters.append((mx, my))
 
@@ -464,13 +464,13 @@ class LayoutMaskExporter:
         # so no path kink is introduced.
         if road_ref_headings:
             pred_hdg = road_ref_headings.get(
-                (cr.predecessor_road_id, cr.contact_point_start)
+                (cr.predecessor_id, cr.predecessor_contact)
             )
             if pred_hdg is not None:
                 headings[0] = pred_hdg
 
             succ_hdg = road_ref_headings.get(
-                (cr.successor_road_id, cr.contact_point_end)
+                (cr.successor_id, cr.successor_contact)
             )
             if succ_hdg is not None and len(headings) > 0:
                 headings[-1] = succ_hdg
@@ -506,13 +506,14 @@ class LayoutMaskExporter:
             return []
 
         # Ensure lanes are initialized
-        cr.ensure_lanes_initialized()
-        lane_map = {lane.id: lane for lane in cr.lanes if lane.id != 0}
+        cr.ensure_cr_lanes_initialized()
+        cr_lanes = cr.lane_sections[0].lanes if cr.lane_sections else []
+        lane_map = {lane.id: lane for lane in cr_lanes if lane.id != 0}
 
         polygons = []
 
         # Process right lanes (-1, -2, ...)
-        for lane_num in range(1, cr.lane_count_right + 1):
+        for lane_num in range(1, cr.cr_lane_count_right + 1):
             lane_id = -lane_num
             lane = lane_map.get(lane_id)
             if not lane:
@@ -526,7 +527,7 @@ class LayoutMaskExporter:
                 polygons.append(poly)
 
         # Process left lanes (1, 2, ...)
-        for lane_num in range(1, cr.lane_count_left + 1):
+        for lane_num in range(1, cr.cr_lane_count_left + 1):
             lane_id = lane_num
             lane = lane_map.get(lane_id)
             if not lane:

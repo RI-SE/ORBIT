@@ -2098,8 +2098,9 @@ class MainWindow(QMainWindow):
 
         # Remove connecting road graphics that will be orphaned
         for junction in self.project.junctions:
-            for cr in junction.connecting_roads:
-                if cr.predecessor_road_id == road_id or cr.successor_road_id == road_id:
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if cr and (cr.predecessor_id == road_id or cr.successor_id == road_id):
                     self.image_view.remove_connecting_road_graphics(cr.id)
 
         # Remove assigned polylines and their graphics
@@ -2673,8 +2674,9 @@ class MainWindow(QMainWindow):
 
         # Initialize geo_path for connecting roads that don't have it (legacy support)
         for junction in self.project.junctions:
-            for conn_road in junction.connecting_roads:
-                if conn_road.path and not conn_road.has_geo_coords():
+            for cr_id in junction.connecting_road_ids:
+                conn_road = self.project.get_road(cr_id)
+                if conn_road and conn_road.inline_path and not conn_road.has_geo_coords():
                     conn_road.initialize_geo_path_from_pixels(transformer)
 
         # Refresh pixel coordinates from geo coordinates for ALL elements,
@@ -2691,12 +2693,13 @@ class MainWindow(QMainWindow):
         for junction in self.project.junctions:
             if junction.has_geo_coords():
                 junction.update_pixel_coords_from_geo(transformer)
-            for conn_road in junction.connecting_roads:
-                if conn_road.has_geo_coords():
-                    saved_path = list(conn_road.path)
+            for cr_id in junction.connecting_road_ids:
+                conn_road = self.project.get_road(cr_id)
+                if conn_road and conn_road.has_geo_coords():
+                    saved_path = list(conn_road.inline_path)
                     conn_road.update_pixel_path_from_geo(transformer)
-                    if not _points_in_bounds(conn_road.path):
-                        conn_road.path = saved_path
+                    if not _points_in_bounds(conn_road.inline_path):
+                        conn_road.inline_path = saved_path
                         skipped += 1
 
         for signal in self.project.signals:
@@ -2728,13 +2731,14 @@ class MainWindow(QMainWindow):
         road endpoints.
         """
         for junction in self.project.junctions:
-            for conn_road in junction.connecting_roads:
-                if not conn_road.path or len(conn_road.path) < 2:
+            for cr_id in junction.connecting_road_ids:
+                conn_road = self.project.get_road(cr_id)
+                if not conn_road or not conn_road.inline_path or len(conn_road.inline_path) < 2:
                     continue
 
                 # Get predecessor and successor roads
-                pred_road = self.project.get_road(conn_road.predecessor_road_id)
-                succ_road = self.project.get_road(conn_road.successor_road_id)
+                pred_road = self.project.get_road(conn_road.predecessor_id)
+                succ_road = self.project.get_road(conn_road.successor_id)
 
                 if not pred_road or not succ_road:
                     continue
@@ -2747,16 +2751,16 @@ class MainWindow(QMainWindow):
                     continue
 
                 # Snap start point to predecessor road endpoint
-                if conn_road.contact_point_start == 'end':
-                    conn_road.path[0] = pred_polyline.points[-1]
+                if conn_road.predecessor_contact == 'end':
+                    conn_road.inline_path[0] = pred_polyline.points[-1]
                 else:  # 'start'
-                    conn_road.path[0] = pred_polyline.points[0]
+                    conn_road.inline_path[0] = pred_polyline.points[0]
 
                 # Snap end point to successor road endpoint
-                if conn_road.contact_point_end == 'end':
-                    conn_road.path[-1] = succ_polyline.points[-1]
+                if conn_road.successor_contact == 'end':
+                    conn_road.inline_path[-1] = succ_polyline.points[-1]
                 else:  # 'start'
-                    conn_road.path[-1] = succ_polyline.points[0]
+                    conn_road.inline_path[-1] = succ_polyline.points[0]
 
     def update_affected_road_lanes(self):
         """Update lane graphics for all roads with centerlines."""
@@ -2775,15 +2779,15 @@ class MainWindow(QMainWindow):
         geo_path stays in sync. If the project has no georeferencing or the
         CR had no geo_path, this is a no-op.
         """
-        if not conn_road.geo_path:
+        if not conn_road.inline_geo_path:
             return
         if not self.project.has_georeferencing():
             return
         try:
             transformer = self._create_transformer()
-            if transformer and conn_road.path:
-                conn_road.geo_path = [
-                    transformer.pixel_to_geo(x, y) for x, y in conn_road.path
+            if transformer and conn_road.inline_path:
+                conn_road.inline_geo_path = [
+                    transformer.pixel_to_geo(x, y) for x, y in conn_road.inline_path
                 ]
         except Exception:
             pass
@@ -2802,15 +2806,16 @@ class MainWindow(QMainWindow):
             scale = 0.058  # Default fallback
 
         for junction in self.project.junctions:
-            if junction.lane_connections and junction.connecting_roads:
+            if junction.lane_connections and junction.connecting_road_ids:
                 modified_ids = align_connecting_road_paths(
                     junction, self.project, scale
                 )
                 # Update geo_path for modified CRs so export uses
                 # the aligned coordinates, not the stale originals.
                 if modified_ids:
-                    for cr in junction.connecting_roads:
-                        if cr.id in modified_ids:
+                    for cr_id in junction.connecting_road_ids:
+                        cr = self.project.get_road(cr_id)
+                        if cr and cr.id in modified_ids:
                             self._refresh_connecting_road_geo_path(cr)
 
     def regenerate_affected_connecting_roads(self, polyline_id: str):
@@ -2843,17 +2848,20 @@ class MainWindow(QMainWindow):
         # Find junctions where this road appears as predecessor or successor
         affected_junctions = []
         for junction in self.project.junctions:
-            for conn_road in junction.connecting_roads:
-                if (conn_road.predecessor_road_id == affected_road.id or
-                    conn_road.successor_road_id == affected_road.id):
+            for cr_id in junction.connecting_road_ids:
+                conn_road = self.project.get_road(cr_id)
+                if not conn_road:
+                    continue
+                if (conn_road.predecessor_id == affected_road.id or
+                    conn_road.successor_id == affected_road.id):
                     if conn_road.geometry_type == "parampoly3":
                         affected_junctions.append((junction, conn_road))
 
         # Regenerate each affected ParamPoly3D connecting road
         for junction, conn_road in affected_junctions:
             # Get predecessor and successor roads
-            pred_road = self.project.get_road(conn_road.predecessor_road_id)
-            succ_road = self.project.get_road(conn_road.successor_road_id)
+            pred_road = self.project.get_road(conn_road.predecessor_id)
+            succ_road = self.project.get_road(conn_road.successor_id)
 
             if not pred_road or not succ_road:
                 continue
@@ -2867,7 +2875,7 @@ class MainWindow(QMainWindow):
 
             # Get endpoint positions and headings
             # Predecessor endpoint (end point for "end" contact)
-            if conn_road.contact_point_start == "end":
+            if conn_road.predecessor_contact == "end":
                 pred_pos = pred_polyline.points[-1]
                 if len(pred_polyline.points) >= 2:
                     dx = pred_polyline.points[-1][0] - pred_polyline.points[-2][0]
@@ -2886,7 +2894,7 @@ class MainWindow(QMainWindow):
                     pred_heading = math.pi
 
             # Successor endpoint (start point for "start" contact)
-            if conn_road.contact_point_end == "start":
+            if conn_road.successor_contact == "start":
                 succ_pos = succ_polyline.points[0]
                 if len(succ_polyline.points) >= 2:
                     dx = succ_polyline.points[1][0] - succ_polyline.points[0][0]
@@ -2914,7 +2922,7 @@ class MainWindow(QMainWindow):
             )
 
             # Update the connecting road
-            conn_road.path = path
+            conn_road.inline_path = path
             self._refresh_connecting_road_geo_path(conn_road)
             aU, bU, cU, dU, aV, bV, cV, dV = coeffs
             conn_road.aU = aU
@@ -2937,17 +2945,20 @@ class MainWindow(QMainWindow):
 
         # Snap endpoints of polyline-type connecting roads
         for junction in self.project.junctions:
-            for conn_road in junction.connecting_roads:
+            for cr_id in junction.connecting_road_ids:
+                conn_road = self.project.get_road(cr_id)
+                if not conn_road:
+                    continue
                 if conn_road.geometry_type == "parampoly3":
                     continue  # Already handled above
-                if (conn_road.predecessor_road_id != affected_road.id and
-                        conn_road.successor_road_id != affected_road.id):
+                if (conn_road.predecessor_id != affected_road.id and
+                        conn_road.successor_id != affected_road.id):
                     continue
-                if not conn_road.path or len(conn_road.path) < 2:
+                if not conn_road.inline_path or len(conn_road.inline_path) < 2:
                     continue
 
-                pred_road = self.project.get_road(conn_road.predecessor_road_id)
-                succ_road = self.project.get_road(conn_road.successor_road_id)
+                pred_road = self.project.get_road(conn_road.predecessor_id)
+                succ_road = self.project.get_road(conn_road.successor_id)
                 if not pred_road or not succ_road:
                     continue
 
@@ -2957,16 +2968,16 @@ class MainWindow(QMainWindow):
                     continue
 
                 # Snap start to predecessor endpoint
-                if conn_road.contact_point_start == "end":
-                    conn_road.path[0] = pred_polyline.points[-1]
+                if conn_road.predecessor_contact == "end":
+                    conn_road.inline_path[0] = pred_polyline.points[-1]
                 else:
-                    conn_road.path[0] = pred_polyline.points[0]
+                    conn_road.inline_path[0] = pred_polyline.points[0]
 
                 # Snap end to successor endpoint
-                if conn_road.contact_point_end == "end":
-                    conn_road.path[-1] = succ_polyline.points[-1]
+                if conn_road.successor_contact == "end":
+                    conn_road.inline_path[-1] = succ_polyline.points[-1]
                 else:
-                    conn_road.path[-1] = succ_polyline.points[0]
+                    conn_road.inline_path[-1] = succ_polyline.points[0]
 
                 self._refresh_connecting_road_geo_path(conn_road)
 
@@ -2986,20 +2997,22 @@ class MainWindow(QMainWindow):
 
         affected_junction_ids = set()
         for junction in self.project.junctions:
-            for cr in junction.connecting_roads:
-                if (cr.predecessor_road_id == affected_road.id or
-                        cr.successor_road_id == affected_road.id):
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if cr and (cr.predecessor_id == affected_road.id or
+                        cr.successor_id == affected_road.id):
                     affected_junction_ids.add(junction.id)
                     break
 
         for junction in self.project.junctions:
             if junction.id in affected_junction_ids:
-                if junction.lane_connections and junction.connecting_roads:
+                if junction.lane_connections and junction.connecting_road_ids:
                     modified = align_connecting_road_paths(
                         junction, self.project, scale
                     )
-                    for cr in junction.connecting_roads:
-                        if cr.id in modified:
+                    for cr_id in junction.connecting_road_ids:
+                        cr = self.project.get_road(cr_id)
+                        if cr and cr.id in modified:
                             self._refresh_connecting_road_geo_path(cr)
                     for cr_id in modified:
                         self.image_view.update_connecting_road_graphics(
@@ -3247,9 +3260,9 @@ class MainWindow(QMainWindow):
                             # Note: Orientation defaults to '+' (forward) and can be adjusted in properties dialog
                             signal.s_position = signal.calculate_s_position(centerline_polyline.points)
                     else:
-                        cr = self.project.get_connecting_road(closest_road_id)
-                        if cr and cr.path:
-                            signal.s_position = signal.calculate_s_position(cr.path)
+                        cr = self.project.get_road(closest_road_id)
+                        if cr and cr.is_connecting_road and cr.inline_path:
+                            signal.s_position = signal.calculate_s_position(cr.inline_path)
 
                 # Convert pixel position to geo coords if transformer available
                 if self._cached_transformer:
@@ -4092,23 +4105,14 @@ class MainWindow(QMainWindow):
         """
         from .dialogs.lane_properties_dialog import LanePropertiesDialog
 
-        # Find the connecting road in junctions
-        connecting_road = None
-        _parent_junction = None
-        for junction in self.project.junctions:
-            for cr in junction.connecting_roads:
-                if cr.id == connecting_road_id:
-                    connecting_road = cr
-                    _parent_junction = junction
-                    break
-            if connecting_road:
-                break
+        # Find the connecting road in project roads
+        connecting_road = self.project.get_road(connecting_road_id)
 
-        if not connecting_road:
+        if not connecting_road or not connecting_road.is_connecting_road:
             return
 
         # Find the lane
-        lane = connecting_road.get_lane(lane_id)
+        lane = connecting_road.get_cr_lane(lane_id)
         if not lane:
             return
         # Open lane properties dialog (without project/road_id since connecting roads are standalone)
@@ -4303,7 +4307,7 @@ class MainWindow(QMainWindow):
                 items.append({
                     "id": jid,
                     "name": junction.name or jid[:8],
-                    "details": f"{len(junction.connecting_roads)} connecting road(s)",
+                    "details": f"{len(junction.connecting_road_ids)} connecting road(s)",
                     "cascade": cascade,
                 })
             if items:
@@ -4423,8 +4427,9 @@ class MainWindow(QMainWindow):
                 self.image_view.remove_road_lanes(cmd.road_id)
                 # Remove connecting road graphics that will be orphaned
                 for junction in self.project.junctions:
-                    for cr in junction.connecting_roads:
-                        if cr.predecessor_road_id == cmd.road_id or cr.successor_road_id == cmd.road_id:
+                    for cr_id in junction.connecting_road_ids:
+                        cr = self.project.get_road(cr_id)
+                        if cr and (cr.predecessor_id == cmd.road_id or cr.successor_id == cmd.road_id):
                             self.image_view.remove_connecting_road_graphics(cr.id)
                 for pid in list(road.polyline_ids):
                     self.image_view.remove_polyline_graphics(pid)
@@ -4436,8 +4441,8 @@ class MainWindow(QMainWindow):
         for junction_id, cmd in junction_cmds:
             junction = self.project.get_junction(junction_id)
             if junction:
-                for conn_road in junction.connecting_roads:
-                    self.image_view.remove_connecting_road_graphics(conn_road.id)
+                for cr_id in junction.connecting_road_ids:
+                    self.image_view.remove_connecting_road_graphics(cr_id)
                 self.image_view.remove_junction_graphics(junction_id)
                 self.project.remove_junction(junction_id)
             self.undo_stack.push(cmd)

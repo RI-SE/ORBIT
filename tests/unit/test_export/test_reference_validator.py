@@ -3,7 +3,6 @@
 import pytest
 
 from orbit.export.reference_validator import validate_references
-from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.junction import Junction, JunctionGroup
 from orbit.models.lane_connection import LaneConnection
 from orbit.models.object import RoadObject
@@ -147,14 +146,16 @@ class TestValidateReferences:
         assert any("exit_road" in w for w in warnings)
 
     def test_connecting_road_missing_predecessor(self):
-        """ConnectingRoad referencing non-existent predecessor road."""
+        """Connecting road referencing non-existent predecessor road."""
         project = Project()
-        cr = ConnectingRoad(id="cr1", predecessor_road_id="missing", successor_road_id="")
-        junction = Junction(id="j1", name="Test", connecting_roads=[cr])
+        # Create a Road with junction_id set (connecting road) that references missing predecessor
+        cr = Road(id="cr1", name="CR1", predecessor_id="missing", junction_id="j1")
+        project.roads = [cr]
+        junction = Junction(id="j1", name="Test", connecting_road_ids=["cr1"])
         project.junctions = [junction]
 
         warnings = validate_references(project)
-        assert any("predecessor_road_id 'missing'" in w for w in warnings)
+        assert any("predecessor_id 'missing'" in w for w in warnings)
 
     def test_lane_connection_missing_roads(self):
         """LaneConnection referencing non-existent roads."""

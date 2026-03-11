@@ -725,7 +725,7 @@ class TestGenerateJunctionConnections:
         # Should not modify junction
         generate_junction_connections(junction, {}, {})
 
-        assert len(junction.connecting_roads) == 0
+        assert len(junction.connecting_road_ids) == 0
         assert len(junction.lane_connections) == 0
 
     def test_junction_with_no_roads(self):
@@ -736,7 +736,7 @@ class TestGenerateJunctionConnections:
 
         generate_junction_connections(junction, {}, {})
 
-        assert len(junction.connecting_roads) == 0
+        assert len(junction.connecting_road_ids) == 0
 
     def test_simple_two_road_junction(self):
         """Junction with two roads creates connections."""
@@ -767,7 +767,7 @@ class TestGenerateJunctionConnections:
         generate_junction_connections(junction, roads_dict, polylines_dict)
 
         # Should create connecting roads and lane connections
-        assert len(junction.connecting_roads) > 0 or len(junction.lane_connections) > 0
+        assert len(junction.connecting_road_ids) > 0 or len(junction.lane_connections) > 0
 
 
 # Import create_connecting_roads_from_patterns
@@ -888,7 +888,7 @@ class TestCreateConnectingRoadsFromPatterns:
 
         create_connecting_roads_from_patterns(junction, [], {})
 
-        assert len(junction.connecting_roads) == 0
+        assert len(junction.connecting_road_ids) == 0
         assert len(junction.lane_connections) == 0
 
     def test_single_pattern_creates_connection(self):
@@ -932,7 +932,7 @@ class TestCreateConnectingRoadsFromPatterns:
         create_connecting_roads_from_patterns(junction, [pattern], endpoint_lookup)
 
         # Should have created a connecting road or lane connections
-        assert len(junction.connecting_roads) > 0 or len(junction.lane_connections) > 0
+        assert len(junction.connecting_road_ids) > 0 or len(junction.lane_connections) > 0
 
     def test_straight_pairs_become_bidirectional(self):
         """Two opposite straight patterns become bidirectional road."""
@@ -984,7 +984,7 @@ class TestCreateConnectingRoadsFromPatterns:
         create_connecting_roads_from_patterns(junction, [pattern1, pattern2], endpoint_lookup)
 
         # Should have connections
-        assert len(junction.connecting_roads) > 0 or len(junction.lane_connections) > 0
+        assert len(junction.connecting_road_ids) > 0 or len(junction.lane_connections) > 0
 
     def test_turn_pattern_creates_unidirectional(self):
         """Turn pattern creates unidirectional connecting road."""
@@ -1028,7 +1028,7 @@ class TestCreateConnectingRoadsFromPatterns:
         create_connecting_roads_from_patterns(junction, [pattern], endpoint_lookup)
 
         # Should have created connections
-        total_connections = len(junction.connecting_roads) + len(junction.lane_connections)
+        total_connections = len(junction.connecting_road_ids) + len(junction.lane_connections)
         assert total_connections > 0
 
 

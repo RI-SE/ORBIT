@@ -8,7 +8,7 @@ LaneConnectionDialog to allow reuse on project load and after road moves.
 
 from typing import List, Optional, Tuple
 
-from orbit.models import ConnectingRoad, Junction, Project
+from orbit.models import Junction, Project, Road
 
 
 def align_connecting_road_paths(
@@ -35,8 +35,9 @@ def align_connecting_road_paths(
 
     modified_ids: List[str] = []
 
-    for cr in junction.connecting_roads:
-        if len(cr.path) < 2:
+    for cr_id in junction.connecting_road_ids:
+        cr = project.get_road(cr_id)
+        if not cr or not cr.inline_path or len(cr.inline_path) < 2:
             continue
 
         # Find primary lane connection for this CR
@@ -51,24 +52,24 @@ def align_connecting_road_paths(
         # Predecessor end (CR start)
         start_shift = _compute_lane_alignment_shift(
             project=project,
-            road_id=cr.predecessor_road_id,
-            contact_point=cr.contact_point_start,
+            road_id=cr.predecessor_id,
+            contact_point=cr.predecessor_contact,
             target_lane_id=conn.from_lane_id,
             cr_lane_id=cr_lane_id,
-            cr_lane_width=cr.lane_width,
-            cr_endpoint=cr.path[0],
+            cr_lane_width=cr.lane_info.lane_width,
+            cr_endpoint=cr.inline_path[0],
             scale=scale,
         )
 
         # Successor end (CR end)
         end_shift = _compute_lane_alignment_shift(
             project=project,
-            road_id=cr.successor_road_id,
-            contact_point=cr.contact_point_end,
+            road_id=cr.successor_id,
+            contact_point=cr.successor_contact,
             target_lane_id=conn.to_lane_id,
             cr_lane_id=cr_lane_id,
-            cr_lane_width=cr.lane_width,
-            cr_endpoint=cr.path[-1],
+            cr_lane_width=cr.lane_info.lane_width,
+            cr_endpoint=cr.inline_path[-1],
             scale=scale,
         )
 
@@ -167,21 +168,21 @@ def _get_road_lane_width(road, contact_point: str = "end") -> float:
 
 
 def regenerate_connecting_road_path(
-    cr: ConnectingRoad,
+    cr: Road,
     start_shift: Optional[Tuple[float, float]],
     end_shift: Optional[Tuple[float, float]],
 ) -> None:
     """Regenerate a connecting road's pixel path after endpoint shifts.
 
-    Clears geo_path so the export uses the shifted pixel path. The
+    Clears inline_geo_path so the export uses the shifted pixel path. The
     geo_path would otherwise override the shifted endpoints (the
     exporter prefers geo_path when available), causing the exported
     geometry to follow the old, unaligned path.
     """
     # Invalidate geo_path — it no longer matches the shifted pixel path.
-    cr.geo_path = None
-    new_start = cr.path[0]
-    new_end = cr.path[-1]
+    cr.inline_geo_path = None
+    new_start = cr.inline_path[0]
+    new_end = cr.inline_path[-1]
     if start_shift:
         new_start = (new_start[0] + start_shift[0],
                      new_start[1] + start_shift[1])
@@ -200,11 +201,11 @@ def regenerate_connecting_road_path(
                 from_heading=start_heading,
                 to_pos=new_end,
                 to_heading=end_heading,
-                num_points=len(cr.path),
+                num_points=len(cr.inline_path),
                 tangent_scale=cr.tangent_scale,
             )
             if path and len(path) >= 2:
-                cr.path = path
+                cr.inline_path = path
                 if coeffs and len(coeffs) == 8:
                     cr.aU, cr.bU, cr.cU, cr.dU = coeffs[:4]
                     cr.aV, cr.bV, cr.cV, cr.dV = coeffs[4:]
@@ -215,9 +216,9 @@ def regenerate_connecting_road_path(
             pass
 
     # Fallback for polyline or failed regen: shift endpoints directly
-    path = list(cr.path)
+    path = list(cr.inline_path)
     if start_shift:
         path[0] = new_start
     if end_shift:
         path[-1] = new_end
-    cr.path = path
+    cr.inline_path = path

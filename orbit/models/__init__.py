@@ -5,6 +5,8 @@ This module contains all data structures for polylines, roads, junctions,
 and project management.
 """
 
+# ConnectingRoad is deprecated — connecting roads are now Road objects with junction_id set.
+# Kept for backward compatibility; will be removed in a future release.
 from .connecting_road import ConnectingRoad
 from .junction import (
     Junction,

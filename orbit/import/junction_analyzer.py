@@ -10,7 +10,8 @@ from dataclasses import dataclass
 # Type hint for circular import avoidance
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from orbit.models import ConnectingRoad, Junction, LaneConnection, Polyline, Road
+from orbit.models import Junction, LaneConnection, Polyline, Project, Road
+from orbit.models.road import LaneInfo
 from orbit.utils.geometry import generate_connection_path_geo, generate_simple_connection_path
 
 if TYPE_CHECKING:
@@ -526,7 +527,8 @@ def create_connecting_roads_from_patterns(
     junction: Junction,
     patterns: List[ConnectionPattern],
     endpoint_lookup: Dict[str, 'RoadEndpointInfo'],
-    transformer: Optional['CoordinateTransformer'] = None
+    transformer: Optional['CoordinateTransformer'] = None,
+    project: Optional[Project] = None
 ) -> None:
     """
     Create connecting roads and lane connections from pre-detected patterns.
@@ -546,6 +548,7 @@ def create_connecting_roads_from_patterns(
         patterns: List of ConnectionPattern objects (pre-detected)
         endpoint_lookup: Dict mapping road_id -> RoadEndpointInfo with current positions
         transformer: Optional CoordinateTransformer for geo-first path generation
+        project: Project to add connecting Road objects to
     """
     if not patterns:
         return
@@ -638,19 +641,25 @@ def create_connecting_roads_from_patterns(
             conn_lane_count_left = max(1, min(from_endpoint.left_lane_count, to_endpoint.left_lane_count))
             conn_lane_count_right = max(1, min(from_endpoint.right_lane_count, to_endpoint.right_lane_count))
 
-            # Create the bidirectional connecting road
-            connecting_road = ConnectingRoad(
-                path=path,
-                geo_path=geo_path,  # Set geo_path if generated
-                lane_count_left=conn_lane_count_left,
-                lane_count_right=conn_lane_count_right,
-                lane_width=avg_lane_width,
+            # Create the bidirectional connecting road as a Road with junction_id
+            connecting_road = Road(
+                name=f"CR {junction.id}",
+                junction_id=junction.id,
+                inline_path=path,
+                inline_geo_path=geo_path,
+                cr_lane_count_left=conn_lane_count_left,
+                cr_lane_count_right=conn_lane_count_right,
+                lane_info=LaneInfo(
+                    left_count=conn_lane_count_left,
+                    right_count=conn_lane_count_right,
+                    lane_width=avg_lane_width
+                ),
                 lane_width_start=lane_width_start,
                 lane_width_end=lane_width_end,
-                predecessor_road_id=pattern.from_road_id,
-                successor_road_id=pattern.to_road_id,
-                contact_point_start=from_endpoint.at_junction,
-                contact_point_end=to_endpoint.at_junction,
+                predecessor_id=pattern.from_road_id,
+                successor_id=pattern.to_road_id,
+                predecessor_contact=from_endpoint.at_junction,
+                successor_contact=to_endpoint.at_junction,
                 geometry_type="parampoly3",
                 aU=aU, bU=bU, cU=cU, dU=dU,
                 aV=aV, bV=bV, cV=cV, dV=dV,
@@ -661,7 +670,9 @@ def create_connecting_roads_from_patterns(
                 stored_end_heading=to_endpoint.heading
             )
 
-            junction.add_connecting_road(connecting_road)
+            if project:
+                project.roads.append(connecting_road)
+            junction.add_connecting_road(connecting_road.id)
 
             # Create lane connections for BOTH directions using the same connecting road
             for p in pair_patterns:
@@ -820,19 +831,25 @@ def create_connecting_roads_from_patterns(
         # Unpack ParamPoly3D coefficients
         aU, bU, cU, dU, aV, bV, cV, dV = coeffs
 
-        # Create connecting road
-        connecting_road = ConnectingRoad(
-            path=path,
-            geo_path=geo_path,  # Set geo_path if generated
-            lane_count_left=conn_lane_count_left,
-            lane_count_right=conn_lane_count_right,
-            lane_width=avg_lane_width,
+        # Create connecting road as a Road with junction_id
+        connecting_road = Road(
+            name=f"CR {junction.id}",
+            junction_id=junction.id,
+            inline_path=path,
+            inline_geo_path=geo_path,
+            cr_lane_count_left=conn_lane_count_left,
+            cr_lane_count_right=conn_lane_count_right,
+            lane_info=LaneInfo(
+                left_count=conn_lane_count_left,
+                right_count=conn_lane_count_right,
+                lane_width=avg_lane_width
+            ),
             lane_width_start=lane_width_start,
             lane_width_end=lane_width_end,
-            predecessor_road_id=pred_road_id,
-            successor_road_id=succ_road_id,
-            contact_point_start=contact_start,
-            contact_point_end=contact_end,
+            predecessor_id=pred_road_id,
+            successor_id=succ_road_id,
+            predecessor_contact=contact_start,
+            successor_contact=contact_end,
             geometry_type="parampoly3",
             aU=aU, bU=bU, cU=cU, dU=dU,
             aV=aV, bV=bV, cV=cV, dV=dV,
@@ -843,7 +860,9 @@ def create_connecting_roads_from_patterns(
             stored_end_heading=to_heading
         )
 
-        junction.add_connecting_road(connecting_road)
+        if project:
+            project.roads.append(connecting_road)
+        junction.add_connecting_road(connecting_road.id)
 
         # Generate lane links
         lane_links = generate_lane_links_for_connection(
@@ -902,11 +921,13 @@ def generate_junction_connections(junction: Junction,
                                  roads_dict: Dict[str, Road],
                                  polylines_dict: Dict[str, Polyline],
                                  scale: float = 1.0,
-                                 transformer: Optional['CoordinateTransformer'] = None) -> None:
+                                 transformer: Optional['CoordinateTransformer'] = None,
+                                 project: Optional[Project] = None) -> None:
     """
     Generate connecting roads and lane connections for a junction.
 
-    Modifies the junction object in place by adding connecting_roads and lane_connections.
+    Creates Road objects (with junction_id set) and adds them to project.roads.
+    Stores connecting road IDs in junction.connecting_road_ids.
 
     For straight-through connections between bidirectional roads, creates a single
     bidirectional connecting road with both left and right lanes. For turns,
@@ -925,6 +946,7 @@ def generate_junction_connections(junction: Junction,
         polylines_dict: Dictionary of polyline_id -> Polyline object
         scale: Meters per pixel scale factor (used for lane offset calculations)
         transformer: Optional CoordinateTransformer for geo-first path generation
+        project: Project to add connecting Road objects to
     """
     # Skip virtual junctions - these are path crossings, not real connections
     if junction.junction_type == "virtual":
@@ -947,7 +969,7 @@ def generate_junction_connections(junction: Junction,
     endpoint_lookup = {ep.road_id: ep for ep in geometry_info['endpoints']}
 
     # Steps 4-6: Create connecting roads using the shared function
-    create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup, transformer)
+    create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup, transformer, project)
 
     # Step 7: Clear any stale road-to-road predecessor/successor links
     # In OpenDRIVE, roads connecting through a junction should link to the junction,

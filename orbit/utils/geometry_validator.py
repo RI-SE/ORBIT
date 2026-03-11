@@ -166,20 +166,23 @@ def validate_project_geometry(project: "Project") -> List[GeometryIssue]:
                 continue
             # Prefer live projection from pixel position (unclamped) so a signal
             # dragged past the road end is detected even though s_position is clamped.
-            centerline = project.get_polyline(road.centerline_id) if road.centerline_id else None
-            if centerline and signal.position:
-                s = _s_from_position(signal.position, centerline.points)
+            if road.is_connecting_road:
+                path = road.inline_path
+                if not path or len(path) < 2:
+                    continue
+                length = road.get_inline_path_length()
+                if signal.position:
+                    s = _s_from_position(signal.position, path)
+                else:
+                    s = signal.s_position
             else:
-                s = signal.s_position
+                centerline = project.get_polyline(road.centerline_id) if road.centerline_id else None
+                if centerline and signal.position:
+                    s = _s_from_position(signal.position, centerline.points)
+                else:
+                    s = signal.s_position
         else:
-            cr = project.get_connecting_road(signal.road_id)
-            if not cr or len(cr.path) < 2:
-                continue
-            length = cr.get_length_pixels()
-            if signal.position:
-                s = _s_from_position(signal.position, cr.path)
-            else:
-                s = signal.s_position
+            continue  # Road not found
         if s is not None and not (0 <= s <= length):
             where = "beyond road end" if s > length else "before road start"
             issues.append(GeometryIssue(
@@ -201,20 +204,23 @@ def validate_project_geometry(project: "Project") -> List[GeometryIssue]:
             length = get_road_length(road)
             if length is None:
                 continue
-            centerline = project.get_polyline(road.centerline_id) if road.centerline_id else None
-            if centerline and obj.position:
-                s = _s_from_position(obj.position, centerline.points)
+            if road.is_connecting_road:
+                path = road.inline_path
+                if not path or len(path) < 2:
+                    continue
+                length = road.get_inline_path_length()
+                if obj.position:
+                    s = _s_from_position(obj.position, path)
+                else:
+                    s = obj.s_position
             else:
-                s = obj.s_position
+                centerline = project.get_polyline(road.centerline_id) if road.centerline_id else None
+                if centerline and obj.position:
+                    s = _s_from_position(obj.position, centerline.points)
+                else:
+                    s = obj.s_position
         else:
-            cr = project.get_connecting_road(obj.road_id)
-            if not cr or len(cr.path) < 2:
-                continue
-            length = cr.get_length_pixels()
-            if obj.position:
-                s = _s_from_position(obj.position, cr.path)
-            else:
-                s = obj.s_position
+            continue  # Road not found
         if s is not None and not (0 <= s <= length):
             where = "beyond road end" if s > length else "before road start"
             issues.append(GeometryIssue(

@@ -758,11 +758,12 @@ class OSMImporter:
                     approach_roads=approach_roads,
                     polylines_dict=polylines_dict,
                     default_lane_width=options.default_lane_width,
-                    verbose=options.verbose
+                    verbose=options.verbose,
+                    project=self.project
                 )
 
                 if options.verbose:
-                    total_connectors = sum(len(j.connecting_roads) for j in roundabout_junctions)
+                    total_connectors = sum(len(j.connecting_road_ids) for j in roundabout_junctions)
                     logger.debug("  Generated %d connecting road(s)", total_connectors)
 
                 # Mark as imported
@@ -891,7 +892,9 @@ class OSMImporter:
             # Generate connecting roads using patterns from BEFORE offset but positions from AFTER offset
             # This uses the shared function which includes pair detection for bidirectional roads
             # Pass transformer for geo-first path generation when geo coords are available
-            create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup, self.transformer)
+            create_connecting_roads_from_patterns(
+                junction, patterns, endpoint_lookup, self.transformer,
+                project=self.project)
 
             if options.verbose:
                 summary = junction.get_connection_summary()

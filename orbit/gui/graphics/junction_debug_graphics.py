@@ -331,13 +331,9 @@ class JunctionDebugOverlay:
         # Create connection path graphics
         for lane_conn in self.junction.lane_connections:
             # Find the connecting road
-            conn_road = next(
-                (cr for cr in self.junction.connecting_roads
-                 if cr.id == lane_conn.connecting_road_id),
-                None
-            )
+            conn_road = self.roads_dict.get(lane_conn.connecting_road_id)
 
-            if conn_road and conn_road.path:
+            if conn_road and conn_road.inline_path:
                 # Get road names
                 from_road = self.roads_dict.get(lane_conn.from_road_id)
                 to_road = self.roads_dict.get(lane_conn.to_road_id)
@@ -346,7 +342,7 @@ class JunctionDebugOverlay:
                 to_name = to_road.name if to_road else "Unknown"
 
                 path_graphic = ConnectionPathGraphics(
-                    path_points=conn_road.path,
+                    path_points=conn_road.inline_path,
                     turn_type=lane_conn.turn_type,
                     from_road=from_name,
                     to_road=to_name

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from PyQt6.QtGui import QUndoCommand
 
-from orbit.models import ConnectingRoad, Junction, LaneConnection, ParkingSpace, Polyline, Road, RoadObject, Signal
+from orbit.models import Junction, LaneConnection, ParkingSpace, Polyline, Road, RoadObject, Signal
 
 if TYPE_CHECKING:
     from .main_window import MainWindow
@@ -488,8 +488,9 @@ class DeleteRoadCommand(QUndoCommand):
         # (junction_id, type, serialized_data) tuples
         self.removed_junction_items = []
         for junction in main_window.project.junctions:
-            for cr in junction.connecting_roads:
-                if cr.predecessor_road_id == road_id or cr.successor_road_id == road_id:
+            for cr_id in junction.connecting_road_ids:
+                cr = main_window.project.get_road(cr_id)
+                if cr and (cr.predecessor_id == road_id or cr.successor_id == road_id):
                     self.removed_junction_items.append(
                         (junction.id, 'connecting_road', copy.deepcopy(cr.to_dict())))
             for lc in junction.lane_connections:
@@ -512,8 +513,9 @@ class DeleteRoadCommand(QUndoCommand):
 
         # Remove connecting road graphics that will be orphaned
         for junction in self.main_window.project.junctions:
-            for cr in junction.connecting_roads:
-                if cr.predecessor_road_id == self.road_id or cr.successor_road_id == self.road_id:
+            for cr_id in junction.connecting_road_ids:
+                cr = self.main_window.project.get_road(cr_id)
+                if cr and (cr.predecessor_id == self.road_id or cr.successor_id == self.road_id):
                     self.main_window.image_view.remove_connecting_road_graphics(cr.id)
 
         # Remove lane graphics
@@ -548,8 +550,9 @@ class DeleteRoadCommand(QUndoCommand):
             junction = self.main_window.project.get_junction(junction_id)
             if junction:
                 if item_type == 'connecting_road':
-                    cr = ConnectingRoad.from_dict(data)
-                    junction.connecting_roads.append(cr)
+                    cr = Road.from_dict(data)
+                    self.main_window.project.add_road(cr)
+                    junction.add_connecting_road(cr.id)
                     self.main_window.image_view.add_connecting_road_graphics(
                         cr, scale_factors)
                 elif item_type == 'lane_connection':
@@ -917,9 +920,16 @@ class DeleteJunctionCommand(QUndoCommand):
         junction = main_window.project.get_junction(junction_id)
         self.junction_data = junction.to_dict() if junction else None
         # Track connecting road IDs for graphics cleanup/restore
-        self.connecting_road_ids = [
-            cr.id for cr in junction.connecting_roads
-        ] if junction else []
+        self.connecting_road_ids = list(
+            junction.connecting_road_ids
+        ) if junction else []
+        # Capture connecting road data for restore on undo
+        self._connecting_road_dicts = []
+        if junction:
+            for cr_id in junction.connecting_road_ids:
+                cr = main_window.project.get_road(cr_id)
+                if cr:
+                    self._connecting_road_dicts.append(cr.to_dict())
         # Capture road junction references that will be cleared on deletion
         self._road_junction_refs = []
         if junction:
@@ -948,9 +958,11 @@ class DeleteJunctionCommand(QUndoCommand):
         junction = Junction.from_dict(self.junction_data)
         self.main_window.project.add_junction(junction)
         self.main_window.image_view.add_junction_graphics(junction)
-        # Restore connecting road graphics
+        # Restore connecting roads to project and graphics
         scale_factors = self.main_window.get_current_scale()
-        for cr in junction.connecting_roads:
+        for cr_dict in self._connecting_road_dicts:
+            cr = Road.from_dict(cr_dict)
+            self.main_window.project.add_road(cr)
             self.main_window.image_view.add_connecting_road_graphics(cr, scale_factors)
         # Restore road junction references cleared during deletion
         for road_id, ref_type, ref_value in self._road_junction_refs:
@@ -1023,14 +1035,11 @@ class ModifyConnectingRoadCommand(QUndoCommand):
         self._apply_data(self.old_data)
 
     def _apply_data(self, data: dict):
-        junction = self.main_window.project.get_junction(self.junction_id)
-        if not junction:
-            return
-        # Find and update the connecting road
-        for i, cr in enumerate(junction.connecting_roads):
-            if cr.id == self.connecting_road_id:
-                junction.connecting_roads[i] = ConnectingRoad.from_dict(data)
-                break
+        # Replace the connecting road in project.roads
+        cr = Road.from_dict(data)
+        # Remove old and add new
+        self.main_window.project.remove_road(self.connecting_road_id)
+        self.main_window.project.add_road(cr)
         # Refresh graphics
         scale_factors = self.main_window.get_current_scale()
         self.main_window.image_view.update_connecting_road_graphics(

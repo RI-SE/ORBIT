@@ -9,7 +9,6 @@ import math
 from typing import Dict, List, Optional, Tuple
 
 from orbit.models import Junction, Project, Road
-from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.lane import Lane
 from orbit.models.lane import LaneType as LaneTypeEnum
 from orbit.models.lane_connection import LaneConnection
@@ -382,19 +381,23 @@ def _create_junction_connectors(
             incoming_end, outgoing_start, center, clockwise, 6
         )
 
-        through_connector = ConnectingRoad(
+        through_connector = Road(
             id=project.next_id('connecting_road') if project else "",
-            path=through_path,
-            lane_count_left=0,
-            lane_count_right=lane_count,
-            lane_width=lane_width,
-            predecessor_road_id=incoming_ring.id,
-            successor_road_id=outgoing_ring.id,
-            contact_point_start="end",
-            contact_point_end="start"
+            name=f"CR {junction.id}",
+            junction_id=junction.id,
+            inline_path=through_path,
+            cr_lane_count_left=0,
+            cr_lane_count_right=lane_count,
+            lane_info=LaneInfo(left_count=0, right_count=lane_count, lane_width=lane_width),
+            predecessor_id=incoming_ring.id,
+            successor_id=outgoing_ring.id,
+            predecessor_contact="end",
+            successor_contact="start",
         )
-        through_connector.ensure_lanes_initialized()
-        junction.add_connecting_road(through_connector)
+        through_connector.ensure_cr_lanes_initialized()
+        if project:
+            project.add_road(through_connector)
+        junction.add_connecting_road(through_connector.id)
 
         # Lane connections
         for i in range(1, lane_count + 1):

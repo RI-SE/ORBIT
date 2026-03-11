@@ -36,14 +36,14 @@ from ..utils import ask_yes_no, set_combo_by_data, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
 
 if TYPE_CHECKING:
-    from orbit.models.connecting_road import ConnectingRoad
+    from orbit.models.road import Road
 
 
 class LanePropertiesDialog(BaseDialog):
     """Dialog for editing lane properties."""
 
     def __init__(self, lane: Lane, project: Optional[Project] = None, road_id: Optional[str] = None,
-                 connecting_road: Optional['ConnectingRoad'] = None, parent=None):
+                 connecting_road: Optional['Road'] = None, parent=None):
         super().__init__("Lane Properties", parent, min_width=600)
 
         self.lane = lane
@@ -650,12 +650,12 @@ class LanePropertiesDialog(BaseDialog):
             if self.connecting_road.lane_width_start is not None:
                 self.width_start_spin.setValue(self.connecting_road.lane_width_start)
             else:
-                self.width_start_spin.setValue(self.connecting_road.lane_width)
+                self.width_start_spin.setValue(self.connecting_road.lane_info.lane_width)
 
             if self.connecting_road.lane_width_end is not None:
                 self.width_end_spin.setValue(self.connecting_road.lane_width_end)
             else:
-                self.width_end_spin.setValue(self.connecting_road.lane_width)
+                self.width_end_spin.setValue(self.connecting_road.lane_info.lane_width)
 
             self.update_width_info()
 
@@ -1017,11 +1017,12 @@ class LanePropertiesDialog(BaseDialog):
             self.connecting_road.lane_width_start = self.width_start_spin.value()
             self.connecting_road.lane_width_end = self.width_end_spin.value()
             # Update average width for backward compatibility
-            self.connecting_road.lane_width = (
+            avg_width = (
                 self.connecting_road.lane_width_start + self.connecting_road.lane_width_end
             ) / 2
+            self.connecting_road.lane_info.lane_width = avg_width
             # Also update the individual lane's width to the average
-            self.lane.width = self.connecting_road.lane_width
+            self.lane.width = avg_width
 
         # Update access restrictions (for path lanes)
         access_restrictions = []
@@ -1086,7 +1087,7 @@ class LanePropertiesDialog(BaseDialog):
 
     @classmethod
     def edit_lane(cls, lane: Lane, project: Optional[Project] = None, road_id: Optional[str] = None,
-                  connecting_road: Optional['ConnectingRoad'] = None, parent=None) -> bool:
+                  connecting_road: Optional['Road'] = None, parent=None) -> bool:
         """
         Show dialog to edit a lane's properties.
 
@@ -1094,7 +1095,7 @@ class LanePropertiesDialog(BaseDialog):
             lane: Lane to edit
             project: Project containing the lane (optional)
             road_id: ID of road containing the lane (optional)
-            connecting_road: ConnectingRoad containing the lane (for connecting road lanes)
+            connecting_road: Road containing the lane (for connecting road lanes)
             parent: Parent widget
 
         Returns:

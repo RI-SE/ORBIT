@@ -37,8 +37,8 @@ def validate_references(project: Project) -> List[str]:
     # Build connecting road ID sets per junction
     connecting_road_ids: Set[str] = set()
     for junction in project.junctions:
-        for cr in junction.connecting_roads:
-            connecting_road_ids.add(cr.id)
+        for cr_id in junction.connecting_road_ids:
+            connecting_road_ids.add(cr_id)
 
     # --- Road references ---
     for road in project.roads:
@@ -88,13 +88,17 @@ def validate_references(project: Project) -> List[str]:
             if rid not in road_ids:
                 warnings.append(f"{label}: exit_road '{rid}' not found in roads")
 
-        # ConnectingRoad → Road (predecessor_road_id, successor_road_id)
-        for cr in junction.connecting_roads:
+        # ConnectingRoad → Road (predecessor_id, successor_id)
+        for cr_id in junction.connecting_road_ids:
+            cr = project.get_road(cr_id)
+            if not cr:
+                warnings.append(f"ConnectingRoad (id={cr_id}) in {label}: road not found in project")
+                continue
             cr_label = f"ConnectingRoad (id={cr.id}) in {label}"
-            if cr.predecessor_road_id and cr.predecessor_road_id not in road_ids:
-                warnings.append(f"{cr_label}: predecessor_road_id '{cr.predecessor_road_id}' not found in roads")
-            if cr.successor_road_id and cr.successor_road_id not in road_ids:
-                warnings.append(f"{cr_label}: successor_road_id '{cr.successor_road_id}' not found in roads")
+            if cr.predecessor_id and cr.predecessor_id not in road_ids:
+                warnings.append(f"{cr_label}: predecessor_id '{cr.predecessor_id}' not found in roads")
+            if cr.successor_id and cr.successor_id not in road_ids:
+                warnings.append(f"{cr_label}: successor_id '{cr.successor_id}' not found in roads")
 
         # LaneConnection references
         for lc in junction.lane_connections:

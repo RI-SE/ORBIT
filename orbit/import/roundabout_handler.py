@@ -9,8 +9,7 @@ import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
-from orbit.models import Junction, Road
-from orbit.models.connecting_road import ConnectingRoad
+from orbit.models import Junction, Project, Road
 from orbit.models.lane import Lane
 from orbit.models.lane import LaneType as LaneTypeEnum
 from orbit.models.lane_connection import LaneConnection
@@ -951,7 +950,7 @@ def create_roundabout_connectors(
     junction_index: int,
     default_lane_width: float = 3.5,
     verbose: bool = False
-) -> Tuple[List[ConnectingRoad], List[LaneConnection]]:
+) -> Tuple[List[Road], List[LaneConnection]]:
     """
     Create connecting roads and lane connections for a roundabout junction.
 
@@ -971,7 +970,8 @@ def create_roundabout_connectors(
         verbose: Print debug info
 
     Returns:
-        Tuple of (connecting_roads, lane_connections)
+        Tuple of (connecting_roads, lane_connections) where connecting_roads
+        are Road objects with junction_id set
     """
     connecting_roads = []
     lane_connections = []
@@ -1025,32 +1025,31 @@ def create_roundabout_connectors(
             outgoing_width = _get_road_lane_width(outgoing_ring_road, default_lane_width)
             avg_width = (incoming_width + outgoing_width) / 2
 
-            through_connector = ConnectingRoad(
-                path=through_path,
-                lane_count_left=0,
-                lane_count_right=roundabout.lane_count,
-                lane_width=avg_width,
-                predecessor_road_id=incoming_ring_road.id,
-                successor_road_id=outgoing_ring_road.id,
-                contact_point_start="end",
-                contact_point_end="start"
+            through_connector = Road(
+                name=f"CR {junction.id} through",
+                junction_id=junction.id,
+                inline_path=through_path,
+                cr_lane_count_left=0,
+                cr_lane_count_right=roundabout.lane_count,
+                lane_info=LaneInfo(
+                    left_count=0,
+                    right_count=roundabout.lane_count,
+                    lane_width=avg_width
+                ),
+                lane_width_start=incoming_width,
+                lane_width_end=outgoing_width,
+                predecessor_id=incoming_ring_road.id,
+                successor_id=outgoing_ring_road.id,
+                predecessor_contact="end",
+                successor_contact="start",
+                geometry_type="parampoly3",
+                aU=aU, bU=bU, cU=cU, dU=dU,
+                aV=aV, bV=bV, cV=cV, dV=dV,
+                stored_start_heading=incoming_heading,
+                stored_end_heading=outgoing_heading
             )
-            through_connector.lane_width_start = incoming_width
-            through_connector.lane_width_end = outgoing_width
 
-            # Store ParamPoly3D coefficients for proper OpenDrive export
-            through_connector.aU = aU
-            through_connector.bU = bU
-            through_connector.cU = cU
-            through_connector.dU = dU
-            through_connector.aV = aV
-            through_connector.bV = bV
-            through_connector.cV = cV
-            through_connector.dV = dV
-            through_connector.stored_start_heading = incoming_heading
-            through_connector.stored_end_heading = outgoing_heading
-
-            through_connector.ensure_lanes_initialized()
+            through_connector.ensure_cr_lanes_initialized()
             connecting_roads.append(through_connector)
 
             # Create lane connections for through movement
@@ -1118,36 +1117,36 @@ def create_roundabout_connectors(
                 ring_width = _get_road_lane_width(entry_ring_road, default_lane_width)
                 avg_width = (approach_width + ring_width) / 2
 
-                entry_connector = ConnectingRoad(
-                    path=entry_path,
-                    lane_count_left=0,
-                    lane_count_right=min(approach_lanes, roundabout.lane_count),
-                    lane_width=avg_width,
-                    predecessor_road_id=approach_road.id,
-                    successor_road_id=entry_ring_road.id,
-                    contact_point_start="end",
-                    contact_point_end=contact_end
+                entry_lane_count = min(approach_lanes, roundabout.lane_count)
+                entry_connector = Road(
+                    name=f"CR {junction.id} entry",
+                    junction_id=junction.id,
+                    inline_path=entry_path,
+                    cr_lane_count_left=0,
+                    cr_lane_count_right=entry_lane_count,
+                    lane_info=LaneInfo(
+                        left_count=0,
+                        right_count=entry_lane_count,
+                        lane_width=avg_width
+                    ),
+                    lane_width_start=approach_width,
+                    lane_width_end=ring_width,
+                    predecessor_id=approach_road.id,
+                    successor_id=entry_ring_road.id,
+                    predecessor_contact="end",
+                    successor_contact=contact_end,
+                    geometry_type="parampoly3",
+                    aU=aU, bU=bU, cU=cU, dU=dU,
+                    aV=aV, bV=bV, cV=cV, dV=dV,
+                    stored_start_heading=approach_heading,
+                    stored_end_heading=ring_heading
                 )
-                entry_connector.lane_width_start = approach_width
-                entry_connector.lane_width_end = ring_width
 
-                # Store ParamPoly3D coefficients
-                entry_connector.aU = aU
-                entry_connector.bU = bU
-                entry_connector.cU = cU
-                entry_connector.dU = dU
-                entry_connector.aV = aV
-                entry_connector.bV = bV
-                entry_connector.cV = cV
-                entry_connector.dV = dV
-                entry_connector.stored_start_heading = approach_heading
-                entry_connector.stored_end_heading = ring_heading
-
-                entry_connector.ensure_lanes_initialized()
+                entry_connector.ensure_cr_lanes_initialized()
                 connecting_roads.append(entry_connector)
 
                 # Lane connections for entry
-                for lane_idx in range(1, entry_connector.lane_count_right + 1):
+                for lane_idx in range(1, entry_connector.cr_lane_count_right + 1):
                     lc = LaneConnection(
                         from_road_id=approach_road.id,
                         from_lane_id=-lane_idx,
@@ -1207,36 +1206,36 @@ def create_roundabout_connectors(
                 approach_width = _get_road_lane_width(approach_road, default_lane_width)
                 avg_width = (ring_width + approach_width) / 2
 
-                exit_connector = ConnectingRoad(
-                    path=exit_path,
-                    lane_count_left=0,
-                    lane_count_right=min(approach_lanes, roundabout.lane_count),
-                    lane_width=avg_width,
-                    predecessor_road_id=exit_ring_road.id,
-                    successor_road_id=approach_road.id,
-                    contact_point_start=contact_start,
-                    contact_point_end="start"
+                exit_lane_count = min(approach_lanes, roundabout.lane_count)
+                exit_connector = Road(
+                    name=f"CR {junction.id} exit",
+                    junction_id=junction.id,
+                    inline_path=exit_path,
+                    cr_lane_count_left=0,
+                    cr_lane_count_right=exit_lane_count,
+                    lane_info=LaneInfo(
+                        left_count=0,
+                        right_count=exit_lane_count,
+                        lane_width=avg_width
+                    ),
+                    lane_width_start=ring_width,
+                    lane_width_end=approach_width,
+                    predecessor_id=exit_ring_road.id,
+                    successor_id=approach_road.id,
+                    predecessor_contact=contact_start,
+                    successor_contact="start",
+                    geometry_type="parampoly3",
+                    aU=aU, bU=bU, cU=cU, dU=dU,
+                    aV=aV, bV=bV, cV=cV, dV=dV,
+                    stored_start_heading=ring_heading,
+                    stored_end_heading=approach_heading
                 )
-                exit_connector.lane_width_start = ring_width
-                exit_connector.lane_width_end = approach_width
 
-                # Store ParamPoly3D coefficients
-                exit_connector.aU = aU
-                exit_connector.bU = bU
-                exit_connector.cU = cU
-                exit_connector.dU = dU
-                exit_connector.aV = aV
-                exit_connector.bV = bV
-                exit_connector.cV = cV
-                exit_connector.dV = dV
-                exit_connector.stored_start_heading = ring_heading
-                exit_connector.stored_end_heading = approach_heading
-
-                exit_connector.ensure_lanes_initialized()
+                exit_connector.ensure_cr_lanes_initialized()
                 connecting_roads.append(exit_connector)
 
                 # Lane connections for exit
-                for lane_idx in range(1, exit_connector.lane_count_right + 1):
+                for lane_idx in range(1, exit_connector.cr_lane_count_right + 1):
                     lc = LaneConnection(
                         from_road_id=incoming_ring_road.id,
                         from_lane_id=-lane_idx,
@@ -1260,12 +1259,14 @@ def generate_all_roundabout_connectors(
     approach_roads: Dict[str, Road],
     polylines_dict: Dict[str, Polyline],
     default_lane_width: float = 3.5,
-    verbose: bool = False
+    verbose: bool = False,
+    project: Optional[Project] = None
 ) -> None:
     """
     Generate connectors for all junctions of a roundabout.
 
-    Updates each junction's connecting_roads and lane_connections lists.
+    Creates Road objects (with junction_id set), adds them to project.roads,
+    and stores their IDs in each junction's connecting_road_ids.
 
     Args:
         roundabout: Analyzed roundabout geometry
@@ -1275,6 +1276,7 @@ def generate_all_roundabout_connectors(
         polylines_dict: Dict of polyline_id -> Polyline
         default_lane_width: Lane width in meters
         verbose: Print debug info
+        project: Project to add connecting Road objects to
     """
     if verbose:
         logger.debug("Generating connectors for roundabout %s:", roundabout.osm_way_id)
@@ -1291,15 +1293,17 @@ def generate_all_roundabout_connectors(
             verbose=verbose
         )
 
-        # Add to junction
+        # Add to project and junction
         for cr in connectors:
-            junction.add_connecting_road(cr)
+            if project:
+                project.roads.append(cr)
+            junction.add_connecting_road(cr.id)
 
         for lc in lane_conns:
             junction.add_lane_connection(lc)
 
     if verbose:
-        total_connectors = sum(len(j.connecting_roads) for j in junctions)
+        total_connectors = sum(len(j.connecting_road_ids) for j in junctions)
         total_lane_conns = sum(len(j.lane_connections) for j in junctions)
         logger.debug("  Total: %d connecting roads, %d lane connections",
                      total_connectors, total_lane_conns)

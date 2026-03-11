@@ -10,7 +10,6 @@ from enum import Enum
 from typing import Dict, List, Optional, Set, Tuple
 
 from orbit.models import ControlPoint, Junction, ParkingSpace, Polyline, Project, Road, RoadObject, Signal
-from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.junction import (
     JunctionBoundary,
     JunctionBoundarySegment,
@@ -26,7 +25,7 @@ from orbit.models.lane_section import LaneSection
 from orbit.models.object import ObjectType
 from orbit.models.parking import ParkingAccess, ParkingType
 from orbit.models.polyline import LineType, RoadMarkType
-from orbit.models.road import RoadType
+from orbit.models.road import LaneInfo, RoadType
 from orbit.models.signal import SignalType
 from orbit.utils.logging_config import get_logger
 
@@ -547,7 +546,7 @@ class OpenDriveImporter:
                 }
 
         # Convert geometry to polyline points for visualization
-        # ConnectingRoads store their own geometry, so no need to preserve segments here
+        # Connecting roads store their own inline geometry, so no need to preserve segments here
         points_metric, _, _ = self.geom_converter.convert_geometry_to_polyline(
             odr_road.geometry, preserve_geometry=False
         )
@@ -661,48 +660,62 @@ class OpenDriveImporter:
         if lane_count_left == 0 and lane_count_right == 0:
             lane_count_right = 1
 
-        # Create connecting road
-        connecting_road = ConnectingRoad(
-            id=str(odr_road.id),
-            path=points_pixel,
-            geo_path=geo_points,  # Store geo coords as source of truth
-            lane_count_left=lane_count_left,
-            lane_count_right=lane_count_right,
-            lane_width=lane_width,
-            predecessor_road_id=predecessor_orbit_id,
-            successor_road_id=successor_orbit_id,
-            contact_point_start=contact_point_start,
-            contact_point_end=contact_point_end
-        )
-
-        # Set paramPoly3 geometry if available
+        # Build paramPoly3 kwargs if available
+        geom_kwargs = {}
+        stored_start_heading = None
+        stored_end_heading = None
         if param_poly3:
-            connecting_road.geometry_type = "parampoly3"
-            connecting_road.aU = param_poly3['aU']
-            connecting_road.bU = param_poly3['bU']
-            connecting_road.cU = param_poly3['cU']
-            connecting_road.dU = param_poly3['dU']
-            connecting_road.aV = param_poly3['aV']
-            connecting_road.bV = param_poly3['bV']
-            connecting_road.cV = param_poly3['cV']
-            connecting_road.dV = param_poly3['dV']
-            connecting_road.p_range = param_poly3['length']
-            connecting_road.p_range_normalized = (param_poly3['pRange'] == 'normalized')
+            geom_kwargs = {
+                'geometry_type': "parampoly3",
+                'aU': param_poly3['aU'],
+                'bU': param_poly3['bU'],
+                'cU': param_poly3['cU'],
+                'dU': param_poly3['dU'],
+                'aV': param_poly3['aV'],
+                'bV': param_poly3['bV'],
+                'cV': param_poly3['cV'],
+                'dV': param_poly3['dV'],
+                'p_range': param_poly3['length'],
+                'p_range_normalized': (param_poly3['pRange'] == 'normalized'),
+            }
             # Compute pixel-space headings from the converted path
             # (raw param_poly3['hdg'] is in metric coordinate space, not pixel space)
             if len(points_pixel) >= 2:
                 dx = points_pixel[1][0] - points_pixel[0][0]
                 dy = points_pixel[1][1] - points_pixel[0][1]
-                connecting_road.stored_start_heading = math.atan2(dy, dx)
+                stored_start_heading = math.atan2(dy, dx)
 
                 dx = points_pixel[-1][0] - points_pixel[-2][0]
                 dy = points_pixel[-1][1] - points_pixel[-2][1]
-                connecting_road.stored_end_heading = math.atan2(dy, dx)
+                stored_end_heading = math.atan2(dy, dx)
         else:
-            connecting_road.geometry_type = "polyline"
+            geom_kwargs['geometry_type'] = "polyline"
+
+        # Create connecting road as a Road with junction_id set
+        connecting_road = Road(
+            id=str(odr_road.id),
+            name=f"CR {odr_road.id}",
+            junction_id=junction_orbit_id,
+            inline_path=points_pixel,
+            inline_geo_path=geo_points,
+            cr_lane_count_left=lane_count_left,
+            cr_lane_count_right=lane_count_right,
+            lane_info=LaneInfo(
+                left_count=lane_count_left,
+                right_count=lane_count_right,
+                lane_width=lane_width
+            ),
+            predecessor_id=predecessor_orbit_id,
+            successor_id=successor_orbit_id,
+            predecessor_contact=contact_point_start,
+            successor_contact=contact_point_end,
+            stored_start_heading=stored_start_heading,
+            stored_end_heading=stored_end_heading,
+            **geom_kwargs
+        )
 
         # Initialize lanes from the lane count
-        connecting_road.ensure_lanes_initialized()
+        connecting_road.ensure_cr_lanes_initialized()
 
         # Import lane properties if available
         if odr_road.lane_sections:
@@ -711,20 +724,22 @@ class OpenDriveImporter:
             # Calculate lane_width_start and lane_width_end from polynomial
             # Use the first non-center lane's width polynomial
             road_length = odr_road.length  # Length in meters
-            for lane in connecting_road.lanes:
-                if lane.id != 0:  # Skip center lane
-                    # Calculate width at start (ds=0) and end (ds=road_length)
-                    width_start = lane.width  # a coefficient
-                    width_end = (lane.width +
-                                 lane.width_b * road_length +
-                                 lane.width_c * road_length**2 +
-                                 lane.width_d * road_length**3)
-                    connecting_road.lane_width_start = width_start
-                    connecting_road.lane_width_end = width_end
-                    break
+            if connecting_road.lane_sections:
+                for lane in connecting_road.lane_sections[0].lanes:
+                    if lane.id != 0:  # Skip center lane
+                        # Calculate width at start (ds=0) and end (ds=road_length)
+                        width_start = lane.width  # a coefficient
+                        width_end = (lane.width +
+                                     lane.width_b * road_length +
+                                     lane.width_c * road_length**2 +
+                                     lane.width_d * road_length**3)
+                        connecting_road.lane_width_start = width_start
+                        connecting_road.lane_width_end = width_end
+                        break
 
-        # Add to junction
-        junction.add_connecting_road(connecting_road)
+        # Add to project and junction
+        self.project.roads.append(connecting_road)
+        junction.add_connecting_road(connecting_road.id)
 
         # Add predecessor/successor roads to junction's connected_road_ids
         if predecessor_orbit_id and predecessor_orbit_id not in junction.connected_road_ids:
@@ -791,16 +806,16 @@ class OpenDriveImporter:
 
         return True
 
-    def _import_connecting_road_lanes(self, connecting_road: ConnectingRoad, odr_section) -> None:
+    def _import_connecting_road_lanes(self, connecting_road: Road, odr_section) -> None:
         """
         Import lane properties from OpenDrive lane section into connecting road.
 
         Args:
-            connecting_road: ConnectingRoad to update
+            connecting_road: Road (with junction_id set) to update
             odr_section: OpenDrive lane section with lane data
         """
         # Ensure lanes are initialized
-        connecting_road.ensure_lanes_initialized()
+        connecting_road.ensure_cr_lanes_initialized()
 
         # Process right lanes (negative IDs)
         for odr_lane in odr_section.right_lanes:

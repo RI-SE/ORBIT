@@ -149,11 +149,15 @@ def export_to_osm(
     # Build road lookup for inheriting tags from connected roads
     road_by_id = {road.id: road for road in project.roads}
     for junction in project.junctions:
-        for cr in junction.connecting_roads:
-            geo_path = cr.geo_path
+        for cr_id in junction.connecting_road_ids:
+            cr = project.get_road(cr_id)
+            if not cr:
+                stats['skipped'] += 1
+                continue
+            geo_path = cr.inline_geo_path
             # Fall back to pixel→geo conversion if geo_path is missing
-            if not geo_path and cr.path and transformer:
-                geo_path = [transformer.pixel_to_geo(x, y) for x, y in cr.path]
+            if not geo_path and cr.inline_path and transformer:
+                geo_path = [transformer.pixel_to_geo(x, y) for x, y in cr.inline_path]
             if not geo_path or len(geo_path) < 2:
                 stats['skipped'] += 1
                 continue
@@ -263,7 +267,7 @@ def export_to_osm(
 def _get_connecting_road_tags(cr, road_by_id: dict) -> Dict[str, str]:
     """Get OSM tags for a connecting road by inheriting from connected roads."""
     # Try predecessor first, then successor
-    for road_id in (cr.predecessor_road_id, cr.successor_road_id):
+    for road_id in (cr.predecessor_id, cr.successor_id):
         road = road_by_id.get(road_id)
         if road:
             tags = get_osm_tags_for_road(road)

@@ -213,18 +213,12 @@ class Project:
         self._next_parking_id = _max_numeric_id(p.id for p in self.parking_spaces) + 1
         self._next_junction_group_id = _max_numeric_id(jg.id for jg in self.junction_groups) + 1
 
-        # ConnectingRoad shares the road counter; LaneConnection is nested inside junctions
-        cr_ids = []
+        # Roads include connecting roads now (unified storage)
         lc_ids = []
         for junction in self.junctions:
-            for cr in junction.connecting_roads:
-                cr_ids.append(cr.id)
             for lc in junction.lane_connections:
                 lc_ids.append(lc.id)
-        self._next_road_id = max(
-            _max_numeric_id(r.id for r in self.roads),
-            _max_numeric_id(cr_ids)
-        ) + 1
+        self._next_road_id = _max_numeric_id(r.id for r in self.roads) + 1
         self._next_lane_connection_id = _max_numeric_id(lc_ids) + 1
 
     def _has_uuid_ids(self) -> bool:
@@ -358,15 +352,15 @@ class Project:
             parking_remap[p.id] = new_id
             p.id = new_id
 
-        # --- Assign new connecting road IDs (shares road namespace) ---
+        # --- Connecting road IDs are now in the road list (unified) ---
+        # Build connecting_road_remap from road_remap for connecting roads
+        for r in self.roads:
+            if r.is_connecting_road and r.id in road_remap:
+                connecting_road_remap[r.id] = road_remap[r.id]
+
         lc_used: set = set()
         lc_counter = [1]
         for j in self.junctions:
-            for cr in j.connecting_roads:
-                odr_id = odr_id_lookup.get(cr.id)
-                new_id = _new_id(cr.id, odr_id, road_used, road_counter)
-                connecting_road_remap[cr.id] = new_id
-                cr.id = new_id
             for lc in j.lane_connections:
                 new_id = _new_id(lc.id, None, lc_used, lc_counter)
                 lane_connection_remap[lc.id] = new_id
@@ -411,12 +405,9 @@ class Project:
         # Junction cross-references
         for junction in self.junctions:
             junction.connected_road_ids = _remap_list(junction.connected_road_ids, road_remap)
+            junction.connecting_road_ids = _remap_list(junction.connecting_road_ids, connecting_road_remap)
             junction.entry_roads = _remap_list(junction.entry_roads, road_remap)
             junction.exit_roads = _remap_list(junction.exit_roads, road_remap)
-
-            for cr in junction.connecting_roads:
-                cr.predecessor_road_id = _remap(cr.predecessor_road_id, road_remap) or ""
-                cr.successor_road_id = _remap(cr.successor_road_id, road_remap) or ""
 
             for lc in junction.lane_connections:
                 lc.from_road_id = _remap(lc.from_road_id, road_remap) or ""
@@ -470,9 +461,6 @@ class Project:
         for j in self.junctions:
             if not j.id:
                 j.id = self.next_id('junction')
-            for cr in j.connecting_roads:
-                if not cr.id:
-                    cr.id = self.next_id('connecting_road')
             for lc in j.lane_connections:
                 if not lc.id:
                     lc.id = self.next_id('lane_connection')
@@ -502,13 +490,18 @@ class Project:
         """
         linked = 0
         for junction in self.junctions:
+            # Get connecting road objects for this junction
+            cr_roads = [
+                r for r in self.roads
+                if r.is_connecting_road and r.id in junction.connecting_road_ids
+            ]
             for lc in junction.lane_connections:
                 if lc.connecting_road_id:
                     continue  # Already linked
 
-                for cr in junction.connecting_roads:
-                    if (cr.predecessor_road_id == lc.from_road_id and
-                            cr.successor_road_id == lc.to_road_id):
+                for cr in cr_roads:
+                    if (cr.predecessor_id == lc.from_road_id and
+                            cr.successor_id == lc.to_road_id):
                         lc.connecting_road_id = cr.id
 
                         # Set connecting_lane_id: pick the lane on the CR
@@ -561,10 +554,21 @@ class Project:
             if road.predecessor_id == road_id:
                 road.predecessor_id = None
 
-        # Remove from junctions (connected_road_ids, connecting_roads,
+        # Remove from junctions (connected_road_ids, connecting_road_ids,
         # lane_connections, entry/exit_roads)
         for junction in self.junctions:
             junction.remove_road(road_id)
+            # Also clean up connecting_road_ids
+            if road_id in junction.connecting_road_ids:
+                junction.connecting_road_ids.remove(road_id)
+            # Remove connecting roads that reference the deleted road
+            crs_to_remove = [
+                r.id for r in self.roads
+                if r.is_connecting_road and r.id in junction.connecting_road_ids
+                and (r.predecessor_id == road_id or r.successor_id == road_id)
+            ]
+            for cr_id in crs_to_remove:
+                junction.remove_connecting_road(cr_id)
 
     def get_road(self, road_id: str) -> Optional[Road]:
         """Get a road by ID."""
@@ -833,13 +837,14 @@ class Project:
 
         for junction in self.junctions:
             # Skip junctions that don't reference this road at all
+            cr_roads = [r for r in self.roads if r.id in junction.connecting_road_ids]
             references_road = (
                 original_road_id in junction.connected_road_ids
                 or original_road_id in junction.entry_roads
                 or original_road_id in junction.exit_roads
-                or any(cr.predecessor_road_id == original_road_id
-                       or cr.successor_road_id == original_road_id
-                       for cr in junction.connecting_roads)
+                or any(cr.predecessor_id == original_road_id
+                       or cr.successor_id == original_road_id
+                       for cr in cr_roads)
             )
             if not references_road:
                 continue
@@ -878,13 +883,13 @@ class Project:
                 junction.exit_roads[idx] = new_road_id
                 remapped = True
 
-            # Update connecting_roads
-            for conn_road in junction.connecting_roads:
-                if conn_road.predecessor_road_id == original_road_id:
-                    conn_road.predecessor_road_id = new_road_id
+            # Update connecting roads (now in self.roads)
+            for conn_road in cr_roads:
+                if conn_road.predecessor_id == original_road_id:
+                    conn_road.predecessor_id = new_road_id
                     remapped = True
-                if conn_road.successor_road_id == original_road_id:
-                    conn_road.successor_road_id = new_road_id
+                if conn_road.successor_id == original_road_id:
+                    conn_road.successor_id = new_road_id
                     remapped = True
 
             # Update lane_connections
@@ -906,8 +911,7 @@ class Project:
             if remapped:
                 logger.info(f"Remapped junction '{junction.name}' to reference new road {new_road_id}")
 
-    @staticmethod
-    def _junction_at_road_end(junction, road_id: str) -> bool:
+    def _junction_at_road_end(self, junction, road_id: str) -> bool:
         """Check if a junction connects to the END of a road using contact points.
 
         Examines connecting road contact points to determine which end of the
@@ -917,20 +921,21 @@ class Project:
         If no connecting roads reference the road, returns False (conservative:
         don't remap when uncertain).
         """
-        for cr in junction.connecting_roads:
-            if cr.successor_road_id == road_id:
-                # contact_point_end tells which end of the successor road
+        cr_roads = [r for r in self.roads if r.id in junction.connecting_road_ids]
+        for cr in cr_roads:
+            if cr.successor_id == road_id:
+                # successor_contact tells which end of the successor road
                 # connects to this junction
-                if cr.contact_point_end == 'end':
+                if cr.successor_contact == 'end':
                     return True
-                elif cr.contact_point_end == 'start':
+                elif cr.successor_contact == 'start':
                     return False
-            if cr.predecessor_road_id == road_id:
-                # contact_point_start tells which end of the predecessor road
+            if cr.predecessor_id == road_id:
+                # predecessor_contact tells which end of the predecessor road
                 # connects to this junction
-                if cr.contact_point_start == 'end':
+                if cr.predecessor_contact == 'end':
                     return True
-                elif cr.contact_point_start == 'start':
+                elif cr.predecessor_contact == 'start':
                     return False
         return False
 
@@ -1140,13 +1145,14 @@ class Project:
                 junction.exit_roads[idx] = kept_road_id
                 remapped = True
 
-            # Update connecting_roads
-            for conn_road in junction.connecting_roads:
-                if conn_road.predecessor_road_id == deleted_road_id:
-                    conn_road.predecessor_road_id = kept_road_id
+            # Update connecting roads (now in self.roads)
+            cr_roads = [r for r in self.roads if r.id in junction.connecting_road_ids]
+            for conn_road in cr_roads:
+                if conn_road.predecessor_id == deleted_road_id:
+                    conn_road.predecessor_id = kept_road_id
                     remapped = True
-                if conn_road.successor_road_id == deleted_road_id:
-                    conn_road.successor_road_id = kept_road_id
+                if conn_road.successor_id == deleted_road_id:
+                    conn_road.successor_id = kept_road_id
                     remapped = True
 
             # Update lane_connections
@@ -1401,55 +1407,73 @@ class Project:
         """
         Find the road or connecting road closest to a given position.
 
-        Considers both regular roads (by centerline) and connecting roads (by path).
-        Connecting road IDs can be resolved with get_connecting_road().
+        Searches all roads (both regular and connecting) in a single pass.
 
         Args:
             position: (x, y) pixel coordinates
 
         Returns:
-            ID of the closest road or connecting road, or None if none exist
+            ID of the closest road, or None if none exist
         """
         min_distance = float('inf')
         closest_id = None
 
         for road in self.roads:
-            if not road.centerline_id:
-                continue
-            polyline = self.get_polyline(road.centerline_id)
-            if not polyline or not polyline.points:
-                continue
-            distance = self._point_to_polyline_distance(position, polyline.points)
+            if road.is_connecting_road:
+                # Connecting road: use inline path
+                path = road.inline_path
+                if not path or len(path) < 2:
+                    continue
+                distance = self._point_to_polyline_distance(position, path)
+            else:
+                # Regular road: use centerline polyline
+                if not road.centerline_id:
+                    continue
+                polyline = self.get_polyline(road.centerline_id)
+                if not polyline or not polyline.points:
+                    continue
+                distance = self._point_to_polyline_distance(position, polyline.points)
             if distance < min_distance:
                 min_distance = distance
                 closest_id = road.id
 
-        for junction in self.junctions:
-            for cr in junction.connecting_roads:
-                if len(cr.path) < 2:
-                    continue
-                distance = self._point_to_polyline_distance(position, cr.path)
-                if distance < min_distance:
-                    min_distance = distance
-                    closest_id = cr.id
-
         return closest_id
 
-    def get_connecting_road(self, cr_id: str):
+    def get_connecting_road(self, cr_id: str) -> Optional[Road]:
         """
-        Get a connecting road by ID, searching all junctions.
+        Get a connecting road by ID.
+
+        This is now just an alias for get_road() since connecting roads
+        are stored in the unified roads list.
 
         Args:
             cr_id: Connecting road ID
 
         Returns:
-            ConnectingRoad if found, None otherwise
+            Road if found and is a connecting road, None otherwise
         """
-        for junction in self.junctions:
-            for cr in junction.connecting_roads:
-                if cr.id == cr_id:
-                    return cr
+        road = self.get_road(cr_id)
+        if road and road.is_connecting_road:
+            return road
         return None
+
+    def get_connecting_roads_for_junction(self, junction_id: str) -> List[Road]:
+        """
+        Get all connecting roads belonging to a junction.
+
+        Args:
+            junction_id: Junction ID
+
+        Returns:
+            List of Road objects that are connecting roads for this junction
+        """
+        junction = self.get_junction(junction_id)
+        if not junction:
+            return []
+        return [
+            r for r in self.roads
+            if r.id in junction.connecting_road_ids and r.is_connecting_road
+        ]
 
     def _point_to_polyline_distance(self, point: Tuple[float, float],
                                     polyline_points: List[Tuple[float, float]]) -> float:
@@ -1604,6 +1628,23 @@ class Project:
 
         polylines = [Polyline.from_dict(p) for p in data.get('polylines', [])]
         roads = [Road.from_dict(r) for r in data.get('roads', [])]
+
+        # Migrate legacy connecting roads from junction dicts into roads list
+        # Old format: junction.connecting_roads = [ConnectingRoad dicts]
+        # New format: junction.connecting_road_ids = [str IDs], roads stored in Project.roads
+        for j_data in data.get('junctions', []):
+            legacy_crs = j_data.get('connecting_roads', [])
+            if legacy_crs and not j_data.get('connecting_road_ids'):
+                junction_id = j_data.get('id', '')
+                cr_ids = []
+                for cr_data in legacy_crs:
+                    cr_road = Road.from_connecting_road_dict(cr_data, junction_id)
+                    roads.append(cr_road)
+                    cr_ids.append(cr_road.id)
+                # Replace legacy data with new format for Junction.from_dict()
+                j_data['connecting_road_ids'] = cr_ids
+                j_data.pop('connecting_roads', None)
+
         junctions = [Junction.from_dict(j) for j in data.get('junctions', [])]
         junction_groups = [JunctionGroup.from_dict(jg) for jg in data.get('junction_groups', [])]
         signals = [Signal.from_dict(s) for s in data.get('signals', [])]
@@ -1746,7 +1787,7 @@ class Project:
         road_ids = {r.id for r in self.roads}
 
         for junction in self.junctions:
-            cr_ids = {cr.id for cr in junction.connecting_roads}
+            cr_ids = set(junction.connecting_road_ids)
             before = len(junction.connected_road_ids)
             junction.connected_road_ids = [
                 rid for rid in junction.connected_road_ids

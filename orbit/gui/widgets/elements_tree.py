@@ -202,36 +202,38 @@ class ElementsTreeWidget(QWidget):
     def create_junction_item(self, junction: Junction) -> QTreeWidgetItem:
         """Create a tree item for a junction with connecting roads as children."""
         road_count = len(junction.connected_road_ids)
-        conn_count = len(junction.connecting_roads)
+        conn_count = len(junction.connecting_road_ids)
         text = f"{junction.name} ({road_count} roads, {conn_count} connections)"
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "junction", "id": junction.id})
 
         # Add connecting roads as children
-        for connecting_road in junction.connecting_roads:
-            conn_item = self.create_connecting_road_item(connecting_road)
-            item.addChild(conn_item)
+        for cr_id in junction.connecting_road_ids:
+            cr = self.project.get_road(cr_id) if self.project else None
+            if cr:
+                conn_item = self.create_connecting_road_item(cr)
+                item.addChild(conn_item)
 
         return item
 
     def create_connecting_road_item(self, connecting_road) -> QTreeWidgetItem:
         """Create a tree item for a connecting road with centerline and lanes as children."""
-        from orbit.models.connecting_road import ConnectingRoad
+        from orbit.models.road import Road
 
-        conn_road: ConnectingRoad = connecting_road
+        conn_road: Road = connecting_road
 
         # Get road names for display
         predecessor_name = "?"
         successor_name = "?"
 
         if self.project:
-            pred_road = self.project.get_road(conn_road.predecessor_road_id)
+            pred_road = self.project.get_road(conn_road.predecessor_id)
             if pred_road:
                 pred_id_short = pred_road.id[:8]
                 predecessor_name = f"{pred_road.name} ({pred_id_short})" if pred_road.name else f"Road {pred_id_short}"
 
-            succ_road = self.project.get_road(conn_road.successor_road_id)
+            succ_road = self.project.get_road(conn_road.successor_id)
             if succ_road:
                 succ_id_short = succ_road.id[:8]
                 successor_name = f"{succ_road.name} ({succ_id_short})" if succ_road.name else f"Road {succ_id_short}"
@@ -251,7 +253,7 @@ class ElementsTreeWidget(QWidget):
         item.addChild(centerline_item)
 
         # Add lanes as children
-        lane_ids = conn_road.get_lane_ids()
+        lane_ids = conn_road.get_cr_lane_ids()
         for lane_id in lane_ids:
             lane_item = self.create_connecting_road_lane_item(conn_road.id, lane_id)
             item.addChild(lane_item)
@@ -260,13 +262,13 @@ class ElementsTreeWidget(QWidget):
 
     def create_connecting_road_centerline_item(self, connecting_road) -> QTreeWidgetItem:
         """Create a tree item for a connecting road's centerline path."""
-        from orbit.models.connecting_road import ConnectingRoad
+        from orbit.models.road import Road
 
-        conn_road: ConnectingRoad = connecting_road
+        conn_road: Road = connecting_road
 
         # Calculate path length
-        path_length = conn_road.get_length_pixels()
-        point_count = len(conn_road.path)
+        path_length = conn_road.get_inline_path_length()
+        point_count = len(conn_road.inline_path or [])
 
         # Format geometry type
         if conn_road.geometry_type == "parampoly3":
@@ -324,8 +326,8 @@ class ElementsTreeWidget(QWidget):
                 road_name = road.name or f"Road {road.id[:8]}"
                 road_info = f" → {road_name}"
             else:
-                cr = self.project.get_connecting_road(signal.road_id)
-                if cr:
+                cr = self.project.get_road(signal.road_id)
+                if cr and cr.is_connecting_road:
                     road_info = f" → CR {cr.id[:8]}"
 
         text = f"{display_name}{road_info}"
@@ -351,8 +353,8 @@ class ElementsTreeWidget(QWidget):
                 road_name = road.name or f"Road {road.id[:8]}"
                 road_info = f" → {road_name}"
             else:
-                cr = self.project.get_connecting_road(obj.road_id)
-                if cr:
+                cr = self.project.get_road(obj.road_id)
+                if cr and cr.is_connecting_road:
                     road_info = f" → CR {cr.id[:8]}"
 
         text = f"{display_name} ({category}){road_info}"
@@ -554,17 +556,10 @@ class ElementsTreeWidget(QWidget):
         """Edit a connecting road's properties."""
         from ..dialogs.connecting_road_dialog import ConnectingRoadDialog
 
-        # Find the connecting road in junctions
-        connecting_road = None
-        for junction in self.project.junctions:
-            for cr in junction.connecting_roads:
-                if cr.id == connecting_road_id:
-                    connecting_road = cr
-                    break
-            if connecting_road:
-                break
+        # Find the connecting road in project roads
+        connecting_road = self.project.get_road(connecting_road_id)
 
-        if connecting_road:
+        if connecting_road and connecting_road.is_connecting_road:
             dialog = ConnectingRoadDialog(connecting_road, self.project, self)
             result = dialog.exec()
             if result:
@@ -581,9 +576,8 @@ class ElementsTreeWidget(QWidget):
             Junction object or None if not found
         """
         for junction in self.project.junctions:
-            for cr in junction.connecting_roads:
-                if cr.id == connecting_road_id:
-                    return junction
+            if connecting_road_id in junction.connecting_road_ids:
+                return junction
         return None
 
     def _edit_lane_connections_for_connecting_road(self, connecting_road_id: str):
@@ -596,23 +590,14 @@ class ElementsTreeWidget(QWidget):
         """Edit a connecting road lane's properties."""
         from ..dialogs.lane_properties_dialog import LanePropertiesDialog
 
-        # Find the connecting road in junctions
-        connecting_road = None
-        _parent_junction = None
-        for junction in self.project.junctions:
-            for cr in junction.connecting_roads:
-                if cr.id == connecting_road_id:
-                    connecting_road = cr
-                    _parent_junction = junction
-                    break
-            if connecting_road:
-                break
+        # Find the connecting road in project roads
+        connecting_road = self.project.get_road(connecting_road_id)
 
-        if not connecting_road:
+        if not connecting_road or not connecting_road.is_connecting_road:
             return
 
         # Find the lane
-        lane = connecting_road.get_lane(lane_id)
+        lane = connecting_road.get_cr_lane(lane_id)
         if not lane:
             return
 
