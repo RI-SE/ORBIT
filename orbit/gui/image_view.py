@@ -217,6 +217,19 @@ class ImageView(QGraphicsView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setMouseTracking(True)  # Enable mouse tracking for position updates
 
+    def _set_padded_scene_rect(self, image_width: int, image_height: int):
+        """Set scene rect to image bounds plus a 50% margin on each side.
+
+        Without an explicit scene rect Qt restricts panning to the bounding
+        box of scene items (i.e. the image).  The extra margin lets users pan
+        and place road endpoints outside the image area.
+        """
+        pad_x = image_width * 0.5
+        pad_y = image_height * 0.5
+        self.scene.setSceneRect(-pad_x, -pad_y,
+                                image_width + 2 * pad_x,
+                                image_height + 2 * pad_y)
+
     def set_synthetic_canvas(self, width: int, height: int, color=None):
         """Create a grey canvas as a synthetic image substitute.
 
@@ -242,6 +255,7 @@ class ImageView(QGraphicsView):
         self.image_np = None
         self.image_path = None
 
+        self._set_padded_scene_rect(width, height)
         self.fit_to_window()
 
     def load_image(self, image_path: Path):
@@ -274,6 +288,7 @@ class ImageView(QGraphicsView):
         self.image_item = self.scene.addPixmap(pixmap)
         self.image_item.setZValue(0)
 
+        self._set_padded_scene_rect(width, height)
         # Fit to view
         self.fit_to_window()
 

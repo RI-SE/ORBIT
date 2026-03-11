@@ -1427,17 +1427,12 @@ class MainWindow(QMainWindow):
             show_warning(self, "Please select a polyline first before creating a road.", "No Polyline Selected")
             return
 
-        # Create a new road
-        road = RoadPropertiesDialog.create_road(self.project, self, verbose=self.verbose)
+        # Pre-assign the selected polyline so the dialog's centerline combo is populated
+        road = RoadPropertiesDialog.create_road(
+            self.project, self, verbose=self.verbose,
+            initial_polyline_ids=[selected_polyline_id],
+        )
         if road:
-            # Add the selected polyline
-            road.add_polyline(selected_polyline_id)
-
-            # Automatically detect and set centerline
-            polyline = self.project.get_polyline(selected_polyline_id)
-            if polyline and polyline.line_type == LineType.CENTERLINE:
-                road.centerline_id = selected_polyline_id
-
             # Check if road has a centerline
             if not road.has_centerline():
                 if not ask_yes_no(
