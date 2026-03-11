@@ -21,6 +21,7 @@ class GeometryIssue:
     section_number: Optional[int] = None
     severity: str = "warning"  # "error" | "warning"
     element_id: Optional[str] = None  # Signal or object ID for element-level issues
+    element_type: Optional[str] = None  # "signal" | "object" — disambiguates ID namespace
 
 
 def _s_from_position(position, centerline_points) -> Optional[float]:
@@ -192,6 +193,7 @@ def validate_project_geometry(project: "Project") -> List[GeometryIssue]:
                 ),
                 road_id=signal.road_id,
                 element_id=signal.id,
+                element_type="signal",
                 severity="warning",
             ))
 
@@ -222,6 +224,11 @@ def validate_project_geometry(project: "Project") -> List[GeometryIssue]:
         else:
             continue  # Road not found
         if s is not None and not (0 <= s <= length):
+            # Polygon objects (buildings, land areas) have organisational road assignments.
+            # Their centroid s-position is not geometrically meaningful — skip the check.
+            if obj.points and len(obj.points) >= 3:
+                continue
+
             where = "beyond road end" if s > length else "before road start"
             issues.append(GeometryIssue(
                 message=(
@@ -230,6 +237,7 @@ def validate_project_geometry(project: "Project") -> List[GeometryIssue]:
                 ),
                 road_id=obj.road_id,
                 element_id=obj.id,
+                element_type="object",
                 severity="warning",
             ))
 

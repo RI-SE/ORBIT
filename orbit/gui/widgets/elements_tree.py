@@ -51,7 +51,8 @@ class ElementsTreeWidget(QWidget):
 
         self.project = project
         self._geometry_issues = []
-        self._element_issues = {}
+        self._signal_issues: dict = {}
+        self._object_issues: dict = {}
         self.setup_ui()
         self.refresh_tree()
 
@@ -148,10 +149,15 @@ class ElementsTreeWidget(QWidget):
     def refresh_tree(self):
         """Refresh the entire tree from project data."""
         self._geometry_issues = validate_project_geometry(self.project)
-        self._element_issues = {
+        self._signal_issues = {
             i.element_id: i
             for i in self._geometry_issues
-            if i.element_id is not None
+            if i.element_id is not None and i.element_type == "signal"
+        }
+        self._object_issues = {
+            i.element_id: i
+            for i in self._geometry_issues
+            if i.element_id is not None and i.element_type == "object"
         }
         self.tree.clear()
 
@@ -334,7 +340,7 @@ class ElementsTreeWidget(QWidget):
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "signal", "id": signal.id})
-        issue = self._element_issues.get(signal.id)
+        issue = self._signal_issues.get(signal.id)
         self._apply_warning_icon(item, [issue] if issue else [])
         return item
 
@@ -361,7 +367,7 @@ class ElementsTreeWidget(QWidget):
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "object", "id": obj.id})
-        issue = self._element_issues.get(obj.id)
+        issue = self._object_issues.get(obj.id)
         self._apply_warning_icon(item, [issue] if issue else [])
         return item
 
