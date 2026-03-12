@@ -44,6 +44,38 @@ from .osm_parser import OSMData, OSMNode, OSMWay
 logger = get_logger(__name__)
 
 
+def clip_node_ids(
+    original_coords: list,
+    original_nodes: List[int],
+    clipped_coords: list,
+    tolerance: float = 1e-9,
+) -> List[Optional[int]]:
+    """Map node IDs from original coords to clipped coords.
+
+    For each clipped coord, if it matches an original coord, use its node ID.
+    Interpolated boundary points get None.
+    """
+    if not original_nodes or len(original_nodes) != len(original_coords):
+        return []
+
+    # Build lookup: (lat, lon) -> node_id for original coords
+    # Use rounded coords as keys to handle float precision
+    coord_to_node = {}
+    for i, coord in enumerate(original_coords):
+        key = (round(coord[0], 8), round(coord[1], 8))
+        coord_to_node[key] = original_nodes[i]
+
+    result = []
+    for coord in clipped_coords:
+        key = (round(coord[0], 8), round(coord[1], 8))
+        result.append(coord_to_node.get(key))
+
+    # Only return if we preserved at least some node IDs
+    if any(nid is not None for nid in result):
+        return result
+    return []
+
+
 def calculate_bbox_from_center(center_lat: float, center_lon: float,
                                radius_m: float) -> Tuple[float, float, float, float]:
     """Calculate bounding box from center point and radius in meters.
@@ -302,67 +334,68 @@ def detect_road_links(roads: List[Road], polylines_dict: Dict[str, Polyline],
                             road.successor_contact = "end"
 
 
+def _is_way_endpoint(osm_way, node_id: int) -> bool:
+    """Check if node_id is at start or end of an OSM way."""
+    return osm_way.nodes[0] == node_id or osm_way.nodes[-1] == node_id
+
+
 def detect_junction_node_ids_from_osm(osm_data, road_osm_way_map: Dict[str, int]) -> Set[int]:
+    """Detect OSM node IDs that represent junctions (for road splitting).
+
+    A junction node is where 2+ VEHICULAR roads share a node AND either:
+    - The roads have different names, OR
+    - The shared node is a mid-node of at least one road (T-junction with same name)
     """
-    Detect OSM node IDs that represent junctions (for road splitting).
-
-    A junction node is where 2+ VEHICULAR roads with DIFFERENT names share a node.
-
-    Args:
-        osm_data: Parsed OSM data
-        road_osm_way_map: Dictionary mapping Road.id -> OSM way ID
-
-    Returns:
-        Set of OSM node IDs that are junctions
-    """
-    from collections import defaultdict
-
     # Build reverse mapping: node_id -> list of (osm_way_id, road_name, is_vehicular)
-    node_to_roads = defaultdict(list)
+    node_to_roads: Dict[int, list] = defaultdict(list)
 
     for road_id, osm_way_id in road_osm_way_map.items():
         osm_way = osm_data.ways.get(osm_way_id)
         if not osm_way or not osm_way.nodes:
             continue
 
-        # Get road name from OSM tags
         road_name = osm_way.tags.get('name', f'Way {osm_way_id}')
-
-        # Determine if this is a vehicular road (not a path)
         highway = osm_way.tags.get('highway', '')
         is_vehicular = True
-
-        # Paths are non-vehicular
         if highway in ('cycleway', 'footway'):
             is_vehicular = False
         elif highway == 'path':
             if osm_way.tags.get('bicycle') == 'designated' or osm_way.tags.get('foot') == 'designated':
                 is_vehicular = False
 
-        # Check ALL nodes in the way
         for node_id in osm_way.nodes:
             node_to_roads[node_id].append((osm_way_id, road_name, is_vehicular))
 
-    # Find junction nodes where 2+ DIFFERENT VEHICULAR roads meet
     junction_node_ids = set()
     for node_id, road_list in node_to_roads.items():
         if len(road_list) < 2:
             continue
 
-        # Count vehicular roads and get unique road names
         vehicular_roads = [(osm_way_id, road_name) for osm_way_id, road_name, is_vehicular
                           in road_list if is_vehicular]
-
-        # Only junction if at least 2 vehicular roads meet
         if len(vehicular_roads) < 2:
             continue
 
-        # Get unique road names among vehicular roads
-        road_names = set(road_name for _, road_name in vehicular_roads)
+        # Different OSM way IDs that share this node
+        unique_way_ids = set(wid for wid, _ in vehicular_roads)
+        if len(unique_way_ids) < 2:
+            continue
 
-        # Only junction if 2+ different road names meet
+        road_names = set(rn for _, rn in vehicular_roads)
         if len(road_names) >= 2:
+            # Different names — always a junction
             junction_node_ids.add(node_id)
+        else:
+            # Same name — only a junction if this is a T-junction
+            # (node is a mid-node of at least one way, not endpoint-to-endpoint)
+            is_t_junction = False
+            for osm_way_id, _ in vehicular_roads:
+                osm_way = osm_data.ways.get(osm_way_id)
+                if osm_way and not _is_way_endpoint(osm_way, node_id):
+                    is_t_junction = True
+                    break
+            if is_t_junction:
+                junction_node_ids.add(node_id)
 
     return junction_node_ids
 
@@ -417,26 +450,33 @@ def detect_junctions_from_osm(osm_data, road_osm_way_map: Dict[str, int],
         for node_id in osm_way.nodes:
             node_to_roads[node_id].append((road_id, osm_way_id, road_name, is_vehicular))
 
-    # Create junctions where 2+ DIFFERENT VEHICULAR roads meet
+    # Create junctions where 2+ vehicular roads meet
     junctions = []
     for node_id, road_list in node_to_roads.items():
         if len(road_list) < 2:
-            continue  # Not a junction, only one road uses this node
+            continue
 
-        # Count vehicular roads and get unique road names
         vehicular_roads = [(road_id, osm_way_id, road_name) for road_id, osm_way_id, road_name, is_vehicular
                           in road_list if is_vehicular]
-
-        # Only create road junction if at least 2 vehicular roads meet
         if len(vehicular_roads) < 2:
-            continue  # Not enough vehicular roads - will be handled as path crossing instead
+            continue
 
-        # Get unique road names among vehicular roads
+        # Need 2+ different OSM ways
+        unique_way_ids = set(wid for _, wid, _ in vehicular_roads)
+        if len(unique_way_ids) < 2:
+            continue
+
         road_names = set(road_name for _, _, road_name in vehicular_roads)
-
-        # Only create junction if 2+ different road names meet
         if len(road_names) < 2:
-            continue  # Same road, this is a continuation not a junction
+            # Same name — only a junction if T-junction (mid-node of at least one way)
+            is_t_junction = False
+            for _, osm_way_id, _ in vehicular_roads:
+                osm_way = osm_data.ways.get(osm_way_id)
+                if osm_way and not _is_way_endpoint(osm_way, node_id):
+                    is_t_junction = True
+                    break
+            if not is_t_junction:
+                continue
 
         # Get node coordinates
         osm_node = osm_data.nodes.get(node_id)
@@ -841,26 +881,129 @@ def split_road_at_junctions(road: Road, centerline: Polyline,
     road.lane_sections = new_sections
 
 
+def _recover_osm_node_ids(
+    centerline: Polyline,
+    osm_way_id: int,
+    osm_data,
+    transformer: 'CoordinateTransformer',
+    tolerance_deg: float = 0.0001,
+) -> Optional[List[Optional[int]]]:
+    """Recover osm_node_ids for a polyline by matching geo_points to OSM node positions.
+
+    Used when loading from .orbit files that lack osm_node_ids.
+    Falls back to pixel matching via transformer if geo_points unavailable.
+    Returns None if matching fails.
+    """
+    osm_way = osm_data.ways.get(osm_way_id)
+    if not osm_way or not osm_way.nodes:
+        return None
+
+    # Build OSM node geo positions: (node_id, lon, lat)
+    osm_geo = []
+    for node_id in osm_way.nodes:
+        node = osm_data.nodes.get(node_id)
+        if not node:
+            return None
+        osm_geo.append((node_id, node.lon, node.lat))
+
+    # Prefer geo_points matching (more accurate, no transformer needed)
+    if centerline.geo_points and len(centerline.geo_points) >= 2:
+        return _match_geo_subsequence(centerline.geo_points, osm_geo, tolerance_deg)
+
+    # Fallback: pixel matching via transformer
+    if not transformer:
+        return None
+    try:
+        osm_pixels = []
+        for nid, lon, lat in osm_geo:
+            px, py = transformer.geo_to_pixel(lon, lat)
+            osm_pixels.append((nid, px, py))
+        return _match_pixel_subsequence(centerline.points, osm_pixels, tolerance_px=5.0)
+    except (NotImplementedError, Exception):
+        return None
+
+
+def _match_geo_subsequence(
+    geo_points: list,
+    osm_geo: list,
+    tolerance_deg: float,
+) -> Optional[List[Optional[int]]]:
+    """Match polyline geo_points to a contiguous subsequence of OSM node geo positions.
+
+    Endpoints may have been shifted by junction offset shortening, so we match
+    interior points strictly and allow a larger tolerance on the first/last point.
+    """
+    n_pts = len(geo_points)
+    n_osm = len(osm_geo)
+    if n_pts < 2 or n_pts > n_osm:
+        return None
+
+    # Match using interior points (skip first and last which may be offset-shortened)
+    # Find the best alignment by matching geo_points[1] to each OSM node
+    endpoint_tolerance = tolerance_deg * 10  # ~100m for shortened endpoints
+
+    for start in range(n_osm - n_pts + 1):
+        node_ids = []
+        match = True
+        for i in range(n_pts):
+            nid, lon, lat = osm_geo[start + i]
+            glon, glat = geo_points[i]
+            # Use relaxed tolerance for endpoints (may be offset-shortened)
+            tol = endpoint_tolerance if (i == 0 or i == n_pts - 1) else tolerance_deg
+            if abs(glon - lon) > tol or abs(glat - lat) > tol:
+                match = False
+                break
+            node_ids.append(nid)
+        if match:
+            return node_ids
+    return None
+
+
+def _match_pixel_subsequence(
+    pts: list,
+    osm_pixels: list,
+    tolerance_px: float,
+) -> Optional[List[Optional[int]]]:
+    """Match polyline points to a contiguous subsequence of OSM node pixel positions."""
+    n_pts = len(pts)
+    n_osm = len(osm_pixels)
+    if n_pts > n_osm:
+        return None
+
+    for start in range(n_osm - n_pts + 1):
+        node_ids = []
+        match = True
+        for i in range(n_pts):
+            nid, nx, ny = osm_pixels[start + i]
+            px, py = pts[i]
+            if math.sqrt((px - nx)**2 + (py - ny)**2) > tolerance_px:
+                match = False
+                break
+            node_ids.append(nid)
+        if match:
+            return node_ids
+    return None
+
+
 def split_roads_at_junction_nodes(
     roads: List[Road],
     polylines_dict: Dict[str, Polyline],
     junction_node_ids: Set[int],
     road_to_osm_way: Dict[str, int] = None,
-    verbose: bool = False
+    verbose: bool = False,
+    osm_data=None,
+    transformer: 'CoordinateTransformer' = None,
 ) -> Tuple[List[Road], Dict[str, Polyline], Dict[str, int]]:
-    """
-    Split roads at junction nodes, creating separate road segments.
-
-    For each road that passes through junction nodes, split it into
-    multiple roads with endpoints at the junctions. This ensures that
-    roads always end at junctions (matching OpenDRIVE conventions).
+    """Split roads at junction nodes, creating separate road segments.
 
     Args:
         roads: List of roads to potentially split
         polylines_dict: Dictionary of polyline_id -> Polyline
         junction_node_ids: Set of OSM node IDs that are junctions
-        road_to_osm_way: Optional dictionary mapping Road.id -> OSM way ID (preserved for split roads)
+        road_to_osm_way: Optional mapping Road.id -> OSM way ID
         verbose: If True, print debug information
+        osm_data: Optional OSM data for recovering missing osm_node_ids
+        transformer: Optional transformer for geo->pixel conversion (for recovery)
 
     Returns:
         Tuple of (new_roads_list, new_polylines_dict, new_road_to_osm_way)
@@ -889,11 +1032,23 @@ def split_roads_at_junction_nodes(
         centerline = polylines_dict.get(road.centerline_id)
         osm_way_id = road_to_osm_way.get(road.id) if road_to_osm_way else None
 
-        if not centerline or not centerline.osm_node_ids:
-            # Keep road as-is if no OSM data (e.g., manually drawn roads)
+        if not centerline:
             new_roads.append(road)
-            if centerline:
-                new_polylines[centerline.id] = centerline
+            if new_road_to_osm_way is not None and osm_way_id is not None:
+                new_road_to_osm_way[road.id] = osm_way_id
+            continue
+
+        # Recover osm_node_ids from OSM data if missing (e.g., loaded from .orbit file)
+        if not centerline.osm_node_ids and osm_way_id and osm_data and transformer:
+            centerline.osm_node_ids = _recover_osm_node_ids(
+                centerline, osm_way_id, osm_data, transformer)
+            if centerline.osm_node_ids and verbose:
+                logger.debug("  Recovered osm_node_ids for road '%s' from OSM way %d",
+                             road.name, osm_way_id)
+
+        if not centerline.osm_node_ids:
+            new_roads.append(road)
+            new_polylines[centerline.id] = centerline
             if new_road_to_osm_way is not None and osm_way_id is not None:
                 new_road_to_osm_way[road.id] = osm_way_id
             continue
@@ -1027,6 +1182,183 @@ def split_roads_at_junction_nodes(
     return new_roads, new_polylines, new_road_to_osm_way
 
 
+def compute_adaptive_offsets(
+    junctions: List['Junction'],
+    roads: List[Road],
+    polylines_dict: Dict[str, 'Polyline'],
+    base_offset: float,
+    transformer: 'CoordinateTransformer',
+) -> Tuple[Dict[Tuple[str, str], float], List['Junction'], Set[str]]:
+    """Compute per-road offset distances and merge very close junctions.
+
+    Returns (per_road_offsets, merged_junctions, merged_source_ids) where:
+    - per_road_offsets maps (road_id, "start"|"end") -> offset in meters
+    - merged_junctions is a list of new Junction objects replacing close pairs
+    - merged_source_ids is the set of junction IDs that were replaced by merges
+    """
+    scale_x, scale_y = transformer.get_scale_factor()
+    avg_scale = (scale_x + scale_y) / 2.0
+
+    roads_dict = {road.id: road for road in roads}
+
+    # Build mapping: road_id -> list of (junction, "start"|"end")
+    road_junctions: Dict[str, List[Tuple[Junction, str]]] = defaultdict(list)
+    for junction in junctions:
+        if junction.junction_type == "virtual" or not junction.center_point:
+            continue
+        jx, jy = junction.center_point
+        for road_id in junction.connected_road_ids:
+            road = roads_dict.get(road_id)
+            if not road or not road.centerline_id:
+                continue
+            centerline = polylines_dict.get(road.centerline_id)
+            if not centerline or len(centerline.points) < 2:
+                continue
+            pts = centerline.points
+            start_dist = math.sqrt((pts[0][0] - jx)**2 + (pts[0][1] - jy)**2)
+            end_dist = math.sqrt((pts[-1][0] - jx)**2 + (pts[-1][1] - jy)**2)
+            if start_dist < 15.0:
+                road_junctions[road_id].append((junction, "start"))
+            if end_dist < 15.0:
+                road_junctions[road_id].append((junction, "end"))
+
+    # Detect close junction pairs sharing a road
+    # Build pairwise distances between junctions connected by same road
+    junction_pair_roads: Dict[Tuple[str, str], List[Tuple[str, float]]] = defaultdict(list)
+    for road_id, jlist in road_junctions.items():
+        if len(jlist) == 2:
+            j1, end1 = jlist[0]
+            j2, end2 = jlist[1]
+            # Compute road length between these two junctions
+            road = roads_dict[road_id]
+            centerline = polylines_dict[road.centerline_id]
+            road_length_px = calculate_path_length(centerline.points)
+            road_length_m = road_length_px * avg_scale
+            key = tuple(sorted([j1.id, j2.id]))
+            junction_pair_roads[key].append((road_id, road_length_m))
+
+    # Phase 1: Merge very close junctions (within 1x base_offset)
+    merged_junctions: List[Junction] = []
+    merged_junction_ids: Set[str] = set()
+
+    for (j1_id, j2_id), road_lengths in junction_pair_roads.items():
+        min_road_length = min(length for _, length in road_lengths)
+        if min_road_length >= base_offset:
+            continue  # Not close enough to merge
+
+        # Find the actual junction objects
+        j1 = next((j for j in junctions if j.id == j1_id), None)
+        j2 = next((j for j in junctions if j.id == j2_id), None)
+        if not j1 or not j2:
+            continue
+        if j1.id in merged_junction_ids or j2.id in merged_junction_ids:
+            continue  # Already merged
+
+        # Merge: combine connected roads, use midpoint as center
+        merged_road_ids = list(set(j1.connected_road_ids + j2.connected_road_ids))
+        cx = (j1.center_point[0] + j2.center_point[0]) / 2
+        cy = (j1.center_point[1] + j2.center_point[1]) / 2
+
+        geo_center = None
+        if j1.geo_center_point and j2.geo_center_point:
+            geo_center = (
+                (j1.geo_center_point[0] + j2.geo_center_point[0]) / 2,
+                (j1.geo_center_point[1] + j2.geo_center_point[1]) / 2,
+            )
+
+        merged = Junction(
+            name=f"{j1.name}+{j2.name}",
+            center_point=(cx, cy),
+            geo_center_point=geo_center,
+            connected_road_ids=merged_road_ids,
+        )
+        merged_junctions.append(merged)
+        merged_junction_ids.add(j1.id)
+        merged_junction_ids.add(j2.id)
+
+        # Snap road endpoints that were at either original center to the new center
+        for junc in (j1, j2):
+            ojx, ojy = junc.center_point
+            for road_id in junc.connected_road_ids:
+                road = roads_dict.get(road_id)
+                if not road or not road.centerline_id:
+                    continue
+                centerline = polylines_dict.get(road.centerline_id)
+                if not centerline or len(centerline.points) < 2:
+                    continue
+                pts = list(centerline.points)
+                sd = math.sqrt((pts[0][0] - ojx)**2 + (pts[0][1] - ojy)**2)
+                ed = math.sqrt((pts[-1][0] - ojx)**2 + (pts[-1][1] - ojy)**2)
+                changed = False
+                if sd < 15.0:
+                    pts[0] = (cx, cy)
+                    changed = True
+                if ed < 15.0:
+                    pts[-1] = (cx, cy)
+                    changed = True
+                if changed:
+                    centerline.points = pts
+
+        logger.debug("Merged close junctions '%s' and '%s' (%.1fm apart)",
+                      j1.name, j2.name, min_road_length)
+
+    # Phase 2: Compute per-road offsets
+    per_road_offsets: Dict[Tuple[str, str], float] = {}
+
+    # Rebuild road_junctions considering merges
+    active_junctions = [j for j in junctions if j.id not in merged_junction_ids] + merged_junctions
+
+    road_junctions_active: Dict[str, List[Tuple[Junction, str]]] = defaultdict(list)
+    for junction in active_junctions:
+        if junction.junction_type == "virtual" or not junction.center_point:
+            continue
+        jx, jy = junction.center_point
+        for road_id in junction.connected_road_ids:
+            road = roads_dict.get(road_id)
+            if not road or not road.centerline_id:
+                continue
+            centerline = polylines_dict.get(road.centerline_id)
+            if not centerline or len(centerline.points) < 2:
+                continue
+            pts = centerline.points
+            start_dist = math.sqrt((pts[0][0] - jx)**2 + (pts[0][1] - jy)**2)
+            end_dist = math.sqrt((pts[-1][0] - jx)**2 + (pts[-1][1] - jy)**2)
+            if start_dist < 15.0:
+                road_junctions_active[road_id].append((junction, "start"))
+            if end_dist < 15.0:
+                road_junctions_active[road_id].append((junction, "end"))
+
+    for road_id, jlist in road_junctions_active.items():
+        road = roads_dict.get(road_id)
+        if not road or not road.centerline_id:
+            continue
+        centerline = polylines_dict.get(road.centerline_id)
+        if not centerline or len(centerline.points) < 2:
+            continue
+        road_length_m = calculate_path_length(centerline.points) * avg_scale
+
+        if len(jlist) == 2:
+            # Road connects two junctions — cap each end at 40% of road length
+            max_offset = road_length_m * 0.4
+            # Check if these two junctions are moderately close (1x–2x base_offset)
+            inter_dist = road_length_m
+            if inter_dist < 2 * base_offset:
+                # Reduce offset to half the inter-junction distance minus 1m margin
+                reduced = (inter_dist / 2) - 1.0
+                max_offset = max(1.0, min(max_offset, reduced))
+
+            for junction, end in jlist:
+                offset = min(base_offset, max_offset)
+                per_road_offsets[(road_id, end)] = offset
+        else:
+            # Road at only one junction — use base offset, cap at 40% of road length
+            for junction, end in jlist:
+                offset = min(base_offset, road_length_m * 0.4)
+                per_road_offsets[(road_id, end)] = offset
+
+    return per_road_offsets, merged_junctions, merged_junction_ids
+
+
 def offset_road_endpoints_from_junctions(
     roads: List[Road],
     polylines_dict: Dict[str, Polyline],
@@ -1034,22 +1366,21 @@ def offset_road_endpoints_from_junctions(
     offset_distance_meters: float = 8.0,
     transformer: 'CoordinateTransformer' = None,
     minimum_length_meters: float = 1.0,
-    verbose: bool = False
+    verbose: bool = False,
+    per_road_offsets: Optional[Dict[Tuple[str, str], float]] = None,
 ) -> None:
-    """
-    Offset road endpoints away from junction centers to create space for connecting roads.
-
-    This modifies road centerline polylines in-place, moving endpoints that are at
-    junction centers outward along the road direction.
+    """Offset road endpoints away from junction centers for connecting roads.
 
     Args:
         roads: List of roads
         polylines_dict: Dictionary of polyline_id -> Polyline
         junctions: List of junctions
-        offset_distance_meters: Distance in METERS to offset endpoints from junction center (default: 8.0m)
+        offset_distance_meters: Uniform offset in meters (default: 8.0m)
         transformer: CoordinateTransformer to convert meters to pixels (required)
-        minimum_length_meters: Minimum road length to preserve after offsetting (default: 1.0m)
+        minimum_length_meters: Minimum road length to preserve (default: 1.0m)
         verbose: If True, print debug information
+        per_road_offsets: Optional dict mapping (road_id, "start"|"end") -> offset in meters.
+            When provided, overrides offset_distance_meters for specific road endpoints.
     """
     if transformer is None:
         raise ValueError("transformer is required to convert offset distance from meters to pixels")
@@ -1109,7 +1440,12 @@ def offset_road_endpoints_from_junctions(
                 path_length = calculate_path_length(points)
 
                 # Determine actual offset distance to use, preserving minimum length
-                actual_offset = offset_distance_pixels
+                # Use per-road offset if available, otherwise uniform offset
+                if per_road_offsets and (road_id, "start") in per_road_offsets:
+                    road_offset_m = per_road_offsets[(road_id, "start")]
+                    actual_offset = road_offset_m / avg_scale
+                else:
+                    actual_offset = offset_distance_pixels
                 max_allowed_offset = path_length - minimum_length_pixels
 
                 if max_allowed_offset <= 0:
@@ -1172,7 +1508,12 @@ def offset_road_endpoints_from_junctions(
                 path_length = calculate_path_length(points)
 
                 # Determine actual offset distance to use, preserving minimum length
-                actual_offset = offset_distance_pixels
+                # Use per-road offset if available, otherwise uniform offset
+                if per_road_offsets and (road_id, "end") in per_road_offsets:
+                    road_offset_m = per_road_offsets[(road_id, "end")]
+                    actual_offset = road_offset_m / avg_scale
+                else:
+                    actual_offset = offset_distance_pixels
                 max_allowed_offset = path_length - minimum_length_pixels
 
                 if max_allowed_offset <= 0:

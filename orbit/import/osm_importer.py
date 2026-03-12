@@ -15,11 +15,13 @@ from orbit.utils import CoordinateTransformer
 from orbit.utils.geometry import clip_polygon_to_bbox, clip_polyline_to_bbox
 from orbit.utils.logging_config import get_logger
 
-from .junction_analyzer import create_connecting_roads_from_patterns
+from .junction_analyzer import create_connecting_roads_from_patterns, evaluate_and_fix_connecting_roads
 from .osm_parser import OSMData, OSMParser
 from .osm_query import OverpassAPIClient, OverpassAPIError
 from .osm_to_orbit import (
     calculate_bbox_from_image,
+    clip_node_ids,
+    compute_adaptive_offsets,
     create_landuse_from_osm,
     create_object_from_osm,
     create_parking_from_osm,
@@ -66,6 +68,7 @@ class ImportOptions:
     timeout: int = 60  # seconds
     verbose: bool = False  # Print debug information
     filter_outside_image: bool = False  # Filter out roads with no endpoint inside image
+    auto_adjust_junctions: bool = True  # Adaptive offsets + CR curvature fix
 
 
 @dataclass
@@ -331,7 +334,9 @@ class OSMImporter:
                 roads, polylines_dict, updated_road_to_osm_way = split_roads_at_junction_nodes(
                     roads, polylines_dict, junction_node_ids,
                     road_to_osm_way=self.road_to_osm_way,
-                    verbose=options.verbose
+                    verbose=options.verbose,
+                    osm_data=osm_data,
+                    transformer=self.transformer,
                 )
 
                 # Update project with split roads and polylines
@@ -450,7 +455,9 @@ class OSMImporter:
                 roads, polylines_dict, updated_road_to_osm_way = split_roads_at_junction_nodes(
                     roads, polylines_dict, junction_node_ids,
                     road_to_osm_way=self.road_to_osm_way,
-                    verbose=options.verbose
+                    verbose=options.verbose,
+                    osm_data=osm_data,
+                    transformer=self.transformer,
                 )
 
                 # Update project with split roads and polylines
@@ -550,16 +557,19 @@ class OSMImporter:
             # Clip road geometry to image geo bounds to prevent homography
             # extrapolation artifacts far from control points
             if self._clip_geo_bbox and osm_way.resolved_coords:
-                original_len = len(osm_way.resolved_coords)
+                original_coords = osm_way.resolved_coords
                 osm_way.resolved_coords = self._clip_resolved_coords(
-                    osm_way.resolved_coords
+                    original_coords
                 )
                 if len(osm_way.resolved_coords) < 2:
                     continue
-                # If clipping changed the geometry, invalidate node IDs
-                # (interpolated boundary points have no OSM node)
-                if len(osm_way.resolved_coords) != original_len:
-                    osm_way.nodes = []
+                # Update node IDs to match clipped coords: keep IDs for
+                # original points that survived, use None for interpolated
+                # boundary points inserted by clipping
+                if len(osm_way.resolved_coords) != len(original_coords) and osm_way.nodes:
+                    osm_way.nodes = clip_node_ids(
+                        original_coords, osm_way.nodes,
+                        osm_way.resolved_coords)
 
             road_result = create_road_from_osm(
                 osm_way,
@@ -831,6 +841,30 @@ class OSMImporter:
         detect_connection_patterns = junction_analyzer_module.detect_connection_patterns
         filter_unlikely_connections = junction_analyzer_module.filter_unlikely_connections
 
+        # Feature A: Compute adaptive offsets and merge close junctions
+        per_road_offsets = None
+        if options.auto_adjust_junctions and junctions:
+            per_road_offsets, merged, merged_ids = compute_adaptive_offsets(
+                junctions=junctions,
+                roads=self.project.roads,
+                polylines_dict=polylines_dict,
+                base_offset=self.project.junction_offset_distance_meters,
+                transformer=self.transformer,
+            )
+            if merged:
+                # Remove merged source junctions, add merged replacements
+                for mid in merged_ids:
+                    self.project.remove_junction(mid)
+                junctions = [j for j in junctions if j.id not in merged_ids]
+                for m in merged:
+                    self.project.add_junction(m)
+                    junctions.append(m)
+                    result.junctions_imported += 1
+                logger.debug("Merged %d junction pairs into %d junctions",
+                              len(merged_ids), len(merged))
+                # Refresh roads_dict after potential changes
+                roads_dict = {road.id: road for road in self.project.roads}
+
         # Store geometry info and patterns for each junction (before offsetting)
         # Skip virtual junctions (path crossings) as they don't need connecting roads
         junction_patterns = {}
@@ -849,15 +883,16 @@ class OSMImporter:
         # Step 2: Offset road endpoints from junctions to create space for connecting roads
         if junctions:
             osm_to_orbit = importlib.import_module('orbit.import.osm_to_orbit')
-            offset_road_endpoints_from_junctions = osm_to_orbit.offset_road_endpoints_from_junctions
+            offset_fn = osm_to_orbit.offset_road_endpoints_from_junctions
 
-            offset_road_endpoints_from_junctions(
+            offset_fn(
                 roads=self.project.roads,
                 polylines_dict=polylines_dict,
                 junctions=junctions,
                 offset_distance_meters=self.project.junction_offset_distance_meters,
                 transformer=self.transformer,
-                verbose=options.verbose
+                verbose=options.verbose,
+                per_road_offsets=per_road_offsets,
             )
 
             # Update project polylines with modified endpoints
@@ -895,6 +930,11 @@ class OSMImporter:
             create_connecting_roads_from_patterns(
                 junction, patterns, endpoint_lookup, self.transformer,
                 project=self.project)
+
+            # Feature B: Evaluate and fix sharp CR curvature
+            if options.auto_adjust_junctions:
+                evaluate_and_fix_connecting_roads(
+                    junction, self.project, self.transformer)
 
             if options.verbose:
                 summary = junction.get_connection_summary()

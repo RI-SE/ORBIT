@@ -1162,6 +1162,7 @@ class MainWindow(QMainWindow):
             default_lane_width=options_dict['default_lane_width'],
             import_junctions=options_dict['import_junctions'],
             filter_outside_image=options_dict.get('filter_outside_image', False),
+            auto_adjust_junctions=options_dict.get('auto_adjust_junctions', True),
             timeout=60,
             verbose=self.verbose
         )

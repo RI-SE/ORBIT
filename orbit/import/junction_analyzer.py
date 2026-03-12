@@ -12,7 +12,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from orbit.models import Junction, LaneConnection, Polyline, Project, Road
 from orbit.models.road import LaneInfo
-from orbit.utils.geometry import generate_connection_path_geo, generate_simple_connection_path
+from orbit.utils.geometry import (
+    generate_connection_path_geo,
+    generate_simple_connection_path,
+)
+from orbit.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from orbit.utils.coordinate_transform import CoordinateTransformer
@@ -893,6 +899,137 @@ def create_connecting_roads_from_patterns(
             )
 
             junction.add_lane_connection(lane_connection)
+
+
+def _compute_max_curvature(points: List[Tuple[float, float]]) -> float:
+    """Compute maximum discrete curvature across a polyline."""
+    max_k = 0.0
+    for i in range(1, len(points) - 1):
+        x0, y0 = points[i - 1]
+        x1, y1 = points[i]
+        x2, y2 = points[i + 1]
+        # Vectors
+        dx1, dy1 = x1 - x0, y1 - y0
+        dx2, dy2 = x2 - x1, y2 - y1
+        cross = abs(dx1 * dy2 - dy1 * dx2)
+        seg_len = math.sqrt(dx1 * dx1 + dy1 * dy1)
+        if seg_len < 1e-9:
+            continue
+        k = cross / (seg_len ** 3)
+        if k > max_k:
+            max_k = k
+    return max_k
+
+
+def evaluate_and_fix_connecting_roads(
+    junction: Junction,
+    project: Project,
+    transformer: Optional['CoordinateTransformer'] = None,
+    min_radius_meters: float = 3.0,
+) -> int:
+    """Evaluate CR curvature and re-generate with adjusted tangent_scale if too sharp.
+
+    Returns the number of CRs that were improved.
+    """
+    if not transformer:
+        return 0
+
+    scale_x, scale_y = transformer.get_scale_factor()
+    avg_scale = (scale_x + scale_y) / 2.0
+    # Max curvature threshold in pixels (1/radius_pixels)
+    max_k_threshold = 1.0 / (min_radius_meters / avg_scale)
+
+    roads_dict = {road.id: road for road in project.roads}
+    fixed_count = 0
+    tangent_scales_to_try = [0.6, 0.8, 1.2, 1.5]
+
+    for cr_id in list(junction.connecting_road_ids):
+        cr = roads_dict.get(cr_id)
+        if not cr or not cr.inline_path or len(cr.inline_path) < 3:
+            continue
+
+        current_max_k = _compute_max_curvature(cr.inline_path)
+        if current_max_k <= max_k_threshold:
+            continue  # Already smooth enough
+
+        # Try alternative tangent scales
+        best_k = current_max_k
+        best_path = None
+        best_geo_path = None
+        best_coeffs = None
+        best_scale = cr.tangent_scale or 1.0
+
+        from_heading = cr.stored_start_heading
+        to_heading = cr.stored_end_heading
+        if from_heading is None or to_heading is None:
+            continue
+
+        is_uturn = False  # CRs from import are not U-turns
+
+        for ts in tangent_scales_to_try:
+            # Try geo-first if available
+            if cr.inline_geo_path and len(cr.inline_geo_path) >= 2:
+                from_geo = cr.inline_geo_path[0]
+                to_geo = cr.inline_geo_path[-1]
+                try:
+                    geo_path, coeffs = generate_connection_path_geo(
+                        from_pos_geo=from_geo,
+                        from_heading=from_heading,
+                        to_pos_geo=to_geo,
+                        to_heading=to_heading,
+                        transformer=transformer,
+                        tangent_scale=ts,
+                        is_uturn=is_uturn,
+                    )
+                except Exception:
+                    continue
+                if not geo_path:
+                    continue
+                path = [transformer.geo_to_pixel(lon, lat) for lon, lat in geo_path]
+                if path:
+                    path[0] = cr.inline_path[0]
+                    path[-1] = cr.inline_path[-1]
+            else:
+                from_pos = cr.inline_path[0]
+                to_pos = cr.inline_path[-1]
+                try:
+                    path, coeffs = generate_simple_connection_path(
+                        from_pos=from_pos,
+                        from_heading=from_heading,
+                        to_pos=to_pos,
+                        to_heading=to_heading,
+                        tangent_scale=ts,
+                        is_uturn=is_uturn,
+                    )
+                except Exception:
+                    continue
+                geo_path = None
+
+            if not path or len(path) < 3:
+                continue
+
+            k = _compute_max_curvature(path)
+            if k < best_k:
+                best_k = k
+                best_path = path
+                best_geo_path = geo_path
+                best_coeffs = coeffs
+                best_scale = ts
+
+        if best_path and best_k < current_max_k:
+            cr.inline_path = best_path
+            cr.inline_geo_path = best_geo_path
+            cr.tangent_scale = best_scale
+            aU, bU, cU, dU, aV, bV, cV, dV = best_coeffs
+            cr.aU, cr.bU, cr.cU, cr.dU = aU, bU, cU, dU
+            cr.aV, cr.bV, cr.cV, cr.dV = aV, bV, cV, dV
+            fixed_count += 1
+
+            radius_m = (1.0 / best_k * avg_scale) if best_k > 0 else float('inf')
+            logger.debug("Improved CR '%s' curvature: tangent_scale=%.1f, min_radius=%.1fm",
+                          cr.id, best_scale, radius_m)
+
+    return fixed_count
 
 
 def clear_cross_junction_links(junction: Junction, roads_dict: Dict[str, Road]) -> None:
