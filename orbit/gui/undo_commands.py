@@ -594,7 +594,6 @@ class ModifyPolylinePropertiesCommand(QUndoCommand):
         restored = Polyline.from_dict(data)
         polyline.line_type = restored.line_type
         polyline.road_mark_type = restored.road_mark_type
-        polyline.name = restored.name
         # Update graphics
         self.main_window.image_view.update_polyline(self.polyline_id)
         self.main_window._refresh_trees()
