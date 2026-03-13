@@ -1402,8 +1402,6 @@ def offset_road_endpoints_from_junctions(
     for junction in junctions:
         if not junction.center_point:
             continue
-
-        # Skip virtual junctions (path crossings) - they don't need space for connecting roads
         if junction.junction_type == "virtual":
             if verbose:
                 logger.debug("  Skipping virtual junction '%s' (path crossing)", junction.name)
@@ -1411,183 +1409,114 @@ def offset_road_endpoints_from_junctions(
 
         jx, jy = junction.center_point
 
-        # Process each road connected to this junction
         for road_id in junction.connected_road_ids:
-            # Find the road
             road = next((r for r in roads if r.id == road_id), None)
             if not road or not road.centerline_id:
                 continue
-
             centerline = polylines_dict.get(road.centerline_id)
             if not centerline or len(centerline.points) < 2:
                 continue
 
-            points = list(centerline.points)  # Make a copy to modify
+            points = list(centerline.points)
             modified = False
-
-            # Track actual offsets applied (in meters) for geo_points shortening
-            start_offset_meters_applied = 0.0
-            end_offset_meters_applied = 0.0
+            start_offset_m = 0.0
+            end_offset_m = 0.0
 
             # Check start point
-            start_dx = points[0][0] - jx
-            start_dy = points[0][1] - jy
-            start_dist = math.sqrt(start_dx*start_dx + start_dy*start_dy)
-
-            if start_dist < 15.0:  # Within tolerance - at junction
-                # Use path-based offset: walk along the road to find point at offset distance
-                # Calculate total path length first
-                path_length = calculate_path_length(points)
-
-                # Determine actual offset distance to use, preserving minimum length
-                # Use per-road offset if available, otherwise uniform offset
-                if per_road_offsets and (road_id, "start") in per_road_offsets:
-                    road_offset_m = per_road_offsets[(road_id, "start")]
-                    actual_offset = road_offset_m / avg_scale
-                else:
-                    actual_offset = offset_distance_pixels
-                max_allowed_offset = path_length - minimum_length_pixels
-
-                if max_allowed_offset <= 0:
-                    # Road is already at or below minimum length - skip offset
-                    if verbose:
-                        road_length_m = path_length * avg_scale
-                        logger.debug("  SKIP: Road '%s' is too short (%.1fm) "
-                                     "to offset while preserving %sm minimum",
-                                     road.name, road_length_m, minimum_length_meters)
-                    actual_offset = 0
-                elif actual_offset > max_allowed_offset:
-                    # Reduce offset to preserve minimum length
-                    actual_offset = max_allowed_offset
-                    if verbose:
-                        actual_m = actual_offset * avg_scale
-                        logger.debug("  WARNING: Road '%s' offset reduced to %.1fm "
-                                     "to preserve %sm minimum length",
-                                     road.name, actual_m, minimum_length_meters)
-
-                # Find point at offset distance along path (skip if no offset needed)
-                if actual_offset > 0:
-                    result = find_point_at_distance_along_path(points, actual_offset, from_start=True)
-                else:
-                    result = None
-
-                if result:
-                    new_point, direction, segment_idx = result
-
-                    # Remove passed points and insert new point
-                    # segment_idx = i means we landed in segment between points[i] and points[i+1]
-                    # We need to remove points[0] through points[i], which is i+1 points
-                    points_removed = segment_idx + 1
-
-                    # Build new points list: [new_point] + remaining points after segment
-                    points = [new_point] + points[segment_idx + 1:]
-
-                    # Validate we have at least 2 points
-                    if len(points) < 2:
-                        if verbose:
-                            logger.debug("  ERROR: Offsetting start of road '%s' would leave < 2 points, skipping",
-                                         road.name)
-                    else:
-                        modified = True
-                        # Record the actual offset applied in meters
-                        start_offset_meters_applied = actual_offset * avg_scale
-                        if verbose:
-                            logger.debug("  Offset road '%s' start: moved %.1fpx (%.1fm), "
-                                         "removed %d point(s)",
-                                         road.name, actual_offset,
-                                         start_offset_meters_applied, points_removed)
+            start_dist = math.sqrt((points[0][0] - jx)**2 + (points[0][1] - jy)**2)
+            if start_dist < 15.0:
+                new_points, offset_m = _apply_endpoint_offset(
+                    points, road, road_id, "start", offset_distance_pixels,
+                    minimum_length_pixels, avg_scale, minimum_length_meters,
+                    per_road_offsets, verbose
+                )
+                if new_points is not None:
+                    points = new_points
+                    start_offset_m = offset_m
+                    modified = True
 
             # Check end point
-            end_dx = points[-1][0] - jx
-            end_dy = points[-1][1] - jy
-            end_dist = math.sqrt(end_dx*end_dx + end_dy*end_dy)
-
-            if end_dist < 15.0:  # Within tolerance - at junction
-                # Use path-based offset: walk along the road from end
-                # Calculate total path length first
-                path_length = calculate_path_length(points)
-
-                # Determine actual offset distance to use, preserving minimum length
-                # Use per-road offset if available, otherwise uniform offset
-                if per_road_offsets and (road_id, "end") in per_road_offsets:
-                    road_offset_m = per_road_offsets[(road_id, "end")]
-                    actual_offset = road_offset_m / avg_scale
-                else:
-                    actual_offset = offset_distance_pixels
-                max_allowed_offset = path_length - minimum_length_pixels
-
-                if max_allowed_offset <= 0:
-                    # Road is already at or below minimum length - skip offset
-                    if verbose:
-                        road_length_m = path_length * avg_scale
-                        logger.debug("  SKIP: Road '%s' is too short (%.1fm) "
-                                     "to offset while preserving %sm minimum",
-                                     road.name, road_length_m, minimum_length_meters)
-                    actual_offset = 0
-                elif actual_offset > max_allowed_offset:
-                    # Reduce offset to preserve minimum length
-                    actual_offset = max_allowed_offset
-                    if verbose:
-                        actual_m = actual_offset * avg_scale
-                        logger.debug("  WARNING: Road '%s' offset reduced to %.1fm "
-                                     "to preserve %sm minimum length",
-                                     road.name, actual_m, minimum_length_meters)
-
-                # Find point at offset distance along path from end (skip if no offset needed)
-                if actual_offset > 0:
-                    result = find_point_at_distance_along_path(points, actual_offset, from_start=False)
-                else:
-                    result = None
-
-                if result:
-                    new_point, direction, segment_idx = result
-
-                    # Remove passed points from end and insert new point
-                    # When walking from end with from_start=False, segment_idx tells us
-                    # how many segments we passed. We need to remove segment_idx+1 points.
-                    # segment_idx=0 means we landed in first segment of reversed list (last segment of original)
-                    # segment_idx=1 means we landed in second segment of reversed list, etc.
-                    points_removed = segment_idx + 1
-
-                    # Build new points list: remaining points + [new_point]
-                    # Remove the last (segment_idx + 1) points and append new_point
-                    points = points[:-(segment_idx + 1)] + [new_point]
-
-                    # Validate we have at least 2 points
-                    if len(points) < 2:
-                        if verbose:
-                            logger.debug("  ERROR: Offsetting end of road '%s' would leave < 2 points, skipping",
-                                         road.name)
-                    else:
-                        modified = True
-                        # Record the actual offset applied in meters
-                        end_offset_meters_applied = actual_offset * avg_scale
-                        if verbose:
-                            logger.debug("  Offset road '%s' end: moved %.1fpx (%.1fm), "
-                                         "removed %d point(s)",
-                                         road.name, actual_offset,
-                                         end_offset_meters_applied, points_removed)
+            end_dist = math.sqrt((points[-1][0] - jx)**2 + (points[-1][1] - jy)**2)
+            if end_dist < 15.0:
+                new_points, offset_m = _apply_endpoint_offset(
+                    points, road, road_id, "end", offset_distance_pixels,
+                    minimum_length_pixels, avg_scale, minimum_length_meters,
+                    per_road_offsets, verbose
+                )
+                if new_points is not None:
+                    points = new_points
+                    end_offset_m = offset_m
+                    modified = True
 
             if modified:
-                # Update the polyline with modified points
                 centerline.points = points
-
-                # Also shorten geo_points to keep them in sync
                 if centerline.geo_points and len(centerline.geo_points) >= 2:
                     centerline.geo_points = shorten_geo_points(
-                        centerline.geo_points,
-                        start_offset_meters_applied,
-                        end_offset_meters_applied
+                        centerline.geo_points, start_offset_m, end_offset_m
                     )
                     if verbose:
                         logger.debug("    Also shortened geo_points: start=%.1fm, end=%.1fm -> %d geo points",
-                                     start_offset_meters_applied, end_offset_meters_applied,
-                                     len(centerline.geo_points))
-
+                                     start_offset_m, end_offset_m, len(centerline.geo_points))
                 modified_count += 1
 
     if verbose and modified_count > 0:
         logger.debug("Offset endpoints for %d road(s) at junctions", modified_count)
+
+
+def _apply_endpoint_offset(points, road, road_id, end, offset_pixels,
+                           min_length_pixels, avg_scale, min_length_meters,
+                           per_road_offsets, verbose):
+    """Offset one endpoint of a road away from a junction.
+
+    Returns (new_points, offset_meters) if modified, (None, 0) otherwise.
+    """
+    from_start = (end == "start")
+    path_length = calculate_path_length(points)
+
+    # Determine actual offset distance
+    if per_road_offsets and (road_id, end) in per_road_offsets:
+        actual_offset = per_road_offsets[(road_id, end)] / avg_scale
+    else:
+        actual_offset = offset_pixels
+
+    max_allowed = path_length - min_length_pixels
+    if max_allowed <= 0:
+        if verbose:
+            logger.debug("  SKIP: Road '%s' is too short (%.1fm) to offset while preserving %sm minimum",
+                         road.name, path_length * avg_scale, min_length_meters)
+        return None, 0.0
+    if actual_offset > max_allowed:
+        actual_offset = max_allowed
+        if verbose:
+            logger.debug("  WARNING: Road '%s' offset reduced to %.1fm to preserve %sm minimum length",
+                         road.name, actual_offset * avg_scale, min_length_meters)
+
+    if actual_offset <= 0:
+        return None, 0.0
+
+    result = find_point_at_distance_along_path(points, actual_offset, from_start=from_start)
+    if not result:
+        return None, 0.0
+
+    new_point, _direction, segment_idx = result
+    points_removed = segment_idx + 1
+
+    if from_start:
+        new_points = [new_point] + points[segment_idx + 1:]
+    else:
+        new_points = points[:-(segment_idx + 1)] + [new_point]
+
+    if len(new_points) < 2:
+        if verbose:
+            logger.debug("  ERROR: Offsetting %s of road '%s' would leave < 2 points, skipping",
+                         end, road.name)
+        return None, 0.0
+
+    offset_m = actual_offset * avg_scale
+    if verbose:
+        logger.debug("  Offset road '%s' %s: moved %.1fpx (%.1fm), removed %d point(s)",
+                     road.name, end, actual_offset, offset_m, points_removed)
+    return new_points, offset_m
 
 
 def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,

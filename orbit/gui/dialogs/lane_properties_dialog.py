@@ -55,47 +55,57 @@ class LanePropertiesDialog(BaseDialog):
 
     def setup_ui(self):
         """Setup the dialog UI."""
-        # Lane identification (read-only)
         id_layout = self.add_form_group("Lane Identification")
-
         self.lane_id_label = QLabel()
         self.lane_id_label.setStyleSheet("QLabel { font-weight: bold; }")
         id_layout.addRow("Lane ID:", self.lane_id_label)
-
         self.position_label = QLabel()
         id_layout.addRow("Position:", self.position_label)
 
-        # Lane properties
+        props_layout = self._create_lane_properties_section()
+        self._create_width_controls(props_layout)
+        self._create_access_controls(props_layout)
+
+        self.description_label = QLabel()
+        self.description_label.setWordWrap(True)
+        self.description_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
+        props_layout.addRow("", self.description_label)
+
+        if self.connecting_road is None:
+            self._setup_advanced_section()
+        if self.project and self.road_id:
+            self._create_boundary_section()
+
+        self.create_button_box()
+        self.update_description()
+
+    def _create_lane_properties_section(self):
+        """Create the lane type and road mark controls."""
         props_layout = self.add_form_group("Lane Properties")
 
-        # Lane type dropdown
         self.lane_type_combo = QComboBox()
         for lane_type in LaneType:
             self.lane_type_combo.addItem(format_enum_name(lane_type), lane_type)
         self.lane_type_combo.currentIndexChanged.connect(self.on_lane_type_changed)
         props_layout.addRow("Lane Type:", self.lane_type_combo)
 
-        # Road mark type dropdown
         self.road_mark_type_combo = QComboBox()
         for mark_type in RoadMarkType:
             self.road_mark_type_combo.addItem(format_enum_name(mark_type), mark_type)
         props_layout.addRow("Road Mark Type:", self.road_mark_type_combo)
 
-        # Road mark color dropdown
         self.road_mark_color_combo = QComboBox()
         for color in ["white", "yellow", "blue", "green", "red", "orange"]:
             self.road_mark_color_combo.addItem(color.capitalize(), color)
         self.road_mark_color_combo.setToolTip("Color of the road marking (e.g., yellow for center lines)")
         props_layout.addRow("Road Mark Color:", self.road_mark_color_combo)
 
-        # Road mark weight dropdown
         self.road_mark_weight_combo = QComboBox()
         for weight in ["standard", "bold"]:
             self.road_mark_weight_combo.addItem(weight.capitalize(), weight)
         self.road_mark_weight_combo.setToolTip("Line weight (bold for edge lines)")
         props_layout.addRow("Road Mark Weight:", self.road_mark_weight_combo)
 
-        # Road mark width spinbox
         self.road_mark_width_spin = QDoubleSpinBox()
         self.road_mark_width_spin.setRange(0.05, 0.50)
         self.road_mark_width_spin.setSingleStep(0.01)
@@ -105,7 +115,10 @@ class LanePropertiesDialog(BaseDialog):
         self.road_mark_width_spin.setToolTip("Width of the painted road marking in meters")
         props_layout.addRow("Road Mark Width:", self.road_mark_width_spin)
 
-        # Lane width - different UI for connecting road lanes
+        return props_layout
+
+    def _create_width_controls(self, props_layout):
+        """Create width controls appropriate for the lane type."""
         self.width_spin = None
         self.width_start_spin = None
         self.width_end_spin = None
@@ -116,12 +129,10 @@ class LanePropertiesDialog(BaseDialog):
         is_connecting_road_lane = self.connecting_road is not None
 
         if is_connecting_road_lane and is_center_lane:
-            # Center lane in connecting road - no width (show as read-only info)
             center_info = QLabel("0.0 m (center lane has no width)")
             center_info.setStyleSheet("QLabel { color: gray; }")
             props_layout.addRow("Width:", center_info)
         elif is_connecting_road_lane:
-            # Driving lane in connecting road - show start/end width
             self.width_start_spin = QDoubleSpinBox()
             self.width_start_spin.setRange(0.5, 20.0)
             self.width_start_spin.setSingleStep(0.1)
@@ -138,18 +149,14 @@ class LanePropertiesDialog(BaseDialog):
             self.width_end_spin.setToolTip("Lane width at the end of the connecting road")
             props_layout.addRow("Width at End:", self.width_end_spin)
 
-            # Width transition info
             self.width_info_label = QLabel()
             self.width_info_label.setWordWrap(True)
             self.width_info_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
             props_layout.addRow("", self.width_info_label)
 
-            # Connect signals to update info
             self.width_start_spin.valueChanged.connect(self.update_width_info)
             self.width_end_spin.valueChanged.connect(self.update_width_info)
         else:
-            # Regular road lane - start/end width with variable width toggle
-            # Width at start (was just "Width")
             self.width_spin = QDoubleSpinBox()
             self.width_spin.setRange(0.0, 20.0)
             self.width_spin.setSingleStep(0.1)
@@ -158,7 +165,6 @@ class LanePropertiesDialog(BaseDialog):
             self.width_spin.setToolTip("Lane width at start of section (meters)")
             props_layout.addRow("Width at Start:", self.width_spin)
 
-            # Variable width checkbox and end width
             variable_widget = QWidget()
             variable_layout = QHBoxLayout(variable_widget)
             variable_layout.setContentsMargins(0, 0, 0, 0)
@@ -179,7 +185,8 @@ class LanePropertiesDialog(BaseDialog):
 
             props_layout.addRow("Width at End:", variable_widget)
 
-        # Access restrictions (for path lanes)
+    def _create_access_controls(self, props_layout):
+        """Create access restriction checkboxes for path lanes."""
         self.access_widget = QWidget()
         access_layout = QHBoxLayout(self.access_widget)
         access_layout.setContentsMargins(0, 0, 0, 0)
@@ -194,7 +201,6 @@ class LanePropertiesDialog(BaseDialog):
 
         access_layout.addStretch()
 
-        # Access label with info icon (shown only for path lanes)
         self.access_label_widget = InfoIconLabel(
             "Access",
             "For shared paths, enable both bicycle and pedestrian access.",
@@ -202,67 +208,48 @@ class LanePropertiesDialog(BaseDialog):
         )
         props_layout.addRow(self.access_label_widget, self.access_widget)
 
-        # Description label
-        self.description_label = QLabel()
-        self.description_label.setWordWrap(True)
-        self.description_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
-        props_layout.addRow("", self.description_label)
+    def _create_boundary_section(self):
+        """Create the boundary polyline assignment section."""
+        boundary_layout = self.add_form_group_with_info(
+            "Boundary Polyline",
+            "Assign a polyline that defines the outer edge of this lane. "
+            "The inner edge is the road centerline (for lane ±1) or adjacent lane boundary."
+        )
 
-        # Collapsible Advanced section (only for regular road lanes, not connecting roads)
-        if not is_connecting_road_lane:
-            self._setup_advanced_section()
+        self.outer_boundary_combo = QComboBox()
+        self.outer_boundary_combo.addItem("(Not assigned)", None)
+        self._populate_boundary_polylines(self.outer_boundary_combo)
+        boundary_layout.addRow("Outer Boundary:", self.outer_boundary_combo)
 
-        # Boundary polylines (if project available)
-        if self.project and self.road_id:
-            boundary_layout = self.add_form_group_with_info(
-                "Boundary Polyline",
-                "Assign a polyline that defines the outer edge of this lane. "
-                "The inner edge is the road centerline (for lane ±1) or adjacent lane boundary."
-            )
+        inner_info = QLabel()
+        if self.lane.id == -1 or self.lane.id == 1:
+            inner_info.setText("Inner boundary: Road centerline")
+        else:
+            inner_info.setText("Inner boundary: Adjacent lane's outer edge")
+        inner_info.setStyleSheet("QLabel { color: gray; font-style: italic; }")
+        boundary_layout.addRow("", inner_info)
 
-            # Outer boundary selector (inner boundary is implicitly the centerline or adjacent lane)
-            self.outer_boundary_combo = QComboBox()
-            self.outer_boundary_combo.addItem("(Not assigned)", None)
-            self._populate_boundary_polylines(self.outer_boundary_combo)
-            boundary_layout.addRow("Outer Boundary:", self.outer_boundary_combo)
+        fit_widget = QWidget()
+        fit_layout = QHBoxLayout(fit_widget)
+        fit_layout.setContentsMargins(0, 5, 0, 0)
 
-            # Info about inner boundary
-            inner_info = QLabel()
-            if self.lane.id == -1 or self.lane.id == 1:
-                inner_info.setText("Inner boundary: Road centerline")
-            else:
-                inner_info.setText("Inner boundary: Adjacent lane's outer edge")
-            inner_info.setStyleSheet("QLabel { color: gray; font-style: italic; }")
-            boundary_layout.addRow("", inner_info)
+        self.fit_poly_btn = QPushButton("Fit Polynomial")
+        self.fit_poly_btn.setToolTip(
+            "Fit width polynomial from outer boundary polyline.\n"
+            "This ensures visualization matches OpenDRIVE export."
+        )
+        self.fit_poly_btn.clicked.connect(self._on_fit_polynomial)
+        fit_layout.addWidget(self.fit_poly_btn)
 
-            # Fit Polynomial button
-            fit_widget = QWidget()
-            fit_layout = QHBoxLayout(fit_widget)
-            fit_layout.setContentsMargins(0, 5, 0, 0)
+        self.fit_quality_label = QLabel()
+        self.fit_quality_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
+        fit_layout.addWidget(self.fit_quality_label)
+        fit_layout.addStretch()
 
-            self.fit_poly_btn = QPushButton("Fit Polynomial")
-            self.fit_poly_btn.setToolTip(
-                "Fit width polynomial from outer boundary polyline.\n"
-                "This ensures visualization matches OpenDRIVE export."
-            )
-            self.fit_poly_btn.clicked.connect(self._on_fit_polynomial)
-            fit_layout.addWidget(self.fit_poly_btn)
+        boundary_layout.addRow("", fit_widget)
 
-            self.fit_quality_label = QLabel()
-            self.fit_quality_label.setStyleSheet("QLabel { color: gray; font-style: italic; }")
-            fit_layout.addWidget(self.fit_quality_label)
-            fit_layout.addStretch()
-
-            boundary_layout.addRow("", fit_widget)
-
-            # Connect combo change to update button state
-            self.outer_boundary_combo.currentIndexChanged.connect(self._update_fit_button_state)
-            self._update_fit_button_state()
-
-        # Create standard OK/Cancel buttons
-        self.create_button_box()
-
-        self.update_description()
+        self.outer_boundary_combo.currentIndexChanged.connect(self._update_fit_button_state)
+        self._update_fit_button_state()
 
     def _populate_boundary_polylines(self, combo: QComboBox):
         """Populate combo box with boundary polylines from the road."""

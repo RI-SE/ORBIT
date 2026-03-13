@@ -71,9 +71,6 @@ class GeoreferenceDialog(BaseDialog):
 
     def setup_ui(self):
         """Setup the dialog UI."""
-
-        # Info section - compact with tooltip for details
-        # Get minimum points required based on transform method
         min_points = 4 if self.project.transform_method == 'homography' else 3
         method_name = 'Homography' if self.project.transform_method == 'homography' else 'Affine'
 
@@ -91,7 +88,21 @@ class GeoreferenceDialog(BaseDialog):
         )
         self.get_main_layout().addWidget(info_widget)
 
-        # Control points table
+        self._create_control_points_section()
+        self._create_add_point_section()
+        self._create_status_section()
+        self._create_uncertainty_section()
+
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        self.get_main_layout().addWidget(button_box)
+
+    def _create_control_points_section(self):
+        """Create the control points table and its buttons."""
         points_group = QGroupBox("Control Points")
         points_layout = QVBoxLayout()
 
@@ -105,43 +116,36 @@ class GeoreferenceDialog(BaseDialog):
         self.points_table.itemChanged.connect(self.on_table_item_changed)
         points_layout.addWidget(self.points_table)
 
-        # Button layout for table operations
         table_button_layout = QHBoxLayout()
-
         self.remove_point_btn = QPushButton("Remove Selected")
         self.remove_point_btn.clicked.connect(self.remove_selected_point)
         table_button_layout.addWidget(self.remove_point_btn)
-
         self.clear_all_btn = QPushButton("Clear All")
         self.clear_all_btn.clicked.connect(self.clear_all_points)
         table_button_layout.addWidget(self.clear_all_btn)
-
         self.import_csv_btn = QPushButton("Import from CSV...")
         self.import_csv_btn.clicked.connect(self.import_from_csv)
         table_button_layout.addWidget(self.import_csv_btn)
-
         table_button_layout.addStretch()
         points_layout.addLayout(table_button_layout)
 
         points_group.setLayout(points_layout)
         self.get_main_layout().addWidget(points_group)
 
-        # Add point section
+    def _create_add_point_section(self):
+        """Create the add-new-control-point form."""
         add_group = QGroupBox("Add New Control Point")
         add_layout = QFormLayout()
 
-        # Pick point button
         pick_layout = QHBoxLayout()
         self.pick_point_btn = QPushButton("Pick Point on Image")
         self.pick_point_btn.clicked.connect(self.request_pick_point)
         pick_layout.addWidget(self.pick_point_btn)
-
         self.picked_coords_label = QLabel("No point selected")
         pick_layout.addWidget(self.picked_coords_label)
         pick_layout.addStretch()
         add_layout.addRow("Image Location:", pick_layout)
 
-        # Longitude input
         self.longitude_spin = QDoubleSpinBox()
         self.longitude_spin.setRange(-180.0, 180.0)
         self.longitude_spin.setDecimals(10)
@@ -151,7 +155,6 @@ class GeoreferenceDialog(BaseDialog):
         self.longitude_spin.setToolTip("Click to select, then paste from clipboard (Ctrl+V)")
         add_layout.addRow("Longitude:", self.longitude_spin)
 
-        # Latitude input
         self.latitude_spin = QDoubleSpinBox()
         self.latitude_spin.setRange(-90.0, 90.0)
         self.latitude_spin.setDecimals(10)
@@ -161,7 +164,6 @@ class GeoreferenceDialog(BaseDialog):
         self.latitude_spin.setToolTip("Click to select, then paste from clipboard (Ctrl+V)")
         add_layout.addRow("Latitude:", self.latitude_spin)
 
-        # Point type checkbox
         self.validation_check = QCheckBox("Use for validation only (GVP)")
         self.validation_check.setToolTip(
             "GCP (unchecked): Training point used to compute transformation\n"
@@ -169,7 +171,6 @@ class GeoreferenceDialog(BaseDialog):
         )
         add_layout.addRow("Point Type:", self.validation_check)
 
-        # Add button
         self.add_point_btn = QPushButton("Add Control Point")
         self.add_point_btn.clicked.connect(self.add_control_point)
         self.add_point_btn.setEnabled(False)
@@ -178,14 +179,14 @@ class GeoreferenceDialog(BaseDialog):
         add_group.setLayout(add_layout)
         self.get_main_layout().addWidget(add_group)
 
-        # Status and validation section
+    def _create_status_section(self):
+        """Create the status and validation section."""
         status_group = QGroupBox("Status and Validation")
         status_layout = QVBoxLayout()
 
         self.status_label = QLabel()
         status_layout.addWidget(self.status_label)
 
-        # Validation results text
         self.validation_text = QTextEdit()
         self.validation_text.setReadOnly(True)
         self.validation_text.setMaximumHeight(150)
@@ -194,7 +195,6 @@ class GeoreferenceDialog(BaseDialog):
         self.validation_text.setFont(font)
         status_layout.addWidget(self.validation_text)
 
-        # GCP Analysis button
         gcp_analysis_layout = QHBoxLayout()
         self.analyze_gcp_btn = QPushButton("Analyze GCPs")
         self.analyze_gcp_btn.setToolTip(
@@ -204,7 +204,7 @@ class GeoreferenceDialog(BaseDialog):
             "• Leave-one-out testing to identify problematic points"
         )
         self.analyze_gcp_btn.clicked.connect(self.show_gcp_analysis)
-        self.analyze_gcp_btn.setEnabled(False)  # Enable when enough points
+        self.analyze_gcp_btn.setEnabled(False)
         gcp_analysis_layout.addWidget(self.analyze_gcp_btn)
         gcp_analysis_layout.addStretch()
         status_layout.addLayout(gcp_analysis_layout)
@@ -212,20 +212,61 @@ class GeoreferenceDialog(BaseDialog):
         status_group.setLayout(status_layout)
         self.get_main_layout().addWidget(status_group)
 
-        # Uncertainty Analysis section
+    def _create_uncertainty_section(self):
+        """Create the uncertainty analysis section."""
         uncertainty_group = QGroupBox("Uncertainty Analysis")
         uncertainty_layout = QVBoxLayout()
 
-        # Uncertainty statistics text
         self.uncertainty_text = QTextEdit()
         self.uncertainty_text.setReadOnly(True)
         self.uncertainty_text.setMaximumHeight(150)
         uncertainty_layout.addWidget(self.uncertainty_text)
 
-        # Parameter configuration
+        params_layout = self._create_uncertainty_params_layout()
+        uncertainty_layout.addLayout(params_layout)
+
+        analysis_button_layout = QHBoxLayout()
+
+        self.compute_monte_carlo_btn = QPushButton("Compute Uncertainty (Monte Carlo)")
+        self.compute_monte_carlo_btn.setToolTip(
+            "Run Monte Carlo analysis with measurement error (200 iterations)\n"
+            "Configure parameters above before running\n"
+            "Results are cached for fast queries"
+        )
+        self.compute_monte_carlo_btn.clicked.connect(self.run_monte_carlo_analysis)
+        analysis_button_layout.addWidget(self.compute_monte_carlo_btn)
+
+        self.analyze_uncertainty_btn = QPushButton("Bootstrap Analysis")
+        self.analyze_uncertainty_btn.setToolTip(
+            "Alternative: Bootstrap resampling (200 iterations)\n"
+            "Resamples GCPs with replacement to estimate uncertainty"
+        )
+        self.analyze_uncertainty_btn.clicked.connect(self.run_bootstrap_analysis)
+        analysis_button_layout.addWidget(self.analyze_uncertainty_btn)
+
+        self.suggest_gcp_btn = QPushButton("Suggest GCP Locations")
+        self.suggest_gcp_btn.setToolTip(
+            "Analyze uncertainty and suggest where to add control points\n"
+            "Identifies high-uncertainty areas that would benefit from GCPs"
+        )
+        self.suggest_gcp_btn.clicked.connect(self.suggest_gcp_locations)
+        self.suggest_gcp_btn.setEnabled(False)
+        analysis_button_layout.addWidget(self.suggest_gcp_btn)
+
+        analysis_button_layout.addStretch()
+        uncertainty_layout.addLayout(analysis_button_layout)
+
+        self.analysis_progress = QProgressBar()
+        self.analysis_progress.hide()
+        uncertainty_layout.addWidget(self.analysis_progress)
+
+        uncertainty_group.setLayout(uncertainty_layout)
+        self.get_main_layout().addWidget(uncertainty_group)
+
+    def _create_uncertainty_params_layout(self):
+        """Create the uncertainty parameter spinboxes layout."""
         params_layout = QHBoxLayout()
 
-        # Sigma pixels (measurement error)
         params_layout.addWidget(QLabel("Measurement error (σ pixels):"))
         self.sigma_pixels_spin = QDoubleSpinBox()
         self.sigma_pixels_spin.setRange(0.1, 5.0)
@@ -239,10 +280,8 @@ class GeoreferenceDialog(BaseDialog):
         )
         self.sigma_pixels_spin.valueChanged.connect(self.on_parameter_changed)
         params_layout.addWidget(self.sigma_pixels_spin)
-
         params_layout.addSpacing(20)
 
-        # Baseline uncertainty (meters)
         params_layout.addWidget(QLabel("Baseline uncertainty (m):"))
         self.baseline_uncertainty_spin = QDoubleSpinBox()
         self.baseline_uncertainty_spin.setRange(0.01, 0.5)
@@ -256,10 +295,8 @@ class GeoreferenceDialog(BaseDialog):
         )
         self.baseline_uncertainty_spin.valueChanged.connect(self.on_parameter_changed)
         params_layout.addWidget(self.baseline_uncertainty_spin)
-
         params_layout.addSpacing(20)
 
-        # GCP suggestion threshold
         params_layout.addWidget(QLabel("GCP suggestion threshold (m):"))
         self.gcp_threshold_spin = QDoubleSpinBox()
         self.gcp_threshold_spin.setRange(0.05, 1.0)
@@ -274,61 +311,9 @@ class GeoreferenceDialog(BaseDialog):
         )
         self.gcp_threshold_spin.valueChanged.connect(self.on_parameter_changed)
         params_layout.addWidget(self.gcp_threshold_spin)
-
         params_layout.addStretch()
-        uncertainty_layout.addLayout(params_layout)
 
-        # Analysis buttons
-        analysis_button_layout = QHBoxLayout()
-
-        # Monte Carlo button (primary method)
-        self.compute_monte_carlo_btn = QPushButton("Compute Uncertainty (Monte Carlo)")
-        self.compute_monte_carlo_btn.setToolTip(
-            "Run Monte Carlo analysis with measurement error (200 iterations)\n"
-            "Configure parameters above before running\n"
-            "Results are cached for fast queries"
-        )
-        self.compute_monte_carlo_btn.clicked.connect(self.run_monte_carlo_analysis)
-        analysis_button_layout.addWidget(self.compute_monte_carlo_btn)
-
-        # Bootstrap button (alternative detailed method)
-        self.analyze_uncertainty_btn = QPushButton("Bootstrap Analysis")
-        self.analyze_uncertainty_btn.setToolTip(
-            "Alternative: Bootstrap resampling (200 iterations)\n"
-            "Resamples GCPs with replacement to estimate uncertainty"
-        )
-        self.analyze_uncertainty_btn.clicked.connect(self.run_bootstrap_analysis)
-        analysis_button_layout.addWidget(self.analyze_uncertainty_btn)
-
-        # GCP suggestions button
-        self.suggest_gcp_btn = QPushButton("Suggest GCP Locations")
-        self.suggest_gcp_btn.setToolTip(
-            "Analyze uncertainty and suggest where to add control points\n"
-            "Identifies high-uncertainty areas that would benefit from GCPs"
-        )
-        self.suggest_gcp_btn.clicked.connect(self.suggest_gcp_locations)
-        self.suggest_gcp_btn.setEnabled(False)  # Enable after Monte Carlo
-        analysis_button_layout.addWidget(self.suggest_gcp_btn)
-
-        analysis_button_layout.addStretch()
-        uncertainty_layout.addLayout(analysis_button_layout)
-
-        # Progress bar for analysis
-        self.analysis_progress = QProgressBar()
-        self.analysis_progress.hide()
-        uncertainty_layout.addWidget(self.analysis_progress)
-
-        uncertainty_group.setLayout(uncertainty_layout)
-        self.get_main_layout().addWidget(uncertainty_group)
-
-        # Dialog buttons
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok |
-            QDialogButtonBox.StandardButton.Cancel
-        )
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        self.get_main_layout().addWidget(button_box)
+        return params_layout
 
     def load_properties(self):
         """Load properties (control points) into the dialog."""

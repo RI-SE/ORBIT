@@ -976,14 +976,10 @@ def create_roundabout_connectors(
     connecting_roads = []
     lane_connections = []
 
-    # Get connection point for this junction
     if junction_index >= len(roundabout.connection_points):
         return [], []
 
-    _cp = roundabout.connection_points[junction_index]
     n_segments = len(ring_segments)
-
-    # Identify ring roads at this junction
     incoming_ring_idx = (junction_index - 1) % n_segments
     outgoing_ring_idx = junction_index
 
@@ -992,264 +988,177 @@ def create_roundabout_connectors(
     outgoing_ring_road = ring_segments[outgoing_ring_idx][0] if outgoing_ring_idx < n_segments else None
     outgoing_ring_polyline = ring_segments[outgoing_ring_idx][1] if outgoing_ring_idx < n_segments else None
 
-    # Get ring endpoints (these are now offset from the junction center)
     incoming_end = incoming_ring_polyline.points[-1] if incoming_ring_polyline else None
     outgoing_start = outgoing_ring_polyline.points[0] if outgoing_ring_polyline else None
 
     if verbose:
         logger.debug("  Creating connectors for junction %d:", junction_index + 1)
 
-    # 1. Create THROUGH connector (ring continuation)
+    # 1. Through connector (ring continuation)
     if incoming_ring_road and outgoing_ring_road and incoming_end and outgoing_start:
-        # Calculate headings from actual polyline directions (not theoretical ring tangent)
-        # This is correct after road endpoints have been offset from the junction
-        incoming_heading = _calculate_endpoint_heading(incoming_ring_polyline.points, at_start=False)
-        outgoing_heading = _calculate_endpoint_heading(outgoing_ring_polyline.points, at_start=True)
-
-        # Generate smooth tangent-continuous path
-        through_path, coeffs = generate_simple_connection_path(
-            from_pos=incoming_end,
-            from_heading=incoming_heading,
-            to_pos=outgoing_start,
-            to_heading=outgoing_heading,
-            num_points=10,
-            tangent_scale=0.5  # Shorter tangent for tight roundabout curves
+        _create_through_connector(
+            junction, roundabout, incoming_ring_road, incoming_ring_polyline,
+            outgoing_ring_road, outgoing_ring_polyline, default_lane_width,
+            connecting_roads, lane_connections, verbose
         )
 
-        if through_path:
-            # Unpack ParamPoly3D coefficients
-            aU, bU, cU, dU, aV, bV, cV, dV = coeffs
-
-            # Get lane widths from connected ring roads
-            incoming_width = _get_road_lane_width(incoming_ring_road, default_lane_width)
-            outgoing_width = _get_road_lane_width(outgoing_ring_road, default_lane_width)
-            avg_width = (incoming_width + outgoing_width) / 2
-
-            through_connector = Road(
-                name=f"CR {junction.id} through",
-                junction_id=junction.id,
-                inline_path=through_path,
-                cr_lane_count_left=0,
-                cr_lane_count_right=roundabout.lane_count,
-                lane_info=LaneInfo(
-                    left_count=0,
-                    right_count=roundabout.lane_count,
-                    lane_width=avg_width
-                ),
-                lane_width_start=incoming_width,
-                lane_width_end=outgoing_width,
-                predecessor_id=incoming_ring_road.id,
-                successor_id=outgoing_ring_road.id,
-                predecessor_contact="end",
-                successor_contact="start",
-                geometry_type="parampoly3",
-                aU=aU, bU=bU, cU=cU, dU=dU,
-                aV=aV, bV=bV, cV=cV, dV=dV,
-                stored_start_heading=incoming_heading,
-                stored_end_heading=outgoing_heading
-            )
-
-            through_connector.ensure_cr_lanes_initialized()
-            connecting_roads.append(through_connector)
-
-            # Create lane connections for through movement
-            for lane_idx in range(1, roundabout.lane_count + 1):
-                lc = LaneConnection(
-                    from_road_id=incoming_ring_road.id,
-                    from_lane_id=-lane_idx,  # Right lanes (negative)
-                    to_road_id=outgoing_ring_road.id,
-                    to_lane_id=-lane_idx,
-                    connecting_road_id=through_connector.id,
-                    turn_type="straight"
-                )
-                lane_connections.append(lc)
-
-            if verbose:
-                path_len = sum(
-                    math.sqrt((through_path[i+1][0]-through_path[i][0])**2 +
-                              (through_path[i+1][1]-through_path[i][1])**2)
-                    for i in range(len(through_path)-1)
-                )
-                logger.debug("    Through: %d points, ~%.1fpx", len(through_path), path_len)
-
-    # 2. Create ENTRY connectors for incoming approach roads
-    # Entry roads are pre-determined - they END at this junction (no distance check needed)
+    # 2. Entry connectors for incoming approach roads
     for approach_road_id in junction.entry_roads:
         approach_road = approach_roads.get(approach_road_id)
         if not approach_road:
             continue
-
         approach_polyline = polylines_dict.get(approach_road.centerline_id)
         if not approach_polyline or len(approach_polyline.points) < 2:
             continue
-
-        approach_points = approach_polyline.points
-
         if outgoing_ring_road and outgoing_start:
-            approach_end = approach_points[-1]
-
-            # Entry connector: approach road end → outgoing ring start
-            entry_ring_pos = outgoing_start
-            entry_ring_road = outgoing_ring_road
-            contact_end = "start"
-
-            # Calculate headings from actual polyline directions
-            approach_heading = _calculate_endpoint_heading(approach_points, at_start=False)
-            ring_heading = _calculate_endpoint_heading(outgoing_ring_polyline.points, at_start=True)
-
-            # Generate smooth entry path
-            entry_path, coeffs = generate_simple_connection_path(
-                from_pos=approach_end,
-                from_heading=approach_heading,
-                to_pos=entry_ring_pos,
-                to_heading=ring_heading,
-                num_points=10,
-                tangent_scale=0.6
+            _create_entry_exit_connector(
+                junction, roundabout, approach_road, approach_polyline.points,
+                outgoing_ring_road, outgoing_ring_polyline, outgoing_start,
+                is_entry=True, default_lane_width=default_lane_width,
+                connecting_roads=connecting_roads, lane_connections=lane_connections,
+                verbose=verbose
             )
 
-            if entry_path:
-                aU, bU, cU, dU, aV, bV, cV, dV = coeffs
-
-                approach_lanes = approach_road.lane_info.right_count if approach_road.lane_info else 1
-
-                # Get lane widths from connected roads
-                approach_width = _get_road_lane_width(approach_road, default_lane_width)
-                ring_width = _get_road_lane_width(entry_ring_road, default_lane_width)
-                avg_width = (approach_width + ring_width) / 2
-
-                entry_lane_count = min(approach_lanes, roundabout.lane_count)
-                entry_connector = Road(
-                    name=f"CR {junction.id} entry",
-                    junction_id=junction.id,
-                    inline_path=entry_path,
-                    cr_lane_count_left=0,
-                    cr_lane_count_right=entry_lane_count,
-                    lane_info=LaneInfo(
-                        left_count=0,
-                        right_count=entry_lane_count,
-                        lane_width=avg_width
-                    ),
-                    lane_width_start=approach_width,
-                    lane_width_end=ring_width,
-                    predecessor_id=approach_road.id,
-                    successor_id=entry_ring_road.id,
-                    predecessor_contact="end",
-                    successor_contact=contact_end,
-                    geometry_type="parampoly3",
-                    aU=aU, bU=bU, cU=cU, dU=dU,
-                    aV=aV, bV=bV, cV=cV, dV=dV,
-                    stored_start_heading=approach_heading,
-                    stored_end_heading=ring_heading
-                )
-
-                entry_connector.ensure_cr_lanes_initialized()
-                connecting_roads.append(entry_connector)
-
-                # Lane connections for entry
-                for lane_idx in range(1, entry_connector.cr_lane_count_right + 1):
-                    lc = LaneConnection(
-                        from_road_id=approach_road.id,
-                        from_lane_id=-lane_idx,
-                        to_road_id=outgoing_ring_road.id,
-                        to_lane_id=-lane_idx,
-                        connecting_road_id=entry_connector.id,
-                        turn_type="right"
-                    )
-                    lane_connections.append(lc)
-
-                if verbose:
-                    logger.debug("    Entry from %s: %d points", approach_road.name[:20], len(entry_path))
-
-    # 3. Create EXIT connectors for outgoing approach roads
-    # Exit roads are pre-determined - they START at this junction (no distance check needed)
+    # 3. Exit connectors for outgoing approach roads
     for approach_road_id in junction.exit_roads:
         approach_road = approach_roads.get(approach_road_id)
         if not approach_road:
             continue
-
         approach_polyline = polylines_dict.get(approach_road.centerline_id)
         if not approach_polyline or len(approach_polyline.points) < 2:
             continue
-
-        approach_points = approach_polyline.points
-
         if incoming_ring_road and incoming_end:
-            approach_start = approach_points[0]
-
-            # Exit connector: incoming ring end → approach road start
-            exit_ring_pos = incoming_end
-            exit_ring_road = incoming_ring_road
-            contact_start = "end"
-
-            # Calculate headings from actual polyline directions
-            ring_heading = _calculate_endpoint_heading(incoming_ring_polyline.points, at_start=False)
-            approach_heading = _calculate_endpoint_heading(approach_points, at_start=True)
-
-            # Generate smooth exit path
-            exit_path, coeffs = generate_simple_connection_path(
-                from_pos=exit_ring_pos,
-                from_heading=ring_heading,
-                to_pos=approach_start,
-                to_heading=approach_heading,
-                num_points=10,
-                tangent_scale=0.6
+            _create_entry_exit_connector(
+                junction, roundabout, approach_road, approach_polyline.points,
+                incoming_ring_road, incoming_ring_polyline, incoming_end,
+                is_entry=False, default_lane_width=default_lane_width,
+                connecting_roads=connecting_roads, lane_connections=lane_connections,
+                verbose=verbose
             )
 
-            if exit_path:
-                aU, bU, cU, dU, aV, bV, cV, dV = coeffs
-
-                # Exit traffic uses RIGHT lanes of the approach road (negative lane IDs)
-                approach_lanes = approach_road.lane_info.right_count if approach_road.lane_info else 1
-
-                # Get lane widths from connected roads
-                ring_width = _get_road_lane_width(exit_ring_road, default_lane_width)
-                approach_width = _get_road_lane_width(approach_road, default_lane_width)
-                avg_width = (ring_width + approach_width) / 2
-
-                exit_lane_count = min(approach_lanes, roundabout.lane_count)
-                exit_connector = Road(
-                    name=f"CR {junction.id} exit",
-                    junction_id=junction.id,
-                    inline_path=exit_path,
-                    cr_lane_count_left=0,
-                    cr_lane_count_right=exit_lane_count,
-                    lane_info=LaneInfo(
-                        left_count=0,
-                        right_count=exit_lane_count,
-                        lane_width=avg_width
-                    ),
-                    lane_width_start=ring_width,
-                    lane_width_end=approach_width,
-                    predecessor_id=exit_ring_road.id,
-                    successor_id=approach_road.id,
-                    predecessor_contact=contact_start,
-                    successor_contact="start",
-                    geometry_type="parampoly3",
-                    aU=aU, bU=bU, cU=cU, dU=dU,
-                    aV=aV, bV=bV, cV=cV, dV=dV,
-                    stored_start_heading=ring_heading,
-                    stored_end_heading=approach_heading
-                )
-
-                exit_connector.ensure_cr_lanes_initialized()
-                connecting_roads.append(exit_connector)
-
-                # Lane connections for exit
-                for lane_idx in range(1, exit_connector.cr_lane_count_right + 1):
-                    lc = LaneConnection(
-                        from_road_id=incoming_ring_road.id,
-                        from_lane_id=-lane_idx,
-                        to_road_id=approach_road.id,
-                        to_lane_id=-lane_idx,
-                        connecting_road_id=exit_connector.id,
-                        turn_type="right"
-                    )
-                    lane_connections.append(lc)
-
-                if verbose:
-                    logger.debug("    Exit to %s: %d points", approach_road.name[:20], len(exit_path))
-
     return connecting_roads, lane_connections
+
+
+def _create_through_connector(junction, roundabout, incoming_road, incoming_polyline,
+                              outgoing_road, outgoing_polyline, default_lane_width,
+                              connecting_roads, lane_connections, verbose):
+    """Create a through connector (ring continuation) at a roundabout junction."""
+    incoming_end = incoming_polyline.points[-1]
+    outgoing_start = outgoing_polyline.points[0]
+    incoming_heading = _calculate_endpoint_heading(incoming_polyline.points, at_start=False)
+    outgoing_heading = _calculate_endpoint_heading(outgoing_polyline.points, at_start=True)
+
+    path, coeffs = generate_simple_connection_path(
+        from_pos=incoming_end, from_heading=incoming_heading,
+        to_pos=outgoing_start, to_heading=outgoing_heading,
+        num_points=10, tangent_scale=0.5
+    )
+    if not path:
+        return
+
+    aU, bU, cU, dU, aV, bV, cV, dV = coeffs
+    in_width = _get_road_lane_width(incoming_road, default_lane_width)
+    out_width = _get_road_lane_width(outgoing_road, default_lane_width)
+
+    connector = Road(
+        name=f"CR {junction.id} through", junction_id=junction.id,
+        inline_path=path, cr_lane_count_left=0, cr_lane_count_right=roundabout.lane_count,
+        lane_info=LaneInfo(left_count=0, right_count=roundabout.lane_count,
+                           lane_width=(in_width + out_width) / 2),
+        lane_width_start=in_width, lane_width_end=out_width,
+        predecessor_id=incoming_road.id, successor_id=outgoing_road.id,
+        predecessor_contact="end", successor_contact="start",
+        geometry_type="parampoly3",
+        aU=aU, bU=bU, cU=cU, dU=dU, aV=aV, bV=bV, cV=cV, dV=dV,
+        stored_start_heading=incoming_heading, stored_end_heading=outgoing_heading
+    )
+    connector.ensure_cr_lanes_initialized()
+    connecting_roads.append(connector)
+
+    for lane_idx in range(1, roundabout.lane_count + 1):
+        lane_connections.append(LaneConnection(
+            from_road_id=incoming_road.id, from_lane_id=-lane_idx,
+            to_road_id=outgoing_road.id, to_lane_id=-lane_idx,
+            connecting_road_id=connector.id, turn_type="straight"
+        ))
+
+    if verbose:
+        path_len = sum(
+            math.sqrt((path[i+1][0]-path[i][0])**2 + (path[i+1][1]-path[i][1])**2)
+            for i in range(len(path)-1)
+        )
+        logger.debug("    Through: %d points, ~%.1fpx", len(path), path_len)
+
+
+def _create_entry_exit_connector(junction, roundabout, approach_road, approach_points,
+                                 ring_road, ring_polyline, ring_pos,
+                                 is_entry, default_lane_width,
+                                 connecting_roads, lane_connections, verbose):
+    """Create an entry or exit connector between an approach road and the ring."""
+    if is_entry:
+        from_pos = approach_points[-1]
+        to_pos = ring_pos
+        from_heading = _calculate_endpoint_heading(approach_points, at_start=False)
+        to_heading = _calculate_endpoint_heading(ring_polyline.points, at_start=True)
+        pred_id, succ_id = approach_road.id, ring_road.id
+        pred_contact, succ_contact = "end", "start"
+        from_road_for_lc, to_road_for_lc = approach_road.id, ring_road.id
+        label = "entry"
+        log_msg = f"    Entry from {approach_road.name[:20]}"
+    else:
+        from_pos = ring_pos
+        to_pos = approach_points[0]
+        from_heading = _calculate_endpoint_heading(ring_polyline.points, at_start=False)
+        to_heading = _calculate_endpoint_heading(approach_points, at_start=True)
+        pred_id, succ_id = ring_road.id, approach_road.id
+        pred_contact, succ_contact = "end", "start"
+        from_road_for_lc, to_road_for_lc = ring_road.id, approach_road.id
+        label = "exit"
+        log_msg = f"    Exit to {approach_road.name[:20]}"
+
+    path, coeffs = generate_simple_connection_path(
+        from_pos=from_pos, from_heading=from_heading,
+        to_pos=to_pos, to_heading=to_heading,
+        num_points=10, tangent_scale=0.6
+    )
+    if not path:
+        return
+
+    aU, bU, cU, dU, aV, bV, cV, dV = coeffs
+    approach_lanes = approach_road.lane_info.right_count if approach_road.lane_info else 1
+    approach_width = _get_road_lane_width(approach_road, default_lane_width)
+    ring_width = _get_road_lane_width(ring_road, default_lane_width)
+
+    if is_entry:
+        w_start, w_end = approach_width, ring_width
+    else:
+        w_start, w_end = ring_width, approach_width
+
+    lane_count = min(approach_lanes, roundabout.lane_count)
+    connector = Road(
+        name=f"CR {junction.id} {label}", junction_id=junction.id,
+        inline_path=path, cr_lane_count_left=0, cr_lane_count_right=lane_count,
+        lane_info=LaneInfo(left_count=0, right_count=lane_count,
+                           lane_width=(approach_width + ring_width) / 2),
+        lane_width_start=w_start, lane_width_end=w_end,
+        predecessor_id=pred_id, successor_id=succ_id,
+        predecessor_contact=pred_contact, successor_contact=succ_contact,
+        geometry_type="parampoly3",
+        aU=aU, bU=bU, cU=cU, dU=dU, aV=aV, bV=bV, cV=cV, dV=dV,
+        stored_start_heading=from_heading, stored_end_heading=to_heading
+    )
+    connector.ensure_cr_lanes_initialized()
+    connecting_roads.append(connector)
+
+    for lane_idx in range(1, lane_count + 1):
+        lane_connections.append(LaneConnection(
+            from_road_id=from_road_for_lc, from_lane_id=-lane_idx,
+            to_road_id=to_road_for_lc, to_lane_id=-lane_idx,
+            connecting_road_id=connector.id, turn_type="right"
+        ))
+
+    if verbose:
+        logger.debug("%s: %d points", log_msg, len(path))
 
 
 def generate_all_roundabout_connectors(

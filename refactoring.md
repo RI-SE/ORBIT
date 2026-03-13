@@ -78,31 +78,49 @@
 
 ---
 
-## Tier 2 — Medium impact, medium effort (TODO)
+## Tier 2 — Medium impact, medium effort
 
-### 10. Extract `ProjectController` from MainWindow
+### 10. Extract `ProjectController` from MainWindow — TODO
 - Decouple business logic (add/remove road, split, junction ops) from UI
 - Highest-value god-object extraction
 
-### 11. Split remaining 200+ line functions
-- `create_connecting_roads_from_patterns` (370 lines, junction_analyzer.py)
-- `create_roundabout_connectors` (309 lines, roundabout_handler.py)
-- `setup_ui` in georeference_dialog (260 lines)
-- `offset_road_endpoints_from_junctions` (229 lines, osm_to_orbit.py)
-- `create_roundabout_from_params` (215 lines, roundabout_creator.py)
-- `_create_section_based_lanes` (215 lines, lane_item.py)
-- `setup_ui` in properties_dialog (219 lines)
-- `setup_ui` in lane_properties_dialog (210 lines)
-- `_migrate_uuid_ids` (204 lines, project.py)
+### 11. Split remaining 200+ line functions — DONE
+- `create_connecting_roads_from_patterns` (370→~35 lines, junction_analyzer.py) — DONE
+  - `_generate_connection_path()`, `_add_cr_to_project_and_junction()`, `_add_lane_connections()`,
+    `_create_bidirectional_cr()`, `_create_unidirectional_cr()`
+- `create_roundabout_connectors` (309→~60 lines, roundabout_handler.py) — DONE
+  - `_create_through_connector()`, `_create_entry_exit_connector()`
+- `setup_ui` in georeference_dialog (260→~30 lines) — DONE
+  - `_create_control_points_section()`, `_create_add_point_section()`,
+    `_create_status_section()`, `_create_uncertainty_section()`,
+    `_create_uncertainty_params_layout()`
+- `offset_road_endpoints_from_junctions` (229→~70 lines, osm_to_orbit.py) — DONE
+  - `_apply_endpoint_offset()`
+- `create_roundabout_from_params` (215→~50 lines, roundabout_creator.py) — DONE
+  - `_find_connection_indices()`, `_create_ring_segments()`,
+    `_link_ring_segments()`, `_create_entry_junctions()`
+- `_create_section_based_lanes` (215→~25 lines, lane_item.py) — DONE
+  - `_is_inner_lane()`, `_cumulative_inner_offset()`, `_compute_lane_polygon()`,
+    `_compute_explicit_boundary_polygon()`, `_compute_width_based_polygon()`,
+    `_compute_polynomial_polygon()`, `_compute_variable_width_polygon()`,
+    `_compute_constant_width_polygon()`, `_add_lane_scene_item()`
+- `setup_ui` in properties_dialog (219→~30 lines) — DONE
+  - `_create_basic_properties_section()`, `_create_centerline_section()`,
+    `_create_road_links_section()`, `_create_lane_config_section()`
+- `setup_ui` in lane_properties_dialog (210→~25 lines) — DONE
+  - `_create_lane_properties_section()`, `_create_width_controls()`,
+    `_create_access_controls()`, `_create_boundary_section()`
+- `_migrate_uuid_ids` (204→~45 lines, project.py) — DONE
+  - `_remap_entities()` (local), `_remap_all_cross_references()`
 
-### 12. Consolidate scattered constants
+### 12. Consolidate scattered constants — TODO
 - GUI constants into `gui/constants.py`
 - Import defaults into `import/defaults.py`
 
-### 13. Replace `importlib` with standard late imports
-- `import_osm_data` and `import_opendrive_file` in main_window.py
+### 13. Replace `importlib` with standard late imports — SKIPPED
+- `orbit.import` is a Python keyword; `importlib` is the correct approach
 
-### 14. Add export builder tests
+### 14. Add export builder tests — TODO
 - `opendrive_writer.py` — XML generation
 - `lane_builder.py`, `signal_builder.py` — pure builders
 

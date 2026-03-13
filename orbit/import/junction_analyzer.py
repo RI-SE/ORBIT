@@ -536,369 +536,238 @@ def create_connecting_roads_from_patterns(
     transformer: Optional['CoordinateTransformer'] = None,
     project: Optional[Project] = None
 ) -> None:
-    """
-    Create connecting roads and lane connections from pre-detected patterns.
-
-    This function handles Steps 4-6 of junction connection generation:
-    - Step 4: Identify straight-through pairs for bidirectional roads
-    - Step 5: Create bidirectional connecting roads for straight pairs
-    - Step 6: Create unidirectional roads for turns and unpaired straights
-
-    When a transformer is provided and endpoints have geo coordinates,
-    paths are generated in geographic space first (geo-first), then pixel
-    coordinates are derived. This ensures geo coordinates are the source
-    of truth for adjustment operations.
-
-    Args:
-        junction: Junction object to populate with connections
-        patterns: List of ConnectionPattern objects (pre-detected)
-        endpoint_lookup: Dict mapping road_id -> RoadEndpointInfo with current positions
-        transformer: Optional CoordinateTransformer for geo-first path generation
-        project: Project to add connecting Road objects to
-    """
+    """Create connecting roads and lane connections from pre-detected patterns."""
     if not patterns:
         return
 
     # Step 4: Identify straight-through pairs (A->B and B->A both straight)
-    # These should become single bidirectional connecting roads
-    straight_pairs = {}  # (road_a, road_b) -> [pattern_a_to_b, pattern_b_to_a]
+    straight_pairs = {}
     for pattern in patterns:
         if pattern.turn_type == "straight":
-            # Use sorted tuple as key so A->B and B->A map to same key
             key = tuple(sorted([pattern.from_road_id, pattern.to_road_id]))
             if key not in straight_pairs:
                 straight_pairs[key] = []
             straight_pairs[key].append(pattern)
 
-    # Track which patterns have been handled as straight pairs
+    # Step 5: Create bidirectional CRs for straight-through pairs
     handled_patterns = set()
-
-    # Step 5: Create bidirectional connecting roads for straight-through pairs
-    for (road_a_id, road_b_id), pair_patterns in straight_pairs.items():
+    for pair_patterns in straight_pairs.values():
         if len(pair_patterns) == 2:
-            # True bidirectional straight-through - create ONE connecting road
-            # Pick the pattern where from_endpoint is at "end" of its road (standard direction)
-            pattern = pair_patterns[0]
-
-            # Get updated endpoints from lookup
-            from_endpoint = endpoint_lookup.get(pattern.from_road_id)
-            to_endpoint = endpoint_lookup.get(pattern.to_road_id)
-
-            if not from_endpoint or not to_endpoint:
-                continue
-
-            # Check if we need to swap to get the "end" direction
-            if from_endpoint.at_junction != "end":
-                pattern = pair_patterns[1]
-                from_endpoint = endpoint_lookup.get(pattern.from_road_id)
-                to_endpoint = endpoint_lookup.get(pattern.to_road_id)
-                if not from_endpoint or not to_endpoint:
-                    continue
-
-            # Store start and end lane widths for linear transition
-            lane_width_start = from_endpoint.lane_width
-            lane_width_end = to_endpoint.lane_width
-            # Keep average for backward compatibility
-            avg_lane_width = (lane_width_start + lane_width_end) / 2
-
-            # Generate path - use geo-first when transformer and geo coords available
-            geo_path = None
-            if transformer and from_endpoint.position_geo and to_endpoint.position_geo:
-                # Geo-first: generate path in geographic space
-                geo_path, coeffs = generate_connection_path_geo(
-                    from_pos_geo=from_endpoint.position_geo,
-                    from_heading=from_endpoint.heading,
-                    to_pos_geo=to_endpoint.position_geo,
-                    to_heading=to_endpoint.heading,
-                    transformer=transformer,
-                    tangent_scale=1.0,
-                    from_direction_geo=from_endpoint.direction_geo,
-                    to_direction_geo=to_endpoint.direction_geo
-                )
-                if geo_path:
-                    # Derive pixel path from geo path
-                    path = [transformer.geo_to_pixel(lon, lat) for lon, lat in geo_path]
-                    # Snap endpoints to match stored road pixel coordinates exactly
-                    # This prevents gaps due to transformer precision issues
-                    if path:
-                        path[0] = from_endpoint.position
-                        path[-1] = to_endpoint.position
-                else:
-                    path = None
-            else:
-                # Pixel-first fallback
-                from_pos = from_endpoint.position
-                to_pos = to_endpoint.position
-                path, coeffs = generate_simple_connection_path(
-                    from_pos=from_pos,
-                    from_heading=from_endpoint.heading,
-                    to_pos=to_pos,
-                    to_heading=to_endpoint.heading,
-                    tangent_scale=1.0
-                )
-
-            if not path:
-                continue
-
-            # Unpack ParamPoly3D coefficients
-            aU, bU, cU, dU, aV, bV, cV, dV = coeffs
-
-            # Bidirectional connecting road has both left and right lanes
-            conn_lane_count_left = max(1, min(from_endpoint.left_lane_count, to_endpoint.left_lane_count))
-            conn_lane_count_right = max(1, min(from_endpoint.right_lane_count, to_endpoint.right_lane_count))
-
-            # Create the bidirectional connecting road as a Road with junction_id
-            connecting_road = Road(
-                name=f"CR {junction.id}",
-                junction_id=junction.id,
-                inline_path=path,
-                inline_geo_path=geo_path,
-                cr_lane_count_left=conn_lane_count_left,
-                cr_lane_count_right=conn_lane_count_right,
-                lane_info=LaneInfo(
-                    left_count=conn_lane_count_left,
-                    right_count=conn_lane_count_right,
-                    lane_width=avg_lane_width
-                ),
-                lane_width_start=lane_width_start,
-                lane_width_end=lane_width_end,
-                predecessor_id=pattern.from_road_id,
-                successor_id=pattern.to_road_id,
-                predecessor_contact=from_endpoint.at_junction,
-                successor_contact=to_endpoint.at_junction,
-                geometry_type="parampoly3",
-                aU=aU, bU=bU, cU=cU, dU=dU,
-                aV=aV, bV=bV, cV=cV, dV=dV,
-                p_range=1.0,
-                p_range_normalized=True,
-                tangent_scale=1.0,
-                stored_start_heading=from_endpoint.heading,
-                stored_end_heading=to_endpoint.heading
+            handled = _create_bidirectional_cr(
+                junction, pair_patterns, endpoint_lookup, transformer, project
             )
-
-            if project:
-                project.add_road(connecting_road)
-            junction.add_connecting_road(connecting_road.id)
-
-            # Create lane connections for BOTH directions using the same connecting road
-            for p in pair_patterns:
-                p_from_endpoint = endpoint_lookup.get(p.from_road_id)
-                p_to_endpoint = endpoint_lookup.get(p.to_road_id)
-                if not p_from_endpoint or not p_to_endpoint:
-                    continue
-
-                lane_links = generate_lane_links_for_connection(
-                    p_from_endpoint,
-                    p_to_endpoint,
-                    p.turn_type
-                )
-
-                for from_lane_id, to_lane_id in lane_links:
-                    lane_connection = LaneConnection(
-                        from_road_id=p.from_road_id,
-                        from_lane_id=from_lane_id,
-                        to_road_id=p.to_road_id,
-                        to_lane_id=to_lane_id,
-                        connecting_road_id=connecting_road.id,
-                        turn_type=p.turn_type,
-                        priority=p.priority
-                    )
-                    junction.add_lane_connection(lane_connection)
-
-                # Mark this pattern as handled
-                handled_patterns.add(id(p))
+            handled_patterns.update(handled)
 
     # Step 6: Handle remaining patterns (turns and unpaired straights)
     for pattern in patterns:
         if id(pattern) in handled_patterns:
-            continue  # Already handled as part of a straight pair
+            continue
+        _create_unidirectional_cr(
+            junction, pattern, endpoint_lookup, transformer, project
+        )
 
-        # Get updated endpoints from lookup
+
+def _generate_connection_path(from_pos, from_heading, to_pos, to_heading,
+                              transformer, from_pos_geo=None, to_pos_geo=None,
+                              from_direction_geo=None, to_direction_geo=None,
+                              is_uturn=False):
+    """Generate a connection path with geo-first or pixel-first strategy.
+
+    Returns (path, geo_path, coeffs) or (None, None, None) on failure.
+    """
+    geo_path = None
+    if transformer and from_pos_geo and to_pos_geo:
+        geo_path, coeffs = generate_connection_path_geo(
+            from_pos_geo=from_pos_geo, from_heading=from_heading,
+            to_pos_geo=to_pos_geo, to_heading=to_heading,
+            transformer=transformer, tangent_scale=1.0, is_uturn=is_uturn,
+            from_direction_geo=from_direction_geo,
+            to_direction_geo=to_direction_geo
+        )
+        if geo_path:
+            path = [transformer.geo_to_pixel(lon, lat) for lon, lat in geo_path]
+            if path:
+                path[0] = from_pos
+                path[-1] = to_pos
+        else:
+            path = None
+    else:
+        path, coeffs = generate_simple_connection_path(
+            from_pos=from_pos, from_heading=from_heading,
+            to_pos=to_pos, to_heading=to_heading,
+            tangent_scale=1.0, is_uturn=is_uturn
+        )
+    if not path:
+        return None, None, None
+    return path, geo_path, coeffs
+
+
+def _add_cr_to_project_and_junction(connecting_road, junction, project):
+    """Add a connecting road to the project and junction."""
+    if project:
+        project.add_road(connecting_road)
+    junction.add_connecting_road(connecting_road.id)
+
+
+def _add_lane_connections(junction, connecting_road_id, from_endpoint, to_endpoint,
+                          pattern):
+    """Generate lane links and add LaneConnection objects to junction."""
+    lane_links = generate_lane_links_for_connection(
+        from_endpoint, to_endpoint, pattern.turn_type
+    )
+    for from_lane_id, to_lane_id in lane_links:
+        lane_connection = LaneConnection(
+            from_road_id=pattern.from_road_id,
+            from_lane_id=from_lane_id,
+            to_road_id=pattern.to_road_id,
+            to_lane_id=to_lane_id,
+            connecting_road_id=connecting_road_id,
+            turn_type=pattern.turn_type,
+            priority=pattern.priority
+        )
+        junction.add_lane_connection(lane_connection)
+
+
+def _create_bidirectional_cr(junction, pair_patterns, endpoint_lookup,
+                             transformer, project):
+    """Create a single bidirectional CR for a straight-through pair. Returns handled pattern ids."""
+    # Pick pattern where from_endpoint is at "end" (standard direction)
+    pattern = pair_patterns[0]
+    from_endpoint = endpoint_lookup.get(pattern.from_road_id)
+    to_endpoint = endpoint_lookup.get(pattern.to_road_id)
+
+    if not from_endpoint or not to_endpoint:
+        return set()
+
+    if from_endpoint.at_junction != "end":
+        pattern = pair_patterns[1]
         from_endpoint = endpoint_lookup.get(pattern.from_road_id)
         to_endpoint = endpoint_lookup.get(pattern.to_road_id)
-
         if not from_endpoint or not to_endpoint:
-            continue
+            return set()
 
-        # Store start and end lane widths for linear transition
-        # Note: These will be swapped if use_left_lanes to match path direction
-        width_from = from_endpoint.lane_width
-        width_to = to_endpoint.lane_width
-        # Keep average for backward compatibility
-        avg_lane_width = (width_from + width_to) / 2
+    lane_width_start = from_endpoint.lane_width
+    lane_width_end = to_endpoint.lane_width
+    avg_lane_width = (lane_width_start + lane_width_end) / 2
 
-        # Determine which lanes are used for this connection based on traffic direction
-        # at_junction="end" means traffic uses right lanes (road ends at junction)
-        # at_junction="start" means traffic uses left lanes (road starts at junction)
-        if from_endpoint.at_junction == "end":
-            use_left_lanes = False
-            from_lane_count = from_endpoint.right_lane_count
-        else:
-            use_left_lanes = True
-            from_lane_count = from_endpoint.left_lane_count
+    path, geo_path, coeffs = _generate_connection_path(
+        from_endpoint.position, from_endpoint.heading,
+        to_endpoint.position, to_endpoint.heading,
+        transformer,
+        from_endpoint.position_geo, to_endpoint.position_geo,
+        from_endpoint.direction_geo, to_endpoint.direction_geo
+    )
+    if not path:
+        return set()
 
-        if to_endpoint.at_junction == "start":
-            to_lane_count = to_endpoint.right_lane_count
-        else:
-            to_lane_count = to_endpoint.left_lane_count
+    aU, bU, cU, dU, aV, bV, cV, dV = coeffs
+    conn_left = max(1, min(from_endpoint.left_lane_count, to_endpoint.left_lane_count))
+    conn_right = max(1, min(from_endpoint.right_lane_count, to_endpoint.right_lane_count))
 
-        conn_lane_count = max(1, min(from_lane_count, to_lane_count))
+    connecting_road = Road(
+        name=f"CR {junction.id}",
+        junction_id=junction.id,
+        inline_path=path, inline_geo_path=geo_path,
+        cr_lane_count_left=conn_left, cr_lane_count_right=conn_right,
+        lane_info=LaneInfo(left_count=conn_left, right_count=conn_right, lane_width=avg_lane_width),
+        lane_width_start=lane_width_start, lane_width_end=lane_width_end,
+        predecessor_id=pattern.from_road_id, successor_id=pattern.to_road_id,
+        predecessor_contact=from_endpoint.at_junction, successor_contact=to_endpoint.at_junction,
+        geometry_type="parampoly3",
+        aU=aU, bU=bU, cU=cU, dU=dU, aV=aV, bV=bV, cV=cV, dV=dV,
+        p_range=1.0, p_range_normalized=True, tangent_scale=1.0,
+        stored_start_heading=from_endpoint.heading, stored_end_heading=to_endpoint.heading
+    )
+    _add_cr_to_project_and_junction(connecting_road, junction, project)
 
-        # Set lane configuration based on traffic direction
-        if use_left_lanes:
-            conn_lane_count_left = conn_lane_count
-            conn_lane_count_right = 0
-        else:
-            conn_lane_count_left = 0
-            conn_lane_count_right = conn_lane_count
+    # Create lane connections for BOTH directions using the same connecting road
+    handled = set()
+    for p in pair_patterns:
+        p_from = endpoint_lookup.get(p.from_road_id)
+        p_to = endpoint_lookup.get(p.to_road_id)
+        if p_from and p_to:
+            _add_lane_connections(junction, connecting_road.id, p_from, p_to, p)
+        handled.add(id(p))
+    return handled
 
-        # Check if this is a U-turn connection
-        is_uturn = pattern.turn_type == "uturn"
 
-        # Determine path direction and road connections
-        # For left-lane traffic, SWAP the path direction so both connecting roads
-        # go in the same direction as the main roads (one uses right lane, one uses left)
-        if use_left_lanes:
-            # Swap path direction: use to_endpoint as start, from_endpoint as end
-            # This makes the path go in the same direction as the "normal" traffic flow
-            from_pos = to_endpoint.position
-            to_pos = from_endpoint.position
-            from_pos_geo = to_endpoint.position_geo
-            to_pos_geo = from_endpoint.position_geo
-            from_heading = to_endpoint.heading
-            to_heading = from_endpoint.heading
-            from_direction_geo = to_endpoint.direction_geo
-            to_direction_geo = from_endpoint.direction_geo
-            # Swap road connections (predecessor/successor indicate geometric connection)
-            pred_road_id = pattern.to_road_id
-            succ_road_id = pattern.from_road_id
-            contact_start = to_endpoint.at_junction
-            contact_end = from_endpoint.at_junction
-            # Swap widths to match path direction
-            lane_width_start = width_to
-            lane_width_end = width_from
-        else:
-            # Normal case: path goes from_endpoint to to_endpoint
-            from_pos = from_endpoint.position
-            to_pos = to_endpoint.position
-            from_pos_geo = from_endpoint.position_geo
-            to_pos_geo = to_endpoint.position_geo
-            from_direction_geo = from_endpoint.direction_geo
-            to_direction_geo = to_endpoint.direction_geo
-            from_heading = from_endpoint.heading
-            to_heading = to_endpoint.heading
-            pred_road_id = pattern.from_road_id
-            succ_road_id = pattern.to_road_id
-            contact_start = from_endpoint.at_junction
-            contact_end = to_endpoint.at_junction
-            # Normal widths match path direction
-            lane_width_start = width_from
-            lane_width_end = width_to
+def _create_unidirectional_cr(junction, pattern, endpoint_lookup,
+                              transformer, project):
+    """Create a unidirectional CR for a turn or unpaired straight."""
+    from_endpoint = endpoint_lookup.get(pattern.from_road_id)
+    to_endpoint = endpoint_lookup.get(pattern.to_road_id)
+    if not from_endpoint or not to_endpoint:
+        return
 
-        # Generate path - use geo-first when transformer and geo coords available
-        geo_path = None
-        if transformer and from_pos_geo and to_pos_geo:
-            # Geo-first: generate path in geographic space
-            geo_path, coeffs = generate_connection_path_geo(
-                from_pos_geo=from_pos_geo,
-                from_heading=from_heading,
-                to_pos_geo=to_pos_geo,
-                to_heading=to_heading,
-                transformer=transformer,
-                tangent_scale=1.0,
-                is_uturn=is_uturn,
-                from_direction_geo=from_direction_geo,
-                to_direction_geo=to_direction_geo
-            )
-            if geo_path:
-                # Derive pixel path from geo path
-                path = [transformer.geo_to_pixel(lon, lat) for lon, lat in geo_path]
-                # Snap endpoints to match stored road pixel coordinates exactly
-                # This prevents gaps due to transformer precision issues
-                if path:
-                    path[0] = from_pos
-                    path[-1] = to_pos
-            else:
-                path = None
-        else:
-            # Pixel-first fallback
-            path, coeffs = generate_simple_connection_path(
-                from_pos=from_pos,
-                from_heading=from_heading,
-                to_pos=to_pos,
-                to_heading=to_heading,
-                tangent_scale=1.0,
-                is_uturn=is_uturn
-            )
+    width_from = from_endpoint.lane_width
+    width_to = to_endpoint.lane_width
+    avg_lane_width = (width_from + width_to) / 2
 
-        if not path:
-            continue
+    # Determine lane direction and count
+    use_left_lanes = from_endpoint.at_junction != "end"
+    if use_left_lanes:
+        from_lane_count = from_endpoint.left_lane_count
+    else:
+        from_lane_count = from_endpoint.right_lane_count
+    to_lane_count = (to_endpoint.right_lane_count if to_endpoint.at_junction == "start"
+                     else to_endpoint.left_lane_count)
+    conn_lane_count = max(1, min(from_lane_count, to_lane_count))
 
-        # Unpack ParamPoly3D coefficients
-        aU, bU, cU, dU, aV, bV, cV, dV = coeffs
+    if use_left_lanes:
+        conn_left, conn_right = conn_lane_count, 0
+    else:
+        conn_left, conn_right = 0, conn_lane_count
 
-        # Derive stored headings from the actual generated path so that
-        # regeneration (during alignment) preserves the correct direction.
-        # The geo path generator computes its own headings from direction_geo,
-        # which may differ from the raw pixel endpoint headings.
-        path_start_heading = math.atan2(
-            path[1][1] - path[0][1], path[1][0] - path[0][0])
-        path_end_heading = math.atan2(
-            path[-1][1] - path[-2][1], path[-1][0] - path[-2][0])
+    is_uturn = pattern.turn_type == "uturn"
 
-        # Create connecting road as a Road with junction_id
-        connecting_road = Road(
-            name=f"CR {junction.id}",
-            junction_id=junction.id,
-            inline_path=path,
-            inline_geo_path=geo_path,
-            cr_lane_count_left=conn_lane_count_left,
-            cr_lane_count_right=conn_lane_count_right,
-            lane_info=LaneInfo(
-                left_count=conn_lane_count_left,
-                right_count=conn_lane_count_right,
-                lane_width=avg_lane_width
-            ),
-            lane_width_start=lane_width_start,
-            lane_width_end=lane_width_end,
-            predecessor_id=pred_road_id,
-            successor_id=succ_road_id,
-            predecessor_contact=contact_start,
-            successor_contact=contact_end,
-            geometry_type="parampoly3",
-            aU=aU, bU=bU, cU=cU, dU=dU,
-            aV=aV, bV=bV, cV=cV, dV=dV,
-            p_range=1.0,
-            p_range_normalized=True,
-            tangent_scale=1.0,
-            stored_start_heading=path_start_heading,
-            stored_end_heading=path_end_heading
-        )
+    # Resolve path direction — swap for left-lane traffic
+    if use_left_lanes:
+        from_pos, to_pos = to_endpoint.position, from_endpoint.position
+        from_pos_geo, to_pos_geo = to_endpoint.position_geo, from_endpoint.position_geo
+        from_heading, to_heading = to_endpoint.heading, from_endpoint.heading
+        from_dir_geo, to_dir_geo = to_endpoint.direction_geo, from_endpoint.direction_geo
+        pred_id, succ_id = pattern.to_road_id, pattern.from_road_id
+        contact_start, contact_end = to_endpoint.at_junction, from_endpoint.at_junction
+        lane_width_start, lane_width_end = width_to, width_from
+    else:
+        from_pos, to_pos = from_endpoint.position, to_endpoint.position
+        from_pos_geo, to_pos_geo = from_endpoint.position_geo, to_endpoint.position_geo
+        from_heading, to_heading = from_endpoint.heading, to_endpoint.heading
+        from_dir_geo, to_dir_geo = from_endpoint.direction_geo, to_endpoint.direction_geo
+        pred_id, succ_id = pattern.from_road_id, pattern.to_road_id
+        contact_start, contact_end = from_endpoint.at_junction, to_endpoint.at_junction
+        lane_width_start, lane_width_end = width_from, width_to
 
-        if project:
-            project.add_road(connecting_road)
-        junction.add_connecting_road(connecting_road.id)
+    path, geo_path, coeffs = _generate_connection_path(
+        from_pos, from_heading, to_pos, to_heading,
+        transformer, from_pos_geo, to_pos_geo,
+        from_dir_geo, to_dir_geo, is_uturn
+    )
+    if not path:
+        return
 
-        # Generate lane links
-        lane_links = generate_lane_links_for_connection(
-            from_endpoint,
-            to_endpoint,
-            pattern.turn_type
-        )
+    aU, bU, cU, dU, aV, bV, cV, dV = coeffs
 
-        # Create lane connection objects
-        for from_lane_id, to_lane_id in lane_links:
-            lane_connection = LaneConnection(
-                from_road_id=pattern.from_road_id,
-                from_lane_id=from_lane_id,
-                to_road_id=pattern.to_road_id,
-                to_lane_id=to_lane_id,
-                connecting_road_id=connecting_road.id,
-                turn_type=pattern.turn_type,
-                priority=pattern.priority
-            )
+    # Derive stored headings from actual generated path
+    path_start_heading = math.atan2(path[1][1] - path[0][1], path[1][0] - path[0][0])
+    path_end_heading = math.atan2(path[-1][1] - path[-2][1], path[-1][0] - path[-2][0])
 
-            junction.add_lane_connection(lane_connection)
+    connecting_road = Road(
+        name=f"CR {junction.id}",
+        junction_id=junction.id,
+        inline_path=path, inline_geo_path=geo_path,
+        cr_lane_count_left=conn_left, cr_lane_count_right=conn_right,
+        lane_info=LaneInfo(left_count=conn_left, right_count=conn_right, lane_width=avg_lane_width),
+        lane_width_start=lane_width_start, lane_width_end=lane_width_end,
+        predecessor_id=pred_id, successor_id=succ_id,
+        predecessor_contact=contact_start, successor_contact=contact_end,
+        geometry_type="parampoly3",
+        aU=aU, bU=bU, cU=cU, dU=dU, aV=aV, bV=bV, cV=cV, dV=dV,
+        p_range=1.0, p_range_normalized=True, tangent_scale=1.0,
+        stored_start_heading=path_start_heading, stored_end_heading=path_end_heading
+    )
+    _add_cr_to_project_and_junction(connecting_road, junction, project)
+    _add_lane_connections(junction, connecting_road.id, from_endpoint, to_endpoint, pattern)
 
 
 def _compute_max_curvature(points: List[Tuple[float, float]]) -> float:

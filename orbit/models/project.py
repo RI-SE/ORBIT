@@ -265,8 +265,6 @@ class Project:
         object_remap: Dict[str, str] = {}
         parking_remap: Dict[str, str] = {}
         connecting_road_remap: Dict[str, str] = {}
-        lane_connection_remap: Dict[str, str] = {}
-        junction_group_remap: Dict[str, str] = {}
 
         if odr_id_lookup is None:
             odr_id_lookup = {}
@@ -298,142 +296,42 @@ class Project:
             counter[0] += 1
             return new_id
 
-        # --- Assign new polyline IDs ---
-        poly_used: set = set()
-        poly_counter = [1]
-        for p in self.polylines:
-            odr_id = odr_id_lookup.get(p.id)
-            new_id = _new_id(p.id, odr_id, poly_used, poly_counter)
-            polyline_remap[p.id] = new_id
-            p.id = new_id
+        # Phase 1: Assign new IDs to all entities
+        def _remap_entities(entities, odr_lookup):
+            remap = {}
+            used = set()
+            counter = [1]
+            for e in entities:
+                odr_id = odr_lookup.get(e.id)
+                new_id = _new_id(e.id, odr_id, used, counter)
+                remap[e.id] = new_id
+                e.id = new_id
+            return remap
 
-        # --- Assign new road IDs ---
-        road_used: set = set()
-        road_counter = [1]
-        for r in self.roads:
-            odr_id = odr_id_lookup.get(r.id)
-            new_id = _new_id(r.id, odr_id, road_used, road_counter)
-            road_remap[r.id] = new_id
-            r.id = new_id
+        polyline_remap = _remap_entities(self.polylines, odr_id_lookup)
+        road_remap = _remap_entities(self.roads, odr_id_lookup)
+        junction_remap = _remap_entities(self.junctions, odr_id_lookup)
+        signal_remap = _remap_entities(self.signals, odr_id_lookup)
+        object_remap = _remap_entities(self.objects, odr_id_lookup)
+        parking_remap = _remap_entities(self.parking_spaces, odr_id_lookup)
 
-        # --- Assign new junction IDs ---
-        junction_used: set = set()
-        junction_counter = [1]
-        for j in self.junctions:
-            odr_id = odr_id_lookup.get(j.id)
-            new_id = _new_id(j.id, odr_id, junction_used, junction_counter)
-            junction_remap[j.id] = new_id
-            j.id = new_id
+        # Connecting road remap: subset of road_remap for connecting roads
+        # Note: r.id is already remapped, so look up by new_id in road_remap values
+        cr_new_ids = {r.id for r in self.roads if r.is_connecting_road}
+        connecting_road_remap = {
+            old: new for old, new in road_remap.items() if new in cr_new_ids
+        }
 
-        # --- Assign new signal IDs ---
-        signal_used: set = set()
-        signal_counter = [1]
-        for s in self.signals:
-            odr_id = odr_id_lookup.get(s.id)
-            new_id = _new_id(s.id, odr_id, signal_used, signal_counter)
-            signal_remap[s.id] = new_id
-            s.id = new_id
+        # Lane connections and junction groups (remap for side-effect only)
+        all_lane_connections = [lc for j in self.junctions for lc in j.lane_connections]
+        _remap_entities(all_lane_connections, {})
+        _remap_entities(self.junction_groups, {})
 
-        # --- Assign new object IDs ---
-        object_used: set = set()
-        object_counter = [1]
-        for o in self.objects:
-            odr_id = odr_id_lookup.get(o.id)
-            new_id = _new_id(o.id, odr_id, object_used, object_counter)
-            object_remap[o.id] = new_id
-            o.id = new_id
-
-        # --- Assign new parking IDs ---
-        parking_used: set = set()
-        parking_counter = [1]
-        for p in self.parking_spaces:
-            odr_id = odr_id_lookup.get(p.id)
-            new_id = _new_id(p.id, odr_id, parking_used, parking_counter)
-            parking_remap[p.id] = new_id
-            p.id = new_id
-
-        # --- Connecting road IDs are now in the road list (unified) ---
-        # Build connecting_road_remap from road_remap for connecting roads
-        for r in self.roads:
-            if r.is_connecting_road and r.id in road_remap:
-                connecting_road_remap[r.id] = road_remap[r.id]
-
-        lc_used: set = set()
-        lc_counter = [1]
-        for j in self.junctions:
-            for lc in j.lane_connections:
-                new_id = _new_id(lc.id, None, lc_used, lc_counter)
-                lane_connection_remap[lc.id] = new_id
-                lc.id = new_id
-
-        # --- Assign new junction group IDs ---
-        jg_used: set = set()
-        jg_counter = [1]
-        for jg in self.junction_groups:
-            new_id = _new_id(jg.id, None, jg_used, jg_counter)
-            junction_group_remap[jg.id] = new_id
-            jg.id = new_id
-
-        # --- Remap all cross-references ---
-
-        def _remap(old_id: Optional[str], remap_table: Dict[str, str]) -> Optional[str]:
-            """Remap an ID using the given table, returning None if input is None."""
-            if old_id is None:
-                return None
-            return remap_table.get(old_id, old_id)
-
-        def _remap_list(id_list: List[str], remap_table: Dict[str, str]) -> List[str]:
-            """Remap a list of IDs."""
-            return [remap_table.get(old_id, old_id) for old_id in id_list]
-
-        # Road cross-references
-        for road in self.roads:
-            road.centerline_id = _remap(road.centerline_id, polyline_remap)
-            road.polyline_ids = _remap_list(road.polyline_ids, polyline_remap)
-            road.predecessor_id = _remap(road.predecessor_id, road_remap)
-            road.successor_id = _remap(road.successor_id, road_remap)
-            road.junction_id = _remap(road.junction_id, junction_remap)
-            road.predecessor_junction_id = _remap(road.predecessor_junction_id, junction_remap)
-            road.successor_junction_id = _remap(road.successor_junction_id, junction_remap)
-
-            # Lane boundary IDs
-            for section in road.lane_sections:
-                for lane in section.lanes:
-                    lane.left_boundary_id = _remap(lane.left_boundary_id, polyline_remap)
-                    lane.right_boundary_id = _remap(lane.right_boundary_id, polyline_remap)
-
-        # Junction cross-references
-        for junction in self.junctions:
-            junction.connected_road_ids = _remap_list(junction.connected_road_ids, road_remap)
-            junction.connecting_road_ids = _remap_list(junction.connecting_road_ids, connecting_road_remap)
-            junction.entry_roads = _remap_list(junction.entry_roads, road_remap)
-            junction.exit_roads = _remap_list(junction.exit_roads, road_remap)
-
-            for lc in junction.lane_connections:
-                lc.from_road_id = _remap(lc.from_road_id, road_remap) or ""
-                lc.to_road_id = _remap(lc.to_road_id, road_remap) or ""
-                lc.connecting_road_id = _remap(lc.connecting_road_id, connecting_road_remap)
-                lc.traffic_light_id = _remap(lc.traffic_light_id, signal_remap)
-
-            if junction.boundary:
-                for seg in junction.boundary.segments:
-                    seg.road_id = _remap(seg.road_id, road_remap)
-
-        # Signal cross-references
-        for signal in self.signals:
-            signal.road_id = _remap(signal.road_id, road_remap)
-
-        # Object cross-references
-        for obj in self.objects:
-            obj.road_id = _remap(obj.road_id, road_remap)
-
-        # Parking cross-references
-        for parking in self.parking_spaces:
-            parking.road_id = _remap(parking.road_id, road_remap)
-
-        # JunctionGroup cross-references
-        for jg in self.junction_groups:
-            jg.junction_ids = _remap_list(jg.junction_ids, junction_remap)
+        # Phase 2: Remap all cross-references
+        self._remap_all_cross_references(
+            polyline_remap, road_remap, junction_remap, signal_remap,
+            connecting_road_remap
+        )
 
         # Update version
         self.metadata['version'] = _get_version()
@@ -444,6 +342,77 @@ class Project:
             f"{len(signal_remap)} signals, {len(object_remap)} objects, "
             f"{len(parking_remap)} parking spaces"
         )
+
+    def _remap_all_cross_references(
+        self,
+        polyline_remap: Dict[str, str],
+        road_remap: Dict[str, str],
+        junction_remap: Dict[str, str],
+        signal_remap: Dict[str, str],
+        connecting_road_remap: Dict[str, str],
+    ) -> None:
+        """Remap all cross-reference fields after ID migration."""
+
+        def _remap(old_id, table):
+            if old_id is None:
+                return None
+            return table.get(old_id, old_id)
+
+        def _remap_list(id_list, table):
+            return [table.get(old_id, old_id) for old_id in id_list]
+
+        for road in self.roads:
+            road.centerline_id = _remap(road.centerline_id, polyline_remap)
+            road.polyline_ids = _remap_list(road.polyline_ids, polyline_remap)
+            road.predecessor_id = _remap(road.predecessor_id, road_remap)
+            road.successor_id = _remap(road.successor_id, road_remap)
+            road.junction_id = _remap(road.junction_id, junction_remap)
+            road.predecessor_junction_id = _remap(
+                road.predecessor_junction_id, junction_remap
+            )
+            road.successor_junction_id = _remap(
+                road.successor_junction_id, junction_remap
+            )
+            for section in road.lane_sections:
+                for lane in section.lanes:
+                    lane.left_boundary_id = _remap(
+                        lane.left_boundary_id, polyline_remap
+                    )
+                    lane.right_boundary_id = _remap(
+                        lane.right_boundary_id, polyline_remap
+                    )
+
+        for junction in self.junctions:
+            junction.connected_road_ids = _remap_list(
+                junction.connected_road_ids, road_remap
+            )
+            junction.connecting_road_ids = _remap_list(
+                junction.connecting_road_ids, connecting_road_remap
+            )
+            junction.entry_roads = _remap_list(junction.entry_roads, road_remap)
+            junction.exit_roads = _remap_list(junction.exit_roads, road_remap)
+            for lc in junction.lane_connections:
+                lc.from_road_id = _remap(lc.from_road_id, road_remap) or ""
+                lc.to_road_id = _remap(lc.to_road_id, road_remap) or ""
+                lc.connecting_road_id = _remap(
+                    lc.connecting_road_id, connecting_road_remap
+                )
+                lc.traffic_light_id = _remap(lc.traffic_light_id, signal_remap)
+            if junction.boundary:
+                for seg in junction.boundary.segments:
+                    seg.road_id = _remap(seg.road_id, road_remap)
+
+        for signal in self.signals:
+            signal.road_id = _remap(signal.road_id, road_remap)
+
+        for obj in self.objects:
+            obj.road_id = _remap(obj.road_id, road_remap)
+
+        for parking in self.parking_spaces:
+            parking.road_id = _remap(parking.road_id, road_remap)
+
+        for jg in self.junction_groups:
+            jg.junction_ids = _remap_list(jg.junction_ids, junction_remap)
 
     # Polyline management
     def assign_missing_ids(self) -> None:

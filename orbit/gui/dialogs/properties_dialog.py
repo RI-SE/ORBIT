@@ -61,20 +61,42 @@ class RoadPropertiesDialog(QDialog):
 
     def setup_ui(self):
         """Setup the dialog UI."""
-        # Set title with road ID
         road_id_short = self.road.id[:8] if len(self.road.id) > 8 else self.road.id
         self.setWindowTitle(f"Road Properties - ID: {road_id_short}")
         self.setMinimumWidth(400)
 
         layout = QVBoxLayout(self)
 
-        # Road ID display (read-only)
         id_label = QLabel(f"<b>Road ID:</b> {self.road.id}")
         id_label.setWordWrap(True)
         id_label.setStyleSheet("QLabel { padding: 8px; background-color: #f0f0f0; border-radius: 3px; }")
         layout.addWidget(id_label)
 
-        # Basic properties group
+        self._create_basic_properties_section(layout)
+        if self.project:
+            self._create_centerline_section(layout)
+            self._create_road_links_section(layout)
+        self._create_lane_config_section(layout)
+        self._setup_profiles_section(layout)
+
+        note_widget = InfoIconLabel(
+            "Note",
+            "Lane widths are in meters for georeferenced projects, "
+            "or in pixels for non-georeferenced projects.",
+            bold=False
+        )
+        layout.addWidget(note_widget)
+
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok |
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def _create_basic_properties_section(self, layout):
+        """Create the basic road properties group."""
         basic_group = QGroupBox("Basic Properties")
         basic_layout = QFormLayout()
 
@@ -94,7 +116,6 @@ class RoadPropertiesDialog(QDialog):
         self.speed_limit_spin.setValue(0)
         basic_layout.addRow("Speed Limit:", self.speed_limit_spin)
 
-        # Surface and condition dropdowns (syncs OSM tags and lane materials)
         import importlib
         _osm_mappings = importlib.import_module('orbit.import.osm_mappings')
 
@@ -113,120 +134,108 @@ class RoadPropertiesDialog(QDialog):
         basic_group.setLayout(basic_layout)
         layout.addWidget(basic_group)
 
-        # Centerline selection group (only if project available)
-        if self.project:
-            centerline_group = QGroupBox()
-            centerline_main_layout = QVBoxLayout()
+    def _create_centerline_section(self, layout):
+        """Create the road reference line selection group."""
+        centerline_group = QGroupBox()
+        centerline_main_layout = QVBoxLayout()
 
-            centerline_title = InfoIconLabel(
-                "Road Reference Line Selection",
-                "The road reference line serves as the reference line in OpenDRIVE. "
-                "Each road must have exactly one road reference line."
-            )
-            centerline_main_layout.addWidget(centerline_title)
+        centerline_title = InfoIconLabel(
+            "Road Reference Line Selection",
+            "The road reference line serves as the reference line in OpenDRIVE. "
+            "Each road must have exactly one road reference line."
+        )
+        centerline_main_layout.addWidget(centerline_title)
 
-            centerline_layout = QFormLayout()
-            self.centerline_combo = QComboBox()
-            self.centerline_combo.addItem("(No road reference line selected)", None)
+        centerline_layout = QFormLayout()
+        self.centerline_combo = QComboBox()
+        self.centerline_combo.addItem("(No road reference line selected)", None)
 
-            # Add all polylines assigned to this road; selecting one marks it
-            # as the road reference line regardless of its current line_type.
-            for polyline_id in self.road.polyline_ids:
-                polyline = self.project.get_polyline(polyline_id)
-                if polyline:
-                    type_tag = "ref" if polyline.line_type == LineType.CENTERLINE else "boundary"
-                    display_text = f"Polyline ({polyline.point_count()} pts, {type_tag})"
-                    self.centerline_combo.addItem(display_text, polyline_id)
+        for polyline_id in self.road.polyline_ids:
+            polyline = self.project.get_polyline(polyline_id)
+            if polyline:
+                type_tag = "ref" if polyline.line_type == LineType.CENTERLINE else "boundary"
+                display_text = f"Polyline ({polyline.point_count()} pts, {type_tag})"
+                self.centerline_combo.addItem(display_text, polyline_id)
 
-            centerline_layout.addRow("Road Reference Line:", self.centerline_combo)
+        centerline_layout.addRow("Road Reference Line:", self.centerline_combo)
 
-            # Warning label for centerline count (dynamic - keep inline)
-            self.centerline_warning_label = QLabel()
-            self.centerline_warning_label.setWordWrap(True)
-            centerline_layout.addRow("", self.centerline_warning_label)
+        self.centerline_warning_label = QLabel()
+        self.centerline_warning_label.setWordWrap(True)
+        centerline_layout.addRow("", self.centerline_warning_label)
 
-            # Update warning on selection change and initially
-            self.centerline_combo.currentIndexChanged.connect(
-                lambda: self.update_centerline_warning()
-            )
-            self.update_centerline_warning()
+        self.centerline_combo.currentIndexChanged.connect(
+            lambda: self.update_centerline_warning()
+        )
+        self.update_centerline_warning()
 
-            centerline_main_layout.addLayout(centerline_layout)
-            centerline_group.setLayout(centerline_main_layout)
-            layout.addWidget(centerline_group)
+        centerline_main_layout.addLayout(centerline_layout)
+        centerline_group.setLayout(centerline_main_layout)
+        layout.addWidget(centerline_group)
 
-        # Road links group (only if project available)
-        if self.project:
-            links_group = QGroupBox()
-            links_main_layout = QVBoxLayout()
+    def _create_road_links_section(self, layout):
+        """Create the predecessor/successor road links group."""
+        links_group = QGroupBox()
+        links_main_layout = QVBoxLayout()
 
-            links_title = InfoIconLabel(
-                "Road Links (Predecessor/Successor)",
-                "These links define road connectivity for OpenDRIVE export. "
-                "Set predecessor and successor to connect roads end-to-end."
-            )
-            links_main_layout.addWidget(links_title)
+        links_title = InfoIconLabel(
+            "Road Links (Predecessor/Successor)",
+            "These links define road connectivity for OpenDRIVE export. "
+            "Set predecessor and successor to connect roads end-to-end."
+        )
+        links_main_layout.addWidget(links_title)
 
-            links_layout = QFormLayout()
+        links_layout = QFormLayout()
 
-            # Predecessor selection
-            self.predecessor_combo = QComboBox()
-            self.predecessor_combo.addItem("(No predecessor)", None)
-            for other_road in self.project.roads:
-                if other_road.id != self.road.id:
-                    display_text = f"{other_road.name} (ID: {other_road.id[:8]}...)"
-                    self.predecessor_combo.addItem(display_text, other_road.id)
-            links_layout.addRow("Predecessor Road:", self.predecessor_combo)
+        self.predecessor_combo = QComboBox()
+        self.predecessor_combo.addItem("(No predecessor)", None)
+        for other_road in self.project.roads:
+            if other_road.id != self.road.id:
+                display_text = f"{other_road.name} (ID: {other_road.id[:8]}...)"
+                self.predecessor_combo.addItem(display_text, other_road.id)
+        links_layout.addRow("Predecessor Road:", self.predecessor_combo)
 
-            self.predecessor_contact_combo = QComboBox()
-            self.predecessor_contact_combo.addItem("End of predecessor", "end")
-            self.predecessor_contact_combo.addItem("Start of predecessor", "start")
-            links_layout.addRow("Connects at:", self.predecessor_contact_combo)
+        self.predecessor_contact_combo = QComboBox()
+        self.predecessor_contact_combo.addItem("End of predecessor", "end")
+        self.predecessor_contact_combo.addItem("Start of predecessor", "start")
+        links_layout.addRow("Connects at:", self.predecessor_contact_combo)
 
-            # Successor selection
-            self.successor_combo = QComboBox()
-            self.successor_combo.addItem("(No successor)", None)
-            for other_road in self.project.roads:
-                if other_road.id != self.road.id:
-                    display_text = f"{other_road.name} (ID: {other_road.id[:8]}...)"
-                    self.successor_combo.addItem(display_text, other_road.id)
-            links_layout.addRow("Successor Road:", self.successor_combo)
+        self.successor_combo = QComboBox()
+        self.successor_combo.addItem("(No successor)", None)
+        for other_road in self.project.roads:
+            if other_road.id != self.road.id:
+                display_text = f"{other_road.name} (ID: {other_road.id[:8]}...)"
+                self.successor_combo.addItem(display_text, other_road.id)
+        links_layout.addRow("Successor Road:", self.successor_combo)
 
-            self.successor_contact_combo = QComboBox()
-            self.successor_contact_combo.addItem("Start of successor", "start")
-            self.successor_contact_combo.addItem("End of successor", "end")
-            links_layout.addRow("Connects at:", self.successor_contact_combo)
+        self.successor_contact_combo = QComboBox()
+        self.successor_contact_combo.addItem("Start of successor", "start")
+        self.successor_contact_combo.addItem("End of successor", "end")
+        links_layout.addRow("Connects at:", self.successor_contact_combo)
 
-            links_main_layout.addLayout(links_layout)
-            links_group.setLayout(links_main_layout)
-            layout.addWidget(links_group)
+        links_main_layout.addLayout(links_layout)
+        links_group.setLayout(links_main_layout)
+        layout.addWidget(links_group)
 
-        # Lane properties group
+    def _create_lane_config_section(self, layout):
+        """Create the lane configuration group."""
         lane_group = QGroupBox("Lane Configuration")
         lane_layout = QFormLayout()
 
-        # Lane counts
         lane_count_layout = QHBoxLayout()
-
         self.left_lanes_spin = QSpinBox()
         self.left_lanes_spin.setRange(0, 10)
         self.left_lanes_spin.setValue(1)
         self.left_lanes_spin.setPrefix("Left: ")
         lane_count_layout.addWidget(self.left_lanes_spin)
-
         lane_count_layout.addWidget(QLabel("    "))
-
         self.right_lanes_spin = QSpinBox()
         self.right_lanes_spin.setRange(0, 10)
         self.right_lanes_spin.setValue(1)
         self.right_lanes_spin.setPrefix("Right: ")
         lane_count_layout.addWidget(self.right_lanes_spin)
-
         lane_count_layout.addStretch()
-
         lane_layout.addRow("Number of Lanes:", lane_count_layout)
 
-        # Lane width
         self.lane_width_spin = QDoubleSpinBox()
         self.lane_width_spin.setRange(1.0, 10.0)
         self.lane_width_spin.setSingleStep(0.1)
@@ -235,7 +244,6 @@ class RoadPropertiesDialog(QDialog):
         self.lane_width_spin.setToolTip("Default lane width in meters")
         lane_layout.addRow("Lane Width:", self.lane_width_spin)
 
-        # Measured width display and suggestion
         self.measured_width_label = QLabel("<i>Calculating from boundaries...</i>")
         self.measured_width_label.setWordWrap(True)
         lane_layout.addRow("", self.measured_width_label)
@@ -246,38 +254,15 @@ class RoadPropertiesDialog(QDialog):
         self.apply_measured_button.setToolTip("Apply the average width measured from lane boundaries")
         lane_layout.addRow("", self.apply_measured_button)
 
-        # Total lanes display
         self.total_lanes_label = QLabel()
         self.update_total_lanes()
         lane_layout.addRow("Total Lanes:", self.total_lanes_label)
 
-        # Connect signals to update total
         self.left_lanes_spin.valueChanged.connect(self.update_total_lanes)
         self.right_lanes_spin.valueChanged.connect(self.update_total_lanes)
 
         lane_group.setLayout(lane_layout)
         layout.addWidget(lane_group)
-
-        # Profiles section (collapsible)
-        self._setup_profiles_section(layout)
-
-        # Info note with icon (replaces inline text)
-        note_widget = InfoIconLabel(
-            "Note",
-            "Lane widths are in meters for georeferenced projects, "
-            "or in pixels for non-georeferenced projects.",
-            bold=False
-        )
-        layout.addWidget(note_widget)
-
-        # Buttons
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok |
-            QDialogButtonBox.StandardButton.Cancel
-        )
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
 
     def _setup_profiles_section(self, parent_layout: QVBoxLayout):
         """Setup the collapsible Profiles section with scroll area."""
