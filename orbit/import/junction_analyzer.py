@@ -20,6 +20,8 @@ from orbit.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+_DEFAULT_LANE_WIDTH = 3.5  # Fallback; OSM import uses osm_mappings defaults
+
 if TYPE_CHECKING:
     from orbit.utils.coordinate_transform import CoordinateTransformer
 
@@ -324,7 +326,7 @@ def analyze_junction_geometry(junction: Junction,
             left_count = len([lane for lane in section.lanes if lane.id > 0])
             right_count = len([lane for lane in section.lanes if lane.id < 0])
             # Get lane width from first driving lane
-            lane_width = next((lane.width for lane in section.lanes if lane.id != 0), 3.5)
+            lane_width = next((lane.width for lane in section.lanes if lane.id != 0), _DEFAULT_LANE_WIDTH)
         else:
             # Fallback to lane_info if no sections
             if hasattr(road, 'lane_info') and road.lane_info:
@@ -334,7 +336,7 @@ def analyze_junction_geometry(junction: Junction,
             else:
                 left_count = 0
                 right_count = 1
-                lane_width = 3.5
+                lane_width = _DEFAULT_LANE_WIDTH
 
         endpoint_info = RoadEndpointInfo(
             road_id=road_id,

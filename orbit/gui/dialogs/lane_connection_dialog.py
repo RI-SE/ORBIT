@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
 from orbit.models import Junction, LaneConnection, Project
 from orbit.models.road import Road
 
@@ -646,7 +647,7 @@ class LaneConnectionDialog(BaseDialog):
                 return (sx + sy) / 2.0
             except Exception:
                 pass
-        return 0.058  # Default fallback (ConnectingRoadLanesGraphicsItem.DEFAULT_SCALE)
+        return DEFAULT_SCALE_M_PER_PX
 
     def reject(self):
         """Restore junction state and close dialog."""

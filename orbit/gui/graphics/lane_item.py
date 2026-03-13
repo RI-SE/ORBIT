@@ -10,6 +10,7 @@ from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsScene
 
+from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
 from orbit.models import BoundaryMode, Polyline, Road
 from orbit.utils.geometry import (
     calculate_directional_scale,
@@ -95,8 +96,7 @@ class LaneGraphicsItem:
 class RoadLanesGraphicsItem:
     """Graphics representation of all lanes in a road."""
 
-    # Default scale in meters per pixel (will be updated from georeferencing later)
-    DEFAULT_SCALE = 0.058  # 5.8 cm/px
+    DEFAULT_SCALE = DEFAULT_SCALE_M_PER_PX
 
     def __init__(self, road: Road, centerline: Polyline, scene: QGraphicsScene,
                  scale_factors: Optional[tuple] = None, verbose: bool = False,

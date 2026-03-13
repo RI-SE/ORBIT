@@ -20,11 +20,12 @@ from PyQt6.QtWidgets import (
     QToolBar,
 )
 
-from orbit.models import LineType, Project
+from orbit.models import Project
 from orbit.utils.coordinate_transform import TransformAdjustment
 from orbit.utils.logging_config import get_logger
 
 from .image_view import ImageView
+from .project_controller import ProjectController
 from .utils.message_helpers import ask_yes_no, show_error, show_info, show_warning
 from .widgets.adjustment_panel import AdjustmentPanel
 from .widgets.elements_tree import ElementsTreeWidget
@@ -64,6 +65,9 @@ class MainWindow(QMainWindow):
 
         # Settings
         self.settings = QSettings()
+
+        # Business logic controller
+        self.controller = ProjectController(self.project, self._create_transformer)
 
         # Setup UI
         self.setup_ui()
@@ -623,6 +627,7 @@ class MainWindow(QMainWindow):
             self._remember_directory(file_path)
             try:
                 self.project = Project.load(Path(file_path))
+                self.controller.project = self.project
                 self.current_project_file = Path(file_path)
                 self.modified = False
                 self.undo_stack.clear()
@@ -2143,23 +2148,7 @@ class MainWindow(QMainWindow):
         cmd = LinkRoadsCommand(self, road_a_id, road_b_id, a_contact, b_contact)
         self.undo_stack.push(cmd)
 
-        # Apply the link (first redo is skipped by the command)
-        if a_contact == "end":
-            road_a.successor_id = road_b.id
-            road_a.successor_contact = b_contact
-        else:
-            road_a.predecessor_id = road_b.id
-            road_a.predecessor_contact = b_contact
-
-        if b_contact == "start":
-            road_b.predecessor_id = road_a.id
-            road_b.predecessor_contact = a_contact
-        else:
-            road_b.successor_id = road_a.id
-            road_b.successor_contact = a_contact
-
-        # Snap coordinates
-        self.project.enforce_road_link_coordinates(road_a_id)
+        self.controller.link_roads(road_a_id, road_b_id, a_contact, b_contact)
 
         # Refresh graphics for both roads
         for road in (road_a, road_b):
@@ -2179,23 +2168,14 @@ class MainWindow(QMainWindow):
         """Handle road unlink request from context menu."""
         from .undo_commands import UnlinkRoadsCommand
 
-        road = self.project.get_road(road_id)
         linked = self.project.get_road(linked_road_id)
-        if not road or not linked:
+        if not linked:
             return
 
         cmd = UnlinkRoadsCommand(self, road_id, linked_road_id)
         self.undo_stack.push(cmd)
 
-        # Apply the unlink (first redo is skipped by the command)
-        if road.predecessor_id == linked_road_id:
-            road.predecessor_id = None
-        if road.successor_id == linked_road_id:
-            road.successor_id = None
-        if linked.predecessor_id == road_id:
-            linked.predecessor_id = None
-        if linked.successor_id == road_id:
-            linked.successor_id = None
+        self.controller.unlink_roads(road_id, linked_road_id)
 
         self._refresh_trees()
         linked_name = linked.name or f"Road {linked.id}"
@@ -2590,23 +2570,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Restored original image view")
 
     def get_current_scale(self):
-        """
-        Get current scale from georeferencing.
-
-        Returns:
-            Tuple of (scale_x, scale_y) in m/px, or None if no georeferencing
-        """
-        if not self.project.has_georeferencing():
-            return None
-
-        try:
-            transformer = self._create_transformer(use_validation=True)
-            if transformer:
-                return transformer.get_scale_factor()
-        except Exception:
-            pass
-
-        return None
+        """Get current scale (m/px) from georeferencing, or None."""
+        return self.controller.get_current_scale()
 
     def _initialize_and_refresh_geo_coords(self):
         """
@@ -2698,46 +2663,8 @@ class MainWindow(QMainWindow):
         self._snap_connecting_road_endpoints()
 
     def _snap_connecting_road_endpoints(self):
-        """
-        Snap connecting road pixel endpoints to match road endpoints exactly.
-
-        When converting geo coordinates to pixel coordinates, small precision
-        differences can cause gaps between connecting roads and their connected
-        roads. This method ensures the first and last points of each connecting
-        road path exactly match the stored pixel coordinates of the connected
-        road endpoints.
-        """
-        for junction in self.project.junctions:
-            for cr_id in junction.connecting_road_ids:
-                conn_road = self.project.get_road(cr_id)
-                if not conn_road or not conn_road.inline_path or len(conn_road.inline_path) < 2:
-                    continue
-
-                # Get predecessor and successor roads
-                pred_road = self.project.get_road(conn_road.predecessor_id)
-                succ_road = self.project.get_road(conn_road.successor_id)
-
-                if not pred_road or not succ_road:
-                    continue
-
-                # Get centerline polylines
-                pred_polyline = self.project.get_polyline(pred_road.centerline_id)
-                succ_polyline = self.project.get_polyline(succ_road.centerline_id)
-
-                if not pred_polyline or not succ_polyline:
-                    continue
-
-                # Snap start point to predecessor road endpoint
-                if conn_road.predecessor_contact == 'end':
-                    conn_road.inline_path[0] = pred_polyline.points[-1]
-                else:  # 'start'
-                    conn_road.inline_path[0] = pred_polyline.points[0]
-
-                # Snap end point to successor road endpoint
-                if conn_road.successor_contact == 'end':
-                    conn_road.inline_path[-1] = succ_polyline.points[-1]
-                else:  # 'start'
-                    conn_road.inline_path[-1] = succ_polyline.points[0]
+        """Snap CR pixel endpoints to match connected road endpoints."""
+        self.controller.snap_connecting_road_endpoints()
 
     def update_affected_road_lanes(self):
         """Update lane graphics for all roads with centerlines."""
@@ -2750,214 +2677,19 @@ class MainWindow(QMainWindow):
                 self.image_view.update_road_lanes(road.id, scale_factors)
 
     def _refresh_connecting_road_geo_path(self, conn_road):
-        """Regenerate a connecting road's geo_path from its current pixel path.
-
-        Called after the pixel path has been updated (e.g. road move) so that
-        geo_path stays in sync. If the project has no georeferencing or the
-        CR had no geo_path, this is a no-op.
-        """
-        if not conn_road.inline_geo_path:
-            return
-        if not self.project.has_georeferencing():
-            return
-        try:
-            transformer = self._create_transformer()
-            if transformer and conn_road.inline_path:
-                conn_road.inline_geo_path = [
-                    transformer.pixel_to_geo(x, y) for x, y in conn_road.inline_path
-                ]
-        except Exception:
-            pass
+        """Regenerate a CR's geo_path from its current pixel path."""
+        self.controller.refresh_connecting_road_geo_path(conn_road)
 
     def _align_all_junction_connecting_roads(self, scale_factors):
-        """Apply lane alignment to all junctions' connecting roads.
-
-        Called on project load to ensure CR visuals match lane connections
-        without requiring the user to open the lane connection dialog.
-        """
-        from orbit.utils.connecting_road_alignment import align_connecting_road_paths
-
-        if scale_factors:
-            scale = (scale_factors[0] + scale_factors[1]) / 2.0
-        else:
-            scale = 0.058  # Default fallback
-
-        for junction in self.project.junctions:
-            if junction.lane_connections and junction.connecting_road_ids:
-                modified_ids = align_connecting_road_paths(
-                    junction, self.project, scale
-                )
-                # Update geo_path for modified CRs so export uses
-                # the aligned coordinates, not the stale originals.
-                if modified_ids:
-                    for cr_id in junction.connecting_road_ids:
-                        cr = self.project.get_road(cr_id)
-                        if cr and cr.id in modified_ids:
-                            self._refresh_connecting_road_geo_path(cr)
+        """Apply lane alignment to all junctions' connecting roads."""
+        self.controller.align_all_junction_crs(scale_factors)
 
     def regenerate_affected_connecting_roads(self, polyline_id: str):
-        """
-        Regenerate ParamPoly3D connecting roads when a road centerline endpoint is modified.
-
-        Args:
-            polyline_id: ID of the modified polyline
-        """
-        # Get the modified polyline
-        polyline = self.project.get_polyline(polyline_id)
-        if not polyline or polyline.line_type != LineType.CENTERLINE:
-            # Only regenerate for centerline modifications
-            return
-
-        # Find which road this polyline belongs to
-        affected_road = None
-        for road in self.project.roads:
-            if road.centerline_id == polyline_id:
-                affected_road = road
-                break
-
-        if not affected_road:
-            return
-
-        # Find junctions where this road appears as predecessor or successor
-        affected_junctions = []
-        for junction in self.project.junctions:
-            for cr_id in junction.connecting_road_ids:
-                conn_road = self.project.get_road(cr_id)
-                if not conn_road:
-                    continue
-                if (conn_road.predecessor_id == affected_road.id or
-                    conn_road.successor_id == affected_road.id):
-                    if conn_road.geometry_type == "parampoly3":
-                        affected_junctions.append((junction, conn_road))
-
-        # Regenerate each affected ParamPoly3D connecting road
+        """Regenerate CRs when a road centerline endpoint is modified."""
+        updated_cr_ids = self.controller.regenerate_affected_crs(polyline_id)
         scale_factors = self.get_current_scale()
-        for junction, conn_road in affected_junctions:
-            self._regenerate_parampoly3_cr(conn_road, scale_factors)
-
-        # Snap endpoints of polyline-type connecting roads
-        self._snap_polyline_cr_endpoints(affected_road, scale_factors)
-
-        # Apply lane alignment to affected junctions
-        self._align_affected_junction_crs(affected_road, scale_factors)
-
-    def _regenerate_parampoly3_cr(self, conn_road, scale_factors):
-        """Regenerate a single ParamPoly3D connecting road from its connected roads."""
-        from orbit.utils.geometry import generate_simple_connection_path
-
-        pred_road = self.project.get_road(conn_road.predecessor_id)
-        succ_road = self.project.get_road(conn_road.successor_id)
-        if not pred_road or not succ_road:
-            return
-
-        pred_polyline = self.project.get_polyline(pred_road.centerline_id)
-        succ_polyline = self.project.get_polyline(succ_road.centerline_id)
-        if not pred_polyline or not succ_polyline:
-            return
-
-        pred_pos, pred_heading = self._get_contact_pos_heading(
-            pred_polyline, conn_road.predecessor_contact
-        )
-        succ_pos, succ_heading = self._get_contact_pos_heading(
-            succ_polyline, conn_road.successor_contact
-        )
-
-        path, coeffs = generate_simple_connection_path(
-            from_pos=pred_pos, from_heading=pred_heading,
-            to_pos=succ_pos, to_heading=succ_heading,
-            tangent_scale=conn_road.tangent_scale
-        )
-
-        conn_road.inline_path = path
-        self._refresh_connecting_road_geo_path(conn_road)
-        conn_road.aU, conn_road.bU, conn_road.cU, conn_road.dU, \
-            conn_road.aV, conn_road.bV, conn_road.cV, conn_road.dV = coeffs
-        conn_road.stored_start_heading = pred_heading
-        conn_road.stored_end_heading = succ_heading
-        self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
-
-    @staticmethod
-    def _get_contact_pos_heading(polyline, contact_point):
-        """Get position and heading at a polyline contact point."""
-        import math
-        if contact_point == "end":
-            pos = polyline.points[-1]
-            if len(polyline.points) >= 2:
-                dx = polyline.points[-1][0] - polyline.points[-2][0]
-                dy = polyline.points[-1][1] - polyline.points[-2][1]
-                heading = math.atan2(dy, dx)
-            else:
-                heading = 0.0
-        else:  # "start"
-            pos = polyline.points[0]
-            if len(polyline.points) >= 2:
-                dx = polyline.points[1][0] - polyline.points[0][0]
-                dy = polyline.points[1][1] - polyline.points[0][1]
-                heading = math.atan2(dy, dx) + math.pi
-            else:
-                heading = math.pi
-        return pos, heading
-
-    def _snap_polyline_cr_endpoints(self, affected_road, scale_factors):
-        """Snap polyline-type connecting road endpoints to connected road endpoints."""
-        for junction in self.project.junctions:
-            for cr_id in junction.connecting_road_ids:
-                conn_road = self.project.get_road(cr_id)
-                if not conn_road or conn_road.geometry_type == "parampoly3":
-                    continue
-                if (conn_road.predecessor_id != affected_road.id and
-                        conn_road.successor_id != affected_road.id):
-                    continue
-                if not conn_road.inline_path or len(conn_road.inline_path) < 2:
-                    continue
-
-                pred_road = self.project.get_road(conn_road.predecessor_id)
-                succ_road = self.project.get_road(conn_road.successor_id)
-                if not pred_road or not succ_road:
-                    continue
-
-                pred_pl = self.project.get_polyline(pred_road.centerline_id)
-                succ_pl = self.project.get_polyline(succ_road.centerline_id)
-                if not pred_pl or not succ_pl:
-                    continue
-
-                conn_road.inline_path[0] = (pred_pl.points[-1] if conn_road.predecessor_contact == "end"
-                                             else pred_pl.points[0])
-                conn_road.inline_path[-1] = (succ_pl.points[-1] if conn_road.successor_contact == "end"
-                                              else succ_pl.points[0])
-                self._refresh_connecting_road_geo_path(conn_road)
-                self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
-
-    def _align_affected_junction_crs(self, affected_road, scale_factors):
-        """Apply lane alignment to junctions affected by a road modification."""
-        from orbit.utils.connecting_road_alignment import align_connecting_road_paths
-
-        if scale_factors:
-            scale = (scale_factors[0] + scale_factors[1]) / 2.0
-        else:
-            scale = 0.058
-
-        affected_junction_ids = set()
-        for junction in self.project.junctions:
-            for cr_id in junction.connecting_road_ids:
-                cr = self.project.get_road(cr_id)
-                if cr and (cr.predecessor_id == affected_road.id or
-                        cr.successor_id == affected_road.id):
-                    affected_junction_ids.add(junction.id)
-                    break
-
-        for junction in self.project.junctions:
-            if junction.id not in affected_junction_ids:
-                continue
-            if not junction.lane_connections or not junction.connecting_road_ids:
-                continue
-            modified = align_connecting_road_paths(junction, self.project, scale)
-            for cr_id in junction.connecting_road_ids:
-                cr = self.project.get_road(cr_id)
-                if cr and cr.id in modified:
-                    self._refresh_connecting_road_geo_path(cr)
-            for cr_id in modified:
-                self.image_view.update_connecting_road_graphics(cr_id, scale_factors)
+        for cr_id in updated_cr_ids:
+            self.image_view.update_connecting_road_graphics(cr_id, scale_factors)
 
     def on_road_selected_in_tree(self, road_id: str):
         """Handle road selection from tree — highlight all lanes and pan to it."""
@@ -4204,106 +3936,8 @@ class MainWindow(QMainWindow):
     # ========================================================================
 
     def _build_batch_delete_info(self, selected: dict) -> dict:
-        """Build display info for the batch delete dialog.
-
-        Args:
-            selected: Dict with road_ids, junction_ids, signal_ids,
-                      object_ids, parking_ids lists.
-
-        Returns:
-            Dict mapping category keys to lists of item dicts with
-            id, name, details, and cascade fields.
-        """
-        info: dict = {}
-
-        # Roads
-        if selected.get("road_ids"):
-            items = []
-            for rid in selected["road_ids"]:
-                road = self.project.get_road(rid)
-                if not road:
-                    continue
-                cascade = []
-                for pid in road.polyline_ids:
-                    pl = self.project.get_polyline(pid)
-                    if pl:
-                        cascade.append(f"Polyline: {pl.line_type.value} ({pid[:8]})")
-                items.append({
-                    "id": rid,
-                    "name": road.name or rid[:8],
-                    "details": f"{len(road.polyline_ids)} polyline(s)",
-                    "cascade": cascade,
-                })
-            if items:
-                info["road_ids"] = items
-
-        # Junctions
-        if selected.get("junction_ids"):
-            items = []
-            for jid in selected["junction_ids"]:
-                junction = self.project.get_junction(jid)
-                if not junction:
-                    continue
-                cascade = []
-                for crid in junction.connected_road_ids:
-                    road = self.project.get_road(crid)
-                    if road:
-                        cascade.append(f"Connected road: {road.name or crid[:8]}")
-                items.append({
-                    "id": jid,
-                    "name": junction.name or jid[:8],
-                    "details": f"{len(junction.connecting_road_ids)} connecting road(s)",
-                    "cascade": cascade,
-                })
-            if items:
-                info["junction_ids"] = items
-
-        # Signals
-        if selected.get("signal_ids"):
-            items = []
-            for sid in selected["signal_ids"]:
-                signal = self.project.get_signal(sid)
-                if not signal:
-                    continue
-                items.append({
-                    "id": sid,
-                    "name": signal.get_display_name(),
-                    "details": signal.type.value if hasattr(signal.type, 'value') else str(signal.type),
-                })
-            if items:
-                info["signal_ids"] = items
-
-        # Objects
-        if selected.get("object_ids"):
-            items = []
-            for oid in selected["object_ids"]:
-                obj = self.project.get_object(oid)
-                if not obj:
-                    continue
-                items.append({
-                    "id": oid,
-                    "name": obj.get_display_name(),
-                    "details": obj.type.value if hasattr(obj.type, 'value') else str(obj.type),
-                })
-            if items:
-                info["object_ids"] = items
-
-        # Parking
-        if selected.get("parking_ids"):
-            items = []
-            for pid in selected["parking_ids"]:
-                parking = self.project.get_parking(pid)
-                if not parking:
-                    continue
-                items.append({
-                    "id": pid,
-                    "name": parking.get_display_name(),
-                    "details": parking.parking_type.value if hasattr(parking.parking_type, 'value') else "",
-                })
-            if items:
-                info["parking_ids"] = items
-
-        return info
+        """Build display info for the batch delete dialog."""
+        return self.controller.build_batch_delete_info(selected)
 
     def on_area_delete_requested(self, selected: dict):
         """Handle area selection batch delete request.

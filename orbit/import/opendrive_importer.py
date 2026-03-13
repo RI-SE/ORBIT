@@ -35,6 +35,8 @@ from .opendrive_parser import ODRLane, ODRObject, ODRRoad, ODRSignal, OpenDriveD
 
 logger = get_logger(__name__)
 
+_DEFAULT_LANE_WIDTH = 3.5  # Fallback when ODR has no lane width
+
 
 class ImportMode(Enum):
     """Import mode: add to existing or replace."""
@@ -717,7 +719,7 @@ class OpenDriveImporter:
         """Parse lane counts and width from ODR road lane sections."""
         lane_count_left = 0
         lane_count_right = 0
-        lane_width = 3.5
+        lane_width = _DEFAULT_LANE_WIDTH
 
         if odr_road.lane_sections:
             first_section = odr_road.lane_sections[0]

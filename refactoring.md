@@ -80,9 +80,22 @@
 
 ## Tier 2 — Medium impact, medium effort
 
-### 10. Extract `ProjectController` from MainWindow — TODO
-- Decouple business logic (add/remove road, split, junction ops) from UI
-- Highest-value god-object extraction
+### 10. Extract `ProjectController` from MainWindow — DONE
+- Created `orbit/gui/project_controller.py` (404 lines)
+- MainWindow reduced from 4428 → 4062 lines
+- Extracted to controller:
+  - `get_current_scale()` — scale computation from georeferencing
+  - `snap_connecting_road_endpoints()` — CR pixel endpoint snapping
+  - `refresh_connecting_road_geo_path()` — CR geo-path regeneration
+  - `align_all_junction_crs()` — junction CR lane alignment
+  - `regenerate_affected_crs()` — full CR regeneration pipeline
+  - `_regenerate_parampoly3_cr()` — single ParamPoly3D CR regeneration
+  - `_snap_polyline_cr_endpoints()` — polyline CR endpoint snapping
+  - `_align_affected_junction_crs()` — affected junction alignment
+  - `link_roads()` / `unlink_roads()` — road link mutation logic
+  - `build_batch_delete_info()` — batch delete info query
+  - `get_contact_pos_heading()` — module-level utility function
+- MainWindow delegates to controller; undo commands unchanged
 
 ### 11. Split remaining 200+ line functions — DONE
 - `create_connecting_roads_from_patterns` (370→~35 lines, junction_analyzer.py) — DONE
@@ -113,16 +126,22 @@
 - `_migrate_uuid_ids` (204→~45 lines, project.py) — DONE
   - `_remap_entities()` (local), `_remap_all_cross_references()`
 
-### 12. Consolidate scattered constants — TODO
-- GUI constants into `gui/constants.py`
-- Import defaults into `import/defaults.py`
+### 12. Consolidate scattered constants — DONE
+- GUI: `DEFAULT_SCALE_M_PER_PX` (0.058) consolidated from 4 scattered files
+  into `gui/constants.py`; `lane_item.py`, `connecting_road_item.py`,
+  `lane_connection_dialog.py`, `project_controller.py` now import from there
+- Import: Magic `3.5` lane width fallbacks in `junction_analyzer.py` and
+  `opendrive_importer.py` named as `_DEFAULT_LANE_WIDTH` constants
+- Note: `layout_mask_exporter.py` keeps its own inline 0.058 (computed fallback
+  in export layer; importing gui constants would cross layers)
 
 ### 13. Replace `importlib` with standard late imports — SKIPPED
 - `orbit.import` is a Python keyword; `importlib` is the correct approach
 
-### 14. Add export builder tests — TODO
-- `opendrive_writer.py` — XML generation
-- `lane_builder.py`, `signal_builder.py` — pure builders
+### 14. Add export builder tests — ALREADY DONE
+- 466 export tests already exist across 12 test files
+- `test_opendrive_writer.py` (65 tests), `test_lane_builder.py` (42),
+  `test_signal_builder.py` (30), plus 9 more export test files
 
 ---
 

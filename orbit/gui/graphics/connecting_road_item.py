@@ -11,6 +11,7 @@ from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsScene
 
+from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
 from orbit.utils.geometry import calculate_directional_scale
 from orbit.utils.logging_config import get_logger
 
@@ -270,8 +271,7 @@ class ConnectingRoadGraphicsItem:
 class ConnectingRoadLanesGraphicsItem:
     """Graphics representation of lanes in a connecting road."""
 
-    # Default scale in meters per pixel
-    DEFAULT_SCALE = 0.058  # 5.8 cm/px
+    DEFAULT_SCALE = DEFAULT_SCALE_M_PER_PX
 
     def __init__(self, connecting_road: 'Road', scene: QGraphicsScene,
                  scale_factors: Optional[tuple] = None, parent_view: Optional['ImageView'] = None,
