@@ -635,61 +635,13 @@ class OpenDriveImporter:
             successor_orbit_id = self.odr_road_to_orbit.get(odr_road.successor_id, "")
             contact_point_end = odr_road.successor_contact or "start"
 
-        # Determine lane counts from lane sections
-        lane_count_left = 0
-        lane_count_right = 0
-        lane_width = 3.5  # Default
+        # Determine lane configuration from lane sections
+        lane_count_left, lane_count_right, lane_width = self._parse_cr_lane_counts(odr_road)
 
-        if odr_road.lane_sections:
-            first_section = odr_road.lane_sections[0]
-            for odr_lane in first_section.left_lanes:
-                if odr_lane.type in ("driving", "biking", "sidewalk", "parking"):
-                    lane_count_left += 1
-            for odr_lane in first_section.right_lanes:
-                if odr_lane.type in ("driving", "biking", "sidewalk", "parking"):
-                    lane_count_right += 1
-
-            # Get lane width from first non-center lane
-            all_lanes = first_section.left_lanes + first_section.right_lanes
-            for odr_lane in all_lanes:
-                if odr_lane.widths:
-                    lane_width = odr_lane.widths[0].a
-                    break
-
-        # Ensure at least one lane
-        if lane_count_left == 0 and lane_count_right == 0:
-            lane_count_right = 1
-
-        # Build paramPoly3 kwargs if available
-        geom_kwargs = {}
-        stored_start_heading = None
-        stored_end_heading = None
-        if param_poly3:
-            geom_kwargs = {
-                'geometry_type': "parampoly3",
-                'aU': param_poly3['aU'],
-                'bU': param_poly3['bU'],
-                'cU': param_poly3['cU'],
-                'dU': param_poly3['dU'],
-                'aV': param_poly3['aV'],
-                'bV': param_poly3['bV'],
-                'cV': param_poly3['cV'],
-                'dV': param_poly3['dV'],
-                'p_range': param_poly3['length'],
-                'p_range_normalized': (param_poly3['pRange'] == 'normalized'),
-            }
-            # Compute pixel-space headings from the converted path
-            # (raw param_poly3['hdg'] is in metric coordinate space, not pixel space)
-            if len(points_pixel) >= 2:
-                dx = points_pixel[1][0] - points_pixel[0][0]
-                dy = points_pixel[1][1] - points_pixel[0][1]
-                stored_start_heading = math.atan2(dy, dx)
-
-                dx = points_pixel[-1][0] - points_pixel[-2][0]
-                dy = points_pixel[-1][1] - points_pixel[-2][1]
-                stored_end_heading = math.atan2(dy, dx)
-        else:
-            geom_kwargs['geometry_type'] = "polyline"
+        # Build geometry kwargs and pixel-space headings
+        geom_kwargs, stored_start_heading, stored_end_heading = self._build_cr_geometry_kwargs(
+            param_poly3, points_pixel
+        )
 
         # Create connecting road as a Road with junction_id set
         connecting_road = Road(
@@ -748,56 +700,10 @@ class OpenDriveImporter:
             junction.connected_road_ids.append(successor_orbit_id)
 
         # Create LaneConnection objects from junction connection data
-        # Find the ODR junction to get lane link data
-        odr_junction = None
-        for j in self.odr_data.junctions:
-            if j.id == junction_odr_id:
-                odr_junction = j
-                break
-
-        if odr_junction:
-            # Find the connection that uses this connecting road
-            for odr_conn in odr_junction.connections:
-                if odr_conn.connecting_road == odr_road.id:
-                    # Get the incoming road ORBIT ID
-                    from_road_id = self.odr_road_to_orbit.get(odr_conn.incoming_road, "")
-
-                    # The to_road is the successor of the connecting road
-                    to_road_id = successor_orbit_id
-
-                    if from_road_id and to_road_id:
-                        # Create LaneConnection for each lane link
-                        for lane_link in odr_conn.lane_links:
-                            # lane_link.to_lane is the lane on the connecting road.
-                            # Look up the connecting road lane's successor/predecessor
-                            # link to find the actual outgoing road lane ID.
-                            to_lane = lane_link.from_lane  # Fallback
-                            if odr_road.lane_sections:
-                                section = odr_road.lane_sections[0]
-                                all_lanes = section.right_lanes + section.left_lanes
-                                for odr_lane in all_lanes:
-                                    if odr_lane.id == lane_link.to_lane and odr_lane.link:
-                                        if odr_conn.contact_point == "end":
-                                            outgoing_lane = odr_lane.link.predecessor_id
-                                        else:
-                                            outgoing_lane = odr_lane.link.successor_id
-                                        if outgoing_lane is not None:
-                                            to_lane = outgoing_lane
-                                        break
-
-                            lane_connection = LaneConnection(
-                                id=self.project.next_id('lane_connection'),
-                                from_road_id=from_road_id,
-                                from_lane_id=lane_link.from_lane,
-                                to_road_id=to_road_id,
-                                to_lane_id=to_lane,
-                                connecting_road_id=connecting_road.id,
-                                connecting_lane_id=lane_link.to_lane  # Lane on connecting road
-                            )
-                            junction.add_lane_connection(lane_connection)
-
-                        if options.verbose:
-                            logger.debug("    Created %d lane connection(s)", len(odr_conn.lane_links))
+        self._import_cr_lane_connections(
+            odr_road, junction_odr_id, junction, connecting_road.id,
+            successor_orbit_id, options
+        )
 
         if options.verbose:
             geom_type = "paramPoly3" if param_poly3 else "polyline"
@@ -805,6 +711,113 @@ class OpenDriveImporter:
                          odr_road.id, junction.name, geom_type)
 
         return True
+
+    @staticmethod
+    def _parse_cr_lane_counts(odr_road) -> Tuple[int, int, float]:
+        """Parse lane counts and width from ODR road lane sections."""
+        lane_count_left = 0
+        lane_count_right = 0
+        lane_width = 3.5
+
+        if odr_road.lane_sections:
+            first_section = odr_road.lane_sections[0]
+            for odr_lane in first_section.left_lanes:
+                if odr_lane.type in ("driving", "biking", "sidewalk", "parking"):
+                    lane_count_left += 1
+            for odr_lane in first_section.right_lanes:
+                if odr_lane.type in ("driving", "biking", "sidewalk", "parking"):
+                    lane_count_right += 1
+
+            all_lanes = first_section.left_lanes + first_section.right_lanes
+            for odr_lane in all_lanes:
+                if odr_lane.widths:
+                    lane_width = odr_lane.widths[0].a
+                    break
+
+        if lane_count_left == 0 and lane_count_right == 0:
+            lane_count_right = 1
+
+        return lane_count_left, lane_count_right, lane_width
+
+    @staticmethod
+    def _build_cr_geometry_kwargs(param_poly3, points_pixel):
+        """Build geometry kwargs and pixel-space headings from ParamPoly3D data."""
+        geom_kwargs = {}
+        stored_start_heading = None
+        stored_end_heading = None
+
+        if param_poly3:
+            geom_kwargs = {
+                'geometry_type': "parampoly3",
+                'aU': param_poly3['aU'], 'bU': param_poly3['bU'],
+                'cU': param_poly3['cU'], 'dU': param_poly3['dU'],
+                'aV': param_poly3['aV'], 'bV': param_poly3['bV'],
+                'cV': param_poly3['cV'], 'dV': param_poly3['dV'],
+                'p_range': param_poly3['length'],
+                'p_range_normalized': (param_poly3['pRange'] == 'normalized'),
+            }
+            if len(points_pixel) >= 2:
+                dx = points_pixel[1][0] - points_pixel[0][0]
+                dy = points_pixel[1][1] - points_pixel[0][1]
+                stored_start_heading = math.atan2(dy, dx)
+
+                dx = points_pixel[-1][0] - points_pixel[-2][0]
+                dy = points_pixel[-1][1] - points_pixel[-2][1]
+                stored_end_heading = math.atan2(dy, dx)
+        else:
+            geom_kwargs['geometry_type'] = "polyline"
+
+        return geom_kwargs, stored_start_heading, stored_end_heading
+
+    def _import_cr_lane_connections(self, odr_road, junction_odr_id, junction,
+                                    connecting_road_id, successor_orbit_id, options):
+        """Create LaneConnection objects from ODR junction connection data."""
+        odr_junction = None
+        for j in self.odr_data.junctions:
+            if j.id == junction_odr_id:
+                odr_junction = j
+                break
+
+        if not odr_junction:
+            return
+
+        for odr_conn in odr_junction.connections:
+            if odr_conn.connecting_road != odr_road.id:
+                continue
+
+            from_road_id = self.odr_road_to_orbit.get(odr_conn.incoming_road, "")
+            to_road_id = successor_orbit_id
+
+            if not from_road_id or not to_road_id:
+                continue
+
+            for lane_link in odr_conn.lane_links:
+                to_lane = lane_link.from_lane  # Fallback
+                if odr_road.lane_sections:
+                    section = odr_road.lane_sections[0]
+                    for odr_lane in section.right_lanes + section.left_lanes:
+                        if odr_lane.id == lane_link.to_lane and odr_lane.link:
+                            if odr_conn.contact_point == "end":
+                                outgoing_lane = odr_lane.link.predecessor_id
+                            else:
+                                outgoing_lane = odr_lane.link.successor_id
+                            if outgoing_lane is not None:
+                                to_lane = outgoing_lane
+                            break
+
+                lane_connection = LaneConnection(
+                    id=self.project.next_id('lane_connection'),
+                    from_road_id=from_road_id,
+                    from_lane_id=lane_link.from_lane,
+                    to_road_id=to_road_id,
+                    to_lane_id=to_lane,
+                    connecting_road_id=connecting_road_id,
+                    connecting_lane_id=lane_link.to_lane
+                )
+                junction.add_lane_connection(lane_connection)
+
+            if options.verbose:
+                logger.debug("    Created %d lane connection(s)", len(odr_conn.lane_links))
 
     def _import_connecting_road_lanes(self, connecting_road: Road, odr_section) -> None:
         """

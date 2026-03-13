@@ -1640,268 +1640,220 @@ def create_road_from_osm(osm_way: OSMWay, transformer: CoordinateTransformer,
     # Check if this is a path (cycleway, footway, or designated path)
     path_info = get_path_type_and_lane_type(osm_way.tags)
     if highway == 'path' and path_info is None:
-        # Undedicated path (no bicycle=designated or foot=designated) - skip import
         return None
 
     if path_info:
-        # This is a bicycle or pedestrian path
-        road_type_prefix, lane_type = path_info
-
-        # Determine if this is a shared path (both bicycle and pedestrian)
-        is_shared_path = 'Shared' in road_type_prefix or 'Segregated' in road_type_prefix
-
-        # Get path name
-        osm_name = osm_way.tags.get('name', '')
-        road_name = f"{road_type_prefix} - {osm_name}" if osm_name else road_type_prefix
-
-        # Get path width (per-lane width, total width is 2x this)
-        path_width = get_path_width_from_osm(osm_way.tags, lane_type)
-
-        # Create road with symmetric path lanes (left and right)
-        from orbit.models.road import LaneInfo
-        road = Road(
-            name=road_name,
-            road_type=RoadType.TOWN,  # Paths are typically in town/urban areas
-            centerline_id=centerline.id,
-            lane_info=LaneInfo(
-                left_count=1,
-                right_count=1,  # Symmetric lanes
-                lane_width=path_width
-            )
-        )
-        road.add_polyline(centerline.id)
-
-        # Set speed limit for bicycle paths (optional)
-        if lane_type == LaneType.BIKING:
-            road.speed_limit = 20.0  # 20 km/h reasonable cycling speed
-        else:
-            road.speed_limit = None  # No speed limit for pedestrian paths
-
-        # Create lane section with symmetric path lanes
-        section = LaneSection(
-            section_number=1,
-            s_start=0.0,
-            s_end=len(pixel_points) - 1,
-            end_point_index=None  # Last section
-        )
-
-        # Create center lane (lane 0)
-        center_lane = Lane(
-            id=0,
-            lane_type=LaneType.NONE,
-            road_mark_type=RoadMarkType.NONE,
-            width=0.0
-        )
-        section.lanes.append(center_lane)
-
-        # Set access restrictions for shared paths
-        access_restrictions = ["bicycle", "pedestrian"] if is_shared_path else []
-
-        # Create left path lane (id=1)
-        left_lane = Lane(
-            id=1,
-            lane_type=lane_type,  # BIKING or SIDEWALK
-            road_mark_type=RoadMarkType.SOLID,  # Paths typically have solid edges
-            width=path_width,
-            access_restrictions=access_restrictions
-        )
-        section.lanes.append(left_lane)
-
-        # Create right path lane (id=-1)
-        right_lane = Lane(
-            id=-1,
-            lane_type=lane_type,  # BIKING or SIDEWALK
-            road_mark_type=RoadMarkType.SOLID,  # Paths typically have solid edges
-            width=path_width,
-            access_restrictions=access_restrictions
-        )
-        section.lanes.append(right_lane)
-
-        road.lane_sections.append(section)
-
-        road.osm_tags = dict(osm_way.tags)
-        road.osm_way_id = osm_way.id
-        return (road, centerline)
-
-    # Normal road processing (not a path)
-    # Determine road name
-    road_name = osm_way.tags.get('name', f"OSM Way {osm_way.id}")
-
-    # Determine lane configuration first
-    oneway = is_oneway(osm_way.tags)
-    reverse_oneway = is_reverse_oneway(osm_way.tags)
-    left_lanes, right_lanes = estimate_lane_count(osm_way.tags, oneway)
-
-    # Get lane width - check for explicit OSM tags first
-    lane_width = default_lane_width
-
-    # Check for explicit width tags in OSM
-    if 'width:lanes' in osm_way.tags or 'width:lanes:forward' in osm_way.tags:
-        # Parse per-lane widths (format: "3.5|3.5|3.5")
-        width_str = osm_way.tags.get('width:lanes') or osm_way.tags.get('width:lanes:forward', '')
-        try:
-            widths = [float(w.strip()) for w in width_str.split('|')]
-            if widths:
-                lane_width = sum(widths) / len(widths)  # Use average
-        except (ValueError, AttributeError):
-            pass
-    elif 'width' in osm_way.tags:
-        # Parse total road width and divide by lane count
-        try:
-            total_width = float(osm_way.tags['width'])
-            total_lanes = left_lanes + right_lanes
-            if total_lanes > 0:
-                lane_width = total_width / total_lanes
-        except (ValueError, ZeroDivisionError):
-            pass
-
-    # If no explicit width found, use highway-type defaults
-    if lane_width == default_lane_width:
-        lane_width = get_lane_width_for_highway(highway, default_lane_width)
-
-    # Create road with lane info
-    from orbit.models.road import LaneInfo
-    road = Road(
-        name=road_name,
-        road_type=RoadType[get_road_type_for_highway(highway).upper()],
-        centerline_id=centerline.id,
-        lane_info=LaneInfo(
-            left_count=left_lanes,
-            right_count=right_lanes,
-            lane_width=lane_width
-        )
-    )
-    road.add_polyline(centerline.id)
-
-    # Set speed limit if available
-    if 'maxspeed' in osm_way.tags:
-        speed_value, speed_unit = parse_maxspeed(osm_way.tags['maxspeed'])
-        if speed_value:
-            # Convert mph to km/h if needed
-            if speed_unit == 'mph':
-                speed_value = int(speed_value * 1.60934)
-            road.speed_limit = float(speed_value)
-
-    # Parse turn:lanes tags for turn direction information
-    turn_lanes_forward = None
-    turn_lanes_backward = None
-    if 'turn:lanes:forward' in osm_way.tags:
-        turn_lanes_forward = parse_turn_lanes(osm_way.tags['turn:lanes:forward'])
-    elif 'turn:lanes' in osm_way.tags and oneway:
-        # For oneway roads, turn:lanes applies to all lanes
-        turn_lanes_forward = parse_turn_lanes(osm_way.tags['turn:lanes'])
-    if 'turn:lanes:backward' in osm_way.tags:
-        turn_lanes_backward = parse_turn_lanes(osm_way.tags['turn:lanes:backward'])
-
-    # Parse surface tag for road material
-    surface_material = None
-    if 'surface' in osm_way.tags:
-        surface_material = get_surface_material(osm_way.tags['surface'])
-
-    # Apply smoothness tag to override roughness if available
-    if 'smoothness' in osm_way.tags:
-        smoothness_roughness = get_smoothness_roughness(osm_way.tags['smoothness'])
-        if smoothness_roughness is not None:
-            if surface_material:
-                # Override roughness from surface with smoothness-derived value
-                friction, _, surface_name = surface_material
-                surface_material = (friction, smoothness_roughness, surface_name)
-            else:
-                # No surface tag — use smoothness alone with default friction
-                surface_material = (0.8, smoothness_roughness, 'unknown')
-
-    # Create single lane section spanning entire road
-    section = LaneSection(
-        section_number=1,
-        s_start=0.0,
-        s_end=len(pixel_points) - 1,
-        end_point_index=None  # Last section
-    )
-
-    # Create center lane (lane 0)
-    center_lane = Lane(
-        id=0,
-        lane_type=LaneType.NONE,
-        road_mark_type=RoadMarkType.NONE,
-        width=0.0
-    )
-    section.lanes.append(center_lane)
-
-    # Helper to apply surface material to a lane
-    def apply_surface_to_lane(lane: Lane, surface_mat):
-        if surface_mat:
-            friction, roughness, surface_name = surface_mat
-            lane.materials = [(0.0, friction, roughness, surface_name)]
-
-    # For oneway roads, only create lanes on one side
-    if oneway:
-        if reverse_oneway:
-            # Lanes on left side (positive IDs)
-            for i in range(1, right_lanes + 1):
-                lane = Lane(
-                    id=i,
-                    lane_type=LaneType.DRIVING,
-                    road_mark_type=RoadMarkType.BROKEN,
-                    width=lane_width
-                )
-                # Apply turn directions (turn:lanes index 0 = leftmost lane)
-                if turn_lanes_forward and i <= len(turn_lanes_forward):
-                    lane.turn_directions = turn_lanes_forward[i - 1]
-                apply_surface_to_lane(lane, surface_material)
-                section.lanes.append(lane)
-        else:
-            # Lanes on right side (negative IDs)
-            for i in range(1, right_lanes + 1):
-                lane = Lane(
-                    id=-i,
-                    lane_type=LaneType.DRIVING,
-                    road_mark_type=RoadMarkType.BROKEN,
-                    width=lane_width
-                )
-                # Apply turn directions (turn:lanes index 0 = leftmost = innermost right lane)
-                # For right-side lanes, index maps as: lane -1 gets first, -2 gets second, etc.
-                if turn_lanes_forward and i <= len(turn_lanes_forward):
-                    lane.turn_directions = turn_lanes_forward[i - 1]
-                apply_surface_to_lane(lane, surface_material)
-                section.lanes.append(lane)
+        road = _create_path_road(osm_way, centerline, pixel_points, path_info)
     else:
-        # Two-way road: create lanes on both sides
-
-        # Right lanes (negative IDs) - forward direction in OpenDrive convention
-        for i in range(1, right_lanes + 1):
-            lane = Lane(
-                id=-i,
-                lane_type=LaneType.DRIVING,
-                road_mark_type=RoadMarkType.BROKEN if i < right_lanes else RoadMarkType.SOLID,
-                width=lane_width
-            )
-            # Apply forward turn directions to right lanes
-            # turn:lanes:forward index 0 = centermost lane = lane -1
-            if turn_lanes_forward and i <= len(turn_lanes_forward):
-                lane.turn_directions = turn_lanes_forward[i - 1]
-            apply_surface_to_lane(lane, surface_material)
-            section.lanes.append(lane)
-
-        # Left lanes (positive IDs) - backward direction in OpenDrive convention
-        for i in range(1, left_lanes + 1):
-            lane = Lane(
-                id=i,
-                lane_type=LaneType.DRIVING,
-                road_mark_type=RoadMarkType.BROKEN if i < left_lanes else RoadMarkType.SOLID,
-                width=lane_width
-            )
-            # Apply backward turn directions to left lanes
-            # turn:lanes:backward index 0 = centermost lane = lane 1
-            if turn_lanes_backward and i <= len(turn_lanes_backward):
-                lane.turn_directions = turn_lanes_backward[i - 1]
-            apply_surface_to_lane(lane, surface_material)
-            section.lanes.append(lane)
-
-    road.lane_sections.append(section)
+        road = _create_normal_road(osm_way, highway, centerline, pixel_points, default_lane_width)
 
     road.osm_tags = dict(osm_way.tags)
     road.osm_way_id = osm_way.id
     return (road, centerline)
+
+
+def _create_path_road(osm_way: OSMWay, centerline: Polyline,
+                      pixel_points: list, path_info: tuple) -> Road:
+    """Create a road from an OSM bicycle/pedestrian path."""
+    from orbit.models.road import LaneInfo
+    road_type_prefix, lane_type = path_info
+    is_shared_path = 'Shared' in road_type_prefix or 'Segregated' in road_type_prefix
+
+    osm_name = osm_way.tags.get('name', '')
+    road_name = f"{road_type_prefix} - {osm_name}" if osm_name else road_type_prefix
+    path_width = get_path_width_from_osm(osm_way.tags, lane_type)
+
+    road = Road(
+        name=road_name,
+        road_type=RoadType.TOWN,
+        centerline_id=centerline.id,
+        lane_info=LaneInfo(left_count=1, right_count=1, lane_width=path_width)
+    )
+    road.add_polyline(centerline.id)
+    road.speed_limit = 20.0 if lane_type == LaneType.BIKING else None
+
+    section = LaneSection(
+        section_number=1, s_start=0.0,
+        s_end=len(pixel_points) - 1, end_point_index=None
+    )
+    section.lanes.append(Lane(id=0, lane_type=LaneType.NONE,
+                              road_mark_type=RoadMarkType.NONE, width=0.0))
+
+    access_restrictions = ["bicycle", "pedestrian"] if is_shared_path else []
+    for lane_id in (1, -1):
+        section.lanes.append(Lane(
+            id=lane_id, lane_type=lane_type,
+            road_mark_type=RoadMarkType.SOLID, width=path_width,
+            access_restrictions=access_restrictions
+        ))
+    road.lane_sections.append(section)
+    return road
+
+
+def _create_normal_road(osm_way: OSMWay, highway: str, centerline: Polyline,
+                        pixel_points: list, default_lane_width: float) -> Road:
+    """Create a road from a normal OSM highway."""
+    from orbit.models.road import LaneInfo
+    road_name = osm_way.tags.get('name', f"OSM Way {osm_way.id}")
+    oneway = is_oneway(osm_way.tags)
+    reverse_oneway = is_reverse_oneway(osm_way.tags)
+    left_lanes, right_lanes = estimate_lane_count(osm_way.tags, oneway)
+    lane_width = _resolve_lane_width(osm_way.tags, highway, left_lanes + right_lanes,
+                                     default_lane_width)
+
+    road = Road(
+        name=road_name,
+        road_type=RoadType[get_road_type_for_highway(highway).upper()],
+        centerline_id=centerline.id,
+        lane_info=LaneInfo(left_count=left_lanes, right_count=right_lanes, lane_width=lane_width)
+    )
+    road.add_polyline(centerline.id)
+    _apply_speed_limit(road, osm_way.tags)
+
+    turn_lanes_forward, turn_lanes_backward = _parse_turn_lane_tags(osm_way.tags, oneway)
+    surface_material = _resolve_surface_material(osm_way.tags)
+
+    section = _build_lane_section(
+        pixel_points, lane_width, left_lanes, right_lanes,
+        oneway, reverse_oneway, turn_lanes_forward, turn_lanes_backward,
+        surface_material
+    )
+    road.lane_sections.append(section)
+    return road
+
+
+def _resolve_lane_width(tags: dict, highway: str, total_lanes: int,
+                        default_lane_width: float) -> float:
+    """Determine lane width from OSM tags, falling back to highway-type defaults."""
+    lane_width = default_lane_width
+    if 'width:lanes' in tags or 'width:lanes:forward' in tags:
+        width_str = tags.get('width:lanes') or tags.get('width:lanes:forward', '')
+        try:
+            widths = [float(w.strip()) for w in width_str.split('|')]
+            if widths:
+                lane_width = sum(widths) / len(widths)
+        except (ValueError, AttributeError):
+            pass
+    elif 'width' in tags:
+        try:
+            total_width = float(tags['width'])
+            if total_lanes > 0:
+                lane_width = total_width / total_lanes
+        except (ValueError, ZeroDivisionError):
+            pass
+    if lane_width == default_lane_width:
+        lane_width = get_lane_width_for_highway(highway, default_lane_width)
+    return lane_width
+
+
+def _apply_speed_limit(road: Road, tags: dict):
+    """Set speed limit on road from OSM maxspeed tag."""
+    if 'maxspeed' in tags:
+        speed_value, speed_unit = parse_maxspeed(tags['maxspeed'])
+        if speed_value:
+            if speed_unit == 'mph':
+                speed_value = int(speed_value * 1.60934)
+            road.speed_limit = float(speed_value)
+
+
+def _parse_turn_lane_tags(tags: dict, oneway: bool):
+    """Parse forward/backward turn:lanes tags."""
+    turn_lanes_forward = None
+    turn_lanes_backward = None
+    if 'turn:lanes:forward' in tags:
+        turn_lanes_forward = parse_turn_lanes(tags['turn:lanes:forward'])
+    elif 'turn:lanes' in tags and oneway:
+        turn_lanes_forward = parse_turn_lanes(tags['turn:lanes'])
+    if 'turn:lanes:backward' in tags:
+        turn_lanes_backward = parse_turn_lanes(tags['turn:lanes:backward'])
+    return turn_lanes_forward, turn_lanes_backward
+
+
+def _resolve_surface_material(tags: dict):
+    """Parse surface and smoothness tags into material tuple."""
+    surface_material = None
+    if 'surface' in tags:
+        surface_material = get_surface_material(tags['surface'])
+    if 'smoothness' in tags:
+        smoothness_roughness = get_smoothness_roughness(tags['smoothness'])
+        if smoothness_roughness is not None:
+            if surface_material:
+                friction, _, surface_name = surface_material
+                surface_material = (friction, smoothness_roughness, surface_name)
+            else:
+                surface_material = (0.8, smoothness_roughness, 'unknown')
+    return surface_material
+
+
+def _apply_surface_to_lane(lane: Lane, surface_mat):
+    """Apply surface material to a lane."""
+    if surface_mat:
+        friction, roughness, surface_name = surface_mat
+        lane.materials = [(0.0, friction, roughness, surface_name)]
+
+
+def _build_lane_section(pixel_points, lane_width, left_lanes, right_lanes,
+                        oneway, reverse_oneway, turn_fwd, turn_bwd,
+                        surface_material) -> LaneSection:
+    """Build the lane section with all driving lanes."""
+    section = LaneSection(
+        section_number=1, s_start=0.0,
+        s_end=len(pixel_points) - 1, end_point_index=None
+    )
+    section.lanes.append(Lane(id=0, lane_type=LaneType.NONE,
+                              road_mark_type=RoadMarkType.NONE, width=0.0))
+
+    if oneway:
+        if reverse_oneway:
+            _add_oneway_lanes(section, right_lanes, lane_width, positive_ids=True,
+                              turn_lanes=turn_fwd, surface_material=surface_material)
+        else:
+            _add_oneway_lanes(section, right_lanes, lane_width, positive_ids=False,
+                              turn_lanes=turn_fwd, surface_material=surface_material)
+    else:
+        _add_twoway_lanes(section, left_lanes, right_lanes, lane_width,
+                          turn_fwd, turn_bwd, surface_material)
+    return section
+
+
+def _add_oneway_lanes(section, count, width, positive_ids, turn_lanes, surface_material):
+    """Add lanes for a one-way road."""
+    for i in range(1, count + 1):
+        lane_id = i if positive_ids else -i
+        lane = Lane(id=lane_id, lane_type=LaneType.DRIVING,
+                    road_mark_type=RoadMarkType.BROKEN, width=width)
+        if turn_lanes and i <= len(turn_lanes):
+            lane.turn_directions = turn_lanes[i - 1]
+        _apply_surface_to_lane(lane, surface_material)
+        section.lanes.append(lane)
+
+
+def _add_twoway_lanes(section, left_lanes, right_lanes, width,
+                      turn_fwd, turn_bwd, surface_material):
+    """Add lanes for a two-way road."""
+    # Right lanes (negative IDs) - forward direction
+    for i in range(1, right_lanes + 1):
+        lane = Lane(
+            id=-i, lane_type=LaneType.DRIVING,
+            road_mark_type=RoadMarkType.BROKEN if i < right_lanes else RoadMarkType.SOLID,
+            width=width
+        )
+        if turn_fwd and i <= len(turn_fwd):
+            lane.turn_directions = turn_fwd[i - 1]
+        _apply_surface_to_lane(lane, surface_material)
+        section.lanes.append(lane)
+
+    # Left lanes (positive IDs) - backward direction
+    for i in range(1, left_lanes + 1):
+        lane = Lane(
+            id=i, lane_type=LaneType.DRIVING,
+            road_mark_type=RoadMarkType.BROKEN if i < left_lanes else RoadMarkType.SOLID,
+            width=width
+        )
+        if turn_bwd and i <= len(turn_bwd):
+            lane.turn_directions = turn_bwd[i - 1]
+        _apply_surface_to_lane(lane, surface_material)
+        section.lanes.append(lane)
 
 
 def process_turn_restrictions(

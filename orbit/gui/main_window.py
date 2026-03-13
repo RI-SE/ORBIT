@@ -165,7 +165,14 @@ class MainWindow(QMainWindow):
 
     def create_actions(self):
         """Create all actions for menus and toolbar."""
-        # File actions
+        self._create_file_actions()
+        self._create_edit_actions()
+        self._create_view_actions()
+        self._create_tools_actions()
+        self._create_help_actions()
+
+    def _create_file_actions(self):
+        """Create file menu actions."""
         self.new_action = QAction("&New Project", self)
         self.new_action.setShortcut(QKeySequence.StandardKey.New)
         self.new_action.setStatusTip("Create a new project")
@@ -223,7 +230,8 @@ class MainWindow(QMainWindow):
         self.exit_action.setStatusTip("Exit the application")
         self.exit_action.triggered.connect(self.close)
 
-        # Edit actions - using QUndoStack
+    def _create_edit_actions(self):
+        """Create edit menu actions."""
         self.undo_action = self.undo_stack.createUndoAction(self, "&Undo")
         self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
         self.undo_action.setStatusTip("Undo last action")
@@ -245,7 +253,8 @@ class MainWindow(QMainWindow):
         self.junction_groups_action.setStatusTip("Manage junction groups (roundabouts, complex junctions)")
         self.junction_groups_action.triggered.connect(self.show_junction_groups)
 
-        # View actions
+    def _create_view_actions(self):
+        """Create view menu actions."""
         self.zoom_in_action = QAction("Zoom &In", self)
         self.zoom_in_action.setShortcut(QKeySequence.StandardKey.ZoomIn)
         self.zoom_in_action.setStatusTip("Zoom in")
@@ -270,13 +279,13 @@ class MainWindow(QMainWindow):
         self.toggle_lanes_action.setShortcut(QKeySequence("Ctrl+L"))
         self.toggle_lanes_action.setStatusTip("Toggle lane visualization on/off")
         self.toggle_lanes_action.setCheckable(True)
-        self.toggle_lanes_action.setChecked(True)  # Lanes visible by default
+        self.toggle_lanes_action.setChecked(True)
         self.toggle_lanes_action.triggered.connect(self.toggle_lane_visibility)
 
         self.toggle_soffsets_action = QAction("Show &S-Offsets", self)
         self.toggle_soffsets_action.setStatusTip("Toggle s-offset labels on road reference line points")
         self.toggle_soffsets_action.setCheckable(True)
-        self.toggle_soffsets_action.setChecked(False)  # S-offsets hidden by default
+        self.toggle_soffsets_action.setChecked(False)
         self.toggle_soffsets_action.triggered.connect(self.toggle_soffset_visibility)
 
         self.toggle_junction_debug_action = QAction("Show &Junction Debug", self)
@@ -285,10 +294,9 @@ class MainWindow(QMainWindow):
             "(endpoints, headings, paths)"
         )
         self.toggle_junction_debug_action.setCheckable(True)
-        self.toggle_junction_debug_action.setChecked(False)  # Hidden by default
+        self.toggle_junction_debug_action.setChecked(False)
         self.toggle_junction_debug_action.triggered.connect(self.toggle_junction_debug_visibility)
 
-        # Adjustment mode action
         self.toggle_adjustment_action = QAction("&Adjust Alignment", self)
         self.toggle_adjustment_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.toggle_adjustment_action.setStatusTip("Adjust georeferencing alignment with keyboard controls")
@@ -296,14 +304,12 @@ class MainWindow(QMainWindow):
         self.toggle_adjustment_action.setChecked(False)
         self.toggle_adjustment_action.triggered.connect(self.toggle_adjustment_mode)
 
-        # Uncertainty overlay action (single toggle)
         self.toggle_uncertainty_action = QAction("Show &Uncertainty Overlay", self)
         self.toggle_uncertainty_action.setStatusTip("Show position uncertainty heat map")
         self.toggle_uncertainty_action.setCheckable(True)
         self.toggle_uncertainty_action.setChecked(False)
         self.toggle_uncertainty_action.triggered.connect(self.toggle_uncertainty_overlay)
 
-        # Aerial map view action
         self.toggle_aerial_action = QAction("&Aerial Map View", self)
         self.toggle_aerial_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
         self.toggle_aerial_action.setStatusTip(
@@ -311,10 +317,11 @@ class MainWindow(QMainWindow):
         )
         self.toggle_aerial_action.setCheckable(True)
         self.toggle_aerial_action.setChecked(False)
-        self.toggle_aerial_action.setEnabled(False)  # Enabled when georef available
+        self.toggle_aerial_action.setEnabled(False)
         self.toggle_aerial_action.triggered.connect(self.toggle_aerial_view)
 
-        # Tools actions
+    def _create_tools_actions(self):
+        """Create tools menu actions."""
         self.new_polyline_action = QAction("New &Polyline", self)
         self.new_polyline_action.setShortcut(QKeySequence("Ctrl+P"))
         self.new_polyline_action.setStatusTip("Start drawing a new polyline")
@@ -376,7 +383,8 @@ class MainWindow(QMainWindow):
         self.show_scale_action.setCheckable(True)
         self.show_scale_action.triggered.connect(self.toggle_show_scale_mode)
 
-        # Help actions
+    def _create_help_actions(self):
+        """Create help menu actions."""
         self.about_action = QAction("&About ORBIT", self)
         self.about_action.setStatusTip("About this application")
         self.about_action.triggered.connect(self.show_about)
@@ -1041,7 +1049,6 @@ class MainWindow(QMainWindow):
 
     def import_osm_data(self):
         """Import road network data from OpenStreetMap (API or file)."""
-        # Import from the 'import' module using importlib (since 'import' is a Python keyword)
         import importlib
 
         from .dialogs.osm_import_dialog import OSMImportDialog
@@ -1058,59 +1065,109 @@ class MainWindow(QMainWindow):
         from PyQt6.QtCore import QCoreApplication
         from PyQt6.QtWidgets import QProgressDialog
 
+        # Resolve bbox, transformer, and image dimensions
+        setup = self._setup_osm_import(
+            OSMImportDialog, calculate_bbox_from_image, calculate_bbox_from_center
+        )
+        if setup is None:
+            return
+        bbox, transformer, image_width, image_height, dialog = setup
+
+        # Get import source and options
+        source_data = dialog.get_import_source()
+        source_type = source_data[0]
+
+        if source_type == 'api':
+            options_dict = source_data[1]
+            file_path = None
+        else:
+            file_path = source_data[1]
+            options_dict = source_data[2]
+            if not file_path:
+                show_warning(self, "Please select an OSM file to import.", "No File Selected")
+                return
+
+        # Check if custom radius was requested (georef mode only)
+        custom_radius = dialog.get_custom_radius()
+        if custom_radius is not None:
+            center_lon, center_lat = transformer.pixel_to_geo(
+                image_width / 2.0, image_height / 2.0
+            )
+            bbox = calculate_bbox_from_center(center_lat, center_lon, custom_radius)
+
+        # Build ImportOptions
+        import_mode = ImportMode.REPLACE if options_dict['import_mode'] == 'replace' else ImportMode.ADD
+        detail_level = DetailLevel.FULL if options_dict['detail_level'] == 'full' else DetailLevel.MODERATE
+        options = ImportOptions(
+            import_mode=import_mode, detail_level=detail_level,
+            default_lane_width=options_dict['default_lane_width'],
+            import_junctions=options_dict['import_junctions'],
+            filter_outside_image=options_dict.get('filter_outside_image', False),
+            auto_adjust_junctions=options_dict.get('auto_adjust_junctions', True),
+            timeout=60, verbose=self.verbose
+        )
+
+        # Show progress and perform import
+        progress_msg = (f"Importing from {Path(file_path).name}..." if file_path
+                        else "Importing OpenStreetMap data from API...")
+        progress = QProgressDialog(progress_msg, "Cancel", 0, 0, self)
+        progress.setWindowTitle("Importing OSM File" if file_path else "Importing OSM Data")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButton(None)
+        progress.show()
+        QCoreApplication.processEvents()
+
+        try:
+            importer = OSMImporter(self.project, transformer, image_width, image_height)
+            if source_type == 'api':
+                result = importer.import_osm_data(options, bbox=bbox)
+            else:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    osm_data = OSMParser.parse_xml(f.read())
+                result = importer._import_from_osm_data(osm_data, options, bbox=bbox)
+            progress.close()
+            self._process_osm_import_result(result, source_type, file_path)
+        except Exception as e:
+            progress.close()
+            show_error(self, f"An unexpected error occurred during import:\n\n{type(e).__name__}: {e}", "Import Error")
+            self.statusBar().showMessage("OSM import error")
+
+    def _setup_osm_import(self, OSMImportDialog, calculate_bbox_from_image,
+                          calculate_bbox_from_center):
+        """Set up bbox, transformer, and image dimensions for OSM import. Returns None on cancel."""
         from orbit.models.project import ControlPoint
 
         has_georef = len(self.project.control_points) >= 3
         has_image = self.image_view.image_item is not None
 
-        # --- Branch: georef + image available ---
         if has_georef and has_image:
             image_width = int(self.image_view.image_item.pixmap().width())
             image_height = int(self.image_view.image_item.pixmap().height())
-
             transformer = self._create_transformer(use_validation=True)
             if not transformer:
                 show_error(self, "Failed to create coordinate transformer.\n"
                     "Please check your control points.", "Transformation Error")
-                return
-
+                return None
             try:
                 bbox = calculate_bbox_from_image(image_width, image_height, transformer)
             except Exception as e:
                 show_error(self, f"Failed to calculate bounding box:\n{e}", "Error")
-                return
-
-            # Show dialog with georef mode (custom radius option available)
+                return None
             dialog = OSMImportDialog(bbox, self, has_georef=True)
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                self.statusBar().showMessage("OSM import cancelled")
-                return
-
-            # Check if custom radius was requested
-            custom_radius = dialog.get_custom_radius()
-            if custom_radius is not None:
-                # Compute image center in geo coords
-                center_lon, center_lat = transformer.pixel_to_geo(
-                    image_width / 2.0, image_height / 2.0
-                )
-                bbox = calculate_bbox_from_center(center_lat, center_lon, custom_radius)
-
-        # --- Branch: no georef or no image -> coordinate mode ---
         else:
-            # Dummy bbox for dialog (will be replaced by user input)
             dialog = OSMImportDialog((0, 0, 0, 0), self, has_georef=False)
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                self.statusBar().showMessage("OSM import cancelled")
-                return
 
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.statusBar().showMessage("OSM import cancelled")
+            return None
+
+        if not (has_georef and has_image):
             coord_params = dialog.get_coordinate_params()
             if not coord_params:
-                return
+                return None
             center_lat, center_lon, radius_m, scale_px_per_m = coord_params
-
             bbox = calculate_bbox_from_center(center_lat, center_lon, radius_m)
 
-            # Create synthetic canvas
             canvas_size = max(int(2 * radius_m * scale_px_per_m), 2000)
             image_width = canvas_size
             image_height = canvas_size
@@ -1118,7 +1175,6 @@ class MainWindow(QMainWindow):
             self.project.synthetic_canvas_width = image_width
             self.project.synthetic_canvas_height = image_height
 
-            # Create synthetic control points at canvas corners mapped to bbox corners
             min_lat, min_lon, max_lat, max_lon = bbox
             self.project.control_points = [
                 ControlPoint(pixel_x=0, pixel_y=0, longitude=min_lon, latitude=max_lat),
@@ -1128,143 +1184,54 @@ class MainWindow(QMainWindow):
             ]
             self.project.transform_method = 'affine'
             self._cached_transformer = None
-
             transformer = self._create_transformer(use_validation=False)
             if not transformer:
                 show_error(self, "Failed to create coordinate transformer from synthetic control points.",
                     "Transformation Error")
-                return
+                return None
 
-        # Get import source and options
-        source_data = dialog.get_import_source()
-        source_type = source_data[0]
+        return bbox, transformer, image_width, image_height, dialog
 
-        if source_type == 'api':
-            # API import
-            options_dict = source_data[1]
-        else:
-            # File import
-            file_path = source_data[1]
-            options_dict = source_data[2]
+    def _process_osm_import_result(self, result, source_type, file_path):
+        """Handle import result: show messages, refresh views."""
+        if result.success:
+            scale_factors = self.get_current_scale()
+            self._align_all_junction_connecting_roads(scale_factors)
 
-            # Validate file path
-            if not file_path:
-                show_warning(self, "Please select an OSM file to import.", "No File Selected")
-                return
-
-        # Build ImportOptions from dict
-        import_mode = ImportMode.REPLACE if options_dict['import_mode'] == 'replace' else ImportMode.ADD
-        detail_level = DetailLevel.FULL if options_dict['detail_level'] == 'full' else DetailLevel.MODERATE
-
-        options = ImportOptions(
-            import_mode=import_mode,
-            detail_level=detail_level,
-            default_lane_width=options_dict['default_lane_width'],
-            import_junctions=options_dict['import_junctions'],
-            filter_outside_image=options_dict.get('filter_outside_image', False),
-            auto_adjust_junctions=options_dict.get('auto_adjust_junctions', True),
-            timeout=60,
-            verbose=self.verbose
-        )
-
-        # Show progress dialog
-        if source_type == 'api':
-            progress_msg = "Importing OpenStreetMap data from API..."
-            progress_title = "Importing OSM Data"
-        else:
-            progress_msg = f"Importing from {Path(file_path).name}..."
-            progress_title = "Importing OSM File"
-
-        progress = QProgressDialog(
-            progress_msg,
-            "Cancel",
-            0, 0,  # Indeterminate progress
-            self
-        )
-        progress.setWindowTitle(progress_title)
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setCancelButton(None)  # No cancel button for now
-        progress.show()
-        QCoreApplication.processEvents()
-
-        # Perform import
-        try:
-            importer = OSMImporter(self.project, transformer, image_width, image_height)
-
-            if source_type == 'api':
-                # Import from Overpass API (pass bbox for custom radius support)
-                result = importer.import_osm_data(options, bbox=bbox)
+            if source_type == 'file':
+                msg = f"Successfully imported from {Path(file_path).name}:\n\n"
             else:
-                # Import from file
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    xml_content = f.read()
-                osm_data = OSMParser.parse_xml(xml_content)
-                result = importer._import_from_osm_data(osm_data, options, bbox=bbox)
+                msg = "Successfully imported:\n\n"
 
-            progress.close()
+            msg += f"• {result.roads_imported} roads\n"
+            if result.junctions_imported > 0:
+                msg += f"• {result.junctions_imported} junctions\n"
+            if result.signals_imported > 0:
+                msg += f"• {result.signals_imported} signals\n"
+            if result.objects_imported > 0:
+                msg += f"• {result.objects_imported} objects\n"
+            if result.roads_skipped_duplicate > 0:
+                msg += f"\n• Skipped {result.roads_skipped_duplicate} duplicate roads"
+            if result.partial_import:
+                msg += "\n\nWarning: Import timed out. Partial data was imported."
 
-            if result.success:
-                # Align connecting road paths to lane centers before rendering
-                scale_factors = self.get_current_scale()
-                self._align_all_junction_connecting_roads(scale_factors)
+            show_info(self, msg, "Import Successful")
+            self.project.openstreetmap_used = True
+            self.modified = True
+            self.image_view.load_project(self.project)
+            self.elements_tree.refresh_tree()
+            self.road_tree.refresh_tree()
+            self._cached_transformer = None
 
-                # Show success message
-                if source_type == 'file':
-                    msg = f"Successfully imported from {Path(file_path).name}:\n\n"
-                else:
-                    msg = "Successfully imported:\n\n"
-
-                msg += f"• {result.roads_imported} roads\n"
-                if result.junctions_imported > 0:
-                    msg += f"• {result.junctions_imported} junctions\n"
-                if result.signals_imported > 0:
-                    msg += f"• {result.signals_imported} signals\n"
-                if result.objects_imported > 0:
-                    msg += f"• {result.objects_imported} objects\n"
-
-                if result.roads_skipped_duplicate > 0:
-                    msg += f"\n• Skipped {result.roads_skipped_duplicate} duplicate roads"
-
-                if result.partial_import:
-                    msg += "\n\nWarning: Import timed out. Partial data was imported."
-
-                show_info(self, msg, "Import Successful")
-
-                # Mark OpenStreetMap as used for proper attribution
-                self.project.openstreetmap_used = True
-
-                # Mark project as modified
-                self.modified = True
-
-                # Refresh all views
-                self.image_view.load_project(self.project)
-                self.elements_tree.refresh_tree()
-                self.road_tree.refresh_tree()
-
-                # Invalidate transformer cache
-                self._cached_transformer = None
-
-                if source_type == 'file':
-                    self.statusBar().showMessage(
-                        f"Imported {result.roads_imported} roads, "
-                        f"{result.signals_imported} signals, "
-                        f"{result.objects_imported} objects from {Path(file_path).name}"
-                    )
-                else:
-                    self.statusBar().showMessage(
-                        f"Imported {result.roads_imported} roads, "
-                        f"{result.signals_imported} signals, "
-                        f"{result.objects_imported} objects"
-                    )
-            else:
-                # Show error message
-                show_error(self, f"Failed to import OSM data:\n\n{result.error_message}", "Import Failed")
-                self.statusBar().showMessage("OSM import failed")
-
-        except Exception as e:
-            progress.close()
-            show_error(self, f"An unexpected error occurred during import:\n\n{type(e).__name__}: {e}", "Import Error")
-            self.statusBar().showMessage("OSM import error")
+            status = (f"Imported {result.roads_imported} roads, "
+                      f"{result.signals_imported} signals, "
+                      f"{result.objects_imported} objects")
+            if source_type == 'file':
+                status += f" from {Path(file_path).name}"
+            self.statusBar().showMessage(status)
+        else:
+            show_error(self, f"Failed to import OSM data:\n\n{result.error_message}", "Import Failed")
+            self.statusBar().showMessage("OSM import failed")
 
     def import_opendrive_file(self):
         """Import road network from OpenDrive file."""
@@ -2835,10 +2802,6 @@ class MainWindow(QMainWindow):
         Args:
             polyline_id: ID of the modified polyline
         """
-        import math
-
-        from orbit.utils.geometry import generate_simple_connection_path
-
         # Get the modified polyline
         polyline = self.project.get_polyline(polyline_id)
         if not polyline or polyline.line_type != LineType.CENTERLINE:
@@ -2868,99 +2831,80 @@ class MainWindow(QMainWindow):
                         affected_junctions.append((junction, conn_road))
 
         # Regenerate each affected ParamPoly3D connecting road
+        scale_factors = self.get_current_scale()
         for junction, conn_road in affected_junctions:
-            # Get predecessor and successor roads
-            pred_road = self.project.get_road(conn_road.predecessor_id)
-            succ_road = self.project.get_road(conn_road.successor_id)
-
-            if not pred_road or not succ_road:
-                continue
-
-            # Get centerline polylines
-            pred_polyline = self.project.get_polyline(pred_road.centerline_id)
-            succ_polyline = self.project.get_polyline(succ_road.centerline_id)
-
-            if not pred_polyline or not succ_polyline:
-                continue
-
-            # Get endpoint positions and headings
-            # Predecessor endpoint (end point for "end" contact)
-            if conn_road.predecessor_contact == "end":
-                pred_pos = pred_polyline.points[-1]
-                if len(pred_polyline.points) >= 2:
-                    dx = pred_polyline.points[-1][0] - pred_polyline.points[-2][0]
-                    dy = pred_polyline.points[-1][1] - pred_polyline.points[-2][1]
-                    pred_heading = math.atan2(dy, dx)
-                else:
-                    pred_heading = 0.0
-            else:  # "start"
-                pred_pos = pred_polyline.points[0]
-                if len(pred_polyline.points) >= 2:
-                    dx = pred_polyline.points[1][0] - pred_polyline.points[0][0]
-                    dy = pred_polyline.points[1][1] - pred_polyline.points[0][1]
-                    pred_heading = math.atan2(dy, dx)
-                    pred_heading += math.pi  # Reverse direction for "start" contact
-                else:
-                    pred_heading = math.pi
-
-            # Successor endpoint (start point for "start" contact)
-            if conn_road.successor_contact == "start":
-                succ_pos = succ_polyline.points[0]
-                if len(succ_polyline.points) >= 2:
-                    dx = succ_polyline.points[1][0] - succ_polyline.points[0][0]
-                    dy = succ_polyline.points[1][1] - succ_polyline.points[0][1]
-                    succ_heading = math.atan2(dy, dx)
-                    succ_heading += math.pi  # Reverse direction to point into road
-                else:
-                    succ_heading = math.pi
-            else:  # "end"
-                succ_pos = succ_polyline.points[-1]
-                if len(succ_polyline.points) >= 2:
-                    dx = succ_polyline.points[-1][0] - succ_polyline.points[-2][0]
-                    dy = succ_polyline.points[-1][1] - succ_polyline.points[-2][1]
-                    succ_heading = math.atan2(dy, dx)
-                else:
-                    succ_heading = 0.0
-
-            # Regenerate the curve
-            path, coeffs = generate_simple_connection_path(
-                from_pos=pred_pos,
-                from_heading=pred_heading,
-                to_pos=succ_pos,
-                to_heading=succ_heading,
-                tangent_scale=conn_road.tangent_scale
-            )
-
-            # Update the connecting road
-            conn_road.inline_path = path
-            self._refresh_connecting_road_geo_path(conn_road)
-            aU, bU, cU, dU, aV, bV, cV, dV = coeffs
-            conn_road.aU = aU
-            conn_road.bU = bU
-            conn_road.cU = cU
-            conn_road.dU = dU
-            conn_road.aV = aV
-            conn_road.bV = bV
-            conn_road.cV = cV
-            conn_road.dV = dV
-
-            # Update stored headings so get_start_heading/get_end_heading
-            # return accurate values (used by dialog, export, alignment)
-            conn_road.stored_start_heading = pred_heading
-            conn_road.stored_end_heading = succ_heading
-
-            # Update graphics
-            scale_factors = self.get_current_scale()
-            self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
+            self._regenerate_parampoly3_cr(conn_road, scale_factors)
 
         # Snap endpoints of polyline-type connecting roads
+        self._snap_polyline_cr_endpoints(affected_road, scale_factors)
+
+        # Apply lane alignment to affected junctions
+        self._align_affected_junction_crs(affected_road, scale_factors)
+
+    def _regenerate_parampoly3_cr(self, conn_road, scale_factors):
+        """Regenerate a single ParamPoly3D connecting road from its connected roads."""
+        from orbit.utils.geometry import generate_simple_connection_path
+
+        pred_road = self.project.get_road(conn_road.predecessor_id)
+        succ_road = self.project.get_road(conn_road.successor_id)
+        if not pred_road or not succ_road:
+            return
+
+        pred_polyline = self.project.get_polyline(pred_road.centerline_id)
+        succ_polyline = self.project.get_polyline(succ_road.centerline_id)
+        if not pred_polyline or not succ_polyline:
+            return
+
+        pred_pos, pred_heading = self._get_contact_pos_heading(
+            pred_polyline, conn_road.predecessor_contact
+        )
+        succ_pos, succ_heading = self._get_contact_pos_heading(
+            succ_polyline, conn_road.successor_contact
+        )
+
+        path, coeffs = generate_simple_connection_path(
+            from_pos=pred_pos, from_heading=pred_heading,
+            to_pos=succ_pos, to_heading=succ_heading,
+            tangent_scale=conn_road.tangent_scale
+        )
+
+        conn_road.inline_path = path
+        self._refresh_connecting_road_geo_path(conn_road)
+        conn_road.aU, conn_road.bU, conn_road.cU, conn_road.dU, \
+            conn_road.aV, conn_road.bV, conn_road.cV, conn_road.dV = coeffs
+        conn_road.stored_start_heading = pred_heading
+        conn_road.stored_end_heading = succ_heading
+        self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
+
+    @staticmethod
+    def _get_contact_pos_heading(polyline, contact_point):
+        """Get position and heading at a polyline contact point."""
+        import math
+        if contact_point == "end":
+            pos = polyline.points[-1]
+            if len(polyline.points) >= 2:
+                dx = polyline.points[-1][0] - polyline.points[-2][0]
+                dy = polyline.points[-1][1] - polyline.points[-2][1]
+                heading = math.atan2(dy, dx)
+            else:
+                heading = 0.0
+        else:  # "start"
+            pos = polyline.points[0]
+            if len(polyline.points) >= 2:
+                dx = polyline.points[1][0] - polyline.points[0][0]
+                dy = polyline.points[1][1] - polyline.points[0][1]
+                heading = math.atan2(dy, dx) + math.pi
+            else:
+                heading = math.pi
+        return pos, heading
+
+    def _snap_polyline_cr_endpoints(self, affected_road, scale_factors):
+        """Snap polyline-type connecting road endpoints to connected road endpoints."""
         for junction in self.project.junctions:
             for cr_id in junction.connecting_road_ids:
                 conn_road = self.project.get_road(cr_id)
-                if not conn_road:
+                if not conn_road or conn_road.geometry_type == "parampoly3":
                     continue
-                if conn_road.geometry_type == "parampoly3":
-                    continue  # Already handled above
                 if (conn_road.predecessor_id != affected_road.id and
                         conn_road.successor_id != affected_road.id):
                     continue
@@ -2972,34 +2916,22 @@ class MainWindow(QMainWindow):
                 if not pred_road or not succ_road:
                     continue
 
-                pred_polyline = self.project.get_polyline(pred_road.centerline_id)
-                succ_polyline = self.project.get_polyline(succ_road.centerline_id)
-                if not pred_polyline or not succ_polyline:
+                pred_pl = self.project.get_polyline(pred_road.centerline_id)
+                succ_pl = self.project.get_polyline(succ_road.centerline_id)
+                if not pred_pl or not succ_pl:
                     continue
 
-                # Snap start to predecessor endpoint
-                if conn_road.predecessor_contact == "end":
-                    conn_road.inline_path[0] = pred_polyline.points[-1]
-                else:
-                    conn_road.inline_path[0] = pred_polyline.points[0]
-
-                # Snap end to successor endpoint
-                if conn_road.successor_contact == "end":
-                    conn_road.inline_path[-1] = succ_polyline.points[-1]
-                else:
-                    conn_road.inline_path[-1] = succ_polyline.points[0]
-
+                conn_road.inline_path[0] = (pred_pl.points[-1] if conn_road.predecessor_contact == "end"
+                                             else pred_pl.points[0])
+                conn_road.inline_path[-1] = (succ_pl.points[-1] if conn_road.successor_contact == "end"
+                                              else succ_pl.points[0])
                 self._refresh_connecting_road_geo_path(conn_road)
-
-                # Update graphics
-                scale_factors = self.get_current_scale()
                 self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
 
-        # Apply lane alignment to affected junctions so CR endpoints shift
-        # from the road centerline to the correct lane position.
+    def _align_affected_junction_crs(self, affected_road, scale_factors):
+        """Apply lane alignment to junctions affected by a road modification."""
         from orbit.utils.connecting_road_alignment import align_connecting_road_paths
 
-        scale_factors = self.get_current_scale()
         if scale_factors:
             scale = (scale_factors[0] + scale_factors[1]) / 2.0
         else:
@@ -3015,19 +2947,17 @@ class MainWindow(QMainWindow):
                     break
 
         for junction in self.project.junctions:
-            if junction.id in affected_junction_ids:
-                if junction.lane_connections and junction.connecting_road_ids:
-                    modified = align_connecting_road_paths(
-                        junction, self.project, scale
-                    )
-                    for cr_id in junction.connecting_road_ids:
-                        cr = self.project.get_road(cr_id)
-                        if cr and cr.id in modified:
-                            self._refresh_connecting_road_geo_path(cr)
-                    for cr_id in modified:
-                        self.image_view.update_connecting_road_graphics(
-                            cr_id, scale_factors
-                        )
+            if junction.id not in affected_junction_ids:
+                continue
+            if not junction.lane_connections or not junction.connecting_road_ids:
+                continue
+            modified = align_connecting_road_paths(junction, self.project, scale)
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if cr and cr.id in modified:
+                    self._refresh_connecting_road_geo_path(cr)
+            for cr_id in modified:
+                self.image_view.update_connecting_road_graphics(cr_id, scale_factors)
 
     def on_road_selected_in_tree(self, road_id: str):
         """Handle road selection from tree — highlight all lanes and pan to it."""

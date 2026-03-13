@@ -596,8 +596,6 @@ class Project:
         Returns:
             Tuple of (road1, road2) if successful, None on failure
         """
-        from orbit.utils.geometry import split_boundary_at_centerline_s, split_polyline_at_index
-
         # Get road and centerline
         road = self.get_road(road_id)
         if not road:
@@ -618,100 +616,17 @@ class Project:
             logger.error(f"Invalid split point index {point_index}")
             return None
 
-        # Store original centerline points before modification (needed for boundary projection)
         original_centerline_points = list(centerline.points)
-
-        # Calculate s-coordinate at split point
         s_coords = road.calculate_centerline_s_coordinates(centerline.points)
         split_s = s_coords[point_index]
 
-        # Split centerline polyline
-        centerline_pts1, centerline_pts2 = split_polyline_at_index(
-            centerline.points, point_index, duplicate_point=True
-        )
-
-        # Split per-point arrays (same slicing as duplicate_point=True)
-        geo_pts1 = geo_pts2 = None
-        if centerline.geo_points and len(centerline.geo_points) == len(centerline.points):
-            geo_pts1 = list(centerline.geo_points[:point_index + 1])
-            geo_pts2 = list(centerline.geo_points[point_index:])
-
-        elev1 = elev2 = None
-        if centerline.elevations and len(centerline.elevations) == len(centerline.points):
-            elev1 = list(centerline.elevations[:point_index + 1])
-            elev2 = list(centerline.elevations[point_index:])
-
-        soff1 = soff2 = None
-        if centerline.s_offsets and len(centerline.s_offsets) == len(centerline.points):
-            soff1 = list(centerline.s_offsets[:point_index + 1])
-            soff2 = list(centerline.s_offsets[point_index:])
-
-        osm1 = osm2 = None
-        if centerline.osm_node_ids and len(centerline.osm_node_ids) == len(centerline.points):
-            osm1 = list(centerline.osm_node_ids[:point_index + 1])
-            osm2 = list(centerline.osm_node_ids[point_index:])
-
-        # Create new centerline polyline for road 2
-        new_centerline = Polyline(
-            id=self.next_id('polyline'),
-            points=centerline_pts2,
-            line_type=centerline.line_type,
-            road_mark_type=centerline.road_mark_type
-        )
-        new_centerline.geo_points = geo_pts2
-        new_centerline.elevations = elev2
-        new_centerline.s_offsets = soff2
-        new_centerline.osm_node_ids = osm2
-        new_centerline.geometry_segments = None  # Invalidated by split
-        self.add_polyline(new_centerline)
-
-        # Update original centerline
-        centerline.points = centerline_pts1
-        centerline.geo_points = geo_pts1
-        centerline.elevations = elev1
-        centerline.s_offsets = soff1
-        centerline.osm_node_ids = osm1
-        centerline.geometry_segments = None  # Invalidated by split
+        # Split centerline and create new polyline for road 2
+        new_centerline = self._split_centerline(centerline, point_index)
 
         # Split boundary polylines
-        new_boundary_ids = []
-        for boundary_id in road.polyline_ids:
-            if boundary_id == polyline_id:
-                continue  # Skip centerline, already handled
-
-            boundary = self.get_polyline(boundary_id)
-            if not boundary:
-                continue
-
-            # Split boundary at corresponding s-coordinate
-            result = split_boundary_at_centerline_s(
-                boundary.points,
-                original_centerline_points,  # Use original (unsplit) centerline for projection
-                split_s
-            )
-
-            if result:
-                boundary_pts1, boundary_pts2 = result
-
-                # Create new boundary for road 2
-                new_boundary = Polyline(
-                    id=self.next_id('polyline'),
-                    points=boundary_pts2,
-                    line_type=boundary.line_type,
-                    road_mark_type=boundary.road_mark_type
-                )
-                # Clear per-point metadata — interpolated split point has no geo coordinate
-                new_boundary.geometry_segments = None
-                self.add_polyline(new_boundary)
-                new_boundary_ids.append(new_boundary.id)
-
-                # Update original boundary
-                boundary.points = boundary_pts1
-                boundary.geo_points = None
-                boundary.elevations = None
-                boundary.s_offsets = None
-                boundary.osm_node_ids = None
-                boundary.geometry_segments = None
+        new_boundary_ids = self._split_boundaries(
+            road, polyline_id, original_centerline_points, split_s
+        )
 
         # Distribute lane sections
         sections_road1, sections_road2 = road.distribute_lane_sections_for_split(
@@ -719,24 +634,14 @@ class Project:
         )
 
         # Generate segment names
-        original_name = road.name
-        # Check if name already has segment suffix
-        import re
-        seg_match = re.match(r'^(.*?)\s*\(seg \d+/\d+\)$', original_name)
-        if seg_match:
-            base_name = seg_match.group(1)
-        else:
-            base_name = original_name
+        road1_name, road2_name = self._generate_split_names(road.name)
 
-        road1_name = f"{base_name} (seg 1/2)"
-        road2_name = f"{base_name} (seg 2/2)"
-
-        # Store original junction_id and junction links before we modify road1
+        # Store original junction links before modification
         original_junction_id = road.junction_id
         original_successor_junction_id = road.successor_junction_id
         original_predecessor_junction_id = road.predecessor_junction_id
 
-        # Create new road (road 2) with second segment
+        # Create road 2 (tail segment)
         road2 = Road(
             id=self.next_id('road'),
             name=road2_name,
@@ -746,24 +651,18 @@ class Project:
             lane_info=road.lane_info,
             lane_sections=sections_road2,
             speed_limit=road.speed_limit,
-            junction_id=None,  # Will be set below if needed
-            predecessor_id=road.id,  # Link to first road
+            junction_id=None,
+            predecessor_id=road.id,
             predecessor_contact="end",
-            successor_id=road.successor_id,  # Keep original successor
+            successor_id=road.successor_id,
             successor_contact=road.successor_contact,
-            # Road2 is the tail — gets original successor junction, no predecessor junction
             predecessor_junction_id=None,
             successor_junction_id=original_successor_junction_id
         )
 
-        # Update road 1 (original road)
+        # Update road 1 (head segment)
         road.name = road1_name
-        new_boundary_polylines = [
-            self.get_polyline(nid)
-            for nid in new_boundary_ids
-            if self.get_polyline(nid)
-        ]
-        new_boundary_id_set = {nb.id for nb in new_boundary_polylines}
+        new_boundary_id_set = set(new_boundary_ids)
         road.polyline_ids = [polyline_id] + [
             bid for bid in road.polyline_ids
             if bid != polyline_id and bid not in new_boundary_id_set
@@ -771,24 +670,99 @@ class Project:
         road.lane_sections = sections_road1
         road.successor_id = road2.id
         road.successor_contact = "start"
-        # Road1 is the head — keeps original predecessor junction, loses successor junction
         road.predecessor_junction_id = original_predecessor_junction_id
         road.successor_junction_id = None
 
-        # Add new road to project
         self.add_road(road2)
 
-        # Handle junction remapping
-        # If the original road was connected to a junction, we need to update the junction
-        # to point to road2 instead (since road2 now has the "end" that was connected)
         self._remap_junctions_after_road_split(
             road.id, road2.id, original_junction_id,
             successor_junction_id=original_successor_junction_id
         )
 
-        logger.info(f"Split road '{original_name}' into '{road1_name}' and '{road2_name}'")
-
+        logger.info(f"Split road '{road.name}' into '{road1_name}' and '{road2_name}'")
         return (road, road2)
+
+    def _split_centerline(self, centerline: Polyline, point_index: int) -> Polyline:
+        """Split a centerline at point_index, update original, return new polyline for road 2."""
+        from orbit.utils.geometry import split_polyline_at_index
+
+        pts1, pts2 = split_polyline_at_index(
+            centerline.points, point_index, duplicate_point=True
+        )
+        n = len(centerline.points)
+
+        def _split_array(arr):
+            if arr and len(arr) == n:
+                return list(arr[:point_index + 1]), list(arr[point_index:])
+            return None, None
+
+        geo1, geo2 = _split_array(centerline.geo_points)
+        elev1, elev2 = _split_array(centerline.elevations)
+        soff1, soff2 = _split_array(centerline.s_offsets)
+        osm1, osm2 = _split_array(centerline.osm_node_ids)
+
+        new_centerline = Polyline(
+            id=self.next_id('polyline'), points=pts2,
+            line_type=centerline.line_type, road_mark_type=centerline.road_mark_type
+        )
+        new_centerline.geo_points = geo2
+        new_centerline.elevations = elev2
+        new_centerline.s_offsets = soff2
+        new_centerline.osm_node_ids = osm2
+        new_centerline.geometry_segments = None
+        self.add_polyline(new_centerline)
+
+        centerline.points = pts1
+        centerline.geo_points = geo1
+        centerline.elevations = elev1
+        centerline.s_offsets = soff1
+        centerline.osm_node_ids = osm1
+        centerline.geometry_segments = None
+        return new_centerline
+
+    def _split_boundaries(self, road: Road, centerline_id: str,
+                          original_centerline_points: list,
+                          split_s: float) -> list:
+        """Split boundary polylines at the split s-coordinate. Returns new boundary IDs."""
+        from orbit.utils.geometry import split_boundary_at_centerline_s
+
+        new_boundary_ids = []
+        for boundary_id in road.polyline_ids:
+            if boundary_id == centerline_id:
+                continue
+            boundary = self.get_polyline(boundary_id)
+            if not boundary:
+                continue
+
+            result = split_boundary_at_centerline_s(
+                boundary.points, original_centerline_points, split_s
+            )
+            if result:
+                boundary_pts1, boundary_pts2 = result
+                new_boundary = Polyline(
+                    id=self.next_id('polyline'), points=boundary_pts2,
+                    line_type=boundary.line_type, road_mark_type=boundary.road_mark_type
+                )
+                new_boundary.geometry_segments = None
+                self.add_polyline(new_boundary)
+                new_boundary_ids.append(new_boundary.id)
+
+                boundary.points = boundary_pts1
+                boundary.geo_points = None
+                boundary.elevations = None
+                boundary.s_offsets = None
+                boundary.osm_node_ids = None
+                boundary.geometry_segments = None
+        return new_boundary_ids
+
+    @staticmethod
+    def _generate_split_names(original_name: str) -> Tuple[str, str]:
+        """Generate segment names for split roads."""
+        import re
+        seg_match = re.match(r'^(.*?)\s*\(seg \d+/\d+\)$', original_name)
+        base_name = seg_match.group(1) if seg_match else original_name
+        return f"{base_name} (seg 1/2)", f"{base_name} (seg 2/2)"
 
     def _remap_junctions_after_road_split(
         self,
