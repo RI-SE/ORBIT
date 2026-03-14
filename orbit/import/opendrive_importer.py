@@ -149,14 +149,37 @@ class OpenDriveImporter:
             options = ImportOptions()
 
         result = ImportResult()
+        self._reset_import_state()
 
-        # Clear state from previous imports
+        if not self._parse_file(file_path, options, result):
+            return result
+        if not self._setup_coordinate_transform(options, result):
+            return result
+
+        if options.import_mode == ImportMode.REPLACE:
+            self._clear_existing_project_data_for_replace_mode()
+
+        self._import_non_connecting_roads(options, result)
+        self._import_junctions_and_groups(options, result)
+        self._import_deferred_connecting_roads(options, result)
+        self._import_signals_and_objects(options, result)
+        self._track_unsupported_features(result)
+        self._preserve_geo_reference()
+        self.project.clear_cross_junction_road_links()
+        self.project._sync_id_counters()
+
+        result.success = True
+        return result
+
+    def _reset_import_state(self) -> None:
+        """Reset importer state before each file import."""
         self.pending_connecting_roads.clear()
         self.odr_road_to_orbit.clear()
         self.odr_junction_to_orbit.clear()
         self.imported_odr_road_ids.clear()
 
-        # Step 1: Parse OpenDrive file
+    def _parse_file(self, file_path: str, options: ImportOptions, result: ImportResult) -> bool:
+        """Parse the OpenDRIVE file into odr_data."""
         if options.verbose:
             logger.debug("Parsing OpenDrive file: %s", file_path)
 
@@ -165,16 +188,15 @@ class OpenDriveImporter:
             self.odr_data = parser.parse_file(file_path)
         except Exception as e:
             result.error_message = f"Failed to parse OpenDrive file: {e}"
-            return result
+            return False
 
         if options.verbose:
-            logger.debug("Parsed %d roads, %d junctions",
-                         len(self.odr_data.roads), len(self.odr_data.junctions))
+            logger.debug("Parsed %d roads, %d junctions", len(self.odr_data.roads), len(self.odr_data.junctions))
+        return True
 
-        # Step 2: Setup coordinate transformation
-        # Collect sample points from all roads
+    def _setup_coordinate_transform(self, options: ImportOptions, result: ImportResult) -> bool:
+        """Create and validate coordinate transform for imported geometry."""
         sample_points = self._collect_sample_points()
-
         self.coord_transform = OpenDriveCoordinateTransform(
             image_width=self.image_width,
             image_height=self.image_height,
@@ -184,7 +206,7 @@ class OpenDriveImporter:
             header_offset_x=self.odr_data.header.offset_x,
             header_offset_y=self.odr_data.header.offset_y,
             header_offset_z=self.odr_data.header.offset_z,
-            header_offset_hdg=self.odr_data.header.offset_hdg
+            header_offset_hdg=self.odr_data.header.offset_hdg,
         )
 
         transform_result = self.coord_transform.setup_transform(sample_points)
@@ -192,43 +214,39 @@ class OpenDriveImporter:
         result.scale_used = transform_result.scale_pixels_per_meter
 
         if not transform_result.success:
-            # Need user action for auto-georeference
             if transform_result.mode == TransformMode.AUTO_GEOREFERENCE:
                 if options.auto_create_control_points and transform_result.suggested_control_points:
-                    # Auto-create control points
                     for px, py, lon, lat in transform_result.suggested_control_points:
                         cp = ControlPoint(
                             pixel_x=px,
                             pixel_y=py,
                             longitude=lon,
                             latitude=lat,
-                            name="Auto-generated from OpenDrive"
+                            name="Auto-generated from OpenDrive",
                         )
                         self.project.control_points.append(cp)
                         result.control_points_created += 1
-
-                    # Retry transform setup with control points
-                    # (Would need to create new transformer from control points here)
                     result.warnings.append(
                         f"Created {result.control_points_created} control points from OpenDrive georeferencing"
                     )
                 else:
                     result.error_message = transform_result.error_message
-                    return result
+                    return False
 
         if options.verbose:
             logger.debug("Transform mode: %s, scale: %s", result.transform_mode, result.scale_used)
+        return True
 
-        # Step 3: Handle import mode
-        if options.import_mode == ImportMode.REPLACE:
-            # Clear existing data
-            self.project.polylines.clear()
-            self.project.roads.clear()
-            self.project.junctions.clear()
-            self.project.signals.clear()
-            self.project.objects.clear()
+    def _clear_existing_project_data_for_replace_mode(self) -> None:
+        """Clear project content before REPLACE import mode."""
+        self.project.polylines.clear()
+        self.project.roads.clear()
+        self.project.junctions.clear()
+        self.project.signals.clear()
+        self.project.objects.clear()
 
-        # Step 4: Import roads (connecting roads are deferred)
+    def _import_non_connecting_roads(self, options: ImportOptions, result: ImportResult) -> None:
+        """Import regular roads and defer connecting roads for later phase."""
         for odr_road in self.odr_data.roads:
             if self._should_skip_road(odr_road, options):
                 result.roads_skipped_duplicate += 1
@@ -236,21 +254,19 @@ class OpenDriveImporter:
 
             try:
                 road_result = self._import_road(odr_road, options)
-                if road_result:
-                    # Connecting roads are counted separately after junction import
-                    if not road_result.get('is_connecting_road', False):
-                        result.roads_imported += 1
-                        result.polylines_imported += road_result['polylines_count']
-                        result.geometry_conversions.extend(road_result['conversions'])
-                        if road_result['has_elevation']:
-                            result.elevation_profiles_imported += 1
-
+                if road_result and not road_result.get("is_connecting_road", False):
+                    result.roads_imported += 1
+                    result.polylines_imported += road_result["polylines_count"]
+                    result.geometry_conversions.extend(road_result["conversions"])
+                    if road_result["has_elevation"]:
+                        result.elevation_profiles_imported += 1
             except Exception as e:
                 result.warnings.append(f"Failed to import road {odr_road.id}: {e}")
                 if options.verbose:
                     logger.debug("Error importing road %s: %s", odr_road.id, e)
 
-        # Step 5: Import junctions
+    def _import_junctions_and_groups(self, options: ImportOptions, result: ImportResult) -> None:
+        """Import junction entities, assign centers, and import junction groups."""
         for odr_junction in self.odr_data.junctions:
             try:
                 if self._import_junction(odr_junction, options, result):
@@ -258,37 +274,36 @@ class OpenDriveImporter:
             except Exception as e:
                 result.warnings.append(f"Failed to import junction {odr_junction.id}: {e}")
 
-        # Step 5b: Assign junction center points (handles multiple junctions between same road pairs)
         try:
             self._assign_junction_center_points(result)
         except Exception as e:
             result.warnings.append(f"Failed to assign junction center points: {e}")
 
-        # Step 5c: Import junction groups
         for odr_jg in self.odr_data.junction_groups:
             try:
                 self._import_junction_group(odr_jg)
             except Exception as e:
                 result.warnings.append(f"Failed to import junction group {odr_jg.id}: {e}")
 
-        # Step 5d: Process deferred connecting roads (now that junctions exist)
+    def _import_deferred_connecting_roads(self, options: ImportOptions, result: ImportResult) -> None:
+        """Import connecting roads after junctions are available."""
         for pending in self.pending_connecting_roads:
             try:
                 if self._import_connecting_road(pending, options, result):
                     result.connecting_roads_imported += 1
             except Exception as e:
-                odr_road = pending['odr_road']
+                odr_road = pending["odr_road"]
                 result.warnings.append(f"Failed to import connecting road {odr_road.id}: {e}")
                 if options.verbose:
                     logger.debug("Error importing connecting road %s: %s", odr_road.id, e)
 
-        # Step 6: Import signals and objects
+    def _import_signals_and_objects(self, options: ImportOptions, result: ImportResult) -> None:
+        """Import signals, regular objects, and parking objects from each imported road."""
         for odr_road in self.odr_data.roads:
             road_id = self.odr_road_to_orbit.get(odr_road.id)
             if not road_id:
                 continue
 
-            # Import signals
             for odr_signal in odr_road.signals:
                 try:
                     if self._import_signal(odr_signal, road_id, odr_road, options):
@@ -296,35 +311,15 @@ class OpenDriveImporter:
                 except Exception as e:
                     result.warnings.append(f"Failed to import signal {odr_signal.id}: {e}")
 
-            # Import objects (separating parking spaces from regular objects)
             for odr_object in odr_road.objects:
                 try:
                     if odr_object.is_parking:
-                        # Import as parking space
                         if self._import_parking(odr_object, road_id, odr_road, options):
                             result.parking_imported += 1
-                    else:
-                        # Import as regular object
-                        if self._import_object(odr_object, road_id, odr_road, options):
-                            result.objects_imported += 1
+                    elif self._import_object(odr_object, road_id, odr_road, options):
+                        result.objects_imported += 1
                 except Exception as e:
                     result.warnings.append(f"Failed to import object {odr_object.id}: {e}")
-
-        # Step 7: Track unsupported features
-        self._track_unsupported_features(result)
-
-        # Step 8: Preserve geoReference for round-trip export
-        self._preserve_geo_reference()
-
-        # Step 9: Clear stale cross-junction road links
-        # Roads in junctions should not have predecessor/successor pointing to each other
-        self.project.clear_cross_junction_road_links()
-
-        # Sync ID counters to account for all imported IDs
-        self.project._sync_id_counters()
-
-        result.success = True
-        return result
 
     def _preserve_geo_reference(self) -> None:
         """Preserve geoReference from the imported file and back-project the header offsets."""
