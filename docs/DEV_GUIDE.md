@@ -95,7 +95,7 @@ orbit/
 │   ├── parking_builder.py
 │   ├── reference_validator.py
 │   └── georef_export.py
-├── import_/          # OSM and OpenDRIVE import
+├── import/           # OSM and OpenDRIVE import (use importlib, see note below)
 │   ├── osm_importer.py
 │   ├── opendrive_importer.py
 │   └── junction_analyzer.py
@@ -588,10 +588,13 @@ junction = Junction(
 
 ### Automatic Generation
 
-The `JunctionAnalyzer` (`import_/junction_analyzer.py`) can automatically generate connecting roads and lane connections based on road geometry:
+The `JunctionAnalyzer` (`import/junction_analyzer.py`) can automatically generate connecting roads and lane connections based on road geometry:
 
 ```python
-from orbit.import_.junction_analyzer import analyze_junction_geometry
+import importlib
+
+junction_analyzer = importlib.import_module("orbit.import.junction_analyzer")
+analyze_junction_geometry = junction_analyzer.analyze_junction_geometry
 
 geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
 # Returns road angles, suggested connections, etc.
@@ -825,7 +828,10 @@ With `preserve_geometry=True`, each polyline segment becomes a separate line ele
 Imports road networks from OpenStreetMap via Overpass API:
 
 ```python
-from orbit.import_.osm_importer import OSMImporter
+import importlib
+
+osm_importer_module = importlib.import_module("orbit.import.osm_importer")
+OSMImporter = osm_importer_module.OSMImporter
 
 importer = OSMImporter(project, transformer)
 stats = importer.import_from_bbox(
@@ -846,7 +852,10 @@ stats = importer.import_from_bbox(
 Round-trip import from existing OpenDRIVE files:
 
 ```python
-from orbit.import_.opendrive_importer import import_opendrive
+import importlib
+
+opendrive_importer_module = importlib.import_module("orbit.import.opendrive_importer")
+import_opendrive = opendrive_importer_module.import_opendrive
 
 project = import_opendrive(xodr_path, transformer)
 ```

@@ -1,125 +1,88 @@
 # ORBIT Test Suite
 
-This directory contains the test suite for ORBIT (OpenDrive Road Builder from Imagery Tool).
+This directory contains tests for ORBIT (OpenDrive Road Builder from Imagery Tool).
 
 ## Setup
 
-Before running tests, install the package in development mode:
-
 ```bash
-# Install ORBIT in editable mode
-pip install -e .
-
-# Install development dependencies
-pip install -r requirements-dev.txt
+# Install runtime + development dependencies
+uv sync --extra dev
 ```
 
-## Running Tests
+## Running tests
 
 ```bash
-# Run all tests
-pytest tests/unit/
+# Full suite
+uv run python -m pytest tests/ -v
 
-# Run with verbose output
-pytest tests/unit/ -v
+# Exclude slow/gui tests
+uv run python -m pytest tests/ -v -m "not slow and not gui"
 
-# Run specific test file
-pytest tests/unit/test_models/test_project.py
+# Single file
+uv run python -m pytest tests/unit/test_models/test_project.py -v
 
-# Run specific test
-pytest tests/unit/test_models/test_project.py::TestProjectCreation::test_empty_project_creation
+# Single test
+uv run python -m pytest tests/unit/test_models/test_project.py::TestProjectCreation::test_empty_project_creation -v
+```
+
+For headless environments (CI), use:
+
+```bash
+QT_QPA_PLATFORM=offscreen uv run python -m pytest tests/ -v
 ```
 
 ## Coverage
 
 ```bash
-# Run tests with coverage report
-pytest tests/unit/ --cov=orbit --cov-report=term-missing
+# Terminal + XML + JSON reports
+QT_QPA_PLATFORM=offscreen uv run python -m pytest tests/ \
+  --cov=orbit \
+  --cov-report=term-missing \
+  --cov-report=xml \
+  --cov-report=json:temp/coverage.json
 
-# Generate HTML coverage report
-pytest tests/unit/ --cov=orbit --cov-report=html
-# Then open htmlcov/index.html in browser
+# HTML report
+QT_QPA_PLATFORM=offscreen uv run python -m pytest tests/ \
+  --cov=orbit \
+  --cov-report=html
 ```
 
-## Test Structure
+## Current baseline
 
-```
-tests/
-├── conftest.py                  # Shared fixtures and test configuration
-├── test_data/                   # Real test data from examples/
-│   ├── ekas_from_overpass2.orbit
-│   ├── ekas_geo2.orbit
-│   ├── BorasEkas_coords_2025-09-25_C2.csv
-│   └── out3_stabilized_vidrectify_first.jpg
-│
-└── unit/                        # Unit tests
-    ├── test_models/             # Tests for data models
-    │   ├── test_project.py      # Project save/load, element management
-    │   ├── test_polyline.py     # Polyline operations
-    │   ├── test_road.py         # Road logic, lane sections
-    │   ├── test_lane.py         # Lane properties
-    │   └── test_lane_section.py # Section splitting, boundaries
-    │
-    ├── test_export/             # Tests for export functionality
-    │   ├── test_coordinate_transform.py  # Georeferencing transforms
-    │   └── test_curve_fitting.py         # Geometric fitting
-    │
-    └── test_utils/              # Tests for utility functions
-        └── test_geometry.py     # Geometric calculations
-```
+Measured from full suite with coverage:
 
-## Current Coverage (Phase 1)
+- `2416` tests passing
+- `38%` overall coverage (`orbit`: 10,960 / 28,783 statements)
+- Package coverage:
+  - `orbit/models`: 84.5%
+  - `orbit/utils`: 71.6%
+  - `orbit/export`: 64.4%
+  - `orbit/import`: 63.5%
+  - `orbit/gui`: 9.2%
 
-- **274 tests** passing (all tests)
-- **13% overall** (includes untested GUI code)
-- **60-99% coverage** for tested non-GUI modules:
-  - models/polyline.py: 99%
-  - models/lane_section.py: 98%
-  - utils/geometry.py: 95%
-  - models/lane.py: 82%
-  - utils/coordinate_transform.py: 79%
+Largest non-GUI coverage gaps to prioritize:
 
-**Real-world data tests**: The coordinate transformation tests use real control points extracted from `ekas_from_overpass2.orbit` (6 control points with both pixel and geo coordinates). These verify transformation accuracy with actual georeferencing data.
+- `orbit/export/osm_writer.py` (0%)
+- `orbit/export/osm_mappings.py` (0%)
+- `orbit/roundabout_creator.py` (0%)
+- `orbit/utils/geometry_validator.py` (9.2%)
+- `orbit/utils/connecting_road_alignment.py` (13.0%)
+- `orbit/utils/reproject.py` (34.3%)
+- `orbit/import/opendrive_importer.py` (36.7%)
+- `orbit/import/osm_importer.py` (31.0%)
 
-See [CHANGELOG.md](../CHANGELOG.md) for version history and [DEV_GUIDE.md](../docs/DEV_GUIDE.md) for development documentation.
+## Maintainability report
 
-## Writing Tests
+Use the repo script to inspect large files/functions and uncovered hotspots:
 
-### Using Fixtures
-
-Fixtures are defined in `conftest.py` and provide reusable test data:
-
-```python
-def test_my_feature(sample_project):
-    """Test using sample project fixture."""
-    assert len(sample_project.polylines) == 3
+```bash
+uv run python tools/maintainability_report.py --coverage-json temp/coverage.json
 ```
 
-### Test Organization
+## Writing tests
 
-- Group related tests in classes (e.g., `TestProjectCreation`)
-- Use descriptive test names: `test_what_it_does`
-- Follow Arrange-Act-Assert pattern
-- Use `pytest.approx()` for floating-point comparisons
+- Reuse fixtures from `tests/conftest.py` where possible.
+- Prefer focused tests around one behavior at a time.
+- For float math, use `pytest.approx()`.
 
-### Example Test
-
-```python
-class TestPolylineCreation:
-    """Test polyline initialization."""
-
-    def test_empty_polyline_creation(self):
-        """Test creating an empty polyline."""
-        # Arrange
-        polyline = Polyline()
-
-        # Act & Assert
-        assert polyline.points == []
-        assert polyline.closed is False
-```
-
-## Future Plans
-
-- Integration tests for import/export coverage
-- Minimal GUI tests for dialog validation
-- CI/CD setup with coverage enforcement
+See also [DEV_GUIDE.md](../docs/DEV_GUIDE.md) and [CONTRIBUTING.md](../CONTRIBUTING.md).

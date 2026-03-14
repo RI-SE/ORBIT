@@ -9,6 +9,7 @@ import math
 
 import pytest
 
+
 class TestCalculateHermiteParampoly3:
     """Test Hermite-based ParamPoly3D coefficient calculation."""
 
