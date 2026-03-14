@@ -5,9 +5,10 @@ Generates ASAM OpenDrive format XML from annotated roads and junctions.
 """
 
 import math
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 from lxml import etree
 
@@ -26,6 +27,19 @@ from .signal_builder import SignalBuilder
 logger = get_logger(__name__)
 
 
+@dataclass
+class ExportOptions:
+    """Options controlling OpenDRIVE export behaviour."""
+    right_hand_traffic: bool = True
+    country_code: str = "se"
+    use_tmerc: bool = False
+    use_german_codes: bool = False
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+    geo_reference_string: Optional[str] = None
+    export_object_types: Optional[Set] = None
+
+
 class OpenDriveWriter:
     """Writes project data to OpenDrive XML format."""
 
@@ -41,37 +55,36 @@ class OpenDriveWriter:
         offset_x: float = 0.0,
         offset_y: float = 0.0,
         geo_reference_string: Optional[str] = None,
-        export_object_types: Optional[set] = None
+        export_object_types: Optional[set] = None,
+        options: Optional[ExportOptions] = None,
     ):
-        """
-        Initialize OpenDrive writer.
+        """Initialize OpenDrive writer.
 
-        Args:
-            project: The ORBIT project
-            transformer: Coordinate transformer for pixel to geo conversion
-            curve_fitter: Optional curve fitter (creates default if None)
-            right_hand_traffic: True for right-hand traffic (default), False for left-hand
-            country_code: Two-letter ISO 3166-1 country code (default: "se")
-            use_tmerc: If True, use Transverse Mercator projection; if False (default),
-                       use UTM projection or preserved geoReference from import
-            use_german_codes: If True, use German VzKat codes (opendrive_de) for signals
-            offset_x: X offset subtracted from all exported coordinates (projected easting)
-            offset_y: Y offset subtracted from all exported coordinates (projected northing)
-            geo_reference_string: Explicit proj string for the geoReference element.
-                Takes priority over use_tmerc / imported_geo_reference when set.
-            export_object_types: If set, only export objects whose type is in this set.
-                If None (default), all objects are exported.
+        Pass either keyword args or an ExportOptions dataclass via `options`.
+        ExportOptions takes precedence when both are supplied.
         """
         self.project = project
         self.transformer = transformer
         self.curve_fitter = curve_fitter or CurveFitter(preserve_geometry=True)
-        self.right_hand_traffic = right_hand_traffic
-        self.country_code = country_code.lower()
-        self.use_tmerc = use_tmerc
-        self.offset_x = offset_x
-        self.offset_y = offset_y
-        self.geo_reference_string = geo_reference_string
-        self.export_object_types = export_object_types
+
+        # Resolve options: dataclass takes precedence over individual kwargs
+        opts = options or ExportOptions(
+            right_hand_traffic=right_hand_traffic,
+            country_code=country_code,
+            use_tmerc=use_tmerc,
+            use_german_codes=use_german_codes,
+            offset_x=offset_x,
+            offset_y=offset_y,
+            geo_reference_string=geo_reference_string,
+            export_object_types=export_object_types,
+        )
+        self.right_hand_traffic = opts.right_hand_traffic
+        self.country_code = opts.country_code.lower()
+        self.use_tmerc = opts.use_tmerc
+        self.offset_x = opts.offset_x
+        self.offset_y = opts.offset_y
+        self.geo_reference_string = opts.geo_reference_string
+        self.export_object_types = opts.export_object_types
 
         # Build lookup maps
         self.polyline_map = {p.id: p for p in project.polylines}
@@ -92,14 +105,14 @@ class OpenDriveWriter:
 
         # Initialize lane analyzer with scale factors and transformer
         # Passing transformer enables accurate perspective-aware conversions for homography
-        self.lane_analyzer = LaneAnalyzer(project, right_hand_traffic, scale_factors, transformer)
+        self.lane_analyzer = LaneAnalyzer(project, self.right_hand_traffic, scale_factors, transformer)
 
         # Initialize builders
         self.lane_builder = LaneBuilder(scale_x=self.scale_x)
         self.signal_builder = SignalBuilder(
             scale_x=self.scale_x,
-            country_code=country_code,
-            use_german_codes=use_german_codes,
+            country_code=opts.country_code,
+            use_german_codes=opts.use_german_codes,
             transformer=transformer,
         )
         self.object_builder = ObjectBuilder(

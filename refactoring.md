@@ -147,10 +147,29 @@
 
 ## Tier 3 — Nice to have (TODO)
 
-### 15. Extract `GraphicsItemManager` from ImageView
-### 16. Split large test files by domain class
-### 17. Add `ExportOptions` dataclass to reduce parameter count
-### 18. Extract migration logic from `Project.from_dict()` if it grows
+### 15. Extract `GraphicsItemManager` from ImageView — SKIPPED
+- The 8 item dicts (`polyline_items`, `junction_items`, etc.) are referenced hundreds of
+  times throughout ImageView's 4114 lines. Moving them to a manager class would touch
+  the entire file, and ImageView has zero test coverage. Risk outweighs benefit.
+
+### 16. Split large test files by domain class — DONE
+- `test_geometry.py` (1857 lines) → 3 files:
+  - `test_geometry.py` (714 lines) — basic vectors, offset, perpendicular, path ops
+  - `test_geometry_curves.py` (~530 lines) — arc, line intersection, angle, directional
+  - `test_geometry_parampoly3.py` (620 lines) — parametric curves, Bezier, geo paths
+- `test_opendrive_parser.py` (1894 lines) → 2 files:
+  - `test_opendrive_parser.py` (~1380 lines) — XML parsing tests (TestOpenDriveParser+)
+  - `test_opendrive_dataclasses.py` (559 lines) — data model + defaults tests
+### 17. Add `ExportOptions` dataclass to reduce parameter count — DONE
+- `ExportOptions` dataclass in `orbit/export/opendrive_writer.py`; re-exported from `orbit/export/__init__.py`
+- `OpenDriveWriter.__init__` accepts `options: Optional[ExportOptions] = None`; backward compatible
+
+### 18. Extract migration logic from `Project.from_dict()` — DONE
+- Extracted 4 module-level helpers after the `Project` class:
+  - `_apply_version_migration(data)` — version check and metadata update
+  - `_build_odr_id_lookup(data)` — build `{item_id: opendrive_id}` lookup
+  - `_deserialize_entities(data)` — roads + legacy CR migration, returns `(roads, junctions_data)`
+  - `_restore_id_counters(project, data)` — restore counters and sync
 
 ---
 

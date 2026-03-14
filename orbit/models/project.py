@@ -1530,88 +1530,35 @@ class Project:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Project':
-        """
-        Create project from dictionary.
+        """Create project from dictionary with automatic backward-compatibility migration."""
+        _apply_version_migration(data)
 
-        Handles backward compatibility with older project versions.
-        Old projects (v0.2.x) will be automatically migrated to v0.3.0 format.
-        """
-        # Check version and perform migration if needed
-        metadata = data.get('metadata', {})
-        version = metadata.get('version', '0.1.0')
-
-        # Migration from old versions
-        if version.startswith('0.1') or version.startswith('0.2') or version.startswith('0.3'):
-            if not version.startswith('0.3'):
-                logger.info(f"Migrating project from version {version}...")
-                logger.info("Junctions will have empty connection lists.")
-                logger.info("Use 'Auto-Generate Connections' in junction dialogs to populate connections.")
-            # Junction.from_dict() handles backward compatibility automatically
-            # by providing empty lists for new fields (connecting_roads, lane_connections)
-            # Polyline.from_dict() handles osm_node_ids (optional field, defaults to None)
-            # UUID→integer ID migration is handled by _migrate_uuid_ids() after construction
-            metadata['version'] = _get_version()
-            data['metadata'] = metadata
-
-        image_path = data.get('image_path')
-        if image_path:
-            image_path = Path(image_path)
-
-        # Build opendrive_id lookup from raw data before deserialization.
-        # Old .orbit files may have opendrive_id fields that we want to prefer during migration.
-        odr_id_lookup: Dict[str, str] = {}
-        for collection_key in ('polylines', 'roads', 'junctions', 'signals', 'objects', 'parking_spaces'):
-            for item_data in data.get(collection_key, []):
-                item_id = item_data.get('id', '')
-                odr_id = item_data.get('opendrive_id')
-                if item_id and odr_id:
-                    odr_id_lookup[item_id] = odr_id
-
-        polylines = [Polyline.from_dict(p) for p in data.get('polylines', [])]
-        roads = [Road.from_dict(r) for r in data.get('roads', [])]
-
-        # Migrate legacy connecting roads from junction dicts into roads list
-        # Old format: junction.connecting_roads = [ConnectingRoad dicts]
-        # New format: junction.connecting_road_ids = [str IDs], roads stored in Project.roads
-        for j_data in data.get('junctions', []):
-            legacy_crs = j_data.get('connecting_roads', [])
-            if legacy_crs and not j_data.get('connecting_road_ids'):
-                junction_id = j_data.get('id', '')
-                cr_ids = []
-                for cr_data in legacy_crs:
-                    cr_road = Road.from_connecting_road_dict(cr_data, junction_id)
-                    roads.append(cr_road)
-                    cr_ids.append(cr_road.id)
-                # Replace legacy data with new format for Junction.from_dict()
-                j_data['connecting_road_ids'] = cr_ids
-                j_data.pop('connecting_roads', None)
-
-        junctions = [Junction.from_dict(j) for j in data.get('junctions', [])]
-        junction_groups = [JunctionGroup.from_dict(jg) for jg in data.get('junction_groups', [])]
-        signals = [Signal.from_dict(s) for s in data.get('signals', [])]
-        objects = [RoadObject.from_dict(o) for o in data.get('objects', [])]
-        parking_spaces = [ParkingSpace.from_dict(p) for p in data.get('parking_spaces', [])]
-        control_points = [ControlPoint.from_dict(cp) for cp in data.get('control_points', [])]
+        odr_id_lookup = _build_odr_id_lookup(data)
+        roads, junctions_data = _deserialize_entities(data)
 
         project = cls(
-            image_path=image_path,
-            polylines=polylines,
+            image_path=Path(data['image_path']) if data.get('image_path') else None,
+            polylines=[Polyline.from_dict(p) for p in data.get('polylines', [])],
             roads=roads,
-            junctions=junctions,
-            junction_groups=junction_groups,
-            signals=signals,
-            objects=objects,
-            parking_spaces=parking_spaces,
-            control_points=control_points,
+            junctions=[Junction.from_dict(j) for j in junctions_data],
+            junction_groups=[JunctionGroup.from_dict(jg) for jg in data.get('junction_groups', [])],
+            signals=[Signal.from_dict(s) for s in data.get('signals', [])],
+            objects=[RoadObject.from_dict(o) for o in data.get('objects', [])],
+            parking_spaces=[ParkingSpace.from_dict(p) for p in data.get('parking_spaces', [])],
+            control_points=[ControlPoint.from_dict(cp) for cp in data.get('control_points', [])],
             right_hand_traffic=data.get('right_hand_traffic', True),
-            transform_method=data.get('transform_method', 'affine'),  # Default to affine for old projects
+            transform_method=data.get('transform_method', 'affine'),
             country_code=data.get('country_code', 'se'),
-            map_name=data.get('map_name', ''),  # Default to empty string for backward compatibility
-            openstreetmap_used=data.get('openstreetmap_used', False),  # Default to False
-            junction_offset_distance_meters=data.get('junction_offset_distance_meters', 8.0),  # Default to 8.0m
-            roundabout_ring_offset_distance_meters=data.get('roundabout_ring_offset_distance_meters',
-                data.get('roundabout_offset_distance_meters', 4.0)),  # Backward compat with old field name
-            roundabout_approach_offset_distance_meters=data.get('roundabout_approach_offset_distance_meters', 8.0),
+            map_name=data.get('map_name', ''),
+            openstreetmap_used=data.get('openstreetmap_used', False),
+            junction_offset_distance_meters=data.get('junction_offset_distance_meters', 8.0),
+            roundabout_ring_offset_distance_meters=data.get(
+                'roundabout_ring_offset_distance_meters',
+                data.get('roundabout_offset_distance_meters', 4.0)
+            ),
+            roundabout_approach_offset_distance_meters=data.get(
+                'roundabout_approach_offset_distance_meters', 8.0
+            ),
             georef_validation=data.get('georef_validation', {}),
             uncertainty_grid_cache=data.get('uncertainty_grid_cache'),
             uncertainty_grid_resolution=tuple(data.get('uncertainty_grid_resolution', [50, 50])),
@@ -1623,29 +1570,14 @@ class Project:
             imported_geo_reference=data.get('imported_geo_reference'),
             imported_origin_latitude=data.get('imported_origin_latitude'),
             imported_origin_longitude=data.get('imported_origin_longitude'),
-            enabled_sign_libraries=data.get('enabled_sign_libraries', ['se']),  # Default to Swedish library
+            enabled_sign_libraries=data.get('enabled_sign_libraries', ['se']),
             synthetic_canvas_width=data.get('synthetic_canvas_width'),
             synthetic_canvas_height=data.get('synthetic_canvas_height'),
             metadata=data.get('metadata', {})
         )
 
-        # Migrate UUID-based IDs to sequential integers if needed
         project._migrate_uuid_ids(odr_id_lookup)
-
-        # Restore ID counters from saved data, then sync to ensure correctness
-        id_counters = data.get('id_counters', {})
-        if id_counters:
-            project._next_polyline_id = id_counters.get('polyline', 1)
-            project._next_road_id = id_counters.get('road', 1)
-            project._next_junction_id = id_counters.get('junction', 1)
-            project._next_signal_id = id_counters.get('signal', 1)
-            project._next_object_id = id_counters.get('object', 1)
-            project._next_parking_id = id_counters.get('parking', 1)
-            project._next_lane_connection_id = id_counters.get('lane_connection', 1)
-            project._next_junction_group_id = id_counters.get('junction_group', 1)
-        # Always sync to ensure counters are >= max existing ID + 1
-        project._sync_id_counters()
-
+        _restore_id_counters(project, data)
         return project
 
     def save(self, file_path: Path) -> None:
@@ -1808,3 +1740,68 @@ class Project:
         return (f"Project(polylines={len(self.polylines)}, roads={len(self.roads)}, "
                 f"junctions={len(self.junctions)}, signals={len(self.signals)}, "
                 f"objects={len(self.objects)}, control_points={len(self.control_points)})")
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers for Project.from_dict()
+# Defined after the class so Road/Junction are available at call time.
+# ---------------------------------------------------------------------------
+
+def _apply_version_migration(data: Dict[str, Any]) -> None:
+    """Update version metadata and log migration notice for old project files."""
+    metadata = data.get('metadata', {})
+    version = metadata.get('version', '0.1.0')
+    if version.startswith('0.1') or version.startswith('0.2') or version.startswith('0.3'):
+        if not version.startswith('0.3'):
+            logger.info(f"Migrating project from version {version}...")
+            logger.info("Junctions will have empty connection lists.")
+            logger.info("Use 'Auto-Generate Connections' in junction dialogs to populate connections.")
+        metadata['version'] = _get_version()
+        data['metadata'] = metadata
+
+
+def _build_odr_id_lookup(data: Dict[str, Any]) -> Dict[str, str]:
+    """Build {item_id: opendrive_id} mapping from raw project data."""
+    odr_id_lookup: Dict[str, str] = {}
+    for collection_key in ('polylines', 'roads', 'junctions', 'signals', 'objects', 'parking_spaces'):
+        for item_data in data.get(collection_key, []):
+            item_id = item_data.get('id', '')
+            odr_id = item_data.get('opendrive_id')
+            if item_id and odr_id:
+                odr_id_lookup[item_id] = odr_id
+    return odr_id_lookup
+
+
+def _deserialize_entities(data: Dict[str, Any]) -> Tuple[List[Road], List[Dict[str, Any]]]:
+    """Deserialize roads (including legacy connecting roads) and return (roads, junctions_data)."""
+    roads = [Road.from_dict(r) for r in data.get('roads', [])]
+
+    junctions_data = data.get('junctions', [])
+    for j_data in junctions_data:
+        legacy_crs = j_data.get('connecting_roads', [])
+        if legacy_crs and not j_data.get('connecting_road_ids'):
+            junction_id = j_data.get('id', '')
+            cr_ids = []
+            for cr_data in legacy_crs:
+                cr_road = Road.from_connecting_road_dict(cr_data, junction_id)
+                roads.append(cr_road)
+                cr_ids.append(cr_road.id)
+            j_data['connecting_road_ids'] = cr_ids
+            j_data.pop('connecting_roads', None)
+
+    return roads, junctions_data
+
+
+def _restore_id_counters(project: 'Project', data: Dict[str, Any]) -> None:
+    """Restore ID counters from saved data and sync to ensure correctness."""
+    id_counters = data.get('id_counters', {})
+    if id_counters:
+        project._next_polyline_id = id_counters.get('polyline', 1)
+        project._next_road_id = id_counters.get('road', 1)
+        project._next_junction_id = id_counters.get('junction', 1)
+        project._next_signal_id = id_counters.get('signal', 1)
+        project._next_object_id = id_counters.get('object', 1)
+        project._next_parking_id = id_counters.get('parking', 1)
+        project._next_lane_connection_id = id_counters.get('lane_connection', 1)
+        project._next_junction_group_id = id_counters.get('junction_group', 1)
+    project._sync_id_counters()

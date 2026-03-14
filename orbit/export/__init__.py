@@ -27,7 +27,7 @@ from .georef_export import build_georef_data, export_georeferencing
 from .lane_builder import LaneBuilder, convert_road_mark_type
 from .layout_mask_exporter import ExportMethod, LayoutMaskExporter
 from .object_builder import ObjectBuilder
-from .opendrive_writer import OpenDriveWriter, export_to_opendrive, validate_opendrive_file
+from .opendrive_writer import ExportOptions, OpenDriveWriter, export_to_opendrive, validate_opendrive_file
 from .parking_builder import ParkingBuilder
 from .reference_line_sampler import LanePolygonData, compute_lane_polygons, sample_reference_line
 from .reference_validator import validate_references
@@ -41,6 +41,7 @@ __all__ = [
     'GeometryElement',
     'GeometryType',
     'simplify_polyline',
+    'ExportOptions',
     'OpenDriveWriter',
     'export_to_opendrive',
     'validate_opendrive_file',
