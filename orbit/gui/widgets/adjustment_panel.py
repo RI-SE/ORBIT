@@ -107,14 +107,14 @@ class AdjustmentPanel(QWidget):
         hint_font.setPointSize(hint_font.pointSize() - 1)
 
         hints = [
-            ("← → ↑ ↓", "Move (Shift=10×, Ctrl=0.1×)"),
+            ("← → ↑ ↓", "Move"),
             ("[ ]", "Rotate"),
             ("+ −", "Scale"),
             ("< >", "Stretch X"),
             (", .", "Stretch Y"),
             ("; :", "Shear X (perspective)"),
             ("{ }", "Shear Y"),
-            ("Ctrl", "Fine (0.1×)"),
+            ("Ctrl", "5× faster"),
             ("Esc", "Reset"),
         ]
 

@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QToolBar,
 )
 
+from orbit.gui.graphics.adjustment_ghost_overlay import AdjustmentGhostOverlay
 from orbit.models import Project
 from orbit.utils.coordinate_transform import TransformAdjustment
 from orbit.utils.logging_config import get_logger
@@ -59,6 +60,9 @@ class MainWindow(QMainWindow):
         self._original_transformer = None  # Saved original transformer
         self._aerial_transformer = None  # Transformer for aerial tile image
         self._aerial_zoom = 18  # Default tile zoom level
+
+        # Adjustment ghost overlay (shows unadjusted geometry positions)
+        self._adjustment_ghost_overlay = None
 
         # Session-level last used directory for file dialogs
         self._last_file_directory: str = str(Path.home())
@@ -2284,6 +2288,17 @@ class MainWindow(QMainWindow):
             self.image_view.set_adjustment_mode(True, pivot_x, pivot_y)
             self.adjustment_dock.setVisible(True)
             self.adjustment_panel.set_enabled(True)
+            self.adjustment_panel.update_display(self.image_view.current_adjustment)
+
+            # Ensure adjustment is applied to transformer
+            if self._cached_transformer is not None and self.image_view.current_adjustment is not None:
+                if not self.image_view.current_adjustment.is_identity():
+                    self._cached_transformer.set_adjustment(self.image_view.current_adjustment)
+                    self.image_view.update_all_from_geo_coords(self._cached_transformer)
+
+            # Create ghost overlay showing unadjusted positions
+            self._show_adjustment_ghost()
+
             self.statusBar().showMessage(
                 "Adjustment mode ON - Use arrow keys to move, [ ] to rotate, +/- to scale"
             )
@@ -2291,17 +2306,15 @@ class MainWindow(QMainWindow):
             # Disable adjustment mode
             self.image_view.set_adjustment_mode(False)
             self.adjustment_dock.setVisible(False)
+            self._remove_adjustment_ghost()
             self.statusBar().showMessage("Adjustment mode OFF")
 
     def on_adjustment_changed(self, adjustment: TransformAdjustment):
         """Handle adjustment changes from ImageView."""
-        # Update the panel display
         self.adjustment_panel.update_display(adjustment)
 
-        # Apply adjustment to transformer and update all geometry from geo coords
         if self._cached_transformer is not None:
             self._cached_transformer.set_adjustment(adjustment)
-            # Update all graphics by recomputing pixel positions from geo coords
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
 
     def reset_adjustment(self):
@@ -2310,7 +2323,23 @@ class MainWindow(QMainWindow):
         if self._cached_transformer is not None:
             self._cached_transformer.clear_adjustment()
             self.refresh_imported_geometry()
+        self._remove_adjustment_ghost()
         self.statusBar().showMessage("Adjustment reset")
+
+    def _show_adjustment_ghost(self):
+        """Create and show the ghost overlay for adjustment mode."""
+        if self._adjustment_ghost_overlay is not None:
+            return
+        self._adjustment_ghost_overlay = AdjustmentGhostOverlay()
+        self.image_view.scene.addItem(self._adjustment_ghost_overlay)
+        self._adjustment_ghost_overlay.build(self.project, self._cached_transformer)
+
+    def _remove_adjustment_ghost(self):
+        """Remove the ghost overlay from the scene."""
+        if self._adjustment_ghost_overlay is not None:
+            if self._adjustment_ghost_overlay.scene():
+                self.image_view.scene.removeItem(self._adjustment_ghost_overlay)
+            self._adjustment_ghost_overlay = None
 
     def apply_adjustment_to_control_points(self):
         """
@@ -2348,6 +2377,7 @@ class MainWindow(QMainWindow):
         # Clear the adjustment (already baked into control points)
         self.image_view.reset_adjustment()
         self._sync_adjustment_to_project()
+        self._remove_adjustment_ghost()
 
         # Invalidate and rebuild transformer
         self._invalidate_cached_transformer()
@@ -2506,6 +2536,9 @@ class MainWindow(QMainWindow):
             return
         self._original_image_np = self.image_view.image_np.copy() if self.image_view.image_np is not None else None
 
+        # Remove ghost overlay before switching (will be rebuilt on return)
+        self._remove_adjustment_ghost()
+
         # Determine cache directory (alongside project file, or temp)
         cache_dir = None
         if self.current_project_file:
@@ -2544,19 +2577,17 @@ class MainWindow(QMainWindow):
             return
 
         # Resize aerial image so its pixels/meter matches the original image.
-        # This keeps fixed-size scene elements (dots, labels, arrows) proportional.
         import cv2 as _cv2
         orig_scale_x, orig_scale_y = self._original_transformer.get_scale_factor()
         aerial_scale_x, aerial_scale_y = aerial_transformer_raw.get_scale_factor()
         aerial_image = result.image
         if orig_scale_x > 0 and aerial_scale_x > 0:
-            resize_ratio = aerial_scale_x / orig_scale_x  # > 1 → upscale; < 1 → downscale
-            if abs(resize_ratio - 1.0) > 0.01:  # only resize if meaningfully different
+            resize_ratio = aerial_scale_x / orig_scale_x
+            if abs(resize_ratio - 1.0) > 0.01:
                 new_w = max(1, round(w * resize_ratio))
                 new_h = max(1, round(h * resize_ratio))
                 interp = _cv2.INTER_AREA if resize_ratio < 1.0 else _cv2.INTER_LINEAR
                 aerial_image = _cv2.resize(aerial_image, (new_w, new_h), interpolation=interp)
-                # Rebuild transformer for the resized dimensions (same geo bbox)
         self._aerial_transformer = create_transformer_from_bounds(
             aerial_image.shape[1], aerial_image.shape[0],
             min_lon, min_lat, max_lon, max_lat,
@@ -2614,6 +2645,10 @@ class MainWindow(QMainWindow):
         scale_factors = self._original_transformer.get_scale_factor()
         self.image_view.load_project(self.project, scale_factors)
         self.image_view.fit_to_window()
+
+        # Rebuild ghost overlay if adjustment mode is active
+        if self.image_view.adjustment_mode:
+            self._show_adjustment_ghost()
 
         # Cleanup
         self._original_image_np = None

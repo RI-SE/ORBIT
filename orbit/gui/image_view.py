@@ -1750,12 +1750,11 @@ class ImageView(QGraphicsView):
             self.current_adjustment.pivot_y = pivot_y
             # Change cursor to indicate adjustment mode
             self.setCursor(Qt.CursorShape.SizeAllCursor)
-            # Disable drag mode so arrow keys work
-            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+            # Keep ScrollHandDrag for panning — arrow keys are intercepted
+            # in keyPressEvent before reaching QGraphicsView
         else:
-            # Restore normal cursor and drag mode
+            # Restore normal cursor
             self.setCursor(Qt.CursorShape.ArrowCursor)
-            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
 
     def reset_adjustment(self):
         """Reset all adjustment values to identity."""
@@ -1775,33 +1774,20 @@ class ImageView(QGraphicsView):
         key = event.key()
         mods = event.modifiers()
 
-        # Arrow keys use key codes; Shift=coarse, Ctrl=fine
-        is_arrow = key in (
-            Qt.Key.Key_Left, Qt.Key.Key_Right,
-            Qt.Key.Key_Up, Qt.Key.Key_Down,
-        )
-        if is_arrow:
-            if mods & Qt.KeyboardModifier.ShiftModifier:
-                step_mult = 10.0
-            elif mods & Qt.KeyboardModifier.ControlModifier:
-                step_mult = 0.1
-            else:
-                step_mult = 1.0
+        # Ctrl = 5× for all keys (but not AltGr which is Ctrl+Alt on Linux)
+        is_altgr = bool(
+            mods & Qt.KeyboardModifier.ControlModifier
+        ) and bool(mods & Qt.KeyboardModifier.AltModifier)
+        if (mods & Qt.KeyboardModifier.ControlModifier) and not is_altgr:
+            step_mult = 5.0
         else:
-            # Character keys: only Ctrl=fine (not AltGr which is Ctrl+Alt)
-            is_altgr = bool(
-                mods & Qt.KeyboardModifier.ControlModifier
-            ) and bool(mods & Qt.KeyboardModifier.AltModifier)
-            if (mods & Qt.KeyboardModifier.ControlModifier) and not is_altgr:
-                step_mult = 0.1
-            else:
-                step_mult = 1.0
+            step_mult = 1.0
 
         # Use event.text() for character keys (layout-agnostic)
         ch = event.text()
         handled = True
 
-        # Translation: Arrow keys
+        # Translation: Arrow keys (1px normal, 5px with Ctrl)
         if key == Qt.Key.Key_Left:
             self.current_adjustment.translation_x -= step_mult
         elif key == Qt.Key.Key_Right:
@@ -1811,45 +1797,45 @@ class ImageView(QGraphicsView):
         elif key == Qt.Key.Key_Down:
             self.current_adjustment.translation_y += step_mult
 
-        # Rotation: [ ]
+        # Rotation: [ ]  (0.1° per step)
         elif ch == '[':
             self.current_adjustment.rotation -= 0.1 * step_mult
         elif ch == ']':
             self.current_adjustment.rotation += 0.1 * step_mult
 
-        # Uniform scale: + -
+        # Uniform scale: + -  (0.5% per step)
         elif ch in ('+', '='):
-            scale_factor = 1 + 0.001 * step_mult
+            scale_factor = 1 + 0.005 * step_mult
             self.current_adjustment.scale_x *= scale_factor
             self.current_adjustment.scale_y *= scale_factor
         elif ch == '-':
-            scale_factor = 1 + 0.001 * step_mult
+            scale_factor = 1 + 0.005 * step_mult
             self.current_adjustment.scale_x /= scale_factor
             self.current_adjustment.scale_y /= scale_factor
 
-        # Stretch X: < >
+        # Stretch X: < >  (0.5% per step)
         elif ch == '<':
-            self.current_adjustment.scale_x /= (1 + 0.001 * step_mult)
+            self.current_adjustment.scale_x /= (1 + 0.005 * step_mult)
         elif ch == '>':
-            self.current_adjustment.scale_x *= (1 + 0.001 * step_mult)
+            self.current_adjustment.scale_x *= (1 + 0.005 * step_mult)
 
-        # Stretch Y: , .
+        # Stretch Y: , .  (0.5% per step)
         elif ch == ',':
-            self.current_adjustment.scale_y /= (1 + 0.001 * step_mult)
+            self.current_adjustment.scale_y /= (1 + 0.005 * step_mult)
         elif ch == '.':
-            self.current_adjustment.scale_y *= (1 + 0.001 * step_mult)
+            self.current_adjustment.scale_y *= (1 + 0.005 * step_mult)
 
-        # Shear X (perspective): ; :
+        # Shear X (perspective): ; :  (0.002 per step)
         elif ch == ';':
-            self.current_adjustment.shear_x -= 0.0005 * step_mult
+            self.current_adjustment.shear_x -= 0.002 * step_mult
         elif ch == ':':
-            self.current_adjustment.shear_x += 0.0005 * step_mult
+            self.current_adjustment.shear_x += 0.002 * step_mult
 
-        # Shear Y: { }
+        # Shear Y: { }  (0.002 per step)
         elif ch == '{':
-            self.current_adjustment.shear_y -= 0.0005 * step_mult
+            self.current_adjustment.shear_y -= 0.002 * step_mult
         elif ch == '}':
-            self.current_adjustment.shear_y += 0.0005 * step_mult
+            self.current_adjustment.shear_y += 0.002 * step_mult
 
         # Reset: Escape
         elif key == Qt.Key.Key_Escape:
