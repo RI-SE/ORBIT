@@ -677,8 +677,19 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 show_error(self, f"Failed to open project:\n{str(e)}", "Error")
 
+    def _ensure_original_view_for_save(self):
+        """Switch back to original image view if aerial view is active.
+
+        Must be called before saving to ensure pixel coordinates in the
+        project file correspond to the original image, not aerial tiles.
+        """
+        if self._aerial_view_active:
+            self._switch_to_original()
+            self.toggle_aerial_action.setChecked(False)
+
     def save_project(self):
         """Save the current project."""
+        self._ensure_original_view_for_save()
         if self.current_project_file:
             try:
                 self.project.save(self.current_project_file)
@@ -693,6 +704,7 @@ class MainWindow(QMainWindow):
 
     def save_project_as(self):
         """Save the project with a new name."""
+        self._ensure_original_view_for_save()
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Project As",
@@ -1825,7 +1837,7 @@ class MainWindow(QMainWindow):
         """Update the scale display based on georeferencing."""
         has_georef = self.project.has_georeferencing() and len(self.project.control_points) >= 2
         if hasattr(self, 'toggle_aerial_action'):
-            self.toggle_aerial_action.setEnabled(has_georef and not self._aerial_view_active)
+            self.toggle_aerial_action.setEnabled(has_georef)
 
         if not has_georef:
             self.scale_label.setText("Scale: N/A (no georef)")

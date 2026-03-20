@@ -3424,27 +3424,36 @@ class ImageView(QGraphicsView):
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press events."""
         scene_pos = self.mapToScene(event.pos())
+        handled = False
 
         if event.button() == Qt.MouseButton.LeftButton:
-            self._handle_left_press(scene_pos, event)
+            handled = self._handle_left_press(scene_pos, event)
         elif event.button() == Qt.MouseButton.RightButton:
             self._handle_right_press(scene_pos, event)
 
-        super().mousePressEvent(event)
+        if not handled:
+            super().mousePressEvent(event)
 
-    def _handle_left_press(self, scene_pos, event: QMouseEvent):
-        """Dispatch left-button press by current interaction mode."""
+    def _handle_left_press(self, scene_pos, event: QMouseEvent) -> bool:
+        """Dispatch left-button press by current interaction mode.
+
+        Returns True if the event was consumed by a custom action (suppresses
+        QGraphicsView's built-in ScrollHandDrag to avoid fighting for control).
+        """
         if self.drawing_mode:
             self.current_polyline.add_point(scene_pos.x(), scene_pos.y())
             self.current_polyline_item.update_graphics()
+            return True
 
         elif self.junction_mode:
             junction = Junction(id=self.project.next_id('junction') if self.project else "")
             junction.center_point = (scene_pos.x(), scene_pos.y())
             self.junction_added.emit(junction)
+            return True
 
         elif self.signal_mode:
             self.signal_placement_requested.emit(scene_pos.x(), scene_pos.y())
+            return True
 
         elif self.object_mode:
             if self.object_type_to_place and self.object_type_to_place.get_shape_type() == "polyline":
@@ -3454,6 +3463,7 @@ class ImageView(QGraphicsView):
                 self._add_object_polygon_point(scene_pos.x(), scene_pos.y())
             else:
                 self.object_placement_requested.emit(scene_pos.x(), scene_pos.y(), self.object_type_to_place)
+            return True
 
         elif self.parking_mode:
             if self.parking_polygon_mode:
@@ -3464,17 +3474,23 @@ class ImageView(QGraphicsView):
                     self.parking_type_to_place,
                     self.parking_access_to_place
                 )
+            return True
 
         elif self.pick_point_mode:
             self.point_picked.emit(scene_pos.x(), scene_pos.y())
             self.pick_point_mode = False
             self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+            return True
 
         else:
-            self._handle_select_mode_press(scene_pos, event)
+            return self._handle_select_mode_press(scene_pos, event)
 
-    def _handle_select_mode_press(self, scene_pos, event: QMouseEvent):
-        """Handle left-click in default select/drag mode."""
+    def _handle_select_mode_press(self, scene_pos, event: QMouseEvent) -> bool:
+        """Handle left-click in default select/drag mode.
+
+        Returns True if a custom action (area select, point insert, or entity
+        drag) was started — caller should suppress super().mousePressEvent.
+        """
         # Alt+LMB drag starts area selection for batch delete
         if event.modifiers() & Qt.KeyboardModifier.AltModifier:
             self._area_selecting = True
@@ -3488,19 +3504,20 @@ class ImageView(QGraphicsView):
             )
             self._area_select_rect_item.setZValue(1000)
             self.scene.addItem(self._area_select_rect_item)
-            return
+            return True
 
         # Ctrl+Click on a line segment to insert a point
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             if self._handle_ctrl_click_insert(scene_pos):
-                return
+                return True
 
         # Check if clicking on an entity to start dragging
         if self._try_start_drag(scene_pos):
-            return
+            return True
 
-        # Otherwise, handle entity selection
+        # Otherwise, handle entity selection (let super handle scroll drag)
         self._handle_click_selection(scene_pos)
+        return False
 
     def _handle_ctrl_click_insert(self, scene_pos) -> bool:
         """Handle Ctrl+click point insertion on line segments. Returns True if handled."""
@@ -3933,6 +3950,14 @@ class ImageView(QGraphicsView):
         elif self.dragging_junction:
             self.dragging_junction = False
             if self.drag_junction_id:
+                # Update geo coords so the edit survives view switches
+                item = self.junction_items[self.drag_junction_id]
+                junction = item.junction
+                transformer = self._get_geo_transformer()
+                if transformer and junction.center_point:
+                    cx, cy = junction.center_point
+                    lon, lat = transformer.pixel_to_geo(cx, cy)
+                    junction.geo_center_point = (lon, lat)
                 self.junction_modified.emit(self.drag_junction_id)
             self.drag_junction_id = None
         elif self.dragging_point:
@@ -4011,6 +4036,14 @@ class ImageView(QGraphicsView):
             self.dragging_connecting_road_point = False
             if self.drag_connecting_road_id:
                 item = self.connecting_road_centerline_items[self.drag_connecting_road_id]
+                connecting_road = item.connecting_road
+                # Update geo coords so the edit survives view switches
+                transformer = self._get_geo_transformer()
+                if transformer and connecting_road.inline_path:
+                    connecting_road.inline_geo_path = [
+                        transformer.pixel_to_geo(x, y)
+                        for x, y in connecting_road.inline_path
+                    ]
                 item.selected_point_index = -1
                 item.update_graphics()
                 self.connecting_road_modified.emit(self.drag_connecting_road_id)
