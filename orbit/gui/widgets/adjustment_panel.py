@@ -66,6 +66,12 @@ class AdjustmentPanel(QWidget):
         self.scale_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         values_layout.addWidget(self.scale_label, 2, 1)
 
+        # Shear
+        values_layout.addWidget(QLabel("Shear:"), 3, 0)
+        self.shear_label = QLabel("(0.0000, 0.0000)")
+        self.shear_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        values_layout.addWidget(self.shear_label, 3, 1)
+
         layout.addWidget(values_group)
 
         # Buttons
@@ -101,11 +107,13 @@ class AdjustmentPanel(QWidget):
         hint_font.setPointSize(hint_font.pointSize() - 1)
 
         hints = [
-            ("← → ↑ ↓", "Move"),
+            ("← → ↑ ↓", "Move (Shift=10×, Ctrl=0.1×)"),
             ("[ ]", "Rotate"),
             ("+ −", "Scale"),
             ("< >", "Stretch X"),
-            ("Shift", "Coarse (10×)"),
+            (", .", "Stretch Y"),
+            ("; :", "Shear X (perspective)"),
+            ("{ }", "Shear Y"),
             ("Ctrl", "Fine (0.1×)"),
             ("Esc", "Reset"),
         ]
@@ -143,6 +151,7 @@ class AdjustmentPanel(QWidget):
             self.translation_label.setText("(0.0, 0.0) px")
             self.rotation_label.setText("0.00°")
             self.scale_label.setText("1.0000 × 1.0000")
+            self.shear_label.setText("(0.0000, 0.0000)")
             return
 
         self.translation_label.setText(
@@ -151,6 +160,9 @@ class AdjustmentPanel(QWidget):
         self.rotation_label.setText(f"{adjustment.rotation:.2f}°")
         self.scale_label.setText(
             f"{adjustment.scale_x:.4f} × {adjustment.scale_y:.4f}"
+        )
+        self.shear_label.setText(
+            f"({adjustment.shear_x:.4f}, {adjustment.shear_y:.4f})"
         )
 
     def set_enabled(self, enabled: bool):

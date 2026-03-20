@@ -131,6 +131,7 @@ class Project:
     enabled_sign_libraries: List[str] = field(default_factory=lambda: ['se'])  # Enabled sign library IDs
     synthetic_canvas_width: Optional[int] = None  # Synthetic canvas width in pixels (no real image)
     synthetic_canvas_height: Optional[int] = None  # Synthetic canvas height in pixels (no real image)
+    transform_adjustment: Optional[Dict[str, float]] = None  # Persisted geo-alignment adjustment
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     # ID counters for sequential ID generation (one per entity type)
@@ -1516,6 +1517,7 @@ class Project:
             'enabled_sign_libraries': self.enabled_sign_libraries,
             'synthetic_canvas_width': self.synthetic_canvas_width,
             'synthetic_canvas_height': self.synthetic_canvas_height,
+            'transform_adjustment': self.transform_adjustment,
             'id_counters': {
                 'polyline': self._next_polyline_id,
                 'road': self._next_road_id,
@@ -1573,6 +1575,7 @@ class Project:
             enabled_sign_libraries=data.get('enabled_sign_libraries', ['se']),
             synthetic_canvas_width=data.get('synthetic_canvas_width'),
             synthetic_canvas_height=data.get('synthetic_canvas_height'),
+            transform_adjustment=data.get('transform_adjustment'),
             metadata=data.get('metadata', {})
         )
 

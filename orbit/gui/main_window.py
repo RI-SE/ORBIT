@@ -589,7 +589,7 @@ class MainWindow(QMainWindow):
             self.current_project_file = None
             self.modified = False
             self.undo_stack.clear()
-            self._cached_transformer = None  # Invalidate transformer cache
+            self._invalidate_cached_transformer()
 
             # Reset adjustment mode and panel
             self.image_view.reset_adjustment()
@@ -631,7 +631,7 @@ class MainWindow(QMainWindow):
                 self.current_project_file = Path(file_path)
                 self.modified = False
                 self.undo_stack.clear()
-                self._cached_transformer = None  # Invalidate transformer cache
+                self._invalidate_cached_transformer()  # Invalidate transformer cache
 
                 # Reset adjustment mode and panel
                 self.image_view.reset_adjustment()
@@ -672,6 +672,10 @@ class MainWindow(QMainWindow):
                 self.road_tree.set_project(self.project)
                 self.update_window_title()
                 self.update_scale_display()
+
+                # Restore persisted alignment adjustment (if any)
+                self._restore_adjustment_from_project()
+
                 self.statusBar().showMessage(f"Opened project: {file_path}")
 
             except Exception as e:
@@ -690,6 +694,7 @@ class MainWindow(QMainWindow):
     def save_project(self):
         """Save the current project."""
         self._ensure_original_view_for_save()
+        self._sync_adjustment_to_project()
         if self.current_project_file:
             try:
                 self.project.save(self.current_project_file)
@@ -705,6 +710,7 @@ class MainWindow(QMainWindow):
     def save_project_as(self):
         """Save the project with a new name."""
         self._ensure_original_view_for_save()
+        self._sync_adjustment_to_project()
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Project As",
@@ -767,7 +773,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Preferences updated")
 
             # Clear cached transformer since method may have changed
-            self._cached_transformer = None
+            self._invalidate_cached_transformer()
 
             # Update scale display and lane graphics with new transformation
             self.update_scale_display()
@@ -1200,7 +1206,7 @@ class MainWindow(QMainWindow):
                 ControlPoint(pixel_x=0, pixel_y=image_height, longitude=min_lon, latitude=min_lat),
             ]
             self.project.transform_method = 'affine'
-            self._cached_transformer = None
+            self._invalidate_cached_transformer()
             transformer = self._create_transformer(use_validation=False)
             if not transformer:
                 show_error(self, "Failed to create coordinate transformer from synthetic control points.",
@@ -1238,7 +1244,7 @@ class MainWindow(QMainWindow):
             self.image_view.load_project(self.project)
             self.elements_tree.refresh_tree()
             self.road_tree.refresh_tree()
-            self._cached_transformer = None
+            self._invalidate_cached_transformer()
 
             status = (f"Imported {result.roads_imported} roads, "
                       f"{result.signals_imported} signals, "
@@ -1721,7 +1727,7 @@ class MainWindow(QMainWindow):
                 f"Georeferencing updated: {len(self.project.control_points)} control points"
             )
             # Invalidate cached transformer since control points changed
-            self._cached_transformer = None
+            self._invalidate_cached_transformer()
             # Update scale display with new georeferencing
             self.update_scale_display()
             # Refresh control point visualization
@@ -1735,7 +1741,7 @@ class MainWindow(QMainWindow):
     def on_control_points_changed(self):
         """Handle control points being added/removed in georeferencing dialog."""
         # Invalidate cached transformer since control points changed
-        self._cached_transformer = None
+        self._invalidate_cached_transformer()
         # Refresh control point visualization
         self.refresh_control_points()
         # Update scale display
@@ -1801,6 +1807,39 @@ class MainWindow(QMainWindow):
             **kwargs,
         )
 
+    def _invalidate_cached_transformer(self):
+        """Invalidate the cached transformer while preserving the active adjustment."""
+        self._cached_transformer = None
+
+    def _apply_active_adjustment(self, transformer):
+        """Apply the project's persisted adjustment to a transformer, if any."""
+        if transformer is None:
+            return
+        adj = self.image_view.current_adjustment
+        if adj and not adj.is_identity():
+            transformer.set_adjustment(adj)
+
+    def _sync_adjustment_to_project(self):
+        """Store the current adjustment from ImageView into the project for persistence."""
+        adj = self.image_view.current_adjustment
+        if adj and not adj.is_identity():
+            self.project.transform_adjustment = adj.to_dict()
+        else:
+            self.project.transform_adjustment = None
+
+    def _restore_adjustment_from_project(self):
+        """Restore a saved adjustment from the project into the ImageView and transformer."""
+        if not self.project.transform_adjustment:
+            return
+        adj = TransformAdjustment.from_dict(self.project.transform_adjustment)
+        if adj.is_identity():
+            return
+        self.image_view.current_adjustment = adj
+        if self._cached_transformer is not None:
+            self._cached_transformer.set_adjustment(adj)
+            self.image_view.update_all_from_geo_coords(self._cached_transformer)
+        self.adjustment_panel.update_display(adj)
+
     def on_mouse_moved(self, x: float, y: float):
         """Handle mouse movement in image view."""
         # Sentinel (-1, -1) is emitted on leaveEvent; show N/A.
@@ -1821,6 +1860,7 @@ class MainWindow(QMainWindow):
                     self._cached_transformer = self._create_transformer(
                         use_validation=True,
                     )
+                    self._apply_active_adjustment(self._cached_transformer)
 
                 if self._cached_transformer:
                     lon, lat = self._cached_transformer.pixel_to_geo(x, y)
@@ -2305,11 +2345,12 @@ class MainWindow(QMainWindow):
             cp.pixel_x = new_x
             cp.pixel_y = new_y
 
-        # Clear the adjustment
+        # Clear the adjustment (already baked into control points)
         self.image_view.reset_adjustment()
+        self._sync_adjustment_to_project()
 
         # Invalidate and rebuild transformer
-        self._cached_transformer = None
+        self._invalidate_cached_transformer()
         self._cached_transformer = self._create_transformer(use_validation=True)
 
         # Refresh geometry with new transformation
@@ -2565,6 +2606,8 @@ class MainWindow(QMainWindow):
         # Restore background
         self.image_view.swap_background(self._original_image_np)
         self._cached_transformer = self._original_transformer
+        # Re-apply the alignment adjustment (it's relative to the original image)
+        self._apply_active_adjustment(self._cached_transformer)
         self._aerial_view_active = False
 
         # Refresh scene
