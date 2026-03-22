@@ -84,6 +84,7 @@ class ImageView(QGraphicsView):
     point_picked = pyqtSignal(float, float)  # Emits x, y coordinates
     mouse_moved = pyqtSignal(float, float)  # Emits x, y mouse position in scene coordinates
     adjustment_changed = pyqtSignal(object)  # Emits TransformAdjustment when user adjusts alignment
+    autofit_pairs_changed = pyqtSignal(int)  # Emits pair count when autofit pairs change
     area_delete_requested = pyqtSignal(dict)  # Emits dict of item IDs found in area selection
     # dragged_road_id, target_road_id, dragged_contact, target_contact
     road_link_requested = pyqtSignal(str, str, str, str)
@@ -156,6 +157,10 @@ class ImageView(QGraphicsView):
         self.parking_polygon_preview: Optional[QGraphicsPathItem] = None  # Preview item
         self.adjustment_mode = False  # Transform adjustment mode for aligning imported data
         self.current_adjustment: Optional[TransformAdjustment] = None  # Current adjustment values
+        self.autofit_mode = False  # Point-pair picking for auto-fit
+        self.autofit_pairs: List[Tuple[Tuple[float, float], Tuple[float, float]]] = []
+        self._autofit_pending_source: Optional[Tuple[float, float]] = None
+        self._autofit_graphics: List = []  # Graphics items for autofit arrows
         self.object_type_to_place: Optional[ObjectType] = None  # Type of object to place
         self.object_polygon_mode = False  # True for polygon drawing (land use objects)
         self.object_polygon_points: List[Tuple[float, float]] = []  # Points for current object polygon
@@ -1849,6 +1854,62 @@ class ImageView(QGraphicsView):
 
         return handled
 
+    # ------ Auto-fit correspondence point picking ------
+
+    def set_autofit_mode(self, enabled: bool):
+        """Enable/disable autofit point-pair picking mode."""
+        self.autofit_mode = enabled
+        self._autofit_pending_source = None
+        if enabled:
+            self.setCursor(Qt.CursorShape.CrossCursor)
+        elif self.adjustment_mode:
+            self.setCursor(Qt.CursorShape.SizeAllCursor)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def clear_autofit_pairs(self):
+        """Clear all collected point pairs and their graphics."""
+        self.autofit_pairs.clear()
+        self._autofit_pending_source = None
+        for item in self._autofit_graphics:
+            if item.scene():
+                self.scene.removeItem(item)
+        self._autofit_graphics.clear()
+        self.autofit_pairs_changed.emit(0)
+
+    def _handle_autofit_click(self, scene_pos):
+        """Handle a click in autofit mode (alternating source/target)."""
+        x, y = scene_pos.x(), scene_pos.y()
+
+        if self._autofit_pending_source is None:
+            # Odd click: source (where feature IS)
+            self._autofit_pending_source = (x, y)
+            self._draw_autofit_dot(x, y, QColor(220, 60, 60))  # Red
+        else:
+            # Even click: target (where it SHOULD BE)
+            sx, sy = self._autofit_pending_source
+            self.autofit_pairs.append(((sx, sy), (x, y)))
+            self._autofit_pending_source = None
+            self._draw_autofit_dot(x, y, QColor(60, 180, 60))  # Green
+            self._draw_autofit_arrow(sx, sy, x, y)
+            self.autofit_pairs_changed.emit(len(self.autofit_pairs))
+
+    def _draw_autofit_dot(self, x, y, color):
+        """Draw a small dot for an autofit point."""
+        r = 4
+        pen = QPen(color, 2)
+        brush = QBrush(color)
+        dot = self.scene.addEllipse(x - r, y - r, 2 * r, 2 * r, pen, brush)
+        dot.setZValue(200)
+        self._autofit_graphics.append(dot)
+
+    def _draw_autofit_arrow(self, x1, y1, x2, y2):
+        """Draw an arrow from source to target."""
+        pen = QPen(QColor(255, 165, 0, 200), 2)  # Orange
+        line = self.scene.addLine(x1, y1, x2, y2, pen)
+        line.setZValue(199)
+        self._autofit_graphics.append(line)
+
     def set_uncertainty_overlay(self, overlay):
         """
         Add or remove uncertainty overlay.
@@ -3457,6 +3518,10 @@ class ImageView(QGraphicsView):
         Returns True if the event was consumed by a custom action (suppresses
         QGraphicsView's built-in ScrollHandDrag to avoid fighting for control).
         """
+        if self.autofit_mode:
+            self._handle_autofit_click(scene_pos)
+            return True
+
         if self.drawing_mode:
             self.current_polyline.add_point(scene_pos.x(), scene_pos.y())
             self.current_polyline_item.update_graphics()

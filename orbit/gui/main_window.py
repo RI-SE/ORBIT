@@ -581,9 +581,15 @@ class MainWindow(QMainWindow):
         # Connect adjustment panel signals
         self.adjustment_panel.apply_requested.connect(self.apply_adjustment_to_control_points)
         self.adjustment_panel.reset_requested.connect(self.reset_adjustment)
+        self.adjustment_panel.autofit_toggled.connect(self._on_autofit_toggled)
+        self.adjustment_panel.autofit_compute_requested.connect(self._on_autofit_compute)
+        self.adjustment_panel.autofit_clear_requested.connect(self._on_autofit_clear)
 
         # Connect image view adjustment signal
         self.image_view.adjustment_changed.connect(self.on_adjustment_changed)
+        self.image_view.autofit_pairs_changed.connect(
+            self.adjustment_panel.update_pair_count
+        )
 
     # Project management
     def new_project(self):
@@ -2340,6 +2346,59 @@ class MainWindow(QMainWindow):
             if self._adjustment_ghost_overlay.scene():
                 self.image_view.scene.removeItem(self._adjustment_ghost_overlay)
             self._adjustment_ghost_overlay = None
+
+    def _on_autofit_toggled(self, enabled: bool):
+        """Handle auto-fit picking mode toggle."""
+        self.image_view.set_autofit_mode(enabled)
+        if enabled:
+            self.statusBar().showMessage(
+                "Auto-fit: click where a feature IS, then where it SHOULD BE"
+            )
+        else:
+            self.statusBar().showMessage("Auto-fit picking stopped")
+
+    def _on_autofit_compute(self):
+        """Compute best-fit adjustment from collected point pairs."""
+        from orbit.utils.adjustment_fitter import fit_adjustment
+
+        pairs = self.image_view.autofit_pairs
+        if len(pairs) < 3:
+            self.statusBar().showMessage("Need at least 3 point pairs")
+            return
+
+        sources = [s for s, _ in pairs]
+        targets = [t for _, t in pairs]
+
+        # Pivot = image center
+        pivot_x = self.image_view.current_adjustment.pivot_x if self.image_view.current_adjustment else 0
+        pivot_y = self.image_view.current_adjustment.pivot_y if self.image_view.current_adjustment else 0
+
+        try:
+            new_adj = fit_adjustment(
+                sources, targets,
+                pivot_x, pivot_y,
+                current_adjustment=self.image_view.current_adjustment,
+            )
+        except Exception as e:
+            self.statusBar().showMessage(f"Auto-fit failed: {e}")
+            return
+
+        # Apply the computed adjustment
+        self.image_view.current_adjustment = new_adj
+        self.image_view.adjustment_changed.emit(new_adj)
+
+        # Clear the picking graphics (but keep pairs for potential re-fit)
+        self.image_view.clear_autofit_pairs()
+        self.adjustment_panel.autofit_btn.setChecked(False)
+
+        self.statusBar().showMessage(
+            f"Auto-fit applied from {len(pairs)} point pairs"
+        )
+
+    def _on_autofit_clear(self):
+        """Clear all autofit correspondence pairs."""
+        self.image_view.clear_autofit_pairs()
+        self.statusBar().showMessage("Auto-fit pairs cleared")
 
     def apply_adjustment_to_control_points(self):
         """
