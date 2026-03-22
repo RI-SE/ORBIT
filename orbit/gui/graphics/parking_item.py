@@ -82,6 +82,7 @@ class ParkingGraphicsItem(QGraphicsItemGroup):
             self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setAcceptHoverEvents(True)
+        self.setZValue(0.7)  # Ensure parking is above roads but below polylines
 
         # Set position for point parking (polygon uses scene coordinates directly)
         if not parking.is_polygon():

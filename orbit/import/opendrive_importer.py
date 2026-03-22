@@ -1562,9 +1562,11 @@ class OpenDriveImporter:
 
         # Text-based type detection (fallback)
         type_lower = odr_signal.type.lower()
+        name_lower = odr_signal.name.lower() if odr_signal.name else ""
+        combined_lower = f"{type_lower} {name_lower}"
 
         # Check for speed limit
-        if 'speed' in type_lower or 'maximum' in type_lower:
+        if 'speed' in combined_lower or 'maximum' in combined_lower:
             value = int(odr_signal.value) if odr_signal.value else None
             return (SignalType.SPEED_LIMIT, value)
 

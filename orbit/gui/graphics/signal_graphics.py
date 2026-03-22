@@ -102,14 +102,24 @@ def create_signal_pixmap(signal_type: SignalType, value: int = None, size: int =
     elif signal_type == SignalType.SPEED_LIMIT and value is not None:
         return create_speed_limit_sign(value, size)
     else:
-        # Fallback: generic sign
+        # Fallback: generic sign (distinct blue/white design)
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor(100, 100, 100), 2))
-        painter.setBrush(QColor(200, 200, 200))
-        painter.drawRect(4, 4, size - 8, size - 8)
+        
+        # Draw a square with a thick blue border and white fill
+        margin = 4
+        painter.setPen(QPen(QColor(0, 0, 200), 3))
+        painter.setBrush(QColor(255, 255, 255))
+        painter.drawRect(margin, margin, size - 2 * margin, size - 2 * margin)
+        
+        # Add a small 'S' (for Sign) in the center
+        font = QFont("Arial", int(size * 0.4), QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.setPen(QColor(0, 0, 200))
+        painter.drawText(0, 0, size, size, Qt.AlignmentFlag.AlignCenter, "S")
+        
         painter.end()
         return pixmap
 

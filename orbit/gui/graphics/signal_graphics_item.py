@@ -31,6 +31,7 @@ class SignalGraphicsItem(QGraphicsItemGroup):
         self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setAcceptHoverEvents(True)
+        self.setZValue(3.0)  # Ensure signals are rendered on top of roads and polylines
 
         # Create icon
         self.icon_item = QGraphicsPixmapItem()

@@ -64,6 +64,7 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
             self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.setAcceptHoverEvents(True)
+        self.setZValue(2.0)  # Ensure objects are rendered above roads and polylines
 
         # Set position and update graphics
         # Don't use setPos for polylines or polygon objects - they're in scene coordinates

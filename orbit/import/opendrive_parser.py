@@ -250,6 +250,7 @@ class ODRSignal:
         unit: Unit for value (e.g., "km/h")
         height: Sign height (meters)
         width: Sign width (meters)
+        h_offset: Heading offset relative to road heading (radians)
         name: Optional name/description
     """
     id: str
@@ -265,6 +266,7 @@ class ODRSignal:
     unit: str = ""
     height: float = 0.0
     width: float = 0.0
+    h_offset: float = 0.0
     name: str = ""
     validity_lanes: Optional[List[int]] = None  # Lane IDs this signal applies to
 
@@ -906,6 +908,7 @@ class OpenDriveParser:
             unit=signal_elem.get('unit', ''),
             height=float(signal_elem.get('height', '0')),
             width=float(signal_elem.get('width', '0')),
+            h_offset=float(signal_elem.get('hOffset', '0')),
             name=signal_elem.get('name', ''),
             validity_lanes=validity_lanes
         )
