@@ -49,8 +49,14 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         self.point_items = []
         self.visible_point_indices = []  # Track which points have visible handles
 
-        # Make item selectable, movable (only for point objects), and focusable
-        self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsSelectable, True)
+        # Custom selection flag — avoids Qt's native selection mechanism which
+        # would draw an unwanted bounding-box rectangle and get cleared by
+        # scene background-click handling (breaks panning over large polygons).
+        self._is_selected = False
+
+        # Make item movable (only for point objects) and geometry-change-aware.
+        # ItemIsSelectable is intentionally NOT set so Qt never draws a dashed
+        # selection rect and never deselects on background clicks.
         # Polyline objects (guardrails) and polygon objects should not be draggable as a whole
         is_polygon = (obj.type.get_shape_type() == "polygon" and obj.points and len(obj.points) >= 3)
         is_polygon_building = (obj.type == ObjectType.BUILDING and obj.points and len(obj.points) >= 3)
@@ -142,7 +148,7 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
             self._draw_point_handles()
 
         # Draw vertex handles for polygon objects when selected
-        if self._is_polygon_with_points() and self.isSelected():
+        if self._is_polygon_with_points() and self._is_selected:
             self._draw_polygon_vertex_handles()
 
         # Update selection highlight
@@ -155,7 +161,7 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         point_pen = QPen(QColor(255, 255, 255), 1)  # White outline
 
         # Make points more visible when selected
-        if self.isSelected():
+        if self._is_selected:
             point_color = QColor(255, 165, 0)  # Orange when guardrail is selected
             point_pen = QPen(QColor(255, 255, 255), 2)  # Thicker white outline
 
@@ -234,7 +240,7 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         highlight_path = stroker.createStroke(base_path)
 
         self.selection_item.setPath(highlight_path)
-        self.selection_item.setVisible(self.isSelected())
+        self.selection_item.setVisible(self._is_selected)
 
     def itemChange(self, change, value):
         """Handle item changes (position, selection)."""
@@ -252,21 +258,14 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
             if self.object_changed:
                 self.object_changed(self.obj)
 
-        elif change == QGraphicsItemGroup.GraphicsItemChange.ItemSelectedHasChanged:
-            # Update selection highlight visibility
-            self.selection_item.setVisible(self.isSelected())
-            # Show/hide polygon vertex handles based on selection
-            if self._is_polygon_with_points():
-                self.update_graphics()
-
         return super().itemChange(change, value)
 
     def paint(self, painter, option, widget=None):
-        """Override to customize appearance."""
+        """Override to draw dimension labels when selected."""
         super().paint(painter, option, widget)
 
         # Draw dimension labels if selected
-        if self.isSelected():
+        if self._is_selected:
             # Calculate label position
             if self.obj.type.get_shape_type() == "polyline":
                 # For guardrails, show label at midpoint
@@ -300,16 +299,13 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
     def mousePressEvent(self, event):
         """Handle mouse press.
 
-        For polygon objects, ignore the event unless clicking on a vertex
-        handle, so the view can use it for panning. Selection and dragging
-        of polygon vertices is handled by the ImageView mouse handler.
+        For polygon objects (buildings, land areas), selection and vertex
+        dragging are handled entirely by the ImageView mouse handler.
+        We pass the event through so the view's ScrollHandDrag can pan.
         """
         if self._is_polygon_with_points() and event.button() == Qt.MouseButton.LeftButton:
-            scene_pos = event.scenePos()
-            if self.get_point_at(scene_pos) < 0:
-                # Not near a vertex — let the event pass through for panning
-                event.ignore()
-                return
+            event.ignore()  # Let view handle panning and selection
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
         super().mousePressEvent(event)
@@ -409,4 +405,7 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         Args:
             selected: True to select, False to deselect
         """
-        self.setSelected(selected)
+        self._is_selected = selected
+        self.selection_item.setVisible(selected)
+        if self._is_polygon_with_points():
+            self.update_graphics()  # Refresh vertex handles

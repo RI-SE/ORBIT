@@ -410,7 +410,13 @@ convention for unsaved data.
 
 ### OSMImporter Class
 ```python
-from orbit.import_ import OSMImporter, ImportOptions, ImportMode, DetailLevel
+import importlib
+
+osm_importer_module = importlib.import_module("orbit.import.osm_importer")
+OSMImporter = osm_importer_module.OSMImporter
+ImportOptions = osm_importer_module.ImportOptions
+ImportMode = osm_importer_module.ImportMode
+DetailLevel = osm_importer_module.DetailLevel
 
 # Create importer
 importer = OSMImporter(project, transformer, image_width, image_height)
@@ -438,7 +444,10 @@ else:
 
 ### calculate_bbox_from_image
 ```python
-from orbit.import_.osm_to_orbit import calculate_bbox_from_image
+import importlib
+
+osm_to_orbit = importlib.import_module("orbit.import.osm_to_orbit")
+calculate_bbox_from_image = osm_to_orbit.calculate_bbox_from_image
 
 bbox = calculate_bbox_from_image(
     image_width=2048,

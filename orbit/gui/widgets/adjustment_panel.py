@@ -25,6 +25,9 @@ class AdjustmentPanel(QWidget):
     # Signals
     apply_requested = pyqtSignal()  # User wants to bake adjustment into control points
     reset_requested = pyqtSignal()  # User wants to reset all adjustments
+    autofit_toggled = pyqtSignal(bool)  # Auto-fit mode toggled on/off
+    autofit_compute_requested = pyqtSignal()  # User wants to compute fit
+    autofit_clear_requested = pyqtSignal()  # User wants to clear correspondence pairs
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -66,6 +69,12 @@ class AdjustmentPanel(QWidget):
         self.scale_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         values_layout.addWidget(self.scale_label, 2, 1)
 
+        # Shear
+        values_layout.addWidget(QLabel("Shear:"), 3, 0)
+        self.shear_label = QLabel("(0.0000, 0.0000)")
+        self.shear_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        values_layout.addWidget(self.shear_label, 3, 1)
+
         layout.addWidget(values_group)
 
         # Buttons
@@ -82,6 +91,47 @@ class AdjustmentPanel(QWidget):
         button_layout.addWidget(self.apply_btn)
 
         layout.addLayout(button_layout)
+
+        # Auto-fit section
+        autofit_group = QGroupBox("Auto-fit from Points")
+        autofit_layout = QVBoxLayout(autofit_group)
+        autofit_layout.setSpacing(4)
+
+        autofit_desc = QLabel(
+            "Pick point pairs: click where a feature IS,\n"
+            "then where it SHOULD BE. Repeat ≥3 times."
+        )
+        autofit_desc.setWordWrap(True)
+        desc_font = QFont()
+        desc_font.setPointSize(desc_font.pointSize() - 1)
+        autofit_desc.setFont(desc_font)
+        autofit_desc.setStyleSheet("color: gray;")
+        autofit_layout.addWidget(autofit_desc)
+
+        self.autofit_btn = QPushButton("Start Picking")
+        self.autofit_btn.setCheckable(True)
+        self.autofit_btn.setToolTip("Toggle point-pair picking mode")
+        self.autofit_btn.toggled.connect(self._on_autofit_toggled)
+        autofit_layout.addWidget(self.autofit_btn)
+
+        self.pairs_label = QLabel("Pairs: 0")
+        autofit_layout.addWidget(self.pairs_label)
+
+        autofit_btn_layout = QHBoxLayout()
+        self.compute_btn = QPushButton("Compute")
+        self.compute_btn.setEnabled(False)
+        self.compute_btn.setToolTip("Compute best-fit adjustment from picked pairs")
+        self.compute_btn.clicked.connect(self.autofit_compute_requested.emit)
+        autofit_btn_layout.addWidget(self.compute_btn)
+
+        self.clear_pairs_btn = QPushButton("Clear")
+        self.clear_pairs_btn.setEnabled(False)
+        self.clear_pairs_btn.setToolTip("Clear all picked point pairs")
+        self.clear_pairs_btn.clicked.connect(self.autofit_clear_requested.emit)
+        autofit_btn_layout.addWidget(self.clear_pairs_btn)
+
+        autofit_layout.addLayout(autofit_btn_layout)
+        layout.addWidget(autofit_group)
 
         # Keyboard hints
         hints_frame = QFrame()
@@ -105,8 +155,10 @@ class AdjustmentPanel(QWidget):
             ("[ ]", "Rotate"),
             ("+ −", "Scale"),
             ("< >", "Stretch X"),
-            ("Shift", "Coarse (10×)"),
-            ("Ctrl", "Fine (0.1×)"),
+            (", .", "Stretch Y"),
+            ("; :", "Shear X (perspective)"),
+            ("{ }", "Shear Y"),
+            ("Ctrl", "5× faster"),
             ("Esc", "Reset"),
         ]
 
@@ -143,6 +195,7 @@ class AdjustmentPanel(QWidget):
             self.translation_label.setText("(0.0, 0.0) px")
             self.rotation_label.setText("0.00°")
             self.scale_label.setText("1.0000 × 1.0000")
+            self.shear_label.setText("(0.0000, 0.0000)")
             return
 
         self.translation_label.setText(
@@ -152,8 +205,27 @@ class AdjustmentPanel(QWidget):
         self.scale_label.setText(
             f"{adjustment.scale_x:.4f} × {adjustment.scale_y:.4f}"
         )
+        self.shear_label.setText(
+            f"({adjustment.shear_x:.4f}, {adjustment.shear_y:.4f})"
+        )
 
     def set_enabled(self, enabled: bool):
         """Enable or disable the panel controls."""
         self.reset_btn.setEnabled(enabled)
         self.apply_btn.setEnabled(enabled)
+        self.autofit_btn.setEnabled(enabled)
+        if not enabled:
+            self.autofit_btn.setChecked(False)
+            self.compute_btn.setEnabled(False)
+            self.clear_pairs_btn.setEnabled(False)
+
+    def update_pair_count(self, count: int):
+        """Update displayed pair count and enable/disable compute button."""
+        self.pairs_label.setText(f"Pairs: {count}")
+        self.compute_btn.setEnabled(count >= 3)
+        self.clear_pairs_btn.setEnabled(count > 0)
+
+    def _on_autofit_toggled(self, checked: bool):
+        """Handle auto-fit button toggle."""
+        self.autofit_btn.setText("Stop Picking" if checked else "Start Picking")
+        self.autofit_toggled.emit(checked)

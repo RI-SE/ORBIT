@@ -131,6 +131,7 @@ class Project:
     enabled_sign_libraries: List[str] = field(default_factory=lambda: ['se'])  # Enabled sign library IDs
     synthetic_canvas_width: Optional[int] = None  # Synthetic canvas width in pixels (no real image)
     synthetic_canvas_height: Optional[int] = None  # Synthetic canvas height in pixels (no real image)
+    transform_adjustment: Optional[Dict[str, float]] = None  # Persisted geo-alignment adjustment
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     # ID counters for sequential ID generation (one per entity type)
@@ -213,18 +214,12 @@ class Project:
         self._next_parking_id = _max_numeric_id(p.id for p in self.parking_spaces) + 1
         self._next_junction_group_id = _max_numeric_id(jg.id for jg in self.junction_groups) + 1
 
-        # ConnectingRoad shares the road counter; LaneConnection is nested inside junctions
-        cr_ids = []
+        # Roads include connecting roads now (unified storage)
         lc_ids = []
         for junction in self.junctions:
-            for cr in junction.connecting_roads:
-                cr_ids.append(cr.id)
             for lc in junction.lane_connections:
                 lc_ids.append(lc.id)
-        self._next_road_id = max(
-            _max_numeric_id(r.id for r in self.roads),
-            _max_numeric_id(cr_ids)
-        ) + 1
+        self._next_road_id = _max_numeric_id(r.id for r in self.roads) + 1
         self._next_lane_connection_id = _max_numeric_id(lc_ids) + 1
 
     def _has_uuid_ids(self) -> bool:
@@ -271,8 +266,6 @@ class Project:
         object_remap: Dict[str, str] = {}
         parking_remap: Dict[str, str] = {}
         connecting_road_remap: Dict[str, str] = {}
-        lane_connection_remap: Dict[str, str] = {}
-        junction_group_remap: Dict[str, str] = {}
 
         if odr_id_lookup is None:
             odr_id_lookup = {}
@@ -304,145 +297,42 @@ class Project:
             counter[0] += 1
             return new_id
 
-        # --- Assign new polyline IDs ---
-        poly_used: set = set()
-        poly_counter = [1]
-        for p in self.polylines:
-            odr_id = odr_id_lookup.get(p.id)
-            new_id = _new_id(p.id, odr_id, poly_used, poly_counter)
-            polyline_remap[p.id] = new_id
-            p.id = new_id
+        # Phase 1: Assign new IDs to all entities
+        def _remap_entities(entities, odr_lookup):
+            remap = {}
+            used = set()
+            counter = [1]
+            for e in entities:
+                odr_id = odr_lookup.get(e.id)
+                new_id = _new_id(e.id, odr_id, used, counter)
+                remap[e.id] = new_id
+                e.id = new_id
+            return remap
 
-        # --- Assign new road IDs ---
-        road_used: set = set()
-        road_counter = [1]
-        for r in self.roads:
-            odr_id = odr_id_lookup.get(r.id)
-            new_id = _new_id(r.id, odr_id, road_used, road_counter)
-            road_remap[r.id] = new_id
-            r.id = new_id
+        polyline_remap = _remap_entities(self.polylines, odr_id_lookup)
+        road_remap = _remap_entities(self.roads, odr_id_lookup)
+        junction_remap = _remap_entities(self.junctions, odr_id_lookup)
+        signal_remap = _remap_entities(self.signals, odr_id_lookup)
+        object_remap = _remap_entities(self.objects, odr_id_lookup)
+        parking_remap = _remap_entities(self.parking_spaces, odr_id_lookup)
 
-        # --- Assign new junction IDs ---
-        junction_used: set = set()
-        junction_counter = [1]
-        for j in self.junctions:
-            odr_id = odr_id_lookup.get(j.id)
-            new_id = _new_id(j.id, odr_id, junction_used, junction_counter)
-            junction_remap[j.id] = new_id
-            j.id = new_id
+        # Connecting road remap: subset of road_remap for connecting roads
+        # Note: r.id is already remapped, so look up by new_id in road_remap values
+        cr_new_ids = {r.id for r in self.roads if r.is_connecting_road}
+        connecting_road_remap = {
+            old: new for old, new in road_remap.items() if new in cr_new_ids
+        }
 
-        # --- Assign new signal IDs ---
-        signal_used: set = set()
-        signal_counter = [1]
-        for s in self.signals:
-            odr_id = odr_id_lookup.get(s.id)
-            new_id = _new_id(s.id, odr_id, signal_used, signal_counter)
-            signal_remap[s.id] = new_id
-            s.id = new_id
+        # Lane connections and junction groups (remap for side-effect only)
+        all_lane_connections = [lc for j in self.junctions for lc in j.lane_connections]
+        _remap_entities(all_lane_connections, {})
+        _remap_entities(self.junction_groups, {})
 
-        # --- Assign new object IDs ---
-        object_used: set = set()
-        object_counter = [1]
-        for o in self.objects:
-            odr_id = odr_id_lookup.get(o.id)
-            new_id = _new_id(o.id, odr_id, object_used, object_counter)
-            object_remap[o.id] = new_id
-            o.id = new_id
-
-        # --- Assign new parking IDs ---
-        parking_used: set = set()
-        parking_counter = [1]
-        for p in self.parking_spaces:
-            odr_id = odr_id_lookup.get(p.id)
-            new_id = _new_id(p.id, odr_id, parking_used, parking_counter)
-            parking_remap[p.id] = new_id
-            p.id = new_id
-
-        # --- Assign new connecting road IDs (shares road namespace) ---
-        lc_used: set = set()
-        lc_counter = [1]
-        for j in self.junctions:
-            for cr in j.connecting_roads:
-                odr_id = odr_id_lookup.get(cr.id)
-                new_id = _new_id(cr.id, odr_id, road_used, road_counter)
-                connecting_road_remap[cr.id] = new_id
-                cr.id = new_id
-            for lc in j.lane_connections:
-                new_id = _new_id(lc.id, None, lc_used, lc_counter)
-                lane_connection_remap[lc.id] = new_id
-                lc.id = new_id
-
-        # --- Assign new junction group IDs ---
-        jg_used: set = set()
-        jg_counter = [1]
-        for jg in self.junction_groups:
-            new_id = _new_id(jg.id, None, jg_used, jg_counter)
-            junction_group_remap[jg.id] = new_id
-            jg.id = new_id
-
-        # --- Remap all cross-references ---
-
-        def _remap(old_id: Optional[str], remap_table: Dict[str, str]) -> Optional[str]:
-            """Remap an ID using the given table, returning None if input is None."""
-            if old_id is None:
-                return None
-            return remap_table.get(old_id, old_id)
-
-        def _remap_list(id_list: List[str], remap_table: Dict[str, str]) -> List[str]:
-            """Remap a list of IDs."""
-            return [remap_table.get(old_id, old_id) for old_id in id_list]
-
-        # Road cross-references
-        for road in self.roads:
-            road.centerline_id = _remap(road.centerline_id, polyline_remap)
-            road.polyline_ids = _remap_list(road.polyline_ids, polyline_remap)
-            road.predecessor_id = _remap(road.predecessor_id, road_remap)
-            road.successor_id = _remap(road.successor_id, road_remap)
-            road.junction_id = _remap(road.junction_id, junction_remap)
-            road.predecessor_junction_id = _remap(road.predecessor_junction_id, junction_remap)
-            road.successor_junction_id = _remap(road.successor_junction_id, junction_remap)
-
-            # Lane boundary IDs
-            for section in road.lane_sections:
-                for lane in section.lanes:
-                    lane.left_boundary_id = _remap(lane.left_boundary_id, polyline_remap)
-                    lane.right_boundary_id = _remap(lane.right_boundary_id, polyline_remap)
-
-        # Junction cross-references
-        for junction in self.junctions:
-            junction.connected_road_ids = _remap_list(junction.connected_road_ids, road_remap)
-            junction.entry_roads = _remap_list(junction.entry_roads, road_remap)
-            junction.exit_roads = _remap_list(junction.exit_roads, road_remap)
-
-            for cr in junction.connecting_roads:
-                cr.predecessor_road_id = _remap(cr.predecessor_road_id, road_remap) or ""
-                cr.successor_road_id = _remap(cr.successor_road_id, road_remap) or ""
-
-            for lc in junction.lane_connections:
-                lc.from_road_id = _remap(lc.from_road_id, road_remap) or ""
-                lc.to_road_id = _remap(lc.to_road_id, road_remap) or ""
-                lc.connecting_road_id = _remap(lc.connecting_road_id, connecting_road_remap)
-                lc.traffic_light_id = _remap(lc.traffic_light_id, signal_remap)
-
-            if junction.boundary:
-                for seg in junction.boundary.segments:
-                    seg.road_id = _remap(seg.road_id, road_remap)
-
-        # Signal cross-references
-        for signal in self.signals:
-            signal.road_id = _remap(signal.road_id, road_remap)
-
-        # Object cross-references
-        for obj in self.objects:
-            obj.road_id = _remap(obj.road_id, road_remap)
-
-        # Parking cross-references
-        for parking in self.parking_spaces:
-            parking.road_id = _remap(parking.road_id, road_remap)
-
-        # JunctionGroup cross-references
-        for jg in self.junction_groups:
-            jg.junction_ids = _remap_list(jg.junction_ids, junction_remap)
+        # Phase 2: Remap all cross-references
+        self._remap_all_cross_references(
+            polyline_remap, road_remap, junction_remap, signal_remap,
+            connecting_road_remap
+        )
 
         # Update version
         self.metadata['version'] = _get_version()
@@ -453,6 +343,77 @@ class Project:
             f"{len(signal_remap)} signals, {len(object_remap)} objects, "
             f"{len(parking_remap)} parking spaces"
         )
+
+    def _remap_all_cross_references(
+        self,
+        polyline_remap: Dict[str, str],
+        road_remap: Dict[str, str],
+        junction_remap: Dict[str, str],
+        signal_remap: Dict[str, str],
+        connecting_road_remap: Dict[str, str],
+    ) -> None:
+        """Remap all cross-reference fields after ID migration."""
+
+        def _remap(old_id, table):
+            if old_id is None:
+                return None
+            return table.get(old_id, old_id)
+
+        def _remap_list(id_list, table):
+            return [table.get(old_id, old_id) for old_id in id_list]
+
+        for road in self.roads:
+            road.centerline_id = _remap(road.centerline_id, polyline_remap)
+            road.polyline_ids = _remap_list(road.polyline_ids, polyline_remap)
+            road.predecessor_id = _remap(road.predecessor_id, road_remap)
+            road.successor_id = _remap(road.successor_id, road_remap)
+            road.junction_id = _remap(road.junction_id, junction_remap)
+            road.predecessor_junction_id = _remap(
+                road.predecessor_junction_id, junction_remap
+            )
+            road.successor_junction_id = _remap(
+                road.successor_junction_id, junction_remap
+            )
+            for section in road.lane_sections:
+                for lane in section.lanes:
+                    lane.left_boundary_id = _remap(
+                        lane.left_boundary_id, polyline_remap
+                    )
+                    lane.right_boundary_id = _remap(
+                        lane.right_boundary_id, polyline_remap
+                    )
+
+        for junction in self.junctions:
+            junction.connected_road_ids = _remap_list(
+                junction.connected_road_ids, road_remap
+            )
+            junction.connecting_road_ids = _remap_list(
+                junction.connecting_road_ids, connecting_road_remap
+            )
+            junction.entry_roads = _remap_list(junction.entry_roads, road_remap)
+            junction.exit_roads = _remap_list(junction.exit_roads, road_remap)
+            for lc in junction.lane_connections:
+                lc.from_road_id = _remap(lc.from_road_id, road_remap) or ""
+                lc.to_road_id = _remap(lc.to_road_id, road_remap) or ""
+                lc.connecting_road_id = _remap(
+                    lc.connecting_road_id, connecting_road_remap
+                )
+                lc.traffic_light_id = _remap(lc.traffic_light_id, signal_remap)
+            if junction.boundary:
+                for seg in junction.boundary.segments:
+                    seg.road_id = _remap(seg.road_id, road_remap)
+
+        for signal in self.signals:
+            signal.road_id = _remap(signal.road_id, road_remap)
+
+        for obj in self.objects:
+            obj.road_id = _remap(obj.road_id, road_remap)
+
+        for parking in self.parking_spaces:
+            parking.road_id = _remap(parking.road_id, road_remap)
+
+        for jg in self.junction_groups:
+            jg.junction_ids = _remap_list(jg.junction_ids, junction_remap)
 
     # Polyline management
     def assign_missing_ids(self) -> None:
@@ -470,9 +431,6 @@ class Project:
         for j in self.junctions:
             if not j.id:
                 j.id = self.next_id('junction')
-            for cr in j.connecting_roads:
-                if not cr.id:
-                    cr.id = self.next_id('connecting_road')
             for lc in j.lane_connections:
                 if not lc.id:
                     lc.id = self.next_id('lane_connection')
@@ -502,24 +460,27 @@ class Project:
         """
         linked = 0
         for junction in self.junctions:
+            # Get connecting road objects for this junction
+            cr_roads = [
+                r for r in self.roads
+                if r.is_connecting_road and r.id in junction.connecting_road_ids
+            ]
             for lc in junction.lane_connections:
-                if lc.connecting_road_id:
-                    continue  # Already linked
+                if not lc.connecting_road_id:
+                    for cr in cr_roads:
+                        if (cr.predecessor_id == lc.from_road_id and
+                                cr.successor_id == lc.to_road_id):
+                            lc.connecting_road_id = cr.id
+                            linked += 1
+                            break
 
-                for cr in junction.connecting_roads:
-                    if (cr.predecessor_road_id == lc.from_road_id and
-                            cr.successor_road_id == lc.to_road_id):
-                        lc.connecting_road_id = cr.id
-
-                        # Set connecting_lane_id: pick the lane on the CR
-                        # that matches the direction (right = negative,
-                        # left = positive).
-                        if lc.connecting_lane_id is None:
-                            lc.connecting_lane_id = (
-                                -1 if lc.from_lane_id < 0 else 1
-                            )
-                        linked += 1
-                        break
+                # Always set connecting_lane_id when missing, even for
+                # connections already linked (e.g. set during OSM import).
+                # Right lanes (negative IDs) → CR lane -1; left → +1.
+                if lc.connecting_lane_id is None:
+                    lc.connecting_lane_id = (
+                        -1 if lc.from_lane_id < 0 else 1
+                    )
 
         return linked
 
@@ -561,10 +522,21 @@ class Project:
             if road.predecessor_id == road_id:
                 road.predecessor_id = None
 
-        # Remove from junctions (connected_road_ids, connecting_roads,
+        # Remove from junctions (connected_road_ids, connecting_road_ids,
         # lane_connections, entry/exit_roads)
         for junction in self.junctions:
             junction.remove_road(road_id)
+            # Also clean up connecting_road_ids
+            if road_id in junction.connecting_road_ids:
+                junction.connecting_road_ids.remove(road_id)
+            # Remove connecting roads that reference the deleted road
+            crs_to_remove = [
+                r.id for r in self.roads
+                if r.is_connecting_road and r.id in junction.connecting_road_ids
+                and (r.predecessor_id == road_id or r.successor_id == road_id)
+            ]
+            for cr_id in crs_to_remove:
+                junction.remove_connecting_road(cr_id)
 
     def get_road(self, road_id: str) -> Optional[Road]:
         """Get a road by ID."""
@@ -594,8 +566,6 @@ class Project:
         Returns:
             Tuple of (road1, road2) if successful, None on failure
         """
-        from orbit.utils.geometry import split_boundary_at_centerline_s, split_polyline_at_index
-
         # Get road and centerline
         road = self.get_road(road_id)
         if not road:
@@ -616,100 +586,17 @@ class Project:
             logger.error(f"Invalid split point index {point_index}")
             return None
 
-        # Store original centerline points before modification (needed for boundary projection)
         original_centerline_points = list(centerline.points)
-
-        # Calculate s-coordinate at split point
         s_coords = road.calculate_centerline_s_coordinates(centerline.points)
         split_s = s_coords[point_index]
 
-        # Split centerline polyline
-        centerline_pts1, centerline_pts2 = split_polyline_at_index(
-            centerline.points, point_index, duplicate_point=True
-        )
-
-        # Split per-point arrays (same slicing as duplicate_point=True)
-        geo_pts1 = geo_pts2 = None
-        if centerline.geo_points and len(centerline.geo_points) == len(centerline.points):
-            geo_pts1 = list(centerline.geo_points[:point_index + 1])
-            geo_pts2 = list(centerline.geo_points[point_index:])
-
-        elev1 = elev2 = None
-        if centerline.elevations and len(centerline.elevations) == len(centerline.points):
-            elev1 = list(centerline.elevations[:point_index + 1])
-            elev2 = list(centerline.elevations[point_index:])
-
-        soff1 = soff2 = None
-        if centerline.s_offsets and len(centerline.s_offsets) == len(centerline.points):
-            soff1 = list(centerline.s_offsets[:point_index + 1])
-            soff2 = list(centerline.s_offsets[point_index:])
-
-        osm1 = osm2 = None
-        if centerline.osm_node_ids and len(centerline.osm_node_ids) == len(centerline.points):
-            osm1 = list(centerline.osm_node_ids[:point_index + 1])
-            osm2 = list(centerline.osm_node_ids[point_index:])
-
-        # Create new centerline polyline for road 2
-        new_centerline = Polyline(
-            id=self.next_id('polyline'),
-            points=centerline_pts2,
-            line_type=centerline.line_type,
-            road_mark_type=centerline.road_mark_type
-        )
-        new_centerline.geo_points = geo_pts2
-        new_centerline.elevations = elev2
-        new_centerline.s_offsets = soff2
-        new_centerline.osm_node_ids = osm2
-        new_centerline.geometry_segments = None  # Invalidated by split
-        self.add_polyline(new_centerline)
-
-        # Update original centerline
-        centerline.points = centerline_pts1
-        centerline.geo_points = geo_pts1
-        centerline.elevations = elev1
-        centerline.s_offsets = soff1
-        centerline.osm_node_ids = osm1
-        centerline.geometry_segments = None  # Invalidated by split
+        # Split centerline and create new polyline for road 2
+        new_centerline = self._split_centerline(centerline, point_index)
 
         # Split boundary polylines
-        new_boundary_ids = []
-        for boundary_id in road.polyline_ids:
-            if boundary_id == polyline_id:
-                continue  # Skip centerline, already handled
-
-            boundary = self.get_polyline(boundary_id)
-            if not boundary:
-                continue
-
-            # Split boundary at corresponding s-coordinate
-            result = split_boundary_at_centerline_s(
-                boundary.points,
-                original_centerline_points,  # Use original (unsplit) centerline for projection
-                split_s
-            )
-
-            if result:
-                boundary_pts1, boundary_pts2 = result
-
-                # Create new boundary for road 2
-                new_boundary = Polyline(
-                    id=self.next_id('polyline'),
-                    points=boundary_pts2,
-                    line_type=boundary.line_type,
-                    road_mark_type=boundary.road_mark_type
-                )
-                # Clear per-point metadata — interpolated split point has no geo coordinate
-                new_boundary.geometry_segments = None
-                self.add_polyline(new_boundary)
-                new_boundary_ids.append(new_boundary.id)
-
-                # Update original boundary
-                boundary.points = boundary_pts1
-                boundary.geo_points = None
-                boundary.elevations = None
-                boundary.s_offsets = None
-                boundary.osm_node_ids = None
-                boundary.geometry_segments = None
+        new_boundary_ids = self._split_boundaries(
+            road, polyline_id, original_centerline_points, split_s
+        )
 
         # Distribute lane sections
         sections_road1, sections_road2 = road.distribute_lane_sections_for_split(
@@ -717,24 +604,14 @@ class Project:
         )
 
         # Generate segment names
-        original_name = road.name
-        # Check if name already has segment suffix
-        import re
-        seg_match = re.match(r'^(.*?)\s*\(seg \d+/\d+\)$', original_name)
-        if seg_match:
-            base_name = seg_match.group(1)
-        else:
-            base_name = original_name
+        road1_name, road2_name = self._generate_split_names(road.name)
 
-        road1_name = f"{base_name} (seg 1/2)"
-        road2_name = f"{base_name} (seg 2/2)"
-
-        # Store original junction_id and junction links before we modify road1
+        # Store original junction links before modification
         original_junction_id = road.junction_id
         original_successor_junction_id = road.successor_junction_id
         original_predecessor_junction_id = road.predecessor_junction_id
 
-        # Create new road (road 2) with second segment
+        # Create road 2 (tail segment)
         road2 = Road(
             id=self.next_id('road'),
             name=road2_name,
@@ -744,24 +621,18 @@ class Project:
             lane_info=road.lane_info,
             lane_sections=sections_road2,
             speed_limit=road.speed_limit,
-            junction_id=None,  # Will be set below if needed
-            predecessor_id=road.id,  # Link to first road
+            junction_id=None,
+            predecessor_id=road.id,
             predecessor_contact="end",
-            successor_id=road.successor_id,  # Keep original successor
+            successor_id=road.successor_id,
             successor_contact=road.successor_contact,
-            # Road2 is the tail — gets original successor junction, no predecessor junction
             predecessor_junction_id=None,
             successor_junction_id=original_successor_junction_id
         )
 
-        # Update road 1 (original road)
+        # Update road 1 (head segment)
         road.name = road1_name
-        new_boundary_polylines = [
-            self.get_polyline(nid)
-            for nid in new_boundary_ids
-            if self.get_polyline(nid)
-        ]
-        new_boundary_id_set = {nb.id for nb in new_boundary_polylines}
+        new_boundary_id_set = set(new_boundary_ids)
         road.polyline_ids = [polyline_id] + [
             bid for bid in road.polyline_ids
             if bid != polyline_id and bid not in new_boundary_id_set
@@ -769,24 +640,99 @@ class Project:
         road.lane_sections = sections_road1
         road.successor_id = road2.id
         road.successor_contact = "start"
-        # Road1 is the head — keeps original predecessor junction, loses successor junction
         road.predecessor_junction_id = original_predecessor_junction_id
         road.successor_junction_id = None
 
-        # Add new road to project
         self.add_road(road2)
 
-        # Handle junction remapping
-        # If the original road was connected to a junction, we need to update the junction
-        # to point to road2 instead (since road2 now has the "end" that was connected)
         self._remap_junctions_after_road_split(
             road.id, road2.id, original_junction_id,
             successor_junction_id=original_successor_junction_id
         )
 
-        logger.info(f"Split road '{original_name}' into '{road1_name}' and '{road2_name}'")
-
+        logger.info(f"Split road '{road.name}' into '{road1_name}' and '{road2_name}'")
         return (road, road2)
+
+    def _split_centerline(self, centerline: Polyline, point_index: int) -> Polyline:
+        """Split a centerline at point_index, update original, return new polyline for road 2."""
+        from orbit.utils.geometry import split_polyline_at_index
+
+        pts1, pts2 = split_polyline_at_index(
+            centerline.points, point_index, duplicate_point=True
+        )
+        n = len(centerline.points)
+
+        def _split_array(arr):
+            if arr and len(arr) == n:
+                return list(arr[:point_index + 1]), list(arr[point_index:])
+            return None, None
+
+        geo1, geo2 = _split_array(centerline.geo_points)
+        elev1, elev2 = _split_array(centerline.elevations)
+        soff1, soff2 = _split_array(centerline.s_offsets)
+        osm1, osm2 = _split_array(centerline.osm_node_ids)
+
+        new_centerline = Polyline(
+            id=self.next_id('polyline'), points=pts2,
+            line_type=centerline.line_type, road_mark_type=centerline.road_mark_type
+        )
+        new_centerline.geo_points = geo2
+        new_centerline.elevations = elev2
+        new_centerline.s_offsets = soff2
+        new_centerline.osm_node_ids = osm2
+        new_centerline.geometry_segments = None
+        self.add_polyline(new_centerline)
+
+        centerline.points = pts1
+        centerline.geo_points = geo1
+        centerline.elevations = elev1
+        centerline.s_offsets = soff1
+        centerline.osm_node_ids = osm1
+        centerline.geometry_segments = None
+        return new_centerline
+
+    def _split_boundaries(self, road: Road, centerline_id: str,
+                          original_centerline_points: list,
+                          split_s: float) -> list:
+        """Split boundary polylines at the split s-coordinate. Returns new boundary IDs."""
+        from orbit.utils.geometry import split_boundary_at_centerline_s
+
+        new_boundary_ids = []
+        for boundary_id in road.polyline_ids:
+            if boundary_id == centerline_id:
+                continue
+            boundary = self.get_polyline(boundary_id)
+            if not boundary:
+                continue
+
+            result = split_boundary_at_centerline_s(
+                boundary.points, original_centerline_points, split_s
+            )
+            if result:
+                boundary_pts1, boundary_pts2 = result
+                new_boundary = Polyline(
+                    id=self.next_id('polyline'), points=boundary_pts2,
+                    line_type=boundary.line_type, road_mark_type=boundary.road_mark_type
+                )
+                new_boundary.geometry_segments = None
+                self.add_polyline(new_boundary)
+                new_boundary_ids.append(new_boundary.id)
+
+                boundary.points = boundary_pts1
+                boundary.geo_points = None
+                boundary.elevations = None
+                boundary.s_offsets = None
+                boundary.osm_node_ids = None
+                boundary.geometry_segments = None
+        return new_boundary_ids
+
+    @staticmethod
+    def _generate_split_names(original_name: str) -> Tuple[str, str]:
+        """Generate segment names for split roads."""
+        import re
+        seg_match = re.match(r'^(.*?)\s*\(seg \d+/\d+\)$', original_name)
+        base_name = seg_match.group(1) if seg_match else original_name
+        return f"{base_name} (seg 1/2)", f"{base_name} (seg 2/2)"
 
     def _remap_junctions_after_road_split(
         self,
@@ -833,13 +779,14 @@ class Project:
 
         for junction in self.junctions:
             # Skip junctions that don't reference this road at all
+            cr_roads = [r for r in self.roads if r.id in junction.connecting_road_ids]
             references_road = (
                 original_road_id in junction.connected_road_ids
                 or original_road_id in junction.entry_roads
                 or original_road_id in junction.exit_roads
-                or any(cr.predecessor_road_id == original_road_id
-                       or cr.successor_road_id == original_road_id
-                       for cr in junction.connecting_roads)
+                or any(cr.predecessor_id == original_road_id
+                       or cr.successor_id == original_road_id
+                       for cr in cr_roads)
             )
             if not references_road:
                 continue
@@ -878,13 +825,13 @@ class Project:
                 junction.exit_roads[idx] = new_road_id
                 remapped = True
 
-            # Update connecting_roads
-            for conn_road in junction.connecting_roads:
-                if conn_road.predecessor_road_id == original_road_id:
-                    conn_road.predecessor_road_id = new_road_id
+            # Update connecting roads (now in self.roads)
+            for conn_road in cr_roads:
+                if conn_road.predecessor_id == original_road_id:
+                    conn_road.predecessor_id = new_road_id
                     remapped = True
-                if conn_road.successor_road_id == original_road_id:
-                    conn_road.successor_road_id = new_road_id
+                if conn_road.successor_id == original_road_id:
+                    conn_road.successor_id = new_road_id
                     remapped = True
 
             # Update lane_connections
@@ -906,8 +853,7 @@ class Project:
             if remapped:
                 logger.info(f"Remapped junction '{junction.name}' to reference new road {new_road_id}")
 
-    @staticmethod
-    def _junction_at_road_end(junction, road_id: str) -> bool:
+    def _junction_at_road_end(self, junction, road_id: str) -> bool:
         """Check if a junction connects to the END of a road using contact points.
 
         Examines connecting road contact points to determine which end of the
@@ -917,20 +863,21 @@ class Project:
         If no connecting roads reference the road, returns False (conservative:
         don't remap when uncertain).
         """
-        for cr in junction.connecting_roads:
-            if cr.successor_road_id == road_id:
-                # contact_point_end tells which end of the successor road
+        cr_roads = [r for r in self.roads if r.id in junction.connecting_road_ids]
+        for cr in cr_roads:
+            if cr.successor_id == road_id:
+                # successor_contact tells which end of the successor road
                 # connects to this junction
-                if cr.contact_point_end == 'end':
+                if cr.successor_contact == 'end':
                     return True
-                elif cr.contact_point_end == 'start':
+                elif cr.successor_contact == 'start':
                     return False
-            if cr.predecessor_road_id == road_id:
-                # contact_point_start tells which end of the predecessor road
+            if cr.predecessor_id == road_id:
+                # predecessor_contact tells which end of the predecessor road
                 # connects to this junction
-                if cr.contact_point_start == 'end':
+                if cr.predecessor_contact == 'end':
                     return True
-                elif cr.contact_point_start == 'start':
+                elif cr.predecessor_contact == 'start':
                     return False
         return False
 
@@ -1140,13 +1087,14 @@ class Project:
                 junction.exit_roads[idx] = kept_road_id
                 remapped = True
 
-            # Update connecting_roads
-            for conn_road in junction.connecting_roads:
-                if conn_road.predecessor_road_id == deleted_road_id:
-                    conn_road.predecessor_road_id = kept_road_id
+            # Update connecting roads (now in self.roads)
+            cr_roads = [r for r in self.roads if r.id in junction.connecting_road_ids]
+            for conn_road in cr_roads:
+                if conn_road.predecessor_id == deleted_road_id:
+                    conn_road.predecessor_id = kept_road_id
                     remapped = True
-                if conn_road.successor_road_id == deleted_road_id:
-                    conn_road.successor_road_id = kept_road_id
+                if conn_road.successor_id == deleted_road_id:
+                    conn_road.successor_id = kept_road_id
                     remapped = True
 
             # Update lane_connections
@@ -1401,55 +1349,73 @@ class Project:
         """
         Find the road or connecting road closest to a given position.
 
-        Considers both regular roads (by centerline) and connecting roads (by path).
-        Connecting road IDs can be resolved with get_connecting_road().
+        Searches all roads (both regular and connecting) in a single pass.
 
         Args:
             position: (x, y) pixel coordinates
 
         Returns:
-            ID of the closest road or connecting road, or None if none exist
+            ID of the closest road, or None if none exist
         """
         min_distance = float('inf')
         closest_id = None
 
         for road in self.roads:
-            if not road.centerline_id:
-                continue
-            polyline = self.get_polyline(road.centerline_id)
-            if not polyline or not polyline.points:
-                continue
-            distance = self._point_to_polyline_distance(position, polyline.points)
+            if road.is_connecting_road:
+                # Connecting road: use inline path
+                path = road.inline_path
+                if not path or len(path) < 2:
+                    continue
+                distance = self._point_to_polyline_distance(position, path)
+            else:
+                # Regular road: use centerline polyline
+                if not road.centerline_id:
+                    continue
+                polyline = self.get_polyline(road.centerline_id)
+                if not polyline or not polyline.points:
+                    continue
+                distance = self._point_to_polyline_distance(position, polyline.points)
             if distance < min_distance:
                 min_distance = distance
                 closest_id = road.id
 
-        for junction in self.junctions:
-            for cr in junction.connecting_roads:
-                if len(cr.path) < 2:
-                    continue
-                distance = self._point_to_polyline_distance(position, cr.path)
-                if distance < min_distance:
-                    min_distance = distance
-                    closest_id = cr.id
-
         return closest_id
 
-    def get_connecting_road(self, cr_id: str):
+    def get_connecting_road(self, cr_id: str) -> Optional[Road]:
         """
-        Get a connecting road by ID, searching all junctions.
+        Get a connecting road by ID.
+
+        This is now just an alias for get_road() since connecting roads
+        are stored in the unified roads list.
 
         Args:
             cr_id: Connecting road ID
 
         Returns:
-            ConnectingRoad if found, None otherwise
+            Road if found and is a connecting road, None otherwise
         """
-        for junction in self.junctions:
-            for cr in junction.connecting_roads:
-                if cr.id == cr_id:
-                    return cr
+        road = self.get_road(cr_id)
+        if road and road.is_connecting_road:
+            return road
         return None
+
+    def get_connecting_roads_for_junction(self, junction_id: str) -> List[Road]:
+        """
+        Get all connecting roads belonging to a junction.
+
+        Args:
+            junction_id: Junction ID
+
+        Returns:
+            List of Road objects that are connecting roads for this junction
+        """
+        junction = self.get_junction(junction_id)
+        if not junction:
+            return []
+        return [
+            r for r in self.roads
+            if r.id in junction.connecting_road_ids and r.is_connecting_road
+        ]
 
     def _point_to_polyline_distance(self, point: Tuple[float, float],
                                     polyline_points: List[Tuple[float, float]]) -> float:
@@ -1551,6 +1517,7 @@ class Project:
             'enabled_sign_libraries': self.enabled_sign_libraries,
             'synthetic_canvas_width': self.synthetic_canvas_width,
             'synthetic_canvas_height': self.synthetic_canvas_height,
+            'transform_adjustment': self.transform_adjustment,
             'id_counters': {
                 'polyline': self._next_polyline_id,
                 'road': self._next_road_id,
@@ -1565,71 +1532,35 @@ class Project:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Project':
-        """
-        Create project from dictionary.
+        """Create project from dictionary with automatic backward-compatibility migration."""
+        _apply_version_migration(data)
 
-        Handles backward compatibility with older project versions.
-        Old projects (v0.2.x) will be automatically migrated to v0.3.0 format.
-        """
-        # Check version and perform migration if needed
-        metadata = data.get('metadata', {})
-        version = metadata.get('version', '0.1.0')
-
-        # Migration from old versions
-        if version.startswith('0.1') or version.startswith('0.2') or version.startswith('0.3'):
-            if not version.startswith('0.3'):
-                logger.info(f"Migrating project from version {version}...")
-                logger.info("Junctions will have empty connection lists.")
-                logger.info("Use 'Auto-Generate Connections' in junction dialogs to populate connections.")
-            # Junction.from_dict() handles backward compatibility automatically
-            # by providing empty lists for new fields (connecting_roads, lane_connections)
-            # Polyline.from_dict() handles osm_node_ids (optional field, defaults to None)
-            # UUID→integer ID migration is handled by _migrate_uuid_ids() after construction
-            metadata['version'] = _get_version()
-            data['metadata'] = metadata
-
-        image_path = data.get('image_path')
-        if image_path:
-            image_path = Path(image_path)
-
-        # Build opendrive_id lookup from raw data before deserialization.
-        # Old .orbit files may have opendrive_id fields that we want to prefer during migration.
-        odr_id_lookup: Dict[str, str] = {}
-        for collection_key in ('polylines', 'roads', 'junctions', 'signals', 'objects', 'parking_spaces'):
-            for item_data in data.get(collection_key, []):
-                item_id = item_data.get('id', '')
-                odr_id = item_data.get('opendrive_id')
-                if item_id and odr_id:
-                    odr_id_lookup[item_id] = odr_id
-
-        polylines = [Polyline.from_dict(p) for p in data.get('polylines', [])]
-        roads = [Road.from_dict(r) for r in data.get('roads', [])]
-        junctions = [Junction.from_dict(j) for j in data.get('junctions', [])]
-        junction_groups = [JunctionGroup.from_dict(jg) for jg in data.get('junction_groups', [])]
-        signals = [Signal.from_dict(s) for s in data.get('signals', [])]
-        objects = [RoadObject.from_dict(o) for o in data.get('objects', [])]
-        parking_spaces = [ParkingSpace.from_dict(p) for p in data.get('parking_spaces', [])]
-        control_points = [ControlPoint.from_dict(cp) for cp in data.get('control_points', [])]
+        odr_id_lookup = _build_odr_id_lookup(data)
+        roads, junctions_data = _deserialize_entities(data)
 
         project = cls(
-            image_path=image_path,
-            polylines=polylines,
+            image_path=Path(data['image_path']) if data.get('image_path') else None,
+            polylines=[Polyline.from_dict(p) for p in data.get('polylines', [])],
             roads=roads,
-            junctions=junctions,
-            junction_groups=junction_groups,
-            signals=signals,
-            objects=objects,
-            parking_spaces=parking_spaces,
-            control_points=control_points,
+            junctions=[Junction.from_dict(j) for j in junctions_data],
+            junction_groups=[JunctionGroup.from_dict(jg) for jg in data.get('junction_groups', [])],
+            signals=[Signal.from_dict(s) for s in data.get('signals', [])],
+            objects=[RoadObject.from_dict(o) for o in data.get('objects', [])],
+            parking_spaces=[ParkingSpace.from_dict(p) for p in data.get('parking_spaces', [])],
+            control_points=[ControlPoint.from_dict(cp) for cp in data.get('control_points', [])],
             right_hand_traffic=data.get('right_hand_traffic', True),
-            transform_method=data.get('transform_method', 'affine'),  # Default to affine for old projects
+            transform_method=data.get('transform_method', 'affine'),
             country_code=data.get('country_code', 'se'),
-            map_name=data.get('map_name', ''),  # Default to empty string for backward compatibility
-            openstreetmap_used=data.get('openstreetmap_used', False),  # Default to False
-            junction_offset_distance_meters=data.get('junction_offset_distance_meters', 8.0),  # Default to 8.0m
-            roundabout_ring_offset_distance_meters=data.get('roundabout_ring_offset_distance_meters',
-                data.get('roundabout_offset_distance_meters', 4.0)),  # Backward compat with old field name
-            roundabout_approach_offset_distance_meters=data.get('roundabout_approach_offset_distance_meters', 8.0),
+            map_name=data.get('map_name', ''),
+            openstreetmap_used=data.get('openstreetmap_used', False),
+            junction_offset_distance_meters=data.get('junction_offset_distance_meters', 8.0),
+            roundabout_ring_offset_distance_meters=data.get(
+                'roundabout_ring_offset_distance_meters',
+                data.get('roundabout_offset_distance_meters', 4.0)
+            ),
+            roundabout_approach_offset_distance_meters=data.get(
+                'roundabout_approach_offset_distance_meters', 8.0
+            ),
             georef_validation=data.get('georef_validation', {}),
             uncertainty_grid_cache=data.get('uncertainty_grid_cache'),
             uncertainty_grid_resolution=tuple(data.get('uncertainty_grid_resolution', [50, 50])),
@@ -1641,29 +1572,15 @@ class Project:
             imported_geo_reference=data.get('imported_geo_reference'),
             imported_origin_latitude=data.get('imported_origin_latitude'),
             imported_origin_longitude=data.get('imported_origin_longitude'),
-            enabled_sign_libraries=data.get('enabled_sign_libraries', ['se']),  # Default to Swedish library
+            enabled_sign_libraries=data.get('enabled_sign_libraries', ['se']),
             synthetic_canvas_width=data.get('synthetic_canvas_width'),
             synthetic_canvas_height=data.get('synthetic_canvas_height'),
+            transform_adjustment=data.get('transform_adjustment'),
             metadata=data.get('metadata', {})
         )
 
-        # Migrate UUID-based IDs to sequential integers if needed
         project._migrate_uuid_ids(odr_id_lookup)
-
-        # Restore ID counters from saved data, then sync to ensure correctness
-        id_counters = data.get('id_counters', {})
-        if id_counters:
-            project._next_polyline_id = id_counters.get('polyline', 1)
-            project._next_road_id = id_counters.get('road', 1)
-            project._next_junction_id = id_counters.get('junction', 1)
-            project._next_signal_id = id_counters.get('signal', 1)
-            project._next_object_id = id_counters.get('object', 1)
-            project._next_parking_id = id_counters.get('parking', 1)
-            project._next_lane_connection_id = id_counters.get('lane_connection', 1)
-            project._next_junction_group_id = id_counters.get('junction_group', 1)
-        # Always sync to ensure counters are >= max existing ID + 1
-        project._sync_id_counters()
-
+        _restore_id_counters(project, data)
         return project
 
     def save(self, file_path: Path) -> None:
@@ -1746,7 +1663,7 @@ class Project:
         road_ids = {r.id for r in self.roads}
 
         for junction in self.junctions:
-            cr_ids = {cr.id for cr in junction.connecting_roads}
+            cr_ids = set(junction.connecting_road_ids)
             before = len(junction.connected_road_ids)
             junction.connected_road_ids = [
                 rid for rid in junction.connected_road_ids
@@ -1826,3 +1743,68 @@ class Project:
         return (f"Project(polylines={len(self.polylines)}, roads={len(self.roads)}, "
                 f"junctions={len(self.junctions)}, signals={len(self.signals)}, "
                 f"objects={len(self.objects)}, control_points={len(self.control_points)})")
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers for Project.from_dict()
+# Defined after the class so Road/Junction are available at call time.
+# ---------------------------------------------------------------------------
+
+def _apply_version_migration(data: Dict[str, Any]) -> None:
+    """Update version metadata and log migration notice for old project files."""
+    metadata = data.get('metadata', {})
+    version = metadata.get('version', '0.1.0')
+    if version.startswith('0.1') or version.startswith('0.2') or version.startswith('0.3'):
+        if not version.startswith('0.3'):
+            logger.info(f"Migrating project from version {version}...")
+            logger.info("Junctions will have empty connection lists.")
+            logger.info("Use 'Auto-Generate Connections' in junction dialogs to populate connections.")
+        metadata['version'] = _get_version()
+        data['metadata'] = metadata
+
+
+def _build_odr_id_lookup(data: Dict[str, Any]) -> Dict[str, str]:
+    """Build {item_id: opendrive_id} mapping from raw project data."""
+    odr_id_lookup: Dict[str, str] = {}
+    for collection_key in ('polylines', 'roads', 'junctions', 'signals', 'objects', 'parking_spaces'):
+        for item_data in data.get(collection_key, []):
+            item_id = item_data.get('id', '')
+            odr_id = item_data.get('opendrive_id')
+            if item_id and odr_id:
+                odr_id_lookup[item_id] = odr_id
+    return odr_id_lookup
+
+
+def _deserialize_entities(data: Dict[str, Any]) -> Tuple[List[Road], List[Dict[str, Any]]]:
+    """Deserialize roads (including legacy connecting roads) and return (roads, junctions_data)."""
+    roads = [Road.from_dict(r) for r in data.get('roads', [])]
+
+    junctions_data = data.get('junctions', [])
+    for j_data in junctions_data:
+        legacy_crs = j_data.get('connecting_roads', [])
+        if legacy_crs and not j_data.get('connecting_road_ids'):
+            junction_id = j_data.get('id', '')
+            cr_ids = []
+            for cr_data in legacy_crs:
+                cr_road = Road.from_connecting_road_dict(cr_data, junction_id)
+                roads.append(cr_road)
+                cr_ids.append(cr_road.id)
+            j_data['connecting_road_ids'] = cr_ids
+            j_data.pop('connecting_roads', None)
+
+    return roads, junctions_data
+
+
+def _restore_id_counters(project: 'Project', data: Dict[str, Any]) -> None:
+    """Restore ID counters from saved data and sync to ensure correctness."""
+    id_counters = data.get('id_counters', {})
+    if id_counters:
+        project._next_polyline_id = id_counters.get('polyline', 1)
+        project._next_road_id = id_counters.get('road', 1)
+        project._next_junction_id = id_counters.get('junction', 1)
+        project._next_signal_id = id_counters.get('signal', 1)
+        project._next_object_id = id_counters.get('object', 1)
+        project._next_parking_id = id_counters.get('parking', 1)
+        project._next_lane_connection_id = id_counters.get('lane_connection', 1)
+        project._next_junction_group_id = id_counters.get('junction_group', 1)
+    project._sync_id_counters()

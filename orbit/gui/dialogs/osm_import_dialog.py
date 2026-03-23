@@ -137,7 +137,16 @@ class OSMImportDialog(BaseDialog):
         # Import junctions
         self.import_junctions_check = QCheckBox("Import junctions (split sections at intersections)")
         self.import_junctions_check.setToolTip("Detect intersections and create Junction objects")
+        self.import_junctions_check.toggled.connect(self._on_junctions_toggled)
         options_layout.addWidget(self.import_junctions_check)
+
+        # Auto-adjust junction geometry (only visible when junctions enabled)
+        self.auto_adjust_check = QCheckBox("Auto-adjust junction geometry")
+        self.auto_adjust_check.setToolTip(
+            "Adapt junction offset distances to avoid overlap at close junctions, "
+            "and fix sharp curves on connecting roads")
+        self.auto_adjust_check.setChecked(True)
+        options_layout.addWidget(self.auto_adjust_check)
 
         # Filter roads outside image
         self.filter_outside_image_check = QCheckBox("Filter roads outside image bounds")
@@ -378,7 +387,8 @@ Longitude: {min_lon:.6f}\u00b0 to {max_lon:.6f}\u00b0<br>
             'detail_level': self.get_detail_level(),
             'default_lane_width': self.get_default_lane_width(),
             'import_junctions': self.get_import_junctions(),
-            'filter_outside_image': self.get_filter_outside_image()
+            'filter_outside_image': self.get_filter_outside_image(),
+            'auto_adjust_junctions': self.auto_adjust_check.isChecked(),
         }
 
         if self.api_radio.isChecked():
@@ -386,6 +396,10 @@ Longitude: {min_lon:.6f}\u00b0 to {max_lon:.6f}\u00b0<br>
         else:
             file_path = self.file_path_edit.text()
             return ('file', file_path, options)
+
+    def _on_junctions_toggled(self, checked: bool):
+        """Show/hide junction sub-options based on import junctions checkbox."""
+        self.auto_adjust_check.setVisible(checked)
 
     def _on_source_changed(self):
         """Handle import source radio button change."""

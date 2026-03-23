@@ -15,11 +15,13 @@ from orbit.utils import CoordinateTransformer
 from orbit.utils.geometry import clip_polygon_to_bbox, clip_polyline_to_bbox
 from orbit.utils.logging_config import get_logger
 
-from .junction_analyzer import create_connecting_roads_from_patterns
+from .junction_analyzer import create_connecting_roads_from_patterns, evaluate_and_fix_connecting_roads
 from .osm_parser import OSMData, OSMParser
 from .osm_query import OverpassAPIClient, OverpassAPIError
 from .osm_to_orbit import (
     calculate_bbox_from_image,
+    clip_node_ids,
+    compute_adaptive_offsets,
     create_landuse_from_osm,
     create_object_from_osm,
     create_parking_from_osm,
@@ -66,6 +68,7 @@ class ImportOptions:
     timeout: int = 60  # seconds
     verbose: bool = False  # Print debug information
     filter_outside_image: bool = False  # Filter out roads with no endpoint inside image
+    auto_adjust_junctions: bool = True  # Adaptive offsets + CR curvature fix
 
 
 @dataclass
@@ -216,6 +219,244 @@ class OSMImporter:
         clipped = clip_polygon_to_bbox(lonlat_coords, (min_lon, min_lat, max_lon, max_lat))
         return [(lat, lon) for lon, lat in clipped]
 
+    def _clear_existing_data_for_replace_mode(self) -> None:
+        """Clear project/import state before REPLACE-mode import."""
+        self.project.roads.clear()
+        self.project.polylines.clear()
+        self.project.junctions.clear()
+        self.project.signals.clear()
+        self.project.objects.clear()
+        self.imported_way_ids.clear()
+        self.imported_node_ids.clear()
+
+    def _split_roads_at_junction_nodes_if_enabled(
+        self,
+        osm_data: OSMData,
+        options: ImportOptions,
+        roads: List[Road],
+        polylines_dict: Dict[str, Polyline],
+    ) -> tuple[List[Road], Dict[str, Polyline]]:
+        """Split roads at detected junction nodes when junction import is enabled."""
+        if not options.import_junctions:
+            return roads, polylines_dict
+
+        osm_to_orbit = self._get_osm_to_orbit_module()
+        detect_junction_node_ids_from_osm = osm_to_orbit.detect_junction_node_ids_from_osm
+        split_roads_at_junction_nodes = osm_to_orbit.split_roads_at_junction_nodes
+
+        junction_node_ids = detect_junction_node_ids_from_osm(osm_data, self.road_to_osm_way)
+        if options.verbose:
+            logger.debug("Detected %d junction nodes for road splitting", len(junction_node_ids))
+
+        if not junction_node_ids:
+            return roads, polylines_dict
+
+        roads, polylines_dict, updated_road_to_osm_way = split_roads_at_junction_nodes(
+            roads,
+            polylines_dict,
+            junction_node_ids,
+            road_to_osm_way=self.road_to_osm_way,
+            verbose=options.verbose,
+            osm_data=osm_data,
+            transformer=self.transformer,
+        )
+
+        # Keep project state aligned with split outputs.
+        self.project.roads = roads
+        self.project.polylines = list(polylines_dict.values())
+        self.project._sync_id_counters()
+
+        if updated_road_to_osm_way is not None:
+            self.road_to_osm_way = updated_road_to_osm_way
+
+        return roads, polylines_dict
+
+    def _get_osm_to_orbit_module(self):
+        """Load the osm_to_orbit module lazily."""
+        return importlib.import_module("orbit.import.osm_to_orbit")
+
+    def _get_junction_analyzer_module(self):
+        """Load the junction_analyzer module lazily."""
+        return importlib.import_module("orbit.import.junction_analyzer")
+
+    def _get_junction_analysis_functions(self):
+        """Load junction analysis functions used during OSM junction import."""
+        junction_analyzer_module = self._get_junction_analyzer_module()
+        return (
+            junction_analyzer_module.analyze_junction_geometry,
+            junction_analyzer_module.detect_connection_patterns,
+            junction_analyzer_module.filter_unlikely_connections,
+        )
+
+    def _process_turn_restrictions(self, osm_data: OSMData, junctions: List[Junction], options: ImportOptions) -> None:
+        """Apply OSM turn restrictions to detected junctions."""
+        if not junctions:
+            return
+
+        osm_to_orbit = self._get_osm_to_orbit_module()
+        restrictions_count = osm_to_orbit.process_turn_restrictions(
+            osm_data,
+            junctions,
+            self.road_to_osm_way,
+            verbose=options.verbose,
+        )
+        if options.verbose:
+            logger.debug("Processed %d turn restrictions from OSM relations", restrictions_count)
+
+    def _compute_offsets_and_merge_junctions(
+        self,
+        junctions: List[Junction],
+        polylines_dict: Dict[str, Polyline],
+        options: ImportOptions,
+        result: ImportResult,
+    ) -> tuple[List[Junction], Optional[Dict[str, tuple]], Dict[str, Road]]:
+        """Compute per-road offsets and merge very close junctions when enabled."""
+        roads_dict = {road.id: road for road in self.project.roads}
+        per_road_offsets = None
+
+        if not (options.auto_adjust_junctions and junctions):
+            return junctions, per_road_offsets, roads_dict
+
+        per_road_offsets, merged, merged_ids = compute_adaptive_offsets(
+            junctions=junctions,
+            roads=self.project.roads,
+            polylines_dict=polylines_dict,
+            base_offset=self.project.junction_offset_distance_meters,
+            transformer=self.transformer,
+        )
+        if not merged:
+            return junctions, per_road_offsets, roads_dict
+
+        for mid in merged_ids:
+            self.project.remove_junction(mid)
+        junctions = [junction for junction in junctions if junction.id not in merged_ids]
+        for merged_junction in merged:
+            self.project.add_junction(merged_junction)
+            junctions.append(merged_junction)
+            result.junctions_imported += 1
+
+        logger.debug("Merged %d junction pairs into %d junctions", len(merged_ids), len(merged))
+        roads_dict = {road.id: road for road in self.project.roads}
+        return junctions, per_road_offsets, roads_dict
+
+    def _build_junction_patterns(
+        self,
+        junctions: List[Junction],
+        roads_dict: Dict[str, Road],
+        polylines_dict: Dict[str, Polyline],
+        options: ImportOptions,
+        analyze_junction_geometry,
+        detect_connection_patterns,
+        filter_unlikely_connections,
+    ) -> Dict[str, list]:
+        """Build connection pattern candidates for non-virtual junctions."""
+        junction_patterns: Dict[str, list] = {}
+        for junction in junctions:
+            if junction.junction_type == "virtual":
+                if options.verbose:
+                    logger.debug("Skipping virtual junction '%s' (path crossing)", junction.name)
+                continue
+
+            geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
+            patterns = detect_connection_patterns(geometry_info)
+            junction_patterns[junction.id] = filter_unlikely_connections(patterns, roads_dict)
+
+        return junction_patterns
+
+    def _offset_roads_for_junction_connections(
+        self,
+        junctions: List[Junction],
+        polylines_dict: Dict[str, Polyline],
+        options: ImportOptions,
+        per_road_offsets: Optional[Dict[str, tuple]],
+    ) -> None:
+        """Offset road endpoints from junction centers before creating connecting roads."""
+        if not junctions:
+            return
+
+        self._get_osm_to_orbit_module().offset_road_endpoints_from_junctions(
+            roads=self.project.roads,
+            polylines_dict=polylines_dict,
+            junctions=junctions,
+            offset_distance_meters=self.project.junction_offset_distance_meters,
+            transformer=self.transformer,
+            verbose=options.verbose,
+            per_road_offsets=per_road_offsets,
+        )
+        self.project.polylines = list(polylines_dict.values())
+
+    def _generate_connecting_roads_for_junctions(
+        self,
+        junctions: List[Junction],
+        junction_patterns: Dict[str, list],
+        options: ImportOptions,
+        analyze_junction_geometry,
+    ) -> None:
+        """Generate connecting roads for regular junctions using precomputed patterns."""
+        if junctions and options.verbose:
+            logger.debug("Generating connections for %d junctions...", len(junctions))
+
+        roads_dict = {road.id: road for road in self.project.roads}
+        polylines_dict = {polyline.id: polyline for polyline in self.project.polylines}
+
+        for junction in junctions:
+            if junction.junction_type == "virtual":
+                continue
+
+            patterns = junction_patterns.get(junction.id, [])
+            geometry_info_updated = analyze_junction_geometry(
+                junction,
+                roads_dict,
+                polylines_dict,
+                skip_distance_check=True,
+            )
+            endpoint_lookup = {endpoint.road_id: endpoint for endpoint in geometry_info_updated["endpoints"]}
+
+            create_connecting_roads_from_patterns(
+                junction,
+                patterns,
+                endpoint_lookup,
+                self.transformer,
+                project=self.project,
+            )
+
+            if options.auto_adjust_junctions:
+                evaluate_and_fix_connecting_roads(junction, self.project, self.transformer)
+
+            if options.verbose:
+                summary = junction.get_connection_summary()
+                logger.debug(
+                    "Generated %d connections for '%s': %d straight, %d left, %d right",
+                    summary["total_connections"],
+                    junction.name,
+                    summary["straight"],
+                    summary["left"],
+                    summary["right"],
+                )
+
+    def _import_virtual_path_crossings(
+        self,
+        osm_data: OSMData,
+        options: ImportOptions,
+        result: ImportResult,
+    ) -> List[Junction]:
+        """Import path crossings as virtual junction markers."""
+        path_crossings = detect_path_crossings_from_osm(
+            osm_data,
+            self.road_to_osm_way,
+            self.transformer,
+        )
+        if options.verbose:
+            logger.debug("Detected %d path crossings (virtual junctions)", len(path_crossings))
+
+        for crossing in path_crossings:
+            self.project.add_junction(crossing)
+            result.junctions_imported += 1
+            if options.verbose:
+                logger.debug("Added virtual junction '%s' at %s", crossing.name, crossing.center_point)
+
+        return path_crossings
+
     def import_osm_data(self, options: ImportOptions = None,
                         bbox: Optional[tuple] = None) -> ImportResult:
         """
@@ -300,103 +541,7 @@ class OSMImporter:
             result.error_message = f"Failed to parse OSM data: {e}"
             return result
 
-        # Step 4: Handle import mode
-        if options.import_mode == ImportMode.REPLACE:
-            # Clear existing data
-            self.project.roads.clear()
-            self.project.polylines.clear()
-            self.project.junctions.clear()
-            self.project.signals.clear()
-            self.project.objects.clear()
-            self.imported_way_ids.clear()
-            self.imported_node_ids.clear()
-
-        # Step 5: Import roads
-        roads, polylines_dict = self._import_roads(osm_data, options, result)
-
-        # Step 6: Detect junction node IDs (for road splitting)
-        if options.import_junctions:
-            import importlib
-            osm_to_orbit = importlib.import_module('orbit.import.osm_to_orbit')
-            detect_junction_node_ids_from_osm = osm_to_orbit.detect_junction_node_ids_from_osm
-            split_roads_at_junction_nodes = osm_to_orbit.split_roads_at_junction_nodes
-
-            junction_node_ids = detect_junction_node_ids_from_osm(osm_data, self.road_to_osm_way)
-
-            if options.verbose:
-                logger.debug("Detected %d junction nodes for road splitting", len(junction_node_ids))
-
-            # Step 7: Split roads at junction nodes (BEFORE linking!)
-            if junction_node_ids:
-                roads, polylines_dict, updated_road_to_osm_way = split_roads_at_junction_nodes(
-                    roads, polylines_dict, junction_node_ids,
-                    road_to_osm_way=self.road_to_osm_way,
-                    verbose=options.verbose
-                )
-
-                # Update project with split roads and polylines
-                self.project.roads = roads
-                self.project.polylines = list(polylines_dict.values())
-
-                # Sync ID counters so subsequent add_road/add_polyline calls
-                # don't collide with IDs assigned by the split function
-                self.project._sync_id_counters()
-
-                # Update road_to_osm_way mapping with split roads
-                if updated_road_to_osm_way is not None:
-                    self.road_to_osm_way = updated_road_to_osm_way
-
-        # Step 7b: Import roundabouts (after road splitting, before junction import)
-        self._import_roundabouts(osm_data, options, result, roads, polylines_dict)
-
-        # Step 8: Detect and set predecessor/successor links (after splitting!)
-        detect_road_links(roads, polylines_dict, tolerance=5.0)
-
-        # Step 9: Import junctions and generate connections
-        if options.import_junctions:
-            self._import_junctions_from_osm(osm_data, options, result)
-
-        # Step 8: Import signals (moderate and full)
-        self._import_signals(osm_data, options, result)
-
-        # Step 8a: Auto-attach signals to roads based on OSM node membership
-        self._attach_signals_to_roads(osm_data, options)
-
-        # Step 9: Import objects (full only)
-        if options.detail_level == DetailLevel.FULL:
-            self._import_objects(osm_data, options, result)
-
-        # Step 9a: Import land use areas (full only)
-        if options.detail_level == DetailLevel.FULL:
-            self._import_landuse(osm_data, options, result)
-
-        # Step 9b: Auto-attach objects to nearest roads
-        if options.detail_level == DetailLevel.FULL:
-            self._attach_objects_to_roads(options)
-
-        # Step 9c: Import parking facilities (full only)
-        if options.detail_level == DetailLevel.FULL:
-            self._import_parking(osm_data, options, result)
-
-        # Step 10: Clear stale cross-junction road links
-        # Roads in junctions should not have predecessor/successor pointing to each other
-        self.project.clear_cross_junction_road_links()
-
-        # Assign IDs to any entities created without explicit IDs
-        self.project.assign_missing_ids()
-
-        # Link lane connections to connecting roads (must happen after ID assignment)
-        self.project.link_lane_connections_to_connecting_roads()
-
-        # Mark success if we imported anything
-        result.success = (
-            result.roads_imported > 0 or
-            result.signals_imported > 0 or
-            result.objects_imported > 0 or
-            result.parking_imported > 0
-        )
-
-        return result
+        return self._import_from_osm_data(osm_data, options, bbox=bbox)
 
     def _import_from_osm_data(self, osm_data: OSMData, options: ImportOptions,
                              bbox: Optional[tuple] = None) -> ImportResult:
@@ -421,49 +566,15 @@ class OSMImporter:
 
         # Step 1: Handle import mode
         if options.import_mode == ImportMode.REPLACE:
-            # Clear existing data
-            self.project.roads.clear()
-            self.project.polylines.clear()
-            self.project.junctions.clear()
-            self.project.signals.clear()
-            self.project.objects.clear()
-            self.imported_way_ids.clear()
-            self.imported_node_ids.clear()
+            self._clear_existing_data_for_replace_mode()
 
         # Step 2: Import roads
         roads, polylines_dict = self._import_roads(osm_data, options, result)
 
         # Step 3: Detect junction node IDs (for road splitting)
-        if options.import_junctions:
-            import importlib
-            osm_to_orbit = importlib.import_module('orbit.import.osm_to_orbit')
-            detect_junction_node_ids_from_osm = osm_to_orbit.detect_junction_node_ids_from_osm
-            split_roads_at_junction_nodes = osm_to_orbit.split_roads_at_junction_nodes
-
-            junction_node_ids = detect_junction_node_ids_from_osm(osm_data, self.road_to_osm_way)
-
-            if options.verbose:
-                logger.debug("Detected %d junction nodes for road splitting", len(junction_node_ids))
-
-            # Step 4: Split roads at junction nodes (BEFORE linking!)
-            if junction_node_ids:
-                roads, polylines_dict, updated_road_to_osm_way = split_roads_at_junction_nodes(
-                    roads, polylines_dict, junction_node_ids,
-                    road_to_osm_way=self.road_to_osm_way,
-                    verbose=options.verbose
-                )
-
-                # Update project with split roads and polylines
-                self.project.roads = roads
-                self.project.polylines = list(polylines_dict.values())
-
-                # Sync ID counters so subsequent add_road/add_polyline calls
-                # don't collide with IDs assigned by the split function
-                self.project._sync_id_counters()
-
-                # Update road_to_osm_way mapping with split roads
-                if updated_road_to_osm_way is not None:
-                    self.road_to_osm_way = updated_road_to_osm_way
+        roads, polylines_dict = self._split_roads_at_junction_nodes_if_enabled(
+            osm_data, options, roads, polylines_dict
+        )
 
         # Step 4b: Import roundabouts (after road splitting, before junction import)
         self._import_roundabouts(osm_data, options, result, roads, polylines_dict)
@@ -550,16 +661,19 @@ class OSMImporter:
             # Clip road geometry to image geo bounds to prevent homography
             # extrapolation artifacts far from control points
             if self._clip_geo_bbox and osm_way.resolved_coords:
-                original_len = len(osm_way.resolved_coords)
+                original_coords = osm_way.resolved_coords
                 osm_way.resolved_coords = self._clip_resolved_coords(
-                    osm_way.resolved_coords
+                    original_coords
                 )
                 if len(osm_way.resolved_coords) < 2:
                     continue
-                # If clipping changed the geometry, invalidate node IDs
-                # (interpolated boundary points have no OSM node)
-                if len(osm_way.resolved_coords) != original_len:
-                    osm_way.nodes = []
+                # Update node IDs to match clipped coords: keep IDs for
+                # original points that survived, use None for interpolated
+                # boundary points inserted by clipping
+                if len(osm_way.resolved_coords) != len(original_coords) and osm_way.nodes:
+                    osm_way.nodes = clip_node_ids(
+                        original_coords, osm_way.nodes,
+                        osm_way.resolved_coords)
 
             road_result = create_road_from_osm(
                 osm_way,
@@ -758,11 +872,12 @@ class OSMImporter:
                     approach_roads=approach_roads,
                     polylines_dict=polylines_dict,
                     default_lane_width=options.default_lane_width,
-                    verbose=options.verbose
+                    verbose=options.verbose,
+                    project=self.project
                 )
 
                 if options.verbose:
-                    total_connectors = sum(len(j.connecting_roads) for j in roundabout_junctions)
+                    total_connectors = sum(len(j.connecting_road_ids) for j in roundabout_junctions)
                     logger.debug("  Generated %d connecting road(s)", total_connectors)
 
                 # Mark as imported
@@ -802,128 +917,48 @@ class OSMImporter:
                     junction.name, junction.center_point, len(junction.connected_road_ids)
                 )
 
-        # IMPORTANT ORDER: Analyze connections BEFORE offsetting endpoints
-        # This way we detect which roads connect while they're still at the junction center
-
-        roads_dict = {road.id: road for road in self.project.roads}
-
-        # Step 1: Analyze junction geometry and detect connection patterns (before offsetting)
+        # IMPORTANT ORDER: analyze connection patterns before endpoint offsetting.
         if junctions and options.verbose:
             logger.debug("Analyzing geometry for %d junctions before offsetting...", len(junctions))
 
-        # Import junction_analyzer to access analysis functions
-
-        # Process OSM turn restriction relations
-        if junctions:
-            osm_to_orbit = importlib.import_module('orbit.import.osm_to_orbit')
-            process_turn_restrictions = osm_to_orbit.process_turn_restrictions
-            restrictions_count = process_turn_restrictions(
-                osm_data,
-                junctions,
-                self.road_to_osm_way,
-                verbose=options.verbose
-            )
-            if options.verbose:
-                logger.debug("Processed %d turn restrictions from OSM relations", restrictions_count)
-        junction_analyzer_module = importlib.import_module('orbit.import.junction_analyzer')
-        analyze_junction_geometry = junction_analyzer_module.analyze_junction_geometry
-        detect_connection_patterns = junction_analyzer_module.detect_connection_patterns
-        filter_unlikely_connections = junction_analyzer_module.filter_unlikely_connections
-
-        # Store geometry info and patterns for each junction (before offsetting)
-        # Skip virtual junctions (path crossings) as they don't need connecting roads
-        junction_patterns = {}
-        for junction in junctions:
-            # Skip virtual junctions (path crossings) - no connecting roads needed
-            if junction.junction_type == "virtual":
-                if options.verbose:
-                    logger.debug("Skipping virtual junction '%s' (path crossing)", junction.name)
-                continue
-
-            geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
-            patterns = detect_connection_patterns(geometry_info)
-            patterns = filter_unlikely_connections(patterns, roads_dict)
-            junction_patterns[junction.id] = patterns
-
-        # Step 2: Offset road endpoints from junctions to create space for connecting roads
-        if junctions:
-            osm_to_orbit = importlib.import_module('orbit.import.osm_to_orbit')
-            offset_road_endpoints_from_junctions = osm_to_orbit.offset_road_endpoints_from_junctions
-
-            offset_road_endpoints_from_junctions(
-                roads=self.project.roads,
-                polylines_dict=polylines_dict,
-                junctions=junctions,
-                offset_distance_meters=self.project.junction_offset_distance_meters,
-                transformer=self.transformer,
-                verbose=options.verbose
-            )
-
-            # Update project polylines with modified endpoints
-            self.project.polylines = list(polylines_dict.values())
-
-        # Step 3: Generate connecting roads using pre-detected patterns but with updated (offset) positions
-        if junctions and options.verbose:
-            logger.debug("Generating connections for %d junctions...", len(junctions))
-
-        # Refresh dicts after offset
-        roads_dict = {road.id: road for road in self.project.roads}
-        polylines_dict = {p.id: p for p in self.project.polylines}
-
-        for junction in junctions:
-            # Skip virtual junctions (path crossings) - no connecting roads generated
-            if junction.junction_type == "virtual":
-                continue
-
-            # Use the pre-detected patterns from before offsetting
-            patterns = junction_patterns.get(junction.id, [])
-
-            # Re-analyze geometry to get UPDATED endpoint positions (after offset)
-            # Skip distance check since roads have been offset from junction center
-            geometry_info_updated = analyze_junction_geometry(
-                junction, roads_dict, polylines_dict,
-                skip_distance_check=True,
-            )
-
-            # Create endpoint lookup by road_id for quick access
-            endpoint_lookup = {ep.road_id: ep for ep in geometry_info_updated['endpoints']}
-
-            # Generate connecting roads using patterns from BEFORE offset but positions from AFTER offset
-            # This uses the shared function which includes pair detection for bidirectional roads
-            # Pass transformer for geo-first path generation when geo coords are available
-            create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup, self.transformer)
-
-            if options.verbose:
-                summary = junction.get_connection_summary()
-                logger.debug(
-                    "Generated %d connections for '%s': %d straight, %d left, %d right",
-                    summary['total_connections'], junction.name,
-                    summary['straight'], summary['left'], summary['right']
-                )
-
-        # Detect virtual junctions for path crossings
-        path_crossings = detect_path_crossings_from_osm(
-            osm_data,
-            self.road_to_osm_way,
-            self.transformer
+        self._process_turn_restrictions(osm_data, junctions, options)
+        analyze_junction_geometry, detect_connection_patterns, filter_unlikely_connections = (
+            self._get_junction_analysis_functions()
+        )
+        junctions, per_road_offsets, roads_dict = self._compute_offsets_and_merge_junctions(
+            junctions, polylines_dict, options, result
+        )
+        junction_patterns = self._build_junction_patterns(
+            junctions,
+            roads_dict,
+            polylines_dict,
+            options,
+            analyze_junction_geometry,
+            detect_connection_patterns,
+            filter_unlikely_connections,
+        )
+        self._offset_roads_for_junction_connections(
+            junctions,
+            polylines_dict,
+            options,
+            per_road_offsets,
+        )
+        self._generate_connecting_roads_for_junctions(
+            junctions,
+            junction_patterns,
+            options,
+            analyze_junction_geometry,
         )
 
-        if options.verbose:
-            logger.debug("Detected %d path crossings (virtual junctions)", len(path_crossings))
+        # Detect virtual junctions for path crossings.
+        path_crossings = self._import_virtual_path_crossings(
+            osm_data,
+            options,
+            result,
+        )
 
-        for crossing in path_crossings:
-            self.project.add_junction(crossing)
-            result.junctions_imported += 1
-            if options.verbose:
-                logger.debug("Added virtual junction '%s' at %s", crossing.name, crossing.center_point)
-
-        # NOTE: Virtual junctions (path crossings) do NOT get connecting roads.
-        # They are visual markers only, representing where paths cross roads without
-        # actual traffic connections (e.g., pedestrian path over a road).
-
-        # Return both regular junctions and path crossings
-        all_junctions = junctions + path_crossings
-        return all_junctions
+        # Virtual junctions (path crossings) are markers only and do not get connecting roads.
+        return junctions + path_crossings
 
     def _import_junctions(self, roads: List[Road], polylines_dict: dict,
                          options: ImportOptions, result: ImportResult) -> List[Junction]:

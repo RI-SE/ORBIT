@@ -9,7 +9,6 @@ import math
 from typing import Dict, List, Optional, Tuple
 
 from orbit.models import Junction, Project, Road
-from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.lane import Lane
 from orbit.models.lane import LaneType as LaneTypeEnum
 from orbit.models.lane_connection import LaneConnection
@@ -129,42 +128,9 @@ def create_roundabout_from_params(
 
         return created_roads, created_junctions, created_polylines
 
-    # Find connection points for each approach road
-    connection_indices = []
-    for road_id in approach_road_ids:
-        road = approach_roads.get(road_id)
-        if not road or not road.centerline_id:
-            continue
-
-        polyline = polylines.get(road.centerline_id) if polylines else None
-        if not polyline or len(polyline.points) < 2:
-            continue
-
-        # Check which end is closer to roundabout
-        start_dist = math.sqrt(
-            (polyline.points[0][0] - center[0])**2 +
-            (polyline.points[0][1] - center[1])**2
-        )
-        end_dist = math.sqrt(
-            (polyline.points[-1][0] - center[0])**2 +
-            (polyline.points[-1][1] - center[1])**2
-        )
-
-        if end_dist < start_dist:
-            approach_point = polyline.points[-1]
-        else:
-            approach_point = polyline.points[0]
-
-        # Find nearest ring point
-        ring_idx = find_nearest_ring_point(ring_points, approach_point)
-        connection_indices.append({
-            'ring_index': ring_idx,
-            'road_id': road_id,
-            'connects_at_end': end_dist < start_dist
-        })
-
-    # Sort connection points by ring index
-    connection_indices.sort(key=lambda x: x['ring_index'])
+    connection_indices = _find_connection_indices(
+        approach_road_ids, approach_roads, polylines, center, ring_points
+    )
 
     # If fewer than 2 connections, create single ring road
     if len(connection_indices) < 2:
@@ -179,105 +145,15 @@ def create_roundabout_from_params(
 
         return created_roads, created_junctions, created_polylines
 
-    # Create ring segments between connection points
-    n_connections = len(connection_indices)
-    ring_segments = []
-
-    for i in range(n_connections):
-        start_conn = connection_indices[i]
-        end_conn = connection_indices[(i + 1) % n_connections]
-
-        start_idx = start_conn['ring_index']
-        end_idx = end_conn['ring_index']
-
-        # Extract segment points (handle wraparound)
-        if end_idx <= start_idx:
-            segment_points = ring_points[start_idx:] + ring_points[:end_idx + 1]
-        else:
-            segment_points = ring_points[start_idx:end_idx + 1]
-
-        if len(segment_points) < 2:
-            continue
-
-        # Create polyline
-        polyline = Polyline(
-            id=project.next_id('polyline'),
-            points=list(segment_points),
-            line_type=LineType.CENTERLINE,
-            road_mark_type=RoadMarkType.SOLID,
-            color=(255, 165, 0)  # Orange
-        )
-
-        # Create road
-        road = Road(
-            id=project.next_id('road'),
-            name=f"Roundabout Ring {i + 1}",
-            road_type=RoadType.TOWN,
-            centerline_id=polyline.id
-        )
-        road.add_polyline(polyline.id)
-
-        # Configure lanes
-        road.lane_info = LaneInfo(
-            left_count=0,
-            right_count=lane_count,
-            lane_width=lane_width
-        )
-
-        # Create lane section
-        section = _create_lane_section(lane_count, lane_width, len(segment_points))
-        road.lane_sections = [section]
-
-        ring_segments.append((road, polyline))
-        created_roads.append(road)
-        created_polylines.append(polyline)
-
-    # Link ring segments
-    for i in range(len(ring_segments)):
-        road = ring_segments[i][0]
-        prev_road = ring_segments[(i - 1) % len(ring_segments)][0]
-        next_road = ring_segments[(i + 1) % len(ring_segments)][0]
-
-        road.predecessor_id = prev_road.id
-        road.predecessor_contact = "end"
-        road.successor_id = next_road.id
-        road.successor_contact = "start"
-
-    # Create junctions at each connection point
-    for i, conn in enumerate(connection_indices):
-        incoming_ring = ring_segments[(i - 1) % len(ring_segments)][0]
-        outgoing_ring = ring_segments[i][0]
-
-        # Get position from ring point
-        position = ring_points[conn['ring_index']]
-
-        # Create junction
-        junction = Junction(
-            id=project.next_id('junction'),
-            name=f"Roundabout Entry {i + 1}",
-            center_point=position,
-            connected_road_ids=[incoming_ring.id, outgoing_ring.id, conn['road_id']]
-        )
-
-        # Configure as roundabout junction
-        junction.is_roundabout = True
-        junction.roundabout_center = center
-        junction.roundabout_radius = radius
-        junction.roundabout_lane_count = lane_count
-        junction.roundabout_clockwise = clockwise
-
-        junction.entry_roads = [conn['road_id']]
-        junction.exit_roads = [conn['road_id']]
-
-        # Create connecting roads
-        _create_junction_connectors(
-            junction, incoming_ring, outgoing_ring,
-            ring_segments[(i - 1) % len(ring_segments)][1],
-            ring_segments[i][1],
-            center, clockwise, lane_count, lane_width, project
-        )
-
-        created_junctions.append(junction)
+    ring_segments = _create_ring_segments(
+        connection_indices, ring_points, lane_count, lane_width, project,
+        created_roads, created_polylines
+    )
+    _link_ring_segments(ring_segments)
+    _create_entry_junctions(
+        connection_indices, ring_segments, ring_points, center, radius,
+        lane_count, lane_width, clockwise, project, created_junctions
+    )
 
     # Add all to project
     for road in created_roads:
@@ -290,6 +166,128 @@ def create_roundabout_from_params(
         project.add_junction(junction)
 
     return created_roads, created_junctions, created_polylines
+
+
+def _find_connection_indices(approach_road_ids, approach_roads, polylines, center, ring_points):
+    """Find ring connection points for each approach road, sorted by ring index."""
+    connection_indices = []
+    for road_id in approach_road_ids:
+        road = approach_roads.get(road_id)
+        if not road or not road.centerline_id:
+            continue
+
+        polyline = polylines.get(road.centerline_id) if polylines else None
+        if not polyline or len(polyline.points) < 2:
+            continue
+
+        start_dist = math.sqrt(
+            (polyline.points[0][0] - center[0])**2 +
+            (polyline.points[0][1] - center[1])**2
+        )
+        end_dist = math.sqrt(
+            (polyline.points[-1][0] - center[0])**2 +
+            (polyline.points[-1][1] - center[1])**2
+        )
+
+        approach_point = polyline.points[-1] if end_dist < start_dist else polyline.points[0]
+        ring_idx = find_nearest_ring_point(ring_points, approach_point)
+        connection_indices.append({
+            'ring_index': ring_idx,
+            'road_id': road_id,
+            'connects_at_end': end_dist < start_dist
+        })
+
+    connection_indices.sort(key=lambda x: x['ring_index'])
+    return connection_indices
+
+
+def _create_ring_segments(
+    connection_indices, ring_points, lane_count, lane_width, project,
+    created_roads, created_polylines
+):
+    """Create ring road segments between connection points."""
+    n_connections = len(connection_indices)
+    ring_segments = []
+
+    for i in range(n_connections):
+        start_idx = connection_indices[i]['ring_index']
+        end_idx = connection_indices[(i + 1) % n_connections]['ring_index']
+
+        if end_idx <= start_idx:
+            segment_points = ring_points[start_idx:] + ring_points[:end_idx + 1]
+        else:
+            segment_points = ring_points[start_idx:end_idx + 1]
+
+        if len(segment_points) < 2:
+            continue
+
+        polyline = Polyline(
+            id=project.next_id('polyline'),
+            points=list(segment_points),
+            line_type=LineType.CENTERLINE,
+            road_mark_type=RoadMarkType.SOLID,
+            color=(255, 165, 0)
+        )
+        road = Road(
+            id=project.next_id('road'),
+            name=f"Roundabout Ring {i + 1}",
+            road_type=RoadType.TOWN,
+            centerline_id=polyline.id
+        )
+        road.add_polyline(polyline.id)
+        road.lane_info = LaneInfo(
+            left_count=0, right_count=lane_count, lane_width=lane_width
+        )
+        road.lane_sections = [_create_lane_section(lane_count, lane_width, len(segment_points))]
+
+        ring_segments.append((road, polyline))
+        created_roads.append(road)
+        created_polylines.append(polyline)
+
+    return ring_segments
+
+
+def _link_ring_segments(ring_segments):
+    """Set predecessor/successor links between ring segments in a loop."""
+    for i in range(len(ring_segments)):
+        road = ring_segments[i][0]
+        road.predecessor_id = ring_segments[(i - 1) % len(ring_segments)][0].id
+        road.predecessor_contact = "end"
+        road.successor_id = ring_segments[(i + 1) % len(ring_segments)][0].id
+        road.successor_contact = "start"
+
+
+def _create_entry_junctions(
+    connection_indices, ring_segments, ring_points, center, radius,
+    lane_count, lane_width, clockwise, project, created_junctions
+):
+    """Create roundabout entry junctions at each connection point."""
+    for i, conn in enumerate(connection_indices):
+        incoming_ring = ring_segments[(i - 1) % len(ring_segments)][0]
+        outgoing_ring = ring_segments[i][0]
+        position = ring_points[conn['ring_index']]
+
+        junction = Junction(
+            id=project.next_id('junction'),
+            name=f"Roundabout Entry {i + 1}",
+            center_point=position,
+            connected_road_ids=[incoming_ring.id, outgoing_ring.id, conn['road_id']]
+        )
+        junction.is_roundabout = True
+        junction.roundabout_center = center
+        junction.roundabout_radius = radius
+        junction.roundabout_lane_count = lane_count
+        junction.roundabout_clockwise = clockwise
+        junction.entry_roads = [conn['road_id']]
+        junction.exit_roads = [conn['road_id']]
+
+        _create_junction_connectors(
+            junction, incoming_ring, outgoing_ring,
+            ring_segments[(i - 1) % len(ring_segments)][1],
+            ring_segments[i][1],
+            center, clockwise, lane_count, lane_width, project
+        )
+        created_junctions.append(junction)
 
 
 def _create_single_ring_road(
@@ -382,19 +380,23 @@ def _create_junction_connectors(
             incoming_end, outgoing_start, center, clockwise, 6
         )
 
-        through_connector = ConnectingRoad(
+        through_connector = Road(
             id=project.next_id('connecting_road') if project else "",
-            path=through_path,
-            lane_count_left=0,
-            lane_count_right=lane_count,
-            lane_width=lane_width,
-            predecessor_road_id=incoming_ring.id,
-            successor_road_id=outgoing_ring.id,
-            contact_point_start="end",
-            contact_point_end="start"
+            name=f"CR {junction.id}",
+            junction_id=junction.id,
+            inline_path=through_path,
+            cr_lane_count_left=0,
+            cr_lane_count_right=lane_count,
+            lane_info=LaneInfo(left_count=0, right_count=lane_count, lane_width=lane_width),
+            predecessor_id=incoming_ring.id,
+            successor_id=outgoing_ring.id,
+            predecessor_contact="end",
+            successor_contact="start",
         )
-        through_connector.ensure_lanes_initialized()
-        junction.add_connecting_road(through_connector)
+        through_connector.ensure_cr_lanes_initialized()
+        if project:
+            project.add_road(through_connector)
+        junction.add_connecting_road(through_connector.id)
 
         # Lane connections
         for i in range(1, lane_count + 1):

@@ -85,7 +85,7 @@ class SignalBuilder:
         Create signals element for a connecting road.
 
         Args:
-            connecting_road: ConnectingRoad object
+            connecting_road: Road object (with junction_id set)
             signals: All signals in the project
             path_pixel: Connecting road path in pixel coordinates
             path_meters: Connecting road path in metric coordinates

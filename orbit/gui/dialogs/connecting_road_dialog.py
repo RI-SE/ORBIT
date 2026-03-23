@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 )
 
 from orbit.models import Project
-from orbit.models.connecting_road import ConnectingRoad
+from orbit.models.road import Road
 from orbit.utils.geometry import generate_simple_connection_path
 
 from .base_dialog import BaseDialog
@@ -27,7 +27,7 @@ from .base_dialog import BaseDialog
 class ConnectingRoadDialog(BaseDialog):
     """Dialog for editing connecting road properties."""
 
-    def __init__(self, connecting_road: ConnectingRoad, project: Optional[Project] = None, parent=None):
+    def __init__(self, connecting_road: Road, project: Optional[Project] = None, parent=None):
         super().__init__("Connecting Road Properties", parent, min_width=500)
 
         self.connecting_road = connecting_road
@@ -42,10 +42,10 @@ class ConnectingRoadDialog(BaseDialog):
 
         # Get road names with IDs
         if self.project:
-            pred_road = self.project.get_road(self.connecting_road.predecessor_road_id)
-            succ_road = self.project.get_road(self.connecting_road.successor_road_id)
-            pred_id_short = self.connecting_road.predecessor_road_id[:8]
-            succ_id_short = self.connecting_road.successor_road_id[:8]
+            pred_road = self.project.get_road(self.connecting_road.predecessor_id)
+            succ_road = self.project.get_road(self.connecting_road.successor_id)
+            pred_id_short = self.connecting_road.predecessor_id[:8]
+            succ_id_short = self.connecting_road.successor_id[:8]
             pred_name = (
                 f"{pred_road.name} ({pred_id_short})"
                 if pred_road and pred_road.name
@@ -57,8 +57,8 @@ class ConnectingRoadDialog(BaseDialog):
                 else f"Road {succ_id_short}"
             )
         else:
-            pred_name = f"Road {self.connecting_road.predecessor_road_id[:8]}"
-            succ_name = f"Road {self.connecting_road.successor_road_id[:8]}"
+            pred_name = f"Road {self.connecting_road.predecessor_id[:8]}"
+            succ_name = f"Road {self.connecting_road.successor_id[:8]}"
 
         self.connection_label = QLabel(f"{pred_name} → {succ_name}")
         self.connection_label.setStyleSheet("QLabel { font-weight: bold; }")
@@ -76,14 +76,14 @@ class ConnectingRoadDialog(BaseDialog):
         # Lane count left
         self.lane_count_left_spin = QSpinBox()
         self.lane_count_left_spin.setRange(0, 4)
-        self.lane_count_left_spin.setValue(self.connecting_road.lane_count_left)
+        self.lane_count_left_spin.setValue(self.connecting_road.cr_lane_count_left)
         self.lane_count_left_spin.setToolTip("Number of left lanes (positive lane IDs)")
         lane_layout.addRow("Left Lanes:", self.lane_count_left_spin)
 
         # Lane count right
         self.lane_count_right_spin = QSpinBox()
         self.lane_count_right_spin.setRange(0, 4)
-        self.lane_count_right_spin.setValue(self.connecting_road.lane_count_right)
+        self.lane_count_right_spin.setValue(self.connecting_road.cr_lane_count_right)
         self.lane_count_right_spin.setToolTip("Number of right lanes (negative lane IDs)")
         lane_layout.addRow("Right Lanes:", self.lane_count_right_spin)
 
@@ -104,7 +104,7 @@ class ConnectingRoadDialog(BaseDialog):
         self.predecessor_contact_combo = QComboBox()
         self.predecessor_contact_combo.addItem("Start", "start")
         self.predecessor_contact_combo.addItem("End", "end")
-        pred_contact = self.connecting_road.contact_point_start or "end"
+        pred_contact = self.connecting_road.predecessor_contact or "end"
         pred_index = 0 if pred_contact == "start" else 1
         self.predecessor_contact_combo.setCurrentIndex(pred_index)
         self.predecessor_contact_combo.setToolTip("Contact point on predecessor road")
@@ -113,7 +113,7 @@ class ConnectingRoadDialog(BaseDialog):
         self.successor_contact_combo = QComboBox()
         self.successor_contact_combo.addItem("Start", "start")
         self.successor_contact_combo.addItem("End", "end")
-        succ_contact = self.connecting_road.contact_point_end or "start"
+        succ_contact = self.connecting_road.successor_contact or "start"
         succ_index = 0 if succ_contact == "start" else 1
         self.successor_contact_combo.setCurrentIndex(succ_index)
         self.successor_contact_combo.setToolTip("Contact point on successor road")
@@ -163,8 +163,9 @@ class ConnectingRoadDialog(BaseDialog):
 
             # Convert to polyline: point count + button
             self.polyline_points_spin = QSpinBox()
-            self.polyline_points_spin.setRange(3, len(self.connecting_road.path) or 50)
-            self.polyline_points_spin.setValue(min(10, len(self.connecting_road.path) or 10))
+            path_len = len(self.connecting_road.inline_path or [])
+            self.polyline_points_spin.setRange(3, path_len or 50)
+            self.polyline_points_spin.setValue(min(10, path_len or 10))
             self.polyline_points_spin.setToolTip(
                 "Number of points in the converted polyline. "
                 "Fewer points are easier to edit."
@@ -192,8 +193,8 @@ class ConnectingRoadDialog(BaseDialog):
         self.geometry_type_label.setText(geom_display)
 
         # Set lane count
-        left = self.connecting_road.lane_count_left
-        right = self.connecting_road.lane_count_right
+        left = self.connecting_road.cr_lane_count_left
+        right = self.connecting_road.cr_lane_count_right
         self.lane_count_label.setText(f"{left} left, {right} right")
 
     def on_convert_to_parampoly3(self):
@@ -204,24 +205,24 @@ class ConnectingRoadDialog(BaseDialog):
         if not self.project:
             return
 
-        if len(self.connecting_road.path) < 2:
+        if len(self.connecting_road.inline_path) < 2:
             return
 
         # Get start and end points from existing polyline
-        start_point = self.connecting_road.path[0]
-        end_point = self.connecting_road.path[-1]
+        start_point = self.connecting_road.inline_path[0]
+        end_point = self.connecting_road.inline_path[-1]
 
         # Calculate headings from first and last segments
-        if len(self.connecting_road.path) >= 2:
-            dx = self.connecting_road.path[1][0] - self.connecting_road.path[0][0]
-            dy = self.connecting_road.path[1][1] - self.connecting_road.path[0][1]
+        if len(self.connecting_road.inline_path) >= 2:
+            dx = self.connecting_road.inline_path[1][0] - self.connecting_road.inline_path[0][0]
+            dy = self.connecting_road.inline_path[1][1] - self.connecting_road.inline_path[0][1]
             start_heading = math.atan2(dy, dx)
         else:
             start_heading = 0.0
 
-        if len(self.connecting_road.path) >= 2:
-            dx = self.connecting_road.path[-1][0] - self.connecting_road.path[-2][0]
-            dy = self.connecting_road.path[-1][1] - self.connecting_road.path[-2][1]
+        if len(self.connecting_road.inline_path) >= 2:
+            dx = self.connecting_road.inline_path[-1][0] - self.connecting_road.inline_path[-2][0]
+            dy = self.connecting_road.inline_path[-1][1] - self.connecting_road.inline_path[-2][1]
             end_heading = math.atan2(dy, dx)
         else:
             end_heading = 0.0
@@ -236,7 +237,7 @@ class ConnectingRoadDialog(BaseDialog):
         )
 
         # Update connecting road
-        self.connecting_road.path = path
+        self.connecting_road.inline_path = path
         aU, bU, cU, dU, aV, bV, cV, dV = coeffs
         self.connecting_road.aU = aU
         self.connecting_road.bU = bU
@@ -312,8 +313,8 @@ class ConnectingRoadDialog(BaseDialog):
 
         # Resample path to user-selected point count
         num_points = self.polyline_points_spin.value()
-        self.connecting_road.path = self._resample_path(
-            self.connecting_road.path, num_points
+        self.connecting_road.inline_path = self._resample_path(
+            self.connecting_road.inline_path, num_points
         )
 
         self.connecting_road.geometry_type = "polyline"
@@ -351,12 +352,12 @@ class ConnectingRoadDialog(BaseDialog):
         if not self.project:
             return
 
-        if len(self.connecting_road.path) < 2:
+        if len(self.connecting_road.inline_path) < 2:
             return
 
         # Get start and end points (these should remain the same)
-        start_point = self.connecting_road.path[0]
-        end_point = self.connecting_road.path[-1]
+        start_point = self.connecting_road.inline_path[0]
+        end_point = self.connecting_road.inline_path[-1]
 
         # Prefer stored headings (accurate, set by regenerate_affected_connecting_roads)
         start_heading = self.connecting_road.stored_start_heading
@@ -365,14 +366,14 @@ class ConnectingRoadDialog(BaseDialog):
         # Fallback: compute from road polyline endpoints (same logic as
         # regenerate_affected_connecting_roads in main_window.py)
         if start_heading is None or end_heading is None:
-            pred_road = self.project.get_road(self.connecting_road.predecessor_road_id)
-            succ_road = self.project.get_road(self.connecting_road.successor_road_id)
+            pred_road = self.project.get_road(self.connecting_road.predecessor_id)
+            succ_road = self.project.get_road(self.connecting_road.successor_id)
             if pred_road and succ_road:
                 pred_polyline = self.project.get_polyline(pred_road.centerline_id)
                 succ_polyline = self.project.get_polyline(succ_road.centerline_id)
 
                 if start_heading is None and pred_polyline and len(pred_polyline.points) >= 2:
-                    if self.connecting_road.contact_point_start == "end":
+                    if self.connecting_road.predecessor_contact == "end":
                         dx = pred_polyline.points[-1][0] - pred_polyline.points[-2][0]
                         dy = pred_polyline.points[-1][1] - pred_polyline.points[-2][1]
                         start_heading = math.atan2(dy, dx)
@@ -382,7 +383,7 @@ class ConnectingRoadDialog(BaseDialog):
                         start_heading = math.atan2(dy, dx) + math.pi
 
                 if end_heading is None and succ_polyline and len(succ_polyline.points) >= 2:
-                    if self.connecting_road.contact_point_end == "start":
+                    if self.connecting_road.successor_contact == "start":
                         dx = succ_polyline.points[1][0] - succ_polyline.points[0][0]
                         dy = succ_polyline.points[1][1] - succ_polyline.points[0][1]
                         end_heading = math.atan2(dy, dx) + math.pi
@@ -393,12 +394,12 @@ class ConnectingRoadDialog(BaseDialog):
 
         # Last resort: approximate from path points
         if start_heading is None:
-            dx = self.connecting_road.path[1][0] - self.connecting_road.path[0][0]
-            dy = self.connecting_road.path[1][1] - self.connecting_road.path[0][1]
+            dx = self.connecting_road.inline_path[1][0] - self.connecting_road.inline_path[0][0]
+            dy = self.connecting_road.inline_path[1][1] - self.connecting_road.inline_path[0][1]
             start_heading = math.atan2(dy, dx)
         if end_heading is None:
-            dx = self.connecting_road.path[-1][0] - self.connecting_road.path[-2][0]
-            dy = self.connecting_road.path[-1][1] - self.connecting_road.path[-2][1]
+            dx = self.connecting_road.inline_path[-1][0] - self.connecting_road.inline_path[-2][0]
+            dy = self.connecting_road.inline_path[-1][1] - self.connecting_road.inline_path[-2][1]
             end_heading = math.atan2(dy, dx)
 
         # Get new tangent scale
@@ -414,7 +415,7 @@ class ConnectingRoadDialog(BaseDialog):
         )
 
         # Update the connecting road (temporary preview)
-        self.connecting_road.path = path
+        self.connecting_road.inline_path = path
         aU, bU, cU, dU, aV, bV, cV, dV = coeffs
         self.connecting_road.aU = aU
         self.connecting_road.bU = bU
@@ -438,24 +439,24 @@ class ConnectingRoadDialog(BaseDialog):
     def accept(self):
         """Save changes and accept dialog."""
         # Get new lane counts
-        old_left = self.connecting_road.lane_count_left
-        old_right = self.connecting_road.lane_count_right
+        old_left = self.connecting_road.cr_lane_count_left
+        old_right = self.connecting_road.cr_lane_count_right
         new_left = self.lane_count_left_spin.value()
         new_right = self.lane_count_right_spin.value()
 
         # Update lane counts
-        self.connecting_road.lane_count_left = new_left
-        self.connecting_road.lane_count_right = new_right
+        self.connecting_road.cr_lane_count_left = new_left
+        self.connecting_road.cr_lane_count_right = new_right
 
         # Regenerate lanes if counts changed
         if old_left != new_left or old_right != new_right:
-            # Clear lanes to force reinitialization with new counts
-            self.connecting_road.lanes = []
-            self.connecting_road.ensure_lanes_initialized()
+            # Clear lane sections to force reinitialization with new counts
+            self.connecting_road.lane_sections = []
+            self.connecting_road.ensure_cr_lanes_initialized()
 
         # Save contact points
-        self.connecting_road.contact_point_start = self.predecessor_contact_combo.currentData()
-        self.connecting_road.contact_point_end = self.successor_contact_combo.currentData()
+        self.connecting_road.predecessor_contact = self.predecessor_contact_combo.currentData()
+        self.connecting_road.successor_contact = self.successor_contact_combo.currentData()
 
         # The curve has already been updated by on_regenerate_curve if the user clicked preview
         # Otherwise, update tangent_scale without regenerating
@@ -469,7 +470,7 @@ class ConnectingRoadDialog(BaseDialog):
     @classmethod
     def edit_connecting_road(
         cls,
-        connecting_road: ConnectingRoad,
+        connecting_road: Road,
         project: Optional[Project] = None,
         parent=None,
     ) -> bool:
@@ -477,7 +478,7 @@ class ConnectingRoadDialog(BaseDialog):
         Show dialog to edit a connecting road's properties.
 
         Args:
-            connecting_road: ConnectingRoad to edit
+            connecting_road: Road object (connecting road) to edit
             project: Project containing the connecting road (optional)
             parent: Parent widget
 

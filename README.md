@@ -150,7 +150,7 @@ orbit/
 ├── models/       # Data models (Road, Polyline, Junction, ParkingSpace, Signal, etc.)
 ├── gui/          # PyQt6 GUI (MainWindow, ImageView, dialogs, widgets)
 ├── export/       # OpenDRIVE XML generation (writers, builders)
-├── import_/      # OSM and OpenDRIVE importers
+├── import/       # OSM and OpenDRIVE importers (loaded via importlib in code)
 ├── signs/        # Traffic sign libraries (country-specific)
 └── utils/        # Coordinate transforms, geometry utilities
 orbit-georef/     # Standalone georeferencing library (separate package)

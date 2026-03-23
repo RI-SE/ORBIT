@@ -5,14 +5,14 @@ Generates ASAM OpenDrive format XML from annotated roads and junctions.
 """
 
 import math
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 from lxml import etree
 
 from orbit.models import Junction, Project, Road
-from orbit.models.connecting_road import ConnectingRoad
 from orbit.utils import CoordinateTransformer
 from orbit.utils.logging_config import get_logger
 
@@ -25,6 +25,19 @@ from .reference_validator import validate_references
 from .signal_builder import SignalBuilder
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class ExportOptions:
+    """Options controlling OpenDRIVE export behaviour."""
+    right_hand_traffic: bool = True
+    country_code: str = "se"
+    use_tmerc: bool = False
+    use_german_codes: bool = False
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+    geo_reference_string: Optional[str] = None
+    export_object_types: Optional[Set] = None
 
 
 class OpenDriveWriter:
@@ -42,37 +55,36 @@ class OpenDriveWriter:
         offset_x: float = 0.0,
         offset_y: float = 0.0,
         geo_reference_string: Optional[str] = None,
-        export_object_types: Optional[set] = None
+        export_object_types: Optional[set] = None,
+        options: Optional[ExportOptions] = None,
     ):
-        """
-        Initialize OpenDrive writer.
+        """Initialize OpenDrive writer.
 
-        Args:
-            project: The ORBIT project
-            transformer: Coordinate transformer for pixel to geo conversion
-            curve_fitter: Optional curve fitter (creates default if None)
-            right_hand_traffic: True for right-hand traffic (default), False for left-hand
-            country_code: Two-letter ISO 3166-1 country code (default: "se")
-            use_tmerc: If True, use Transverse Mercator projection; if False (default),
-                       use UTM projection or preserved geoReference from import
-            use_german_codes: If True, use German VzKat codes (opendrive_de) for signals
-            offset_x: X offset subtracted from all exported coordinates (projected easting)
-            offset_y: Y offset subtracted from all exported coordinates (projected northing)
-            geo_reference_string: Explicit proj string for the geoReference element.
-                Takes priority over use_tmerc / imported_geo_reference when set.
-            export_object_types: If set, only export objects whose type is in this set.
-                If None (default), all objects are exported.
+        Pass either keyword args or an ExportOptions dataclass via `options`.
+        ExportOptions takes precedence when both are supplied.
         """
         self.project = project
         self.transformer = transformer
         self.curve_fitter = curve_fitter or CurveFitter(preserve_geometry=True)
-        self.right_hand_traffic = right_hand_traffic
-        self.country_code = country_code.lower()
-        self.use_tmerc = use_tmerc
-        self.offset_x = offset_x
-        self.offset_y = offset_y
-        self.geo_reference_string = geo_reference_string
-        self.export_object_types = export_object_types
+
+        # Resolve options: dataclass takes precedence over individual kwargs
+        opts = options or ExportOptions(
+            right_hand_traffic=right_hand_traffic,
+            country_code=country_code,
+            use_tmerc=use_tmerc,
+            use_german_codes=use_german_codes,
+            offset_x=offset_x,
+            offset_y=offset_y,
+            geo_reference_string=geo_reference_string,
+            export_object_types=export_object_types,
+        )
+        self.right_hand_traffic = opts.right_hand_traffic
+        self.country_code = opts.country_code.lower()
+        self.use_tmerc = opts.use_tmerc
+        self.offset_x = opts.offset_x
+        self.offset_y = opts.offset_y
+        self.geo_reference_string = opts.geo_reference_string
+        self.export_object_types = opts.export_object_types
 
         # Build lookup maps
         self.polyline_map = {p.id: p for p in project.polylines}
@@ -93,14 +105,14 @@ class OpenDriveWriter:
 
         # Initialize lane analyzer with scale factors and transformer
         # Passing transformer enables accurate perspective-aware conversions for homography
-        self.lane_analyzer = LaneAnalyzer(project, right_hand_traffic, scale_factors, transformer)
+        self.lane_analyzer = LaneAnalyzer(project, self.right_hand_traffic, scale_factors, transformer)
 
         # Initialize builders
         self.lane_builder = LaneBuilder(scale_x=self.scale_x)
         self.signal_builder = SignalBuilder(
             scale_x=self.scale_x,
-            country_code=country_code,
-            use_german_codes=use_german_codes,
+            country_code=opts.country_code,
+            use_german_codes=opts.use_german_codes,
             transformer=transformer,
         )
         self.object_builder = ObjectBuilder(
@@ -245,7 +257,11 @@ class OpenDriveWriter:
                     continue
 
                 # Export each connecting road as a Road element
-                for idx, connecting_road in enumerate(junction.connecting_roads):
+                for idx, cr_id in enumerate(junction.connecting_road_ids):
+                    connecting_road = self.project.get_road(cr_id)
+                    if not connecting_road:
+                        logger.warning(f"Connecting road {cr_id} not found for junction {junction_numeric_id}")
+                        continue
                     conn_road_elem = self._create_connecting_road(
                         connecting_road,
                         junction_numeric_id,
@@ -573,59 +589,8 @@ class OpenDriveWriter:
         road_elem.set('length', f'{road_length:.4f}')
         road_elem.set('junction', road.junction_id if road.junction_id else '-1')
 
-        # Add road link with predecessor/successor if available
-        link = etree.SubElement(road_elem, 'link')
-
-        # Check if this road connects to a junction
-        # First check stored junction links (preserved from import), fall back to geometric detection
-        predecessor_junction = None
-        successor_junction = None
-
-        if road.predecessor_junction_id:
-            try:
-                predecessor_junction = int(road.predecessor_junction_id)
-            except (ValueError, TypeError):
-                pass
-
-        if road.successor_junction_id:
-            try:
-                successor_junction = int(road.successor_junction_id)
-            except (ValueError, TypeError):
-                pass
-
-        # Fall back to geometric reconstruction for links not stored from import
-        if predecessor_junction is None:
-            predecessor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=True)
-        if successor_junction is None:
-            successor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=False)
-
-        # Add predecessor - check if junction or road
-        if predecessor_junction is not None:
-            # Road predecessor connects to a junction
-            predecessor = etree.SubElement(link, 'predecessor')
-            predecessor.set('elementType', 'junction')
-            predecessor.set('elementId', str(predecessor_junction))
-            # No contactPoint for junction links
-        elif road.predecessor_id:
-            # Road predecessor connects to another road
-            predecessor = etree.SubElement(link, 'predecessor')
-            predecessor.set('elementType', 'road')
-            predecessor.set('elementId', road.predecessor_id)
-            predecessor.set('contactPoint', road.predecessor_contact)
-
-        # Add successor - check if junction or road
-        if successor_junction is not None:
-            # Road successor connects to a junction
-            successor = etree.SubElement(link, 'successor')
-            successor.set('elementType', 'junction')
-            successor.set('elementId', str(successor_junction))
-            # No contactPoint for junction links
-        elif road.successor_id:
-            # Road successor connects to another road
-            successor = etree.SubElement(link, 'successor')
-            successor.set('elementType', 'road')
-            successor.set('elementId', road.successor_id)
-            successor.set('contactPoint', road.successor_contact)
+        # Add road link with predecessor/successor
+        self._build_road_link_xml(road_elem, road)
 
         # Add road type
         type_elem = etree.SubElement(road_elem, 'type')
@@ -712,62 +677,96 @@ class OpenDriveWriter:
             road_elem.append(objects)
 
         # Add surface CRG references if present
-        if road.surface_crg:
-            surface = etree.SubElement(road_elem, 'surface')
-            for crg_data in road.surface_crg:
-                crg = etree.SubElement(surface, 'CRG')
-                crg.set('file', crg_data.get('file', ''))
-                if 'sStart' in crg_data:
-                    crg.set('sStart', f"{crg_data['sStart']:.6g}")
-                if 'sEnd' in crg_data:
-                    crg.set('sEnd', f"{crg_data['sEnd']:.6g}")
-                if 'orientation' in crg_data:
-                    crg.set('orientation', crg_data['orientation'])
-                if 'mode' in crg_data:
-                    crg.set('mode', crg_data['mode'])
-                if 'purpose' in crg_data:
-                    crg.set('purpose', crg_data['purpose'])
-                if 'sOffset' in crg_data:
-                    crg.set('sOffset', f"{crg_data['sOffset']:.6g}")
-                if 'tOffset' in crg_data:
-                    crg.set('tOffset', f"{crg_data['tOffset']:.6g}")
-                if 'zOffset' in crg_data:
-                    crg.set('zOffset', f"{crg_data['zOffset']:.6g}")
-                if 'zScale' in crg_data:
-                    crg.set('zScale', f"{crg_data['zScale']:.6g}")
-                if 'hOffset' in crg_data:
-                    crg.set('hOffset', f"{crg_data['hOffset']:.6g}")
+        self._build_surface_crg_xml(road_elem, road)
 
         return road_elem
 
-    def _create_connecting_road(self, connecting_road: ConnectingRoad,
+    def _build_road_link_xml(self, road_elem, road: Road):
+        """Build link element with predecessor/successor for a road."""
+        link = etree.SubElement(road_elem, 'link')
+
+        predecessor_junction = None
+        successor_junction = None
+        if road.predecessor_junction_id:
+            try:
+                predecessor_junction = int(road.predecessor_junction_id)
+            except (ValueError, TypeError):
+                pass
+        if road.successor_junction_id:
+            try:
+                successor_junction = int(road.successor_junction_id)
+            except (ValueError, TypeError):
+                pass
+
+        if predecessor_junction is None:
+            predecessor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=True)
+        if successor_junction is None:
+            successor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=False)
+
+        if predecessor_junction is not None:
+            pred = etree.SubElement(link, 'predecessor')
+            pred.set('elementType', 'junction')
+            pred.set('elementId', str(predecessor_junction))
+        elif road.predecessor_id:
+            pred = etree.SubElement(link, 'predecessor')
+            pred.set('elementType', 'road')
+            pred.set('elementId', road.predecessor_id)
+            pred.set('contactPoint', road.predecessor_contact)
+
+        if successor_junction is not None:
+            succ = etree.SubElement(link, 'successor')
+            succ.set('elementType', 'junction')
+            succ.set('elementId', str(successor_junction))
+        elif road.successor_id:
+            succ = etree.SubElement(link, 'successor')
+            succ.set('elementType', 'road')
+            succ.set('elementId', road.successor_id)
+            succ.set('contactPoint', road.successor_contact)
+
+    @staticmethod
+    def _build_surface_crg_xml(road_elem, road: Road):
+        """Build surface CRG references if present."""
+        if not road.surface_crg:
+            return
+        surface = etree.SubElement(road_elem, 'surface')
+        crg_attrs = ['sStart', 'sEnd', 'orientation', 'mode', 'purpose',
+                     'sOffset', 'tOffset', 'zOffset', 'zScale', 'hOffset']
+        for crg_data in road.surface_crg:
+            crg = etree.SubElement(surface, 'CRG')
+            crg.set('file', crg_data.get('file', ''))
+            for attr in crg_attrs:
+                if attr in crg_data:
+                    val = crg_data[attr]
+                    crg.set(attr, f"{val:.6g}" if isinstance(val, float) else val)
+
+    def _create_connecting_road(self, connecting_road: Road,
                                junction_numeric_id: int,
                                lane_connections=None) -> Optional[etree.Element]:
         """
         Create a road element for a junction connecting road.
 
         Args:
-            connecting_road: ConnectingRoad object with path and lane configuration
+            connecting_road: Road object (with junction_id set) containing path and lane config
             junction_numeric_id: Numeric ID of the junction this road belongs to
             lane_connections: Junction lane connections for deriving lane link IDs
 
         Returns:
             Road XML element with junction="<junction_id>", or None if invalid
         """
-        if not connecting_road.path or len(connecting_road.path) < 2:
+        if not connecting_road.inline_path or len(connecting_road.inline_path) < 2:
             return None
 
         road_id = int(connecting_road.id)
 
         # Transform path points from pixels to meters
         # Use geo coords directly if available (more precise, avoids double conversion)
-        if connecting_road.geo_path:
+        if connecting_road.inline_geo_path:
             path_meters = [
                 self.transformer.latlon_to_meters(lat, lon)
-                for lon, lat in connecting_road.geo_path
+                for lon, lat in connecting_road.inline_geo_path
             ]
         else:
-            path_meters = self.transformer.pixels_to_meters_batch(connecting_road.path)
+            path_meters = self.transformer.pixels_to_meters_batch(connecting_road.inline_path)
 
         # Snap CR endpoints to connected road endpoints for topological correctness.
         # Small pixel-level misalignment can cause visible gaps in the export.
@@ -777,196 +776,165 @@ class OpenDriveWriter:
             connecting_road, path_meters, lane_connections
         )
 
-        # Check if connecting road has ParamPoly3D geometry
+        # Compute geometry and road length
         if connecting_road.geometry_type == "parampoly3":
-            # Calculate ParamPoly3D coefficients in LOCAL coordinate system
-            # Local u/v coordinates have origin at start point with u-axis along heading
-
-            # Get start and end points in meters (global coordinates)
-            start_point_meters = path_meters[0]
-            end_point_meters = path_meters[-1]
-
-            # Get headings - use stored pixel headings transformed to meter coordinates
-            # for accurate tangent matching, with fallback to path approximation
-            if connecting_road.stored_start_heading is not None:
-                # Transform stored pixel heading to meter coordinates
-                start_heading = self.transformer.transform_heading(
-                    connecting_road.path[0][0],  # pixel x
-                    connecting_road.path[0][1],  # pixel y
-                    connecting_road.stored_start_heading
-                )
-            elif len(path_meters) >= 2:
-                # Fallback: approximate from path (for legacy data)
-                dx_start = path_meters[1][0] - path_meters[0][0]
-                dy_start = path_meters[1][1] - path_meters[0][1]
-                start_heading = math.atan2(dy_start, dx_start)
-            else:
-                start_heading = 0.0
-
-            if connecting_road.stored_end_heading is not None:
-                end_heading = self.transformer.transform_heading(
-                    connecting_road.path[-1][0],
-                    connecting_road.path[-1][1],
-                    connecting_road.stored_end_heading
-                )
-            elif len(path_meters) >= 2:
-                dx_end = path_meters[-1][0] - path_meters[-2][0]
-                dy_end = path_meters[-1][1] - path_meters[-2][1]
-                end_heading = math.atan2(dy_end, dx_end)
-            else:
-                end_heading = 0.0
-
-            # Override CR headings with actual connected road headings
-            # for C1 (tangent) continuity at junction connections.
-            # The stored headings come from junction analysis and may differ
-            # from the road centerline tangent, causing lane-edge gaps.
-            pred_road = self.road_map.get(connecting_road.predecessor_road_id)
-            if pred_road and pred_road.centerline_id:
-                road_hdg = self._get_road_heading_at_contact_meters(
-                    pred_road.centerline_id, connecting_road.contact_point_start
-                )
-                if road_hdg is not None:
-                    start_heading = road_hdg
-
-            succ_road = self.road_map.get(connecting_road.successor_road_id)
-            if succ_road and succ_road.centerline_id:
-                road_hdg = self._get_road_heading_at_contact_meters(
-                    succ_road.centerline_id, connecting_road.contact_point_end
-                )
-                if road_hdg is not None:
-                    end_heading = road_hdg
-
-            # Transform end point from global to local u/v coordinates
-            # Local frame: origin at start_point, u-axis along start_heading, v-axis 90° CCW
-            dx_global = end_point_meters[0] - start_point_meters[0]
-            dy_global = end_point_meters[1] - start_point_meters[1]
-
-            cos_h = math.cos(start_heading)
-            sin_h = math.sin(start_heading)
-
-            # Rotate to local frame: [u] = [cos  sin] [dx]
-            #                         [v]   [-sin cos] [dy]
-            end_u = dx_global * cos_h + dy_global * sin_h
-            end_v = -dx_global * sin_h + dy_global * cos_h
-
-            # Transform end tangent to local frame
-            # End tangent direction in global frame
-            end_tangent_x_global = math.cos(end_heading)
-            end_tangent_y_global = math.sin(end_heading)
-
-            # Rotate to local frame
-            end_tangent_u = end_tangent_x_global * cos_h + end_tangent_y_global * sin_h
-            end_tangent_v = -end_tangent_x_global * sin_h + end_tangent_y_global * cos_h
-
-            # Compute Bezier curve in LOCAL space (with Hermite fallback)
-            # Start: (0, 0) with tangent (1, 0) - aligned with u-axis
-            # End: (end_u, end_v) with tangent (end_tangent_u, end_tangent_v)
-            from orbit.utils.geometry import (
-                bezier_to_parampoly3,
-                calculate_bezier_control_points,
-                calculate_hermite_parampoly3,
+            geometry_elements, road_length = self._compute_parampoly3_geometry(
+                connecting_road, path_meters
             )
-
-            # Try Bezier control point calculation first
-            control_points = calculate_bezier_control_points(
-                (0.0, 0.0),  # Start at local origin
-                (1.0, 0.0),  # Start tangent aligned with u-axis
-                (end_u, end_v),  # End point in local coordinates
-                (end_tangent_u, end_tangent_v)  # End tangent in local frame
-            )
-
-            if control_points is not None:
-                # Success: use Bezier curve
-                # Since we're already in local coordinates, heading is 0
-                aU, bU, cU, dU, aV, bV, cV, dV = bezier_to_parampoly3(control_points, 0.0)
-            else:
-                # Fallback: use Hermite interpolation with tangent_scale
-                aU, bU, cU, dU, aV, bV, cV, dV = calculate_hermite_parampoly3(
-                    (0.0, 0.0),  # Start at local origin
-                    (1.0, 0.0),  # Start tangent aligned with u-axis
-                    (end_u, end_v),  # End point in local coordinates
-                    (end_tangent_u, end_tangent_v),  # End tangent in local frame
-                    tangent_scale=connecting_road.tangent_scale
-                )
-
-            # Calculate road length from sampled path
-            road_length = 0.0
-            for i in range(len(path_meters) - 1):
-                dx = path_meters[i+1][0] - path_meters[i][0]
-                dy = path_meters[i+1][1] - path_meters[i][1]
-                road_length += math.sqrt(dx*dx + dy*dy)
-
-            # Create ParamPoly3 geometry element with LOCAL coefficients
-            geometry_elements = [
-                GeometryElement(
-                    geom_type=GeometryType.PARAMPOLY3,
-                    start_pos=start_point_meters,  # Global position
-                    heading=start_heading,  # Global heading
-                    length=road_length,
-                    aU=aU, bU=bU, cU=cU, dU=dU,  # Local u/v coefficients
-                    aV=aV, bV=bV, cV=cV, dV=dV,
-                    p_range=1.0,
-                    p_range_normalized=connecting_road.p_range_normalized
-                )
-            ]
         else:
-            # Fit geometry to the path (legacy polyline mode)
             geometry_elements = self.curve_fitter.fit_polyline(path_meters)
-
             if not geometry_elements:
                 return None
-
-            # Calculate total road length
             road_length = sum(elem.length for elem in geometry_elements)
 
-        # Create road element
+        # Build road XML element
+        road_elem = self._build_cr_road_xml(
+            connecting_road, road_id, junction_numeric_id, road_length,
+            geometry_elements, lane_connections, path_meters
+        )
+        return road_elem
+
+    def _compute_parampoly3_geometry(self, connecting_road: Road,
+                                     path_meters: list):
+        """Compute ParamPoly3D geometry in local coordinates."""
+        start_point = path_meters[0]
+        end_point = path_meters[-1]
+
+        start_heading = self._resolve_cr_heading(
+            connecting_road, path_meters, is_start=True
+        )
+        end_heading = self._resolve_cr_heading(
+            connecting_road, path_meters, is_start=False
+        )
+
+        # Override with connected road headings for C1 continuity
+        start_heading = self._override_with_road_heading(
+            connecting_road.predecessor_id, connecting_road.predecessor_contact,
+            start_heading
+        )
+        end_heading = self._override_with_road_heading(
+            connecting_road.successor_id, connecting_road.successor_contact,
+            end_heading
+        )
+
+        # Transform to local u/v frame (origin at start, u along heading)
+        dx_global = end_point[0] - start_point[0]
+        dy_global = end_point[1] - start_point[1]
+        cos_h = math.cos(start_heading)
+        sin_h = math.sin(start_heading)
+        end_u = dx_global * cos_h + dy_global * sin_h
+        end_v = -dx_global * sin_h + dy_global * cos_h
+
+        end_tangent_u = math.cos(end_heading) * cos_h + math.sin(end_heading) * sin_h
+        end_tangent_v = -math.cos(end_heading) * sin_h + math.sin(end_heading) * cos_h
+
+        # Compute curve coefficients (Bezier with Hermite fallback)
+        from orbit.utils.geometry import (
+            bezier_to_parampoly3,
+            calculate_bezier_control_points,
+            calculate_hermite_parampoly3,
+        )
+        control_points = calculate_bezier_control_points(
+            (0.0, 0.0), (1.0, 0.0), (end_u, end_v), (end_tangent_u, end_tangent_v)
+        )
+        if control_points is not None:
+            aU, bU, cU, dU, aV, bV, cV, dV = bezier_to_parampoly3(control_points, 0.0)
+        else:
+            aU, bU, cU, dU, aV, bV, cV, dV = calculate_hermite_parampoly3(
+                (0.0, 0.0), (1.0, 0.0), (end_u, end_v),
+                (end_tangent_u, end_tangent_v),
+                tangent_scale=connecting_road.tangent_scale
+            )
+
+        road_length = 0.0
+        for i in range(len(path_meters) - 1):
+            dx = path_meters[i+1][0] - path_meters[i][0]
+            dy = path_meters[i+1][1] - path_meters[i][1]
+            road_length += math.sqrt(dx*dx + dy*dy)
+
+        geometry_elements = [
+            GeometryElement(
+                geom_type=GeometryType.PARAMPOLY3,
+                start_pos=start_point, heading=start_heading, length=road_length,
+                aU=aU, bU=bU, cU=cU, dU=dU,
+                aV=aV, bV=bV, cV=cV, dV=dV,
+                p_range=1.0,
+                p_range_normalized=connecting_road.p_range_normalized
+            )
+        ]
+        return geometry_elements, road_length
+
+    def _resolve_cr_heading(self, connecting_road: Road, path_meters: list,
+                            is_start: bool) -> float:
+        """Resolve heading from stored pixel heading or path approximation."""
+        stored = connecting_road.stored_start_heading if is_start else connecting_road.stored_end_heading
+        pixel_pt = connecting_road.inline_path[0 if is_start else -1]
+
+        if stored is not None:
+            return self.transformer.transform_heading(pixel_pt[0], pixel_pt[1], stored)
+        if len(path_meters) >= 2:
+            if is_start:
+                dx = path_meters[1][0] - path_meters[0][0]
+                dy = path_meters[1][1] - path_meters[0][1]
+            else:
+                dx = path_meters[-1][0] - path_meters[-2][0]
+                dy = path_meters[-1][1] - path_meters[-2][1]
+            return math.atan2(dy, dx)
+        return 0.0
+
+    def _override_with_road_heading(self, road_id, contact_point,
+                                     current_heading: float) -> float:
+        """Override heading with connected road's actual heading if available."""
+        road = self.road_map.get(road_id)
+        if road and road.centerline_id:
+            hdg = self._get_road_heading_at_contact_meters(
+                road.centerline_id, contact_point
+            )
+            if hdg is not None:
+                return hdg
+        return current_heading
+
+    def _build_cr_road_xml(self, connecting_road: Road, road_id: int,
+                           junction_numeric_id: int, road_length: float,
+                           geometry_elements, lane_connections, path_meters):
+        """Build the XML element for a connecting road."""
         road_elem = etree.Element('road')
         road_elem.set('id', str(road_id))
-        road_elem.set('name', '')  # Connecting roads typically have no name
+        road_elem.set('name', '')
         road_elem.set('length', f'{road_length:.4f}')
         road_elem.set('junction', str(junction_numeric_id))
 
-        # Add road link with predecessor/successor
+        # Link
         link = etree.SubElement(road_elem, 'link')
+        if connecting_road.predecessor_id:
+            pred = etree.SubElement(link, 'predecessor')
+            pred.set('elementType', 'road')
+            pred.set('elementId', connecting_road.predecessor_id)
+            pred.set('contactPoint', connecting_road.predecessor_contact)
+        if connecting_road.successor_id:
+            succ = etree.SubElement(link, 'successor')
+            succ.set('elementType', 'road')
+            succ.set('elementId', connecting_road.successor_id)
+            succ.set('contactPoint', connecting_road.successor_contact)
 
-        # Add predecessor (incoming road)
-        if connecting_road.predecessor_road_id:
-            predecessor = etree.SubElement(link, 'predecessor')
-            predecessor.set('elementType', 'road')
-            predecessor.set('elementId', connecting_road.predecessor_road_id)
-            predecessor.set('contactPoint', connecting_road.contact_point_start)
-
-        # Add successor (outgoing road)
-        if connecting_road.successor_road_id:
-            successor = etree.SubElement(link, 'successor')
-            successor.set('elementType', 'road')
-            successor.set('elementId', connecting_road.successor_road_id)
-            successor.set('contactPoint', connecting_road.contact_point_end)
-
-        # Add road type (junction internal road)
+        # Type
         type_elem = etree.SubElement(road_elem, 'type')
         type_elem.set('s', '0.0')
-        type_elem.set('type', 'town')  # Default type for junction roads
+        type_elem.set('type', 'town')
 
-        # Add plan view (reference line geometry)
-        plan_view = self._create_plan_view(geometry_elements)
-        road_elem.append(plan_view)
+        # Plan view
+        road_elem.append(self._create_plan_view(geometry_elements))
 
-        # Add elevation profile (flat)
+        # Elevation (flat)
         elevation = etree.SubElement(road_elem, 'elevationProfile')
         elev = etree.SubElement(elevation, 'elevation')
-        elev.set('s', '0.0')
-        elev.set('a', '0.0')
-        elev.set('b', '0.0')
-        elev.set('c', '0.0')
-        elev.set('d', '0.0')
+        for attr in ('s', 'a', 'b', 'c', 'd'):
+            elev.set(attr, '0.0')
 
-        # Add lateral profile (no superelevation)
+        # Lateral profile
         etree.SubElement(road_elem, 'lateralProfile')
 
-        # Add lanes (simplified - no boundary analysis for connecting roads)
-        # Build lane link map from junction connections for this CR:
-        # cr_lane_id → (predecessor_lane_id, successor_lane_id)
+        # Lanes
         cr_lane_link_map = {}
         if lane_connections:
             for lc in lane_connections:
@@ -974,15 +942,13 @@ class OpenDriveWriter:
                     cr_lane_link_map[lc.connecting_lane_id] = (
                         lc.from_lane_id, lc.to_lane_id
                     )
-
-        lanes = self._create_connecting_road_lanes(
+        road_elem.append(self._create_connecting_road_lanes(
             connecting_road, road_length, cr_lane_link_map
-        )
-        road_elem.append(lanes)
+        ))
 
-        # Add signals assigned to this connecting road
+        # Signals
         cr_signals = self.signal_builder.create_signals_for_connecting_road(
-            connecting_road, self.project.signals, connecting_road.path, path_meters
+            connecting_road, self.project.signals, connecting_road.inline_path, path_meters
         )
         if cr_signals is not None:
             road_elem.append(cr_signals)
@@ -991,7 +957,7 @@ class OpenDriveWriter:
 
     def _snap_cr_endpoints_to_roads(
         self,
-        connecting_road: ConnectingRoad,
+        connecting_road: Road,
         path_meters: list,
         lane_connections=None,
     ) -> list:
@@ -1025,39 +991,42 @@ class OpenDriveWriter:
                     primary_conn = conn
                     break
 
-        cr_lane_id = -1
         if primary_conn and primary_conn.connecting_lane_id is not None:
             cr_lane_id = primary_conn.connecting_lane_id
+        elif connecting_road.cr_lane_count_right > 0:
+            cr_lane_id = -1
+        else:
+            cr_lane_id = 1
 
         # Snap start to predecessor road endpoint
-        pred_road = self.road_map.get(connecting_road.predecessor_road_id)
+        pred_road = self.road_map.get(connecting_road.predecessor_id)
         if pred_road and pred_road.centerline_id:
             snap_pt = self._get_road_endpoint_meters(
-                pred_road.centerline_id, connecting_road.contact_point_start
+                pred_road.centerline_id, connecting_road.predecessor_contact
             )
             if snap_pt is not None:
                 if primary_conn:
                     snap_pt = self._apply_lane_offset_to_snap_point(
                         snap_pt, pred_road, pred_road.centerline_id,
-                        connecting_road.contact_point_start,
+                        connecting_road.predecessor_contact,
                         primary_conn.from_lane_id, cr_lane_id,
-                        connecting_road.lane_width,
+                        connecting_road.lane_info.lane_width,
                     )
                 path_meters[0] = snap_pt
 
         # Snap end to successor road endpoint
-        succ_road = self.road_map.get(connecting_road.successor_road_id)
+        succ_road = self.road_map.get(connecting_road.successor_id)
         if succ_road and succ_road.centerline_id:
             snap_pt = self._get_road_endpoint_meters(
-                succ_road.centerline_id, connecting_road.contact_point_end
+                succ_road.centerline_id, connecting_road.successor_contact
             )
             if snap_pt is not None:
                 if primary_conn:
                     snap_pt = self._apply_lane_offset_to_snap_point(
                         snap_pt, succ_road, succ_road.centerline_id,
-                        connecting_road.contact_point_end,
+                        connecting_road.successor_contact,
                         primary_conn.to_lane_id, cr_lane_id,
-                        connecting_road.lane_width,
+                        connecting_road.lane_info.lane_width,
                     )
                 path_meters[-1] = snap_pt
 
@@ -1166,7 +1135,7 @@ class OpenDriveWriter:
             idx = -1 if use_end else 0
             return self.transformer.pixels_to_meters_batch([polyline.points[idx]])[0]
 
-    def _create_connecting_road_lanes(self, connecting_road: ConnectingRoad,
+    def _create_connecting_road_lanes(self, connecting_road: Road,
                                      road_length: float,
                                      cr_lane_link_map: dict = None) -> etree.Element:
         """
@@ -1178,7 +1147,7 @@ class OpenDriveWriter:
         - Polynomial width (width_b, width_c, width_d coefficients)
 
         Args:
-            connecting_road: ConnectingRoad with lane configuration
+            connecting_road: Road (with junction_id set) containing lane configuration
             road_length: Total length of the road in meters
             cr_lane_link_map: Mapping from CR lane ID to (predecessor_lane_id,
                 successor_lane_id) derived from junction lane connections
@@ -1194,15 +1163,18 @@ class OpenDriveWriter:
         lane_section.set('s', '0.0')
 
         # Ensure lanes are initialized (migrates road-level widths if needed)
-        connecting_road.ensure_lanes_initialized()
+        connecting_road.ensure_cr_lanes_initialized()
+
+        # Get lanes from first lane section
+        cr_lanes = connecting_road.lane_sections[0].lanes if connecting_road.lane_sections else []
 
         # Build lane map for quick lookup
-        lane_map = {lane_obj.id: lane_obj for lane_obj in connecting_road.lanes}
+        lane_map = {lane_obj.id: lane_obj for lane_obj in cr_lanes}
 
         # OpenDRIVE schema requires order: left, center, right
 
         # Left lanes (positive IDs: 1, 2, 3...)
-        left_lanes = [lane_obj for lane_obj in connecting_road.lanes if lane_obj.id > 0]
+        left_lanes = [lane_obj for lane_obj in cr_lanes if lane_obj.id > 0]
         left_lanes.sort(key=lambda lane: lane.id)  # Sort ascending: 1, 2, 3...
         if left_lanes:
             left = etree.SubElement(lane_section, 'left')
@@ -1225,7 +1197,7 @@ class OpenDriveWriter:
             center_lane.set('level', 'false')
 
         # Right lanes (negative IDs: -1, -2, -3...)
-        right_lanes = [lane_obj for lane_obj in connecting_road.lanes if lane_obj.id < 0]
+        right_lanes = [lane_obj for lane_obj in cr_lanes if lane_obj.id < 0]
         right_lanes.sort(key=lambda lane: lane.id, reverse=True)  # Sort descending: -1, -2, -3...
         if right_lanes:
             right = etree.SubElement(lane_section, 'right')
@@ -1378,15 +1350,14 @@ class OpenDriveWriter:
         # Create connection elements
         connection_id = 0
         for (from_road_id, connecting_road_id), lane_connections in connection_groups.items():
-            # Find the connecting road to get its ID for the connection element
-            connecting_road = junction.get_connecting_road_by_id(connecting_road_id)
-            if not connecting_road:
+            # Verify the connecting road exists
+            if connecting_road_id not in self.road_map:
                 continue
 
             connection = etree.SubElement(junction_elem, 'connection')
             connection.set('id', str(connection_id))
             connection.set('incomingRoad', from_road_id)
-            connection.set('connectingRoad', connecting_road.id)
+            connection.set('connectingRoad', connecting_road_id)
             connection.set('contactPoint', 'start')  # Connecting roads start at junction
 
             # Note: priority is a child element of junction, not an attribute of connection

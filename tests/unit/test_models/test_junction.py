@@ -5,7 +5,6 @@ Tests Junction, JunctionGroup, JunctionConnection, and boundary-related classes.
 """
 
 
-from orbit.models.connecting_road import ConnectingRoad
 from orbit.models.junction import (
     Junction,
     JunctionBoundary,
@@ -448,41 +447,34 @@ class TestJunctionConnections:
     """Test Junction connecting road and lane connection management."""
 
     def test_add_connecting_road(self):
-        """Test adding connecting road."""
+        """Test adding connecting road ID."""
         junction = Junction()
-        cr = ConnectingRoad(
-            predecessor_road_id='r1',
-            successor_road_id='r2'
-        )
-        junction.add_connecting_road(cr)
-        assert len(junction.connecting_roads) == 1
-        assert junction.connecting_roads[0] == cr
+        junction.add_connecting_road('cr-1')
+        assert len(junction.connecting_road_ids) == 1
+        assert junction.connecting_road_ids[0] == 'cr-1'
 
     def test_add_connecting_road_no_duplicates(self):
-        """Test that same connecting road isn't added twice."""
+        """Test that same connecting road ID isn't added twice."""
         junction = Junction()
-        cr = ConnectingRoad(predecessor_road_id='r1', successor_road_id='r2')
-        junction.add_connecting_road(cr)
-        junction.add_connecting_road(cr)
-        assert len(junction.connecting_roads) == 1
+        junction.add_connecting_road('cr-1')
+        junction.add_connecting_road('cr-1')
+        assert len(junction.connecting_road_ids) == 1
 
     def test_remove_connecting_road(self):
-        """Test removing connecting road."""
-        cr = ConnectingRoad(predecessor_road_id='r1', successor_road_id='r2')
-        junction = Junction(connecting_roads=[cr])
-        junction.remove_connecting_road(cr.id)
-        assert len(junction.connecting_roads) == 0
+        """Test removing connecting road ID."""
+        junction = Junction(connecting_road_ids=['cr-1'])
+        junction.remove_connecting_road('cr-1')
+        assert len(junction.connecting_road_ids) == 0
 
     def test_remove_connecting_road_clears_lane_connections(self):
         """Test that removing connecting road also removes lane connections."""
-        cr = ConnectingRoad(predecessor_road_id='r1', successor_road_id='r2')
         lc = LaneConnection(
             from_road_id='r1',
             to_road_id='r2',
-            connecting_road_id=cr.id
+            connecting_road_id='cr-1'
         )
-        junction = Junction(connecting_roads=[cr], lane_connections=[lc])
-        junction.remove_connecting_road(cr.id)
+        junction = Junction(connecting_road_ids=['cr-1'], lane_connections=[lc])
+        junction.remove_connecting_road('cr-1')
         assert len(junction.lane_connections) == 0
 
     def test_add_lane_connection(self):
@@ -499,18 +491,15 @@ class TestJunctionConnections:
         junction.remove_lane_connection(lc.id)
         assert len(junction.lane_connections) == 0
 
-    def test_get_connecting_road_by_id(self):
-        """Test finding connecting road by ID."""
-        cr = ConnectingRoad(predecessor_road_id='r1', successor_road_id='r2')
-        junction = Junction(connecting_roads=[cr])
-        found = junction.get_connecting_road_by_id(cr.id)
-        assert found == cr
+    def test_has_connecting_road(self):
+        """Test checking if connecting road ID exists."""
+        junction = Junction(connecting_road_ids=['cr-1'])
+        assert junction.has_connecting_road('cr-1') is True
 
-    def test_get_connecting_road_by_id_not_found(self):
-        """Test finding non-existent connecting road."""
+    def test_has_connecting_road_not_found(self):
+        """Test checking non-existent connecting road ID."""
         junction = Junction()
-        found = junction.get_connecting_road_by_id('nonexistent')
-        assert found is None
+        assert junction.has_connecting_road('nonexistent') is False
 
     def test_get_connections_for_road_pair(self):
         """Test getting connections between specific roads."""
@@ -659,13 +648,12 @@ class TestJunctionSummary:
 
     def test_get_connection_summary(self):
         """Test getting connection summary."""
-        cr = ConnectingRoad(predecessor_road_id='r1', successor_road_id='r2')
         lc1 = LaneConnection(from_road_id='r1', to_road_id='r2', turn_type='left')
         lc2 = LaneConnection(from_road_id='r1', to_road_id='r3', turn_type='right')
         lc3 = LaneConnection(from_road_id='r2', to_road_id='r3', turn_type='straight')
 
         junction = Junction(
-            connecting_roads=[cr],
+            connecting_road_ids=['cr-1'],
             lane_connections=[lc1, lc2, lc3]
         )
         summary = junction.get_connection_summary()
@@ -746,7 +734,6 @@ class TestJunctionSerialization:
 
     def test_roundtrip_serialization(self):
         """Test full roundtrip serialization."""
-        cr = ConnectingRoad(predecessor_road_id='r1', successor_road_id='r2')
         lc = LaneConnection(from_road_id='r1', to_road_id='r2')
 
         original = Junction(
@@ -754,7 +741,7 @@ class TestJunctionSerialization:
             center_point=(100, 200),
             geo_center_point=(12.0, 57.0),
             connected_road_ids=['r1', 'r2', 'r3'],
-            connecting_roads=[cr],
+            connecting_road_ids=['cr-1'],
             lane_connections=[lc],
             is_roundabout=True,
             roundabout_center=(500, 500),
@@ -768,7 +755,7 @@ class TestJunctionSerialization:
         assert restored.center_point == original.center_point
         assert restored.geo_center_point == original.geo_center_point
         assert restored.is_roundabout == original.is_roundabout
-        assert len(restored.connecting_roads) == 1
+        assert len(restored.connecting_road_ids) == 1
         assert len(restored.lane_connections) == 1
 
     def test_repr(self):

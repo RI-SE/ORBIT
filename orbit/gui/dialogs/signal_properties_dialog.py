@@ -124,12 +124,15 @@ class SignalPropertiesDialog(BaseDialog):
             label = f"{road.name} ({road_id_short})" if road.name else f"Road {road_id_short}"
             self.road_combo.addItem(label, road.id)
         for junction in self.project.junctions:
-            for cr in junction.connecting_roads:
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if not cr:
+                    continue
                 cr_id_short = cr.id[:8]
-                pred = self.project.get_road(cr.predecessor_road_id)
-                succ = self.project.get_road(cr.successor_road_id)
-                pred_name = pred.name if pred and pred.name else f"Road {cr.predecessor_road_id[:6]}"
-                succ_name = succ.name if succ and succ.name else f"Road {cr.successor_road_id[:6]}"
+                pred = self.project.get_road(cr.predecessor_id)
+                succ = self.project.get_road(cr.successor_id)
+                pred_name = pred.name if pred and pred.name else f"Road {cr.predecessor_id[:6]}"
+                succ_name = succ.name if succ and succ.name else f"Road {cr.successor_id[:6]}"
                 label = f"CR: {pred_name} → {succ_name} ({cr_id_short})"
                 self.road_combo.addItem(label, cr.id)
         self.road_combo.currentIndexChanged.connect(self.on_road_changed)
@@ -224,9 +227,9 @@ class SignalPropertiesDialog(BaseDialog):
                         self.s_position_label.setText(format_with_metric(s, scale_x))
                         return
             else:
-                cr = self.project.get_connecting_road(road_id)
-                if cr and cr.path:
-                    s = self.signal.calculate_s_position(cr.path)
+                cr = self.project.get_road(road_id)
+                if cr and cr.is_connecting_road and cr.inline_path:
+                    s = self.signal.calculate_s_position(cr.inline_path)
                     if s is not None:
                         scale = get_scale_factors(self.project)
                         scale_x = scale[0] if scale else None
@@ -271,9 +274,9 @@ class SignalPropertiesDialog(BaseDialog):
                 if centerline_polyline:
                     self.signal.s_position = self.signal.calculate_s_position(centerline_polyline.points)
             else:
-                cr = self.project.get_connecting_road(self.signal.road_id)
-                if cr and cr.path:
-                    self.signal.s_position = self.signal.calculate_s_position(cr.path)
+                cr = self.project.get_road(self.signal.road_id)
+                if cr and cr.is_connecting_road and cr.inline_path:
+                    self.signal.s_position = self.signal.calculate_s_position(cr.inline_path)
 
         # Validity range
         if self.validity_checkbox.isChecked():

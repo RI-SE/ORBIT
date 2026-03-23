@@ -11,6 +11,7 @@ from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsScene
 
+from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
 from orbit.utils.geometry import calculate_directional_scale
 from orbit.utils.logging_config import get_logger
 
@@ -19,7 +20,7 @@ from .interactive_lane import InteractiveLanePolygon
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from orbit.models.connecting_road import ConnectingRoad
+    from orbit.models.road import Road
 
     from ..image_view import ImageView
 
@@ -27,12 +28,12 @@ if TYPE_CHECKING:
 class ConnectingRoadGraphicsItem:
     """Graphics representation of a connecting road centerline."""
 
-    def __init__(self, connecting_road: 'ConnectingRoad', scene: QGraphicsScene) -> None:
+    def __init__(self, connecting_road: 'Road', scene: QGraphicsScene) -> None:
         """
         Create graphics for a connecting road centerline.
 
         Args:
-            connecting_road: ConnectingRoad object
+            connecting_road: Road object (connecting road with inline_path)
             scene: Graphics scene to add items to
         """
         self.connecting_road = connecting_road
@@ -54,7 +55,7 @@ class ConnectingRoadGraphicsItem:
         self.point_items.clear()
         self.arrow_items.clear()
 
-        if len(self.connecting_road.path) < 1:
+        if not self.connecting_road.inline_path or len(self.connecting_road.inline_path) < 1:
             return
 
         # Create pen for connecting road (purple - distinct from junction labels)
@@ -68,7 +69,7 @@ class ConnectingRoadGraphicsItem:
 
         # Use the stored path directly - it already contains sampled curve points
         # (20 points from Bezier/Hermite interpolation during junction analysis)
-        points = self.connecting_road.path
+        points = self.connecting_road.inline_path
 
         # Draw lines between points
         for i in range(len(points) - 1):
@@ -200,7 +201,9 @@ class ConnectingRoadGraphicsItem:
         Returns:
             Index of the point if found, -1 otherwise
         """
-        for i, (x, y) in enumerate(self.connecting_road.path):
+        if not self.connecting_road.inline_path:
+            return -1
+        for i, (x, y) in enumerate(self.connecting_road.inline_path):
             dx = pos.x() - x
             dy = pos.y() - y
             dist = (dx * dx + dy * dy) ** 0.5
@@ -219,7 +222,7 @@ class ConnectingRoadGraphicsItem:
         Returns:
             Index of the segment (0-based) if found, -1 otherwise
         """
-        points = self.connecting_road.path
+        points = self.connecting_road.inline_path or []
         for i in range(len(points) - 1):
             x1, y1 = points[i]
             x2, y2 = points[i + 1]
@@ -268,17 +271,16 @@ class ConnectingRoadGraphicsItem:
 class ConnectingRoadLanesGraphicsItem:
     """Graphics representation of lanes in a connecting road."""
 
-    # Default scale in meters per pixel
-    DEFAULT_SCALE = 0.058  # 5.8 cm/px
+    DEFAULT_SCALE = DEFAULT_SCALE_M_PER_PX
 
-    def __init__(self, connecting_road: 'ConnectingRoad', scene: QGraphicsScene,
+    def __init__(self, connecting_road: 'Road', scene: QGraphicsScene,
                  scale_factors: Optional[tuple] = None, parent_view: Optional['ImageView'] = None,
                  verbose: bool = False) -> None:
         """
         Create lane graphics for a connecting road.
 
         Args:
-            connecting_road: ConnectingRoad object
+            connecting_road: Road object (connecting road with inline_path)
             scene: Graphics scene
             scale_factors: Tuple of (scale_x, scale_y) in m/px, or None for default
             parent_view: Parent ImageView for signaling (optional)
@@ -305,7 +307,7 @@ class ConnectingRoadLanesGraphicsItem:
 
         scale_x, scale_y = self.scale_factors
         return calculate_directional_scale(
-            self.connecting_road.path, scale_x, scale_y,
+            self.connecting_road.inline_path or [], scale_x, scale_y,
             default_scale=self.DEFAULT_SCALE
         )
 
@@ -319,7 +321,7 @@ class ConnectingRoadLanesGraphicsItem:
                 self.scene.removeItem(lane_item)
         self.lane_items.clear()
 
-        if len(self.connecting_road.path) < 2:
+        if not self.connecting_road.inline_path or len(self.connecting_road.inline_path) < 2:
             return
 
         # Calculate scale
@@ -329,12 +331,12 @@ class ConnectingRoadLanesGraphicsItem:
             logger.debug("CONNECTING ROAD LANES: %s... Scale: %.6f m/px, "
                          "Lane width: %sm, Lanes: R%d L%d",
                          self.connecting_road.id[:8], scale,
-                         self.connecting_road.lane_width,
-                         self.connecting_road.lane_count_right,
-                         self.connecting_road.lane_count_left)
+                         self.connecting_road.lane_info.lane_width,
+                         self.connecting_road.cr_lane_count_right,
+                         self.connecting_road.cr_lane_count_left)
 
         # Get lane polygons
-        lane_polygons = self.connecting_road.get_lane_polygons(scale)
+        lane_polygons = self.connecting_road.get_cr_lane_polygons(scale)
 
         # Create interactive polygon for each lane
         for lane_id, polygon_points in lane_polygons.items():

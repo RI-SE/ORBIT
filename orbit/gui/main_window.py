@@ -20,11 +20,13 @@ from PyQt6.QtWidgets import (
     QToolBar,
 )
 
-from orbit.models import LineType, Project
+from orbit.gui.graphics.adjustment_ghost_overlay import AdjustmentGhostOverlay
+from orbit.models import Project
 from orbit.utils.coordinate_transform import TransformAdjustment
 from orbit.utils.logging_config import get_logger
 
 from .image_view import ImageView
+from .project_controller import ProjectController
 from .utils.message_helpers import ask_yes_no, show_error, show_info, show_warning
 from .widgets.adjustment_panel import AdjustmentPanel
 from .widgets.elements_tree import ElementsTreeWidget
@@ -59,11 +61,17 @@ class MainWindow(QMainWindow):
         self._aerial_transformer = None  # Transformer for aerial tile image
         self._aerial_zoom = 18  # Default tile zoom level
 
+        # Adjustment ghost overlay (shows unadjusted geometry positions)
+        self._adjustment_ghost_overlay = None
+
         # Session-level last used directory for file dialogs
         self._last_file_directory: str = str(Path.home())
 
         # Settings
         self.settings = QSettings()
+
+        # Business logic controller
+        self.controller = ProjectController(self.project, self._create_transformer)
 
         # Setup UI
         self.setup_ui()
@@ -165,7 +173,14 @@ class MainWindow(QMainWindow):
 
     def create_actions(self):
         """Create all actions for menus and toolbar."""
-        # File actions
+        self._create_file_actions()
+        self._create_edit_actions()
+        self._create_view_actions()
+        self._create_tools_actions()
+        self._create_help_actions()
+
+    def _create_file_actions(self):
+        """Create file menu actions."""
         self.new_action = QAction("&New Project", self)
         self.new_action.setShortcut(QKeySequence.StandardKey.New)
         self.new_action.setStatusTip("Create a new project")
@@ -223,7 +238,8 @@ class MainWindow(QMainWindow):
         self.exit_action.setStatusTip("Exit the application")
         self.exit_action.triggered.connect(self.close)
 
-        # Edit actions - using QUndoStack
+    def _create_edit_actions(self):
+        """Create edit menu actions."""
         self.undo_action = self.undo_stack.createUndoAction(self, "&Undo")
         self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
         self.undo_action.setStatusTip("Undo last action")
@@ -245,7 +261,8 @@ class MainWindow(QMainWindow):
         self.junction_groups_action.setStatusTip("Manage junction groups (roundabouts, complex junctions)")
         self.junction_groups_action.triggered.connect(self.show_junction_groups)
 
-        # View actions
+    def _create_view_actions(self):
+        """Create view menu actions."""
         self.zoom_in_action = QAction("Zoom &In", self)
         self.zoom_in_action.setShortcut(QKeySequence.StandardKey.ZoomIn)
         self.zoom_in_action.setStatusTip("Zoom in")
@@ -270,13 +287,13 @@ class MainWindow(QMainWindow):
         self.toggle_lanes_action.setShortcut(QKeySequence("Ctrl+L"))
         self.toggle_lanes_action.setStatusTip("Toggle lane visualization on/off")
         self.toggle_lanes_action.setCheckable(True)
-        self.toggle_lanes_action.setChecked(True)  # Lanes visible by default
+        self.toggle_lanes_action.setChecked(True)
         self.toggle_lanes_action.triggered.connect(self.toggle_lane_visibility)
 
         self.toggle_soffsets_action = QAction("Show &S-Offsets", self)
         self.toggle_soffsets_action.setStatusTip("Toggle s-offset labels on road reference line points")
         self.toggle_soffsets_action.setCheckable(True)
-        self.toggle_soffsets_action.setChecked(False)  # S-offsets hidden by default
+        self.toggle_soffsets_action.setChecked(False)
         self.toggle_soffsets_action.triggered.connect(self.toggle_soffset_visibility)
 
         self.toggle_junction_debug_action = QAction("Show &Junction Debug", self)
@@ -285,10 +302,9 @@ class MainWindow(QMainWindow):
             "(endpoints, headings, paths)"
         )
         self.toggle_junction_debug_action.setCheckable(True)
-        self.toggle_junction_debug_action.setChecked(False)  # Hidden by default
+        self.toggle_junction_debug_action.setChecked(False)
         self.toggle_junction_debug_action.triggered.connect(self.toggle_junction_debug_visibility)
 
-        # Adjustment mode action
         self.toggle_adjustment_action = QAction("&Adjust Alignment", self)
         self.toggle_adjustment_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         self.toggle_adjustment_action.setStatusTip("Adjust georeferencing alignment with keyboard controls")
@@ -296,14 +312,12 @@ class MainWindow(QMainWindow):
         self.toggle_adjustment_action.setChecked(False)
         self.toggle_adjustment_action.triggered.connect(self.toggle_adjustment_mode)
 
-        # Uncertainty overlay action (single toggle)
         self.toggle_uncertainty_action = QAction("Show &Uncertainty Overlay", self)
         self.toggle_uncertainty_action.setStatusTip("Show position uncertainty heat map")
         self.toggle_uncertainty_action.setCheckable(True)
         self.toggle_uncertainty_action.setChecked(False)
         self.toggle_uncertainty_action.triggered.connect(self.toggle_uncertainty_overlay)
 
-        # Aerial map view action
         self.toggle_aerial_action = QAction("&Aerial Map View", self)
         self.toggle_aerial_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
         self.toggle_aerial_action.setStatusTip(
@@ -311,10 +325,11 @@ class MainWindow(QMainWindow):
         )
         self.toggle_aerial_action.setCheckable(True)
         self.toggle_aerial_action.setChecked(False)
-        self.toggle_aerial_action.setEnabled(False)  # Enabled when georef available
+        self.toggle_aerial_action.setEnabled(False)
         self.toggle_aerial_action.triggered.connect(self.toggle_aerial_view)
 
-        # Tools actions
+    def _create_tools_actions(self):
+        """Create tools menu actions."""
         self.new_polyline_action = QAction("New &Polyline", self)
         self.new_polyline_action.setShortcut(QKeySequence("Ctrl+P"))
         self.new_polyline_action.setStatusTip("Start drawing a new polyline")
@@ -376,7 +391,8 @@ class MainWindow(QMainWindow):
         self.show_scale_action.setCheckable(True)
         self.show_scale_action.triggered.connect(self.toggle_show_scale_mode)
 
-        # Help actions
+    def _create_help_actions(self):
+        """Create help menu actions."""
         self.about_action = QAction("&About ORBIT", self)
         self.about_action.setStatusTip("About this application")
         self.about_action.triggered.connect(self.show_about)
@@ -542,6 +558,7 @@ class MainWindow(QMainWindow):
         self.road_tree.road_deleted.connect(self.on_road_deleted)
         self.road_tree.road_delete_requested.connect(self.on_road_delete_requested)
         self.road_tree.road_edit_requested.connect(self.on_road_edit_requested)
+        self.road_tree.road_selected.connect(self.on_road_selected_in_tree)
         self.road_tree.polyline_selected.connect(self.on_polyline_selected_in_tree)
         self.road_tree.polyline_deleted.connect(self.on_polyline_deleted_in_tree)
         self.road_tree.polyline_delete_requested.connect(self.on_polyline_delete_requested)
@@ -564,9 +581,15 @@ class MainWindow(QMainWindow):
         # Connect adjustment panel signals
         self.adjustment_panel.apply_requested.connect(self.apply_adjustment_to_control_points)
         self.adjustment_panel.reset_requested.connect(self.reset_adjustment)
+        self.adjustment_panel.autofit_toggled.connect(self._on_autofit_toggled)
+        self.adjustment_panel.autofit_compute_requested.connect(self._on_autofit_compute)
+        self.adjustment_panel.autofit_clear_requested.connect(self._on_autofit_clear)
 
         # Connect image view adjustment signal
         self.image_view.adjustment_changed.connect(self.on_adjustment_changed)
+        self.image_view.autofit_pairs_changed.connect(
+            self.adjustment_panel.update_pair_count
+        )
 
     # Project management
     def new_project(self):
@@ -576,7 +599,7 @@ class MainWindow(QMainWindow):
             self.current_project_file = None
             self.modified = False
             self.undo_stack.clear()
-            self._cached_transformer = None  # Invalidate transformer cache
+            self._invalidate_cached_transformer()
 
             # Reset adjustment mode and panel
             self.image_view.reset_adjustment()
@@ -614,10 +637,11 @@ class MainWindow(QMainWindow):
             self._remember_directory(file_path)
             try:
                 self.project = Project.load(Path(file_path))
+                self.controller.project = self.project
                 self.current_project_file = Path(file_path)
                 self.modified = False
                 self.undo_stack.clear()
-                self._cached_transformer = None  # Invalidate transformer cache
+                self._invalidate_cached_transformer()  # Invalidate transformer cache
 
                 # Reset adjustment mode and panel
                 self.image_view.reset_adjustment()
@@ -643,6 +667,10 @@ class MainWindow(QMainWindow):
                 # This ensures pixel coords match the current transformer state
                 self._initialize_and_refresh_geo_coords()
 
+                # Populate missing connecting_lane_id on lane connections
+                # (needed for projects saved before this field was set).
+                self.project.link_lane_connections_to_connecting_roads()
+
                 # Apply lane alignment to all junctions so CR visuals are
                 # correct immediately (without requiring the user to open the
                 # lane connection dialog first).
@@ -654,13 +682,29 @@ class MainWindow(QMainWindow):
                 self.road_tree.set_project(self.project)
                 self.update_window_title()
                 self.update_scale_display()
+
+                # Restore persisted alignment adjustment (if any)
+                self._restore_adjustment_from_project()
+
                 self.statusBar().showMessage(f"Opened project: {file_path}")
 
             except Exception as e:
                 show_error(self, f"Failed to open project:\n{str(e)}", "Error")
 
+    def _ensure_original_view_for_save(self):
+        """Switch back to original image view if aerial view is active.
+
+        Must be called before saving to ensure pixel coordinates in the
+        project file correspond to the original image, not aerial tiles.
+        """
+        if self._aerial_view_active:
+            self._switch_to_original()
+            self.toggle_aerial_action.setChecked(False)
+
     def save_project(self):
         """Save the current project."""
+        self._ensure_original_view_for_save()
+        self._sync_adjustment_to_project()
         if self.current_project_file:
             try:
                 self.project.save(self.current_project_file)
@@ -675,6 +719,8 @@ class MainWindow(QMainWindow):
 
     def save_project_as(self):
         """Save the project with a new name."""
+        self._ensure_original_view_for_save()
+        self._sync_adjustment_to_project()
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Project As",
@@ -737,7 +783,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Preferences updated")
 
             # Clear cached transformer since method may have changed
-            self._cached_transformer = None
+            self._invalidate_cached_transformer()
 
             # Update scale display and lane graphics with new transformation
             self.update_scale_display()
@@ -1036,7 +1082,6 @@ class MainWindow(QMainWindow):
 
     def import_osm_data(self):
         """Import road network data from OpenStreetMap (API or file)."""
-        # Import from the 'import' module using importlib (since 'import' is a Python keyword)
         import importlib
 
         from .dialogs.osm_import_dialog import OSMImportDialog
@@ -1053,59 +1098,109 @@ class MainWindow(QMainWindow):
         from PyQt6.QtCore import QCoreApplication
         from PyQt6.QtWidgets import QProgressDialog
 
+        # Resolve bbox, transformer, and image dimensions
+        setup = self._setup_osm_import(
+            OSMImportDialog, calculate_bbox_from_image, calculate_bbox_from_center
+        )
+        if setup is None:
+            return
+        bbox, transformer, image_width, image_height, dialog = setup
+
+        # Get import source and options
+        source_data = dialog.get_import_source()
+        source_type = source_data[0]
+
+        if source_type == 'api':
+            options_dict = source_data[1]
+            file_path = None
+        else:
+            file_path = source_data[1]
+            options_dict = source_data[2]
+            if not file_path:
+                show_warning(self, "Please select an OSM file to import.", "No File Selected")
+                return
+
+        # Check if custom radius was requested (georef mode only)
+        custom_radius = dialog.get_custom_radius()
+        if custom_radius is not None:
+            center_lon, center_lat = transformer.pixel_to_geo(
+                image_width / 2.0, image_height / 2.0
+            )
+            bbox = calculate_bbox_from_center(center_lat, center_lon, custom_radius)
+
+        # Build ImportOptions
+        import_mode = ImportMode.REPLACE if options_dict['import_mode'] == 'replace' else ImportMode.ADD
+        detail_level = DetailLevel.FULL if options_dict['detail_level'] == 'full' else DetailLevel.MODERATE
+        options = ImportOptions(
+            import_mode=import_mode, detail_level=detail_level,
+            default_lane_width=options_dict['default_lane_width'],
+            import_junctions=options_dict['import_junctions'],
+            filter_outside_image=options_dict.get('filter_outside_image', False),
+            auto_adjust_junctions=options_dict.get('auto_adjust_junctions', True),
+            timeout=60, verbose=self.verbose
+        )
+
+        # Show progress and perform import
+        progress_msg = (f"Importing from {Path(file_path).name}..." if file_path
+                        else "Importing OpenStreetMap data from API...")
+        progress = QProgressDialog(progress_msg, "Cancel", 0, 0, self)
+        progress.setWindowTitle("Importing OSM File" if file_path else "Importing OSM Data")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButton(None)
+        progress.show()
+        QCoreApplication.processEvents()
+
+        try:
+            importer = OSMImporter(self.project, transformer, image_width, image_height)
+            if source_type == 'api':
+                result = importer.import_osm_data(options, bbox=bbox)
+            else:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    osm_data = OSMParser.parse_xml(f.read())
+                result = importer._import_from_osm_data(osm_data, options, bbox=bbox)
+            progress.close()
+            self._process_osm_import_result(result, source_type, file_path)
+        except Exception as e:
+            progress.close()
+            show_error(self, f"An unexpected error occurred during import:\n\n{type(e).__name__}: {e}", "Import Error")
+            self.statusBar().showMessage("OSM import error")
+
+    def _setup_osm_import(self, OSMImportDialog, calculate_bbox_from_image,
+                          calculate_bbox_from_center):
+        """Set up bbox, transformer, and image dimensions for OSM import. Returns None on cancel."""
         from orbit.models.project import ControlPoint
 
         has_georef = len(self.project.control_points) >= 3
         has_image = self.image_view.image_item is not None
 
-        # --- Branch: georef + image available ---
         if has_georef and has_image:
             image_width = int(self.image_view.image_item.pixmap().width())
             image_height = int(self.image_view.image_item.pixmap().height())
-
             transformer = self._create_transformer(use_validation=True)
             if not transformer:
                 show_error(self, "Failed to create coordinate transformer.\n"
                     "Please check your control points.", "Transformation Error")
-                return
-
+                return None
             try:
                 bbox = calculate_bbox_from_image(image_width, image_height, transformer)
             except Exception as e:
                 show_error(self, f"Failed to calculate bounding box:\n{e}", "Error")
-                return
-
-            # Show dialog with georef mode (custom radius option available)
+                return None
             dialog = OSMImportDialog(bbox, self, has_georef=True)
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                self.statusBar().showMessage("OSM import cancelled")
-                return
-
-            # Check if custom radius was requested
-            custom_radius = dialog.get_custom_radius()
-            if custom_radius is not None:
-                # Compute image center in geo coords
-                center_lon, center_lat = transformer.pixel_to_geo(
-                    image_width / 2.0, image_height / 2.0
-                )
-                bbox = calculate_bbox_from_center(center_lat, center_lon, custom_radius)
-
-        # --- Branch: no georef or no image -> coordinate mode ---
         else:
-            # Dummy bbox for dialog (will be replaced by user input)
             dialog = OSMImportDialog((0, 0, 0, 0), self, has_georef=False)
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                self.statusBar().showMessage("OSM import cancelled")
-                return
 
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.statusBar().showMessage("OSM import cancelled")
+            return None
+
+        if not (has_georef and has_image):
             coord_params = dialog.get_coordinate_params()
             if not coord_params:
-                return
+                return None
             center_lat, center_lon, radius_m, scale_px_per_m = coord_params
-
             bbox = calculate_bbox_from_center(center_lat, center_lon, radius_m)
 
-            # Create synthetic canvas
             canvas_size = max(int(2 * radius_m * scale_px_per_m), 2000)
             image_width = canvas_size
             image_height = canvas_size
@@ -1113,7 +1208,6 @@ class MainWindow(QMainWindow):
             self.project.synthetic_canvas_width = image_width
             self.project.synthetic_canvas_height = image_height
 
-            # Create synthetic control points at canvas corners mapped to bbox corners
             min_lat, min_lon, max_lat, max_lon = bbox
             self.project.control_points = [
                 ControlPoint(pixel_x=0, pixel_y=0, longitude=min_lon, latitude=max_lat),
@@ -1122,139 +1216,55 @@ class MainWindow(QMainWindow):
                 ControlPoint(pixel_x=0, pixel_y=image_height, longitude=min_lon, latitude=min_lat),
             ]
             self.project.transform_method = 'affine'
-            self._cached_transformer = None
-
+            self._invalidate_cached_transformer()
             transformer = self._create_transformer(use_validation=False)
             if not transformer:
                 show_error(self, "Failed to create coordinate transformer from synthetic control points.",
                     "Transformation Error")
-                return
+                return None
 
-        # Get import source and options
-        source_data = dialog.get_import_source()
-        source_type = source_data[0]
+        return bbox, transformer, image_width, image_height, dialog
 
-        if source_type == 'api':
-            # API import
-            options_dict = source_data[1]
-        else:
-            # File import
-            file_path = source_data[1]
-            options_dict = source_data[2]
+    def _process_osm_import_result(self, result, source_type, file_path):
+        """Handle import result: show messages, refresh views."""
+        if result.success:
+            scale_factors = self.get_current_scale()
+            self._align_all_junction_connecting_roads(scale_factors)
 
-            # Validate file path
-            if not file_path:
-                show_warning(self, "Please select an OSM file to import.", "No File Selected")
-                return
-
-        # Build ImportOptions from dict
-        import_mode = ImportMode.REPLACE if options_dict['import_mode'] == 'replace' else ImportMode.ADD
-        detail_level = DetailLevel.FULL if options_dict['detail_level'] == 'full' else DetailLevel.MODERATE
-
-        options = ImportOptions(
-            import_mode=import_mode,
-            detail_level=detail_level,
-            default_lane_width=options_dict['default_lane_width'],
-            import_junctions=options_dict['import_junctions'],
-            filter_outside_image=options_dict.get('filter_outside_image', False),
-            timeout=60,
-            verbose=self.verbose
-        )
-
-        # Show progress dialog
-        if source_type == 'api':
-            progress_msg = "Importing OpenStreetMap data from API..."
-            progress_title = "Importing OSM Data"
-        else:
-            progress_msg = f"Importing from {Path(file_path).name}..."
-            progress_title = "Importing OSM File"
-
-        progress = QProgressDialog(
-            progress_msg,
-            "Cancel",
-            0, 0,  # Indeterminate progress
-            self
-        )
-        progress.setWindowTitle(progress_title)
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setCancelButton(None)  # No cancel button for now
-        progress.show()
-        QCoreApplication.processEvents()
-
-        # Perform import
-        try:
-            importer = OSMImporter(self.project, transformer, image_width, image_height)
-
-            if source_type == 'api':
-                # Import from Overpass API (pass bbox for custom radius support)
-                result = importer.import_osm_data(options, bbox=bbox)
+            if source_type == 'file':
+                msg = f"Successfully imported from {Path(file_path).name}:\n\n"
             else:
-                # Import from file
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    xml_content = f.read()
-                osm_data = OSMParser.parse_xml(xml_content)
-                result = importer._import_from_osm_data(osm_data, options, bbox=bbox)
+                msg = "Successfully imported:\n\n"
 
-            progress.close()
+            msg += f"• {result.roads_imported} roads\n"
+            if result.junctions_imported > 0:
+                msg += f"• {result.junctions_imported} junctions\n"
+            if result.signals_imported > 0:
+                msg += f"• {result.signals_imported} signals\n"
+            if result.objects_imported > 0:
+                msg += f"• {result.objects_imported} objects\n"
+            if result.roads_skipped_duplicate > 0:
+                msg += f"\n• Skipped {result.roads_skipped_duplicate} duplicate roads"
+            if result.partial_import:
+                msg += "\n\nWarning: Import timed out. Partial data was imported."
 
-            if result.success:
-                # Show success message
-                if source_type == 'file':
-                    msg = f"Successfully imported from {Path(file_path).name}:\n\n"
-                else:
-                    msg = "Successfully imported:\n\n"
+            show_info(self, msg, "Import Successful")
+            self.project.openstreetmap_used = True
+            self.modified = True
+            self.image_view.load_project(self.project)
+            self.elements_tree.refresh_tree()
+            self.road_tree.refresh_tree()
+            self._invalidate_cached_transformer()
 
-                msg += f"• {result.roads_imported} roads\n"
-                if result.junctions_imported > 0:
-                    msg += f"• {result.junctions_imported} junctions\n"
-                if result.signals_imported > 0:
-                    msg += f"• {result.signals_imported} signals\n"
-                if result.objects_imported > 0:
-                    msg += f"• {result.objects_imported} objects\n"
-
-                if result.roads_skipped_duplicate > 0:
-                    msg += f"\n• Skipped {result.roads_skipped_duplicate} duplicate roads"
-
-                if result.partial_import:
-                    msg += "\n\nWarning: Import timed out. Partial data was imported."
-
-                show_info(self, msg, "Import Successful")
-
-                # Mark OpenStreetMap as used for proper attribution
-                self.project.openstreetmap_used = True
-
-                # Mark project as modified
-                self.modified = True
-
-                # Refresh all views
-                self.image_view.load_project(self.project)
-                self.elements_tree.refresh_tree()
-                self.road_tree.refresh_tree()
-
-                # Invalidate transformer cache
-                self._cached_transformer = None
-
-                if source_type == 'file':
-                    self.statusBar().showMessage(
-                        f"Imported {result.roads_imported} roads, "
-                        f"{result.signals_imported} signals, "
-                        f"{result.objects_imported} objects from {Path(file_path).name}"
-                    )
-                else:
-                    self.statusBar().showMessage(
-                        f"Imported {result.roads_imported} roads, "
-                        f"{result.signals_imported} signals, "
-                        f"{result.objects_imported} objects"
-                    )
-            else:
-                # Show error message
-                show_error(self, f"Failed to import OSM data:\n\n{result.error_message}", "Import Failed")
-                self.statusBar().showMessage("OSM import failed")
-
-        except Exception as e:
-            progress.close()
-            show_error(self, f"An unexpected error occurred during import:\n\n{type(e).__name__}: {e}", "Import Error")
-            self.statusBar().showMessage("OSM import error")
+            status = (f"Imported {result.roads_imported} roads, "
+                      f"{result.signals_imported} signals, "
+                      f"{result.objects_imported} objects")
+            if source_type == 'file':
+                status += f" from {Path(file_path).name}"
+            self.statusBar().showMessage(status)
+        else:
+            show_error(self, f"Failed to import OSM data:\n\n{result.error_message}", "Import Failed")
+            self.statusBar().showMessage("OSM import failed")
 
     def import_opendrive_file(self):
         """Import road network from OpenDrive file."""
@@ -1727,7 +1737,7 @@ class MainWindow(QMainWindow):
                 f"Georeferencing updated: {len(self.project.control_points)} control points"
             )
             # Invalidate cached transformer since control points changed
-            self._cached_transformer = None
+            self._invalidate_cached_transformer()
             # Update scale display with new georeferencing
             self.update_scale_display()
             # Refresh control point visualization
@@ -1741,7 +1751,7 @@ class MainWindow(QMainWindow):
     def on_control_points_changed(self):
         """Handle control points being added/removed in georeferencing dialog."""
         # Invalidate cached transformer since control points changed
-        self._cached_transformer = None
+        self._invalidate_cached_transformer()
         # Refresh control point visualization
         self.refresh_control_points()
         # Update scale display
@@ -1807,6 +1817,39 @@ class MainWindow(QMainWindow):
             **kwargs,
         )
 
+    def _invalidate_cached_transformer(self):
+        """Invalidate the cached transformer while preserving the active adjustment."""
+        self._cached_transformer = None
+
+    def _apply_active_adjustment(self, transformer):
+        """Apply the project's persisted adjustment to a transformer, if any."""
+        if transformer is None:
+            return
+        adj = self.image_view.current_adjustment
+        if adj and not adj.is_identity():
+            transformer.set_adjustment(adj)
+
+    def _sync_adjustment_to_project(self):
+        """Store the current adjustment from ImageView into the project for persistence."""
+        adj = self.image_view.current_adjustment
+        if adj and not adj.is_identity():
+            self.project.transform_adjustment = adj.to_dict()
+        else:
+            self.project.transform_adjustment = None
+
+    def _restore_adjustment_from_project(self):
+        """Restore a saved adjustment from the project into the ImageView and transformer."""
+        if not self.project.transform_adjustment:
+            return
+        adj = TransformAdjustment.from_dict(self.project.transform_adjustment)
+        if adj.is_identity():
+            return
+        self.image_view.current_adjustment = adj
+        if self._cached_transformer is not None:
+            self._cached_transformer.set_adjustment(adj)
+            self.image_view.update_all_from_geo_coords(self._cached_transformer)
+        self.adjustment_panel.update_display(adj)
+
     def on_mouse_moved(self, x: float, y: float):
         """Handle mouse movement in image view."""
         # Sentinel (-1, -1) is emitted on leaveEvent; show N/A.
@@ -1827,6 +1870,7 @@ class MainWindow(QMainWindow):
                     self._cached_transformer = self._create_transformer(
                         use_validation=True,
                     )
+                    self._apply_active_adjustment(self._cached_transformer)
 
                 if self._cached_transformer:
                     lon, lat = self._cached_transformer.pixel_to_geo(x, y)
@@ -1843,7 +1887,7 @@ class MainWindow(QMainWindow):
         """Update the scale display based on georeferencing."""
         has_georef = self.project.has_georeferencing() and len(self.project.control_points) >= 2
         if hasattr(self, 'toggle_aerial_action'):
-            self.toggle_aerial_action.setEnabled(has_georef and not self._aerial_view_active)
+            self.toggle_aerial_action.setEnabled(has_georef)
 
         if not has_georef:
             self.scale_label.setText("Scale: N/A (no georef)")
@@ -2098,8 +2142,9 @@ class MainWindow(QMainWindow):
 
         # Remove connecting road graphics that will be orphaned
         for junction in self.project.junctions:
-            for cr in junction.connecting_roads:
-                if cr.predecessor_road_id == road_id or cr.successor_road_id == road_id:
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if cr and (cr.predecessor_id == road_id or cr.successor_id == road_id):
                     self.image_view.remove_connecting_road_graphics(cr.id)
 
         # Remove assigned polylines and their graphics
@@ -2165,23 +2210,7 @@ class MainWindow(QMainWindow):
         cmd = LinkRoadsCommand(self, road_a_id, road_b_id, a_contact, b_contact)
         self.undo_stack.push(cmd)
 
-        # Apply the link (first redo is skipped by the command)
-        if a_contact == "end":
-            road_a.successor_id = road_b.id
-            road_a.successor_contact = b_contact
-        else:
-            road_a.predecessor_id = road_b.id
-            road_a.predecessor_contact = b_contact
-
-        if b_contact == "start":
-            road_b.predecessor_id = road_a.id
-            road_b.predecessor_contact = a_contact
-        else:
-            road_b.successor_id = road_a.id
-            road_b.successor_contact = a_contact
-
-        # Snap coordinates
-        self.project.enforce_road_link_coordinates(road_a_id)
+        self.controller.link_roads(road_a_id, road_b_id, a_contact, b_contact)
 
         # Refresh graphics for both roads
         for road in (road_a, road_b):
@@ -2201,23 +2230,14 @@ class MainWindow(QMainWindow):
         """Handle road unlink request from context menu."""
         from .undo_commands import UnlinkRoadsCommand
 
-        road = self.project.get_road(road_id)
         linked = self.project.get_road(linked_road_id)
-        if not road or not linked:
+        if not linked:
             return
 
         cmd = UnlinkRoadsCommand(self, road_id, linked_road_id)
         self.undo_stack.push(cmd)
 
-        # Apply the unlink (first redo is skipped by the command)
-        if road.predecessor_id == linked_road_id:
-            road.predecessor_id = None
-        if road.successor_id == linked_road_id:
-            road.successor_id = None
-        if linked.predecessor_id == road_id:
-            linked.predecessor_id = None
-        if linked.successor_id == road_id:
-            linked.successor_id = None
+        self.controller.unlink_roads(road_id, linked_road_id)
 
         self._refresh_trees()
         linked_name = linked.name or f"Road {linked.id}"
@@ -2274,6 +2294,17 @@ class MainWindow(QMainWindow):
             self.image_view.set_adjustment_mode(True, pivot_x, pivot_y)
             self.adjustment_dock.setVisible(True)
             self.adjustment_panel.set_enabled(True)
+            self.adjustment_panel.update_display(self.image_view.current_adjustment)
+
+            # Ensure adjustment is applied to transformer
+            if self._cached_transformer is not None and self.image_view.current_adjustment is not None:
+                if not self.image_view.current_adjustment.is_identity():
+                    self._cached_transformer.set_adjustment(self.image_view.current_adjustment)
+                    self.image_view.update_all_from_geo_coords(self._cached_transformer)
+
+            # Create ghost overlay showing unadjusted positions
+            self._show_adjustment_ghost()
+
             self.statusBar().showMessage(
                 "Adjustment mode ON - Use arrow keys to move, [ ] to rotate, +/- to scale"
             )
@@ -2281,17 +2312,15 @@ class MainWindow(QMainWindow):
             # Disable adjustment mode
             self.image_view.set_adjustment_mode(False)
             self.adjustment_dock.setVisible(False)
+            self._remove_adjustment_ghost()
             self.statusBar().showMessage("Adjustment mode OFF")
 
     def on_adjustment_changed(self, adjustment: TransformAdjustment):
         """Handle adjustment changes from ImageView."""
-        # Update the panel display
         self.adjustment_panel.update_display(adjustment)
 
-        # Apply adjustment to transformer and update all geometry from geo coords
         if self._cached_transformer is not None:
             self._cached_transformer.set_adjustment(adjustment)
-            # Update all graphics by recomputing pixel positions from geo coords
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
 
     def reset_adjustment(self):
@@ -2300,7 +2329,76 @@ class MainWindow(QMainWindow):
         if self._cached_transformer is not None:
             self._cached_transformer.clear_adjustment()
             self.refresh_imported_geometry()
+        self._remove_adjustment_ghost()
         self.statusBar().showMessage("Adjustment reset")
+
+    def _show_adjustment_ghost(self):
+        """Create and show the ghost overlay for adjustment mode."""
+        if self._adjustment_ghost_overlay is not None:
+            return
+        self._adjustment_ghost_overlay = AdjustmentGhostOverlay()
+        self.image_view.scene.addItem(self._adjustment_ghost_overlay)
+        self._adjustment_ghost_overlay.build(self.project, self._cached_transformer)
+
+    def _remove_adjustment_ghost(self):
+        """Remove the ghost overlay from the scene."""
+        if self._adjustment_ghost_overlay is not None:
+            if self._adjustment_ghost_overlay.scene():
+                self.image_view.scene.removeItem(self._adjustment_ghost_overlay)
+            self._adjustment_ghost_overlay = None
+
+    def _on_autofit_toggled(self, enabled: bool):
+        """Handle auto-fit picking mode toggle."""
+        self.image_view.set_autofit_mode(enabled)
+        if enabled:
+            self.statusBar().showMessage(
+                "Auto-fit: click where a feature IS, then where it SHOULD BE"
+            )
+        else:
+            self.statusBar().showMessage("Auto-fit picking stopped")
+
+    def _on_autofit_compute(self):
+        """Compute best-fit adjustment from collected point pairs."""
+        from orbit.utils.adjustment_fitter import fit_adjustment
+
+        pairs = self.image_view.autofit_pairs
+        if len(pairs) < 3:
+            self.statusBar().showMessage("Need at least 3 point pairs")
+            return
+
+        sources = [s for s, _ in pairs]
+        targets = [t for _, t in pairs]
+
+        # Pivot = image center
+        pivot_x = self.image_view.current_adjustment.pivot_x if self.image_view.current_adjustment else 0
+        pivot_y = self.image_view.current_adjustment.pivot_y if self.image_view.current_adjustment else 0
+
+        try:
+            new_adj = fit_adjustment(
+                sources, targets,
+                pivot_x, pivot_y,
+                current_adjustment=self.image_view.current_adjustment,
+            )
+        except Exception as e:
+            self.statusBar().showMessage(f"Auto-fit failed: {e}")
+            return
+
+        # Apply the computed adjustment
+        self.image_view.current_adjustment = new_adj
+        self.image_view.adjustment_changed.emit(new_adj)
+
+        # Clear the picking graphics (but keep pairs for potential re-fit)
+        self.image_view.clear_autofit_pairs()
+        self.adjustment_panel.autofit_btn.setChecked(False)
+
+        self.statusBar().showMessage(
+            f"Auto-fit applied from {len(pairs)} point pairs"
+        )
+
+    def _on_autofit_clear(self):
+        """Clear all autofit correspondence pairs."""
+        self.image_view.clear_autofit_pairs()
+        self.statusBar().showMessage("Auto-fit pairs cleared")
 
     def apply_adjustment_to_control_points(self):
         """
@@ -2335,11 +2433,13 @@ class MainWindow(QMainWindow):
             cp.pixel_x = new_x
             cp.pixel_y = new_y
 
-        # Clear the adjustment
+        # Clear the adjustment (already baked into control points)
         self.image_view.reset_adjustment()
+        self._sync_adjustment_to_project()
+        self._remove_adjustment_ghost()
 
         # Invalidate and rebuild transformer
-        self._cached_transformer = None
+        self._invalidate_cached_transformer()
         self._cached_transformer = self._create_transformer(use_validation=True)
 
         # Refresh geometry with new transformation
@@ -2495,6 +2595,9 @@ class MainWindow(QMainWindow):
             return
         self._original_image_np = self.image_view.image_np.copy() if self.image_view.image_np is not None else None
 
+        # Remove ghost overlay before switching (will be rebuilt on return)
+        self._remove_adjustment_ghost()
+
         # Determine cache directory (alongside project file, or temp)
         cache_dir = None
         if self.current_project_file:
@@ -2533,19 +2636,17 @@ class MainWindow(QMainWindow):
             return
 
         # Resize aerial image so its pixels/meter matches the original image.
-        # This keeps fixed-size scene elements (dots, labels, arrows) proportional.
         import cv2 as _cv2
         orig_scale_x, orig_scale_y = self._original_transformer.get_scale_factor()
         aerial_scale_x, aerial_scale_y = aerial_transformer_raw.get_scale_factor()
         aerial_image = result.image
         if orig_scale_x > 0 and aerial_scale_x > 0:
-            resize_ratio = aerial_scale_x / orig_scale_x  # > 1 → upscale; < 1 → downscale
-            if abs(resize_ratio - 1.0) > 0.01:  # only resize if meaningfully different
+            resize_ratio = aerial_scale_x / orig_scale_x
+            if abs(resize_ratio - 1.0) > 0.01:
                 new_w = max(1, round(w * resize_ratio))
                 new_h = max(1, round(h * resize_ratio))
                 interp = _cv2.INTER_AREA if resize_ratio < 1.0 else _cv2.INTER_LINEAR
                 aerial_image = _cv2.resize(aerial_image, (new_w, new_h), interpolation=interp)
-                # Rebuild transformer for the resized dimensions (same geo bbox)
         self._aerial_transformer = create_transformer_from_bounds(
             aerial_image.shape[1], aerial_image.shape[0],
             min_lon, min_lat, max_lon, max_lat,
@@ -2595,12 +2696,18 @@ class MainWindow(QMainWindow):
         # Restore background
         self.image_view.swap_background(self._original_image_np)
         self._cached_transformer = self._original_transformer
+        # Re-apply the alignment adjustment (it's relative to the original image)
+        self._apply_active_adjustment(self._cached_transformer)
         self._aerial_view_active = False
 
         # Refresh scene
         scale_factors = self._original_transformer.get_scale_factor()
         self.image_view.load_project(self.project, scale_factors)
         self.image_view.fit_to_window()
+
+        # Rebuild ghost overlay if adjustment mode is active
+        if self.image_view.adjustment_mode:
+            self._show_adjustment_ghost()
 
         # Cleanup
         self._original_image_np = None
@@ -2612,23 +2719,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Restored original image view")
 
     def get_current_scale(self):
-        """
-        Get current scale from georeferencing.
-
-        Returns:
-            Tuple of (scale_x, scale_y) in m/px, or None if no georeferencing
-        """
-        if not self.project.has_georeferencing():
-            return None
-
-        try:
-            transformer = self._create_transformer(use_validation=True)
-            if transformer:
-                return transformer.get_scale_factor()
-        except Exception:
-            pass
-
-        return None
+        """Get current scale (m/px) from georeferencing, or None."""
+        return self.controller.get_current_scale()
 
     def _initialize_and_refresh_geo_coords(self):
         """
@@ -2673,8 +2765,9 @@ class MainWindow(QMainWindow):
 
         # Initialize geo_path for connecting roads that don't have it (legacy support)
         for junction in self.project.junctions:
-            for conn_road in junction.connecting_roads:
-                if conn_road.path and not conn_road.has_geo_coords():
+            for cr_id in junction.connecting_road_ids:
+                conn_road = self.project.get_road(cr_id)
+                if conn_road and conn_road.inline_path and not conn_road.has_geo_coords():
                     conn_road.initialize_geo_path_from_pixels(transformer)
 
         # Refresh pixel coordinates from geo coordinates for ALL elements,
@@ -2691,12 +2784,13 @@ class MainWindow(QMainWindow):
         for junction in self.project.junctions:
             if junction.has_geo_coords():
                 junction.update_pixel_coords_from_geo(transformer)
-            for conn_road in junction.connecting_roads:
-                if conn_road.has_geo_coords():
-                    saved_path = list(conn_road.path)
+            for cr_id in junction.connecting_road_ids:
+                conn_road = self.project.get_road(cr_id)
+                if conn_road and conn_road.has_geo_coords():
+                    saved_path = list(conn_road.inline_path)
                     conn_road.update_pixel_path_from_geo(transformer)
-                    if not _points_in_bounds(conn_road.path):
-                        conn_road.path = saved_path
+                    if not _points_in_bounds(conn_road.inline_path):
+                        conn_road.inline_path = saved_path
                         skipped += 1
 
         for signal in self.project.signals:
@@ -2718,45 +2812,8 @@ class MainWindow(QMainWindow):
         self._snap_connecting_road_endpoints()
 
     def _snap_connecting_road_endpoints(self):
-        """
-        Snap connecting road pixel endpoints to match road endpoints exactly.
-
-        When converting geo coordinates to pixel coordinates, small precision
-        differences can cause gaps between connecting roads and their connected
-        roads. This method ensures the first and last points of each connecting
-        road path exactly match the stored pixel coordinates of the connected
-        road endpoints.
-        """
-        for junction in self.project.junctions:
-            for conn_road in junction.connecting_roads:
-                if not conn_road.path or len(conn_road.path) < 2:
-                    continue
-
-                # Get predecessor and successor roads
-                pred_road = self.project.get_road(conn_road.predecessor_road_id)
-                succ_road = self.project.get_road(conn_road.successor_road_id)
-
-                if not pred_road or not succ_road:
-                    continue
-
-                # Get centerline polylines
-                pred_polyline = self.project.get_polyline(pred_road.centerline_id)
-                succ_polyline = self.project.get_polyline(succ_road.centerline_id)
-
-                if not pred_polyline or not succ_polyline:
-                    continue
-
-                # Snap start point to predecessor road endpoint
-                if conn_road.contact_point_start == 'end':
-                    conn_road.path[0] = pred_polyline.points[-1]
-                else:  # 'start'
-                    conn_road.path[0] = pred_polyline.points[0]
-
-                # Snap end point to successor road endpoint
-                if conn_road.contact_point_end == 'end':
-                    conn_road.path[-1] = succ_polyline.points[-1]
-                else:  # 'start'
-                    conn_road.path[-1] = succ_polyline.points[0]
+        """Snap CR pixel endpoints to match connected road endpoints."""
+        self.controller.snap_connecting_road_endpoints()
 
     def update_affected_road_lanes(self):
         """Update lane graphics for all roads with centerlines."""
@@ -2769,242 +2826,24 @@ class MainWindow(QMainWindow):
                 self.image_view.update_road_lanes(road.id, scale_factors)
 
     def _refresh_connecting_road_geo_path(self, conn_road):
-        """Regenerate a connecting road's geo_path from its current pixel path.
-
-        Called after the pixel path has been updated (e.g. road move) so that
-        geo_path stays in sync. If the project has no georeferencing or the
-        CR had no geo_path, this is a no-op.
-        """
-        if not conn_road.geo_path:
-            return
-        if not self.project.has_georeferencing():
-            return
-        try:
-            transformer = self._create_transformer()
-            if transformer and conn_road.path:
-                conn_road.geo_path = [
-                    transformer.pixel_to_geo(x, y) for x, y in conn_road.path
-                ]
-        except Exception:
-            pass
+        """Regenerate a CR's geo_path from its current pixel path."""
+        self.controller.refresh_connecting_road_geo_path(conn_road)
 
     def _align_all_junction_connecting_roads(self, scale_factors):
-        """Apply lane alignment to all junctions' connecting roads.
-
-        Called on project load to ensure CR visuals match lane connections
-        without requiring the user to open the lane connection dialog.
-        """
-        from orbit.utils.connecting_road_alignment import align_connecting_road_paths
-
-        if scale_factors:
-            scale = (scale_factors[0] + scale_factors[1]) / 2.0
-        else:
-            scale = 0.058  # Default fallback
-
-        for junction in self.project.junctions:
-            if junction.lane_connections and junction.connecting_roads:
-                modified_ids = align_connecting_road_paths(
-                    junction, self.project, scale
-                )
-                # Update geo_path for modified CRs so export uses
-                # the aligned coordinates, not the stale originals.
-                if modified_ids:
-                    for cr in junction.connecting_roads:
-                        if cr.id in modified_ids:
-                            self._refresh_connecting_road_geo_path(cr)
+        """Apply lane alignment to all junctions' connecting roads."""
+        self.controller.align_all_junction_crs(scale_factors)
 
     def regenerate_affected_connecting_roads(self, polyline_id: str):
-        """
-        Regenerate ParamPoly3D connecting roads when a road centerline endpoint is modified.
-
-        Args:
-            polyline_id: ID of the modified polyline
-        """
-        import math
-
-        from orbit.utils.geometry import generate_simple_connection_path
-
-        # Get the modified polyline
-        polyline = self.project.get_polyline(polyline_id)
-        if not polyline or polyline.line_type != LineType.CENTERLINE:
-            # Only regenerate for centerline modifications
-            return
-
-        # Find which road this polyline belongs to
-        affected_road = None
-        for road in self.project.roads:
-            if road.centerline_id == polyline_id:
-                affected_road = road
-                break
-
-        if not affected_road:
-            return
-
-        # Find junctions where this road appears as predecessor or successor
-        affected_junctions = []
-        for junction in self.project.junctions:
-            for conn_road in junction.connecting_roads:
-                if (conn_road.predecessor_road_id == affected_road.id or
-                    conn_road.successor_road_id == affected_road.id):
-                    if conn_road.geometry_type == "parampoly3":
-                        affected_junctions.append((junction, conn_road))
-
-        # Regenerate each affected ParamPoly3D connecting road
-        for junction, conn_road in affected_junctions:
-            # Get predecessor and successor roads
-            pred_road = self.project.get_road(conn_road.predecessor_road_id)
-            succ_road = self.project.get_road(conn_road.successor_road_id)
-
-            if not pred_road or not succ_road:
-                continue
-
-            # Get centerline polylines
-            pred_polyline = self.project.get_polyline(pred_road.centerline_id)
-            succ_polyline = self.project.get_polyline(succ_road.centerline_id)
-
-            if not pred_polyline or not succ_polyline:
-                continue
-
-            # Get endpoint positions and headings
-            # Predecessor endpoint (end point for "end" contact)
-            if conn_road.contact_point_start == "end":
-                pred_pos = pred_polyline.points[-1]
-                if len(pred_polyline.points) >= 2:
-                    dx = pred_polyline.points[-1][0] - pred_polyline.points[-2][0]
-                    dy = pred_polyline.points[-1][1] - pred_polyline.points[-2][1]
-                    pred_heading = math.atan2(dy, dx)
-                else:
-                    pred_heading = 0.0
-            else:  # "start"
-                pred_pos = pred_polyline.points[0]
-                if len(pred_polyline.points) >= 2:
-                    dx = pred_polyline.points[1][0] - pred_polyline.points[0][0]
-                    dy = pred_polyline.points[1][1] - pred_polyline.points[0][1]
-                    pred_heading = math.atan2(dy, dx)
-                    pred_heading += math.pi  # Reverse direction for "start" contact
-                else:
-                    pred_heading = math.pi
-
-            # Successor endpoint (start point for "start" contact)
-            if conn_road.contact_point_end == "start":
-                succ_pos = succ_polyline.points[0]
-                if len(succ_polyline.points) >= 2:
-                    dx = succ_polyline.points[1][0] - succ_polyline.points[0][0]
-                    dy = succ_polyline.points[1][1] - succ_polyline.points[0][1]
-                    succ_heading = math.atan2(dy, dx)
-                    succ_heading += math.pi  # Reverse direction to point into road
-                else:
-                    succ_heading = math.pi
-            else:  # "end"
-                succ_pos = succ_polyline.points[-1]
-                if len(succ_polyline.points) >= 2:
-                    dx = succ_polyline.points[-1][0] - succ_polyline.points[-2][0]
-                    dy = succ_polyline.points[-1][1] - succ_polyline.points[-2][1]
-                    succ_heading = math.atan2(dy, dx)
-                else:
-                    succ_heading = 0.0
-
-            # Regenerate the curve
-            path, coeffs = generate_simple_connection_path(
-                from_pos=pred_pos,
-                from_heading=pred_heading,
-                to_pos=succ_pos,
-                to_heading=succ_heading,
-                tangent_scale=conn_road.tangent_scale
-            )
-
-            # Update the connecting road
-            conn_road.path = path
-            self._refresh_connecting_road_geo_path(conn_road)
-            aU, bU, cU, dU, aV, bV, cV, dV = coeffs
-            conn_road.aU = aU
-            conn_road.bU = bU
-            conn_road.cU = cU
-            conn_road.dU = dU
-            conn_road.aV = aV
-            conn_road.bV = bV
-            conn_road.cV = cV
-            conn_road.dV = dV
-
-            # Update stored headings so get_start_heading/get_end_heading
-            # return accurate values (used by dialog, export, alignment)
-            conn_road.stored_start_heading = pred_heading
-            conn_road.stored_end_heading = succ_heading
-
-            # Update graphics
-            scale_factors = self.get_current_scale()
-            self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
-
-        # Snap endpoints of polyline-type connecting roads
-        for junction in self.project.junctions:
-            for conn_road in junction.connecting_roads:
-                if conn_road.geometry_type == "parampoly3":
-                    continue  # Already handled above
-                if (conn_road.predecessor_road_id != affected_road.id and
-                        conn_road.successor_road_id != affected_road.id):
-                    continue
-                if not conn_road.path or len(conn_road.path) < 2:
-                    continue
-
-                pred_road = self.project.get_road(conn_road.predecessor_road_id)
-                succ_road = self.project.get_road(conn_road.successor_road_id)
-                if not pred_road or not succ_road:
-                    continue
-
-                pred_polyline = self.project.get_polyline(pred_road.centerline_id)
-                succ_polyline = self.project.get_polyline(succ_road.centerline_id)
-                if not pred_polyline or not succ_polyline:
-                    continue
-
-                # Snap start to predecessor endpoint
-                if conn_road.contact_point_start == "end":
-                    conn_road.path[0] = pred_polyline.points[-1]
-                else:
-                    conn_road.path[0] = pred_polyline.points[0]
-
-                # Snap end to successor endpoint
-                if conn_road.contact_point_end == "end":
-                    conn_road.path[-1] = succ_polyline.points[-1]
-                else:
-                    conn_road.path[-1] = succ_polyline.points[0]
-
-                self._refresh_connecting_road_geo_path(conn_road)
-
-                # Update graphics
-                scale_factors = self.get_current_scale()
-                self.image_view.update_connecting_road_graphics(conn_road.id, scale_factors)
-
-        # Apply lane alignment to affected junctions so CR endpoints shift
-        # from the road centerline to the correct lane position.
-        from orbit.utils.connecting_road_alignment import align_connecting_road_paths
-
+        """Regenerate CRs when a road centerline endpoint is modified."""
+        updated_cr_ids = self.controller.regenerate_affected_crs(polyline_id)
         scale_factors = self.get_current_scale()
-        if scale_factors:
-            scale = (scale_factors[0] + scale_factors[1]) / 2.0
-        else:
-            scale = 0.058
+        for cr_id in updated_cr_ids:
+            self.image_view.update_connecting_road_graphics(cr_id, scale_factors)
 
-        affected_junction_ids = set()
-        for junction in self.project.junctions:
-            for cr in junction.connecting_roads:
-                if (cr.predecessor_road_id == affected_road.id or
-                        cr.successor_road_id == affected_road.id):
-                    affected_junction_ids.add(junction.id)
-                    break
-
-        for junction in self.project.junctions:
-            if junction.id in affected_junction_ids:
-                if junction.lane_connections and junction.connecting_roads:
-                    modified = align_connecting_road_paths(
-                        junction, self.project, scale
-                    )
-                    for cr in junction.connecting_roads:
-                        if cr.id in modified:
-                            self._refresh_connecting_road_geo_path(cr)
-                    for cr_id in modified:
-                        self.image_view.update_connecting_road_graphics(
-                            cr_id, scale_factors
-                        )
+    def on_road_selected_in_tree(self, road_id: str):
+        """Handle road selection from tree — highlight all lanes and pan to it."""
+        self.clear_connecting_road_selection()
+        self.image_view.select_road(road_id)
 
     def on_polyline_selected_in_tree(self, polyline_id):
         """Handle polyline selection from tree."""
@@ -3247,9 +3086,9 @@ class MainWindow(QMainWindow):
                             # Note: Orientation defaults to '+' (forward) and can be adjusted in properties dialog
                             signal.s_position = signal.calculate_s_position(centerline_polyline.points)
                     else:
-                        cr = self.project.get_connecting_road(closest_road_id)
-                        if cr and cr.path:
-                            signal.s_position = signal.calculate_s_position(cr.path)
+                        cr = self.project.get_road(closest_road_id)
+                        if cr and cr.is_connecting_road and cr.inline_path:
+                            signal.s_position = signal.calculate_s_position(cr.inline_path)
 
                 # Convert pixel position to geo coords if transformer available
                 if self._cached_transformer:
@@ -4092,23 +3931,14 @@ class MainWindow(QMainWindow):
         """
         from .dialogs.lane_properties_dialog import LanePropertiesDialog
 
-        # Find the connecting road in junctions
-        connecting_road = None
-        _parent_junction = None
-        for junction in self.project.junctions:
-            for cr in junction.connecting_roads:
-                if cr.id == connecting_road_id:
-                    connecting_road = cr
-                    _parent_junction = junction
-                    break
-            if connecting_road:
-                break
+        # Find the connecting road in project roads
+        connecting_road = self.project.get_road(connecting_road_id)
 
-        if not connecting_road:
+        if not connecting_road or not connecting_road.is_connecting_road:
             return
 
         # Find the lane
-        lane = connecting_road.get_lane(lane_id)
+        lane = connecting_road.get_cr_lane(lane_id)
         if not lane:
             return
         # Open lane properties dialog (without project/road_id since connecting roads are standalone)
@@ -4255,106 +4085,8 @@ class MainWindow(QMainWindow):
     # ========================================================================
 
     def _build_batch_delete_info(self, selected: dict) -> dict:
-        """Build display info for the batch delete dialog.
-
-        Args:
-            selected: Dict with road_ids, junction_ids, signal_ids,
-                      object_ids, parking_ids lists.
-
-        Returns:
-            Dict mapping category keys to lists of item dicts with
-            id, name, details, and cascade fields.
-        """
-        info: dict = {}
-
-        # Roads
-        if selected.get("road_ids"):
-            items = []
-            for rid in selected["road_ids"]:
-                road = self.project.get_road(rid)
-                if not road:
-                    continue
-                cascade = []
-                for pid in road.polyline_ids:
-                    pl = self.project.get_polyline(pid)
-                    if pl:
-                        cascade.append(f"Polyline: {pl.line_type.value} ({pid[:8]})")
-                items.append({
-                    "id": rid,
-                    "name": road.name or rid[:8],
-                    "details": f"{len(road.polyline_ids)} polyline(s)",
-                    "cascade": cascade,
-                })
-            if items:
-                info["road_ids"] = items
-
-        # Junctions
-        if selected.get("junction_ids"):
-            items = []
-            for jid in selected["junction_ids"]:
-                junction = self.project.get_junction(jid)
-                if not junction:
-                    continue
-                cascade = []
-                for crid in junction.connected_road_ids:
-                    road = self.project.get_road(crid)
-                    if road:
-                        cascade.append(f"Connected road: {road.name or crid[:8]}")
-                items.append({
-                    "id": jid,
-                    "name": junction.name or jid[:8],
-                    "details": f"{len(junction.connecting_roads)} connecting road(s)",
-                    "cascade": cascade,
-                })
-            if items:
-                info["junction_ids"] = items
-
-        # Signals
-        if selected.get("signal_ids"):
-            items = []
-            for sid in selected["signal_ids"]:
-                signal = self.project.get_signal(sid)
-                if not signal:
-                    continue
-                items.append({
-                    "id": sid,
-                    "name": signal.get_display_name(),
-                    "details": signal.type.value if hasattr(signal.type, 'value') else str(signal.type),
-                })
-            if items:
-                info["signal_ids"] = items
-
-        # Objects
-        if selected.get("object_ids"):
-            items = []
-            for oid in selected["object_ids"]:
-                obj = self.project.get_object(oid)
-                if not obj:
-                    continue
-                items.append({
-                    "id": oid,
-                    "name": obj.get_display_name(),
-                    "details": obj.type.value if hasattr(obj.type, 'value') else str(obj.type),
-                })
-            if items:
-                info["object_ids"] = items
-
-        # Parking
-        if selected.get("parking_ids"):
-            items = []
-            for pid in selected["parking_ids"]:
-                parking = self.project.get_parking(pid)
-                if not parking:
-                    continue
-                items.append({
-                    "id": pid,
-                    "name": parking.get_display_name(),
-                    "details": parking.parking_type.value if hasattr(parking.parking_type, 'value') else "",
-                })
-            if items:
-                info["parking_ids"] = items
-
-        return info
+        """Build display info for the batch delete dialog."""
+        return self.controller.build_batch_delete_info(selected)
 
     def on_area_delete_requested(self, selected: dict):
         """Handle area selection batch delete request.
@@ -4423,8 +4155,9 @@ class MainWindow(QMainWindow):
                 self.image_view.remove_road_lanes(cmd.road_id)
                 # Remove connecting road graphics that will be orphaned
                 for junction in self.project.junctions:
-                    for cr in junction.connecting_roads:
-                        if cr.predecessor_road_id == cmd.road_id or cr.successor_road_id == cmd.road_id:
+                    for cr_id in junction.connecting_road_ids:
+                        cr = self.project.get_road(cr_id)
+                        if cr and (cr.predecessor_id == cmd.road_id or cr.successor_id == cmd.road_id):
                             self.image_view.remove_connecting_road_graphics(cr.id)
                 for pid in list(road.polyline_ids):
                     self.image_view.remove_polyline_graphics(pid)
@@ -4436,8 +4169,8 @@ class MainWindow(QMainWindow):
         for junction_id, cmd in junction_cmds:
             junction = self.project.get_junction(junction_id)
             if junction:
-                for conn_road in junction.connecting_roads:
-                    self.image_view.remove_connecting_road_graphics(conn_road.id)
+                for cr_id in junction.connecting_road_ids:
+                    self.image_view.remove_connecting_road_graphics(cr_id)
                 self.image_view.remove_junction_graphics(junction_id)
                 self.project.remove_junction(junction_id)
             self.undo_stack.push(cmd)

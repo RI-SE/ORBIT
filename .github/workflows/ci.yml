@@ -34,4 +34,6 @@ jobs:
       - name: Run tests with coverage
         env:
           QT_QPA_PLATFORM: offscreen
-        run: uv run python -m pytest tests/ -v --tb=short --cov=orbit --cov-report=xml --cov-report=term-missing:skip-covered
+        run: uv run python -m pytest tests/ -v --tb=short --cov=orbit --cov-report=xml --cov-report=json:temp/coverage.json --cov-report=term-missing:skip-covered
+      - name: Maintainability report
+        run: uv run python tools/maintainability_report.py --coverage-json temp/coverage.json

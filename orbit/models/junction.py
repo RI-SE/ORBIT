@@ -7,7 +7,6 @@ Represents an intersection or junction where multiple roads connect.
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from .connecting_road import ConnectingRoad
 from .lane_connection import LaneConnection
 
 
@@ -265,7 +264,7 @@ class Junction:
         junction_type: Type of junction (e.g., 'default', 'virtual')
 
         # New fields for enhanced junction support (v0.3.0+):
-        connecting_roads: List of ConnectingRoad objects providing junction geometry
+        connecting_road_ids: IDs of connecting roads (stored in Project.roads)
         lane_connections: List of LaneConnection objects for lane-level mappings
         is_roundabout: Whether this junction is a roundabout
         roundabout_center: Center point for roundabout (x, y) in pixels
@@ -285,7 +284,7 @@ class Junction:
     junction_type: str = "default"  # OpenDrive junction type
 
     # New fields for enhanced junction support (v0.3.0+)
-    connecting_roads: List[ConnectingRoad] = field(default_factory=list)
+    connecting_road_ids: List[str] = field(default_factory=list)
     lane_connections: List[LaneConnection] = field(default_factory=list)
     boundary: Optional[JunctionBoundary] = None  # V1.8 junction boundary
     elevation_grid: Optional[JunctionElevationGrid] = None  # V1.8 elevation grid
@@ -377,11 +376,8 @@ class Junction:
             if conn.incoming_road_id != road_id and conn.connecting_road_id != road_id
         ]
 
-        # Remove connecting roads that reference the deleted road
-        self.connecting_roads = [
-            cr for cr in self.connecting_roads
-            if cr.predecessor_road_id != road_id and cr.successor_road_id != road_id
-        ]
+        # Note: connecting roads referencing deleted road are cleaned up by Project
+        # (since connecting roads are now stored in Project.roads)
 
         # Remove lane connections that reference the deleted road
         self.lane_connections = [
@@ -403,27 +399,25 @@ class Junction:
         """Check if the junction has at least two connected roads."""
         return len(self.connected_road_ids) >= 2
 
-    def add_connecting_road(self, connecting_road: ConnectingRoad) -> None:
+    def add_connecting_road(self, connecting_road_id: str) -> None:
         """
-        Add a connecting road to this junction.
+        Add a connecting road ID to this junction.
 
         Args:
-            connecting_road: ConnectingRoad object to add
+            connecting_road_id: ID of the connecting road (stored in Project.roads)
         """
-        if connecting_road not in self.connecting_roads:
-            self.connecting_roads.append(connecting_road)
+        if connecting_road_id not in self.connecting_road_ids:
+            self.connecting_road_ids.append(connecting_road_id)
 
     def remove_connecting_road(self, connecting_road_id: str) -> None:
         """
-        Remove a connecting road and its associated lane connections.
+        Remove a connecting road ID and its associated lane connections.
 
         Args:
             connecting_road_id: ID of the connecting road to remove
         """
-        # Remove the connecting road
-        self.connecting_roads = [
-            cr for cr in self.connecting_roads if cr.id != connecting_road_id
-        ]
+        if connecting_road_id in self.connecting_road_ids:
+            self.connecting_road_ids.remove(connecting_road_id)
 
         # Remove associated lane connections
         self.lane_connections = [
@@ -480,20 +474,9 @@ class Junction:
         """
         return [lc for lc in self.lane_connections if lc.turn_type == turn_type]
 
-    def get_connecting_road_by_id(self, connecting_road_id: str) -> Optional[ConnectingRoad]:
-        """
-        Find a connecting road by its ID.
-
-        Args:
-            connecting_road_id: ID of the connecting road to find
-
-        Returns:
-            ConnectingRoad object or None if not found
-        """
-        for cr in self.connecting_roads:
-            if cr.id == connecting_road_id:
-                return cr
-        return None
+    def has_connecting_road(self, connecting_road_id: str) -> bool:
+        """Check if this junction has a connecting road with the given ID."""
+        return connecting_road_id in self.connecting_road_ids
 
     def validate_enhanced(self) -> Tuple[bool, List[str]]:
         """
@@ -517,7 +500,7 @@ class Junction:
         # Check connecting road references
         for lc in self.lane_connections:
             if lc.connecting_road_id:
-                if not self.get_connecting_road_by_id(lc.connecting_road_id):
+                if lc.connecting_road_id not in self.connecting_road_ids:
                     errors.append(
                         f"Lane connection {lc.id} references non-existent "
                         f"connecting road {lc.connecting_road_id}"
@@ -555,7 +538,7 @@ class Junction:
         """
         summary = {
             'total_connections': len(self.lane_connections),
-            'connecting_roads': len(self.connecting_roads),
+            'connecting_roads': len(self.connecting_road_ids),
             'straight': len(self.get_connections_by_turn_type('straight')),
             'left': len(self.get_connections_by_turn_type('left')),
             'right': len(self.get_connections_by_turn_type('right')),
@@ -656,7 +639,7 @@ class Junction:
             'connections': [conn.to_dict() for conn in self.connections],  # Kept for backward compatibility
             'junction_type': self.junction_type,
             # New fields (v0.3.0+)
-            'connecting_roads': [cr.to_dict() for cr in self.connecting_roads],
+            'connecting_road_ids': self.connecting_road_ids,
             'lane_connections': [lc.to_dict() for lc in self.lane_connections],
             'is_roundabout': bool(self.is_roundabout),
             'roundabout_lane_count': self.roundabout_lane_count,
@@ -697,11 +680,9 @@ class Junction:
             for conn_data in data.get('connections', [])
         ]
 
-        # New format connections (v0.3.0+)
-        connecting_roads = [
-            ConnectingRoad.from_dict(cr_data)
-            for cr_data in data.get('connecting_roads', [])
-        ]
+        # New format: connecting_road_ids (list of string IDs)
+        # Legacy format: connecting_roads (list of ConnectingRoad dicts) — migrated by Project.from_dict()
+        connecting_road_ids = data.get('connecting_road_ids', [])
 
         lane_connections = [
             LaneConnection.from_dict(lc_data)
@@ -746,7 +727,7 @@ class Junction:
             connections=connections,
             junction_type=data.get('junction_type', 'default'),
             # New fields (v0.3.0+) with defaults for backward compatibility
-            connecting_roads=connecting_roads,
+            connecting_road_ids=connecting_road_ids,
             lane_connections=lane_connections,
             boundary=boundary,
             elevation_grid=elevation_grid,

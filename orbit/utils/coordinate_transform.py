@@ -52,6 +52,8 @@ class TransformAdjustment:
     rotation: float = 0.0       # Rotation in degrees (positive = counter-clockwise)
     scale_x: float = 1.0        # Scale factor in X direction
     scale_y: float = 1.0        # Scale factor in Y direction
+    shear_x: float = 0.0        # Horizontal shear (X shift per unit Y from pivot)
+    shear_y: float = 0.0        # Vertical shear (Y shift per unit X from pivot)
     pivot_x: float = 0.0        # Pivot point X for rotation/scale (pixels)
     pivot_y: float = 0.0        # Pivot point Y for rotation/scale (pixels)
 
@@ -62,7 +64,9 @@ class TransformAdjustment:
             abs(self.translation_y) < 1e-6 and
             abs(self.rotation) < 1e-6 and
             abs(self.scale_x - 1.0) < 1e-6 and
-            abs(self.scale_y - 1.0) < 1e-6
+            abs(self.scale_y - 1.0) < 1e-6 and
+            abs(self.shear_x) < 1e-6 and
+            abs(self.shear_y) < 1e-6
         )
 
     def get_adjustment_matrix(self) -> np.ndarray:
@@ -71,10 +75,11 @@ class TransformAdjustment:
 
         The adjustment is applied in this order:
         1. Translate to pivot point
-        2. Scale
-        3. Rotate
-        4. Translate back from pivot
-        5. Apply translation offset
+        2. Shear
+        3. Scale
+        4. Rotate
+        5. Translate back from pivot
+        6. Apply translation offset
 
         Returns:
             3x3 homogeneous transformation matrix
@@ -83,6 +88,13 @@ class TransformAdjustment:
         T_to_pivot = np.array([
             [1, 0, -self.pivot_x],
             [0, 1, -self.pivot_y],
+            [0, 0, 1]
+        ], dtype=np.float64)
+
+        # Shear matrix (applied first, before scale/rotate)
+        H = np.array([
+            [1, self.shear_x, 0],
+            [self.shear_y, 1, 0],
             [0, 0, 1]
         ], dtype=np.float64)
 
@@ -116,8 +128,8 @@ class TransformAdjustment:
             [0, 0, 1]
         ], dtype=np.float64)
 
-        # Compose: offset * from_pivot * R * S * to_pivot
-        return T_offset @ T_from_pivot @ R @ S @ T_to_pivot
+        # Compose: offset * from_pivot * R * S * H * to_pivot
+        return T_offset @ T_from_pivot @ R @ S @ H @ T_to_pivot
 
     def apply_to_point(self, x: float, y: float) -> Tuple[float, float]:
         """
@@ -158,8 +170,39 @@ class TransformAdjustment:
             rotation=self.rotation,
             scale_x=self.scale_x,
             scale_y=self.scale_y,
+            shear_x=self.shear_x,
+            shear_y=self.shear_y,
             pivot_x=self.pivot_x,
             pivot_y=self.pivot_y
+        )
+
+    def to_dict(self) -> Dict[str, float]:
+        """Serialize to dictionary for JSON persistence."""
+        return {
+            'translation_x': self.translation_x,
+            'translation_y': self.translation_y,
+            'rotation': self.rotation,
+            'scale_x': self.scale_x,
+            'scale_y': self.scale_y,
+            'shear_x': self.shear_x,
+            'shear_y': self.shear_y,
+            'pivot_x': self.pivot_x,
+            'pivot_y': self.pivot_y,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, float]) -> 'TransformAdjustment':
+        """Deserialize from dictionary."""
+        return cls(
+            translation_x=data.get('translation_x', 0.0),
+            translation_y=data.get('translation_y', 0.0),
+            rotation=data.get('rotation', 0.0),
+            scale_x=data.get('scale_x', 1.0),
+            scale_y=data.get('scale_y', 1.0),
+            shear_x=data.get('shear_x', 0.0),
+            shear_y=data.get('shear_y', 0.0),
+            pivot_x=data.get('pivot_x', 0.0),
+            pivot_y=data.get('pivot_y', 0.0),
         )
 
     def reset(self):
@@ -169,6 +212,8 @@ class TransformAdjustment:
         self.rotation = 0.0
         self.scale_x = 1.0
         self.scale_y = 1.0
+        self.shear_x = 0.0
+        self.shear_y = 0.0
         # Keep pivot point
 
 

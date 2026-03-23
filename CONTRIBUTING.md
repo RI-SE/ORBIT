@@ -70,6 +70,35 @@ uv run python -m pytest tests/ -v
 - New features should include tests where feasible.
 - Don't break existing tests.
 
+## Extension points and module ownership
+
+Use this map to decide where changes belong:
+
+- `orbit/models/`: core dataclasses and serialization (`to_dict` / `from_dict`).
+- `orbit/gui/`: Qt UI wiring, interaction handling, and undo commands.
+- `orbit/import/`: OSM/OpenDRIVE ingestion and conversion into model objects.
+- `orbit/export/`: OpenDRIVE/OSM output generation from project state.
+- `orbit/utils/`: shared geometry, coordinate transform, validation, logging helpers.
+
+When adding behavior, prefer placing logic in `models`, `import`, `export`, or `utils` and keeping GUI files focused on orchestration.
+
+## AI-friendly maintainability checklist
+
+- Keep new functions small and single-purpose.
+- Avoid hidden cross-module side effects; make data flow explicit.
+- Reuse existing helpers before introducing near-duplicates.
+- Add or update tests in the same PR as behavior changes.
+- Update docs when changing extension points or module boundaries.
+
+## Maintainability baseline report
+
+To track large files/functions and coverage hotspots:
+
+```bash
+QT_QPA_PLATFORM=offscreen uv run python -m pytest tests/ --cov=orbit --cov-report=json:temp/coverage.json
+uv run python tools/maintainability_report.py --coverage-json temp/coverage.json
+```
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [GPL-3.0 License](LICENSE).

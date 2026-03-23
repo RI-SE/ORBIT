@@ -19,7 +19,9 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from orbit.models import ConnectingRoad, Junction, LaneConnection, Project
+from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
+from orbit.models import Junction, LaneConnection, Project
+from orbit.models.road import Road
 
 from ..utils import ask_yes_no, show_error, show_info, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
@@ -40,8 +42,12 @@ class LaneConnectionDialog(BaseDialog):
         self.connections: List[LaneConnection] = [
             LaneConnection.from_dict(lc.to_dict()) for lc in junction.lane_connections
         ]
-        self._original_connecting_roads = [
-            ConnectingRoad.from_dict(cr.to_dict()) for cr in junction.connecting_roads
+        # Back up connecting road data for rollback
+        self._original_connecting_road_ids = list(junction.connecting_road_ids)
+        self._original_connecting_road_dicts = [
+            self.project.get_road(cr_id).to_dict()
+            for cr_id in junction.connecting_road_ids
+            if self.project.get_road(cr_id)
         ]
         self._original_lane_connections = [
             LaneConnection.from_dict(lc.to_dict()) for lc in junction.lane_connections
@@ -257,16 +263,19 @@ class LaneConnectionDialog(BaseDialog):
         """Populate a combo box with connecting roads in the junction."""
         combo.clear()
         combo.addItem("(None)", "")
-        for cr in self.junction.connecting_roads:
-            # Build readable label: [id_short] PredName → SuccName
+        for cr_id in self.junction.connecting_road_ids:
+            cr = self.project.get_road(cr_id)
+            if not cr:
+                continue
+            # Build readable label: [id_short] PredName -> SuccName
             cr_id_short = cr.id[:8] if len(cr.id) > 8 else cr.id
             pred_name = "?"
             succ_name = "?"
-            pred_road = self.project.get_road(cr.predecessor_road_id)
+            pred_road = self.project.get_road(cr.predecessor_id)
             if pred_road:
                 pred_id_short = pred_road.id[:8]
                 pred_name = pred_road.name if pred_road.name else f"Road {pred_id_short}"
-            succ_road = self.project.get_road(cr.successor_road_id)
+            succ_road = self.project.get_road(cr.successor_id)
             if succ_road:
                 succ_id_short = succ_road.id[:8]
                 succ_name = succ_road.name if succ_road.name else f"Road {succ_id_short}"
@@ -280,12 +289,12 @@ class LaneConnectionDialog(BaseDialog):
             combo.addItem("(Select conn. road)", 0)
             return
 
-        cr = self.junction.get_connecting_road_by_id(connecting_road_id)
-        if not cr:
+        cr = self.project.get_road(connecting_road_id)
+        if not cr or not cr.is_connecting_road:
             combo.addItem("(Invalid road)", 0)
             return
 
-        lane_ids = cr.get_lane_ids()
+        lane_ids = cr.get_cr_lane_ids()
         if not lane_ids:
             combo.addItem("(No lanes)", 0)
             return
@@ -352,11 +361,11 @@ class LaneConnectionDialog(BaseDialog):
 
             # Auto-set "To Road" from connecting road's successor
             if connecting_road_id:
-                cr = self.junction.get_connecting_road_by_id(connecting_road_id)
-                if cr and cr.successor_road_id:
+                cr = self.project.get_road(connecting_road_id)
+                if cr and cr.successor_id:
                     to_road_combo = self.table.cellWidget(row, 2)
                     if to_road_combo:
-                        self._set_combo_by_id(to_road_combo, cr.successor_road_id)
+                        self._set_combo_by_id(to_road_combo, cr.successor_id)
 
         self._on_connection_changed(row)
 
@@ -417,9 +426,10 @@ class LaneConnectionDialog(BaseDialog):
 
             # Auto-select connecting road if exactly one matches this road pair
             matching_crs = [
-                cr for cr in self.junction.connecting_roads
-                if cr.predecessor_road_id == conn.from_road_id
-                and cr.successor_road_id == conn.to_road_id
+                self.project.get_road(cr_id) for cr_id in self.junction.connecting_road_ids
+                if self.project.get_road(cr_id)
+                and self.project.get_road(cr_id).predecessor_id == conn.from_road_id
+                and self.project.get_road(cr_id).successor_id == conn.to_road_id
             ]
             if len(matching_crs) == 1:
                 conn.connecting_road_id = matching_crs[0].id
@@ -470,27 +480,36 @@ class LaneConnectionDialog(BaseDialog):
                 scale = 1.0
 
         # Save backup before clearing (auto_generate mutates junction directly)
-        backup_connecting_roads = [
-            ConnectingRoad.from_dict(cr.to_dict()) for cr in self.junction.connecting_roads
+        backup_connecting_road_ids = list(self.junction.connecting_road_ids)
+        backup_connecting_road_dicts = [
+            self.project.get_road(cr_id).to_dict()
+            for cr_id in self.junction.connecting_road_ids
+            if self.project.get_road(cr_id)
         ]
         backup_lane_connections = [
             LaneConnection.from_dict(lc.to_dict()) for lc in self.junction.lane_connections
         ]
 
         # Clear and regenerate
-        self.junction.connecting_roads.clear()
+        # Remove connecting road objects from project
+        for cr_id in list(self.junction.connecting_road_ids):
+            self.project.remove_road(cr_id)
+        self.junction.connecting_road_ids.clear()
         self.junction.lane_connections.clear()
 
         try:
-            generate_junction_connections(self.junction, roads_dict, polylines_dict, scale)
+            generate_junction_connections(self.junction, roads_dict, polylines_dict, scale, project=self.project)
             # Copy new connections to our working list
             self.connections = [
                 LaneConnection.from_dict(lc.to_dict()) for lc in self.junction.lane_connections
             ]
 
-            if not self.connections and not self.junction.connecting_roads:
-                # Generation produced nothing — restore previous state
-                self.junction.connecting_roads = backup_connecting_roads
+            if not self.connections and not self.junction.connecting_road_ids:
+                # Generation produced nothing - restore previous state
+                for cr_dict in backup_connecting_road_dicts:
+                    cr = Road.from_dict(cr_dict)
+                    self.project.add_road(cr)
+                self.junction.connecting_road_ids = backup_connecting_road_ids
                 self.junction.lane_connections = backup_lane_connections
                 self.connections = [
                     LaneConnection.from_dict(lc.to_dict()) for lc in backup_lane_connections
@@ -515,7 +534,10 @@ class LaneConnectionDialog(BaseDialog):
             )
         except Exception as e:
             # Restore on failure
-            self.junction.connecting_roads = backup_connecting_roads
+            for cr_dict in backup_connecting_road_dicts:
+                cr = Road.from_dict(cr_dict)
+                self.project.add_road(cr)
+            self.junction.connecting_road_ids = backup_connecting_road_ids
             self.junction.lane_connections = backup_lane_connections
             self.connections = [
                 LaneConnection.from_dict(lc.to_dict()) for lc in backup_lane_connections
@@ -594,10 +616,13 @@ class LaneConnectionDialog(BaseDialog):
             conn.connecting_road_id for conn in self.connections
             if conn.connecting_road_id
         }
-        self.junction.connecting_roads = [
-            cr for cr in self.junction.connecting_roads
-            if cr.id in referenced_conn_road_ids
+        orphaned_ids = [
+            cr_id for cr_id in self.junction.connecting_road_ids
+            if cr_id not in referenced_conn_road_ids
         ]
+        for cr_id in orphaned_ids:
+            self.junction.remove_connecting_road(cr_id)
+            self.project.remove_road(cr_id)
 
         super().accept()
 
@@ -622,11 +647,23 @@ class LaneConnectionDialog(BaseDialog):
                 return (sx + sy) / 2.0
             except Exception:
                 pass
-        return 0.058  # Default fallback (ConnectingRoadLanesGraphicsItem.DEFAULT_SCALE)
+        return DEFAULT_SCALE_M_PER_PX
 
     def reject(self):
         """Restore junction state and close dialog."""
-        self.junction.connecting_roads = self._original_connecting_roads
+        # Remove any connecting roads added during this dialog session
+        for cr_id in list(self.junction.connecting_road_ids):
+            if cr_id not in self._original_connecting_road_ids:
+                self.project.remove_road(cr_id)
+        # Remove connecting roads that were in original but may have been removed
+        for cr_id in self._original_connecting_road_ids:
+            if not self.project.get_road(cr_id):
+                # Re-add from backup
+                for cr_dict in self._original_connecting_road_dicts:
+                    if cr_dict.get('id') == cr_id:
+                        self.project.add_road(Road.from_dict(cr_dict))
+                        break
+        self.junction.connecting_road_ids = list(self._original_connecting_road_ids)
         self.junction.lane_connections = self._original_lane_connections
         super().reject()
 
