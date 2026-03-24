@@ -94,6 +94,11 @@ class OpenDriveWriter:
         # Junction numeric IDs (derived from junction.id during export)
         self.junction_numeric_ids: dict[str, int] = {}
 
+        # Road numeric IDs — remapped during export to avoid collisions with
+        # junction IDs (CARLA's parser does not distinguish elementType and uses
+        # ContainsRoad() to decide if a link target is a road or junction).
+        self.road_numeric_ids: dict[str, str] = {}
+
         # Get scale factors for lane width calculations
         scale_factors = transformer.get_scale_factor() if transformer else None
 
@@ -230,6 +235,13 @@ class OpenDriveWriter:
                     # Fallback for non-numeric IDs (shouldn't happen after migration)
                     self.junction_numeric_ids[junction.id] = idx + 1
 
+        # Build road ID remapping to avoid collisions with junction IDs.
+        # CARLA determines whether a predecessor/successor link references a road
+        # or a junction by checking ContainsRoad(id).  If a road and a junction
+        # share the same numeric ID, CARLA treats junction references as
+        # road-to-road links, breaking junction routing entirely.
+        self.road_numeric_ids = self._build_road_id_remap()
+
         # Pre-pass: filter and auto-assign objects to nearest roads
         self._export_objects = self._get_export_objects()
 
@@ -290,6 +302,52 @@ class OpenDriveWriter:
                 root.append(jg_elem)
 
         return root
+
+    def _build_road_id_remap(self) -> dict[str, str]:
+        """Build a mapping from internal road ID → export road ID.
+
+        Ensures no exported road ID collides with any exported junction ID.
+        Roads whose numeric ID does not collide are kept as-is.  Colliding
+        roads are assigned new IDs starting above the maximum of all existing
+        road and junction IDs.
+        """
+        junction_id_set = set(self.junction_numeric_ids.values())
+        if not junction_id_set:
+            return {r.id: r.id for r in self.project.roads}
+
+        remap: dict[str, str] = {}
+        max_id = 0
+        for road in self.project.roads:
+            try:
+                rid = int(road.id)
+                if rid > max_id:
+                    max_id = rid
+            except (ValueError, TypeError):
+                pass
+        for jid in junction_id_set:
+            if jid > max_id:
+                max_id = jid
+
+        next_safe_id = max_id + 1
+
+        for road in self.project.roads:
+            try:
+                rid = int(road.id)
+            except (ValueError, TypeError):
+                remap[road.id] = road.id
+                continue
+
+            if rid in junction_id_set:
+                remap[road.id] = str(next_safe_id)
+                next_safe_id += 1
+            else:
+                remap[road.id] = road.id
+
+        return remap
+
+    def _remap_road_id(self, road_id: str) -> str:
+        """Return the export-safe road ID for a given internal road ID."""
+        return self.road_numeric_ids.get(road_id, road_id)
 
     def _get_export_objects(self) -> list:
         """Get filtered list of objects to export based on export_object_types.
@@ -584,7 +642,7 @@ class OpenDriveWriter:
 
         # Create road element
         road_elem = etree.Element('road')
-        road_elem.set('id', road.id)
+        road_elem.set('id', self._remap_road_id(road.id))
         road_elem.set('name', road.name)
         road_elem.set('length', f'{road_length:.4f}')
         road_elem.set('junction', road.junction_id if road.junction_id else '-1')
@@ -710,7 +768,7 @@ class OpenDriveWriter:
         elif road.predecessor_id:
             pred = etree.SubElement(link, 'predecessor')
             pred.set('elementType', 'road')
-            pred.set('elementId', road.predecessor_id)
+            pred.set('elementId', self._remap_road_id(road.predecessor_id))
             pred.set('contactPoint', road.predecessor_contact)
 
         if successor_junction is not None:
@@ -720,7 +778,7 @@ class OpenDriveWriter:
         elif road.successor_id:
             succ = etree.SubElement(link, 'successor')
             succ.set('elementType', 'road')
-            succ.set('elementId', road.successor_id)
+            succ.set('elementId', self._remap_road_id(road.successor_id))
             succ.set('contactPoint', road.successor_contact)
 
     @staticmethod
@@ -756,8 +814,6 @@ class OpenDriveWriter:
         if not connecting_road.inline_path or len(connecting_road.inline_path) < 2:
             return None
 
-        road_id = int(connecting_road.id)
-
         # Transform path points from pixels to meters
         # Use geo coords directly if available (more precise, avoids double conversion)
         if connecting_road.inline_geo_path:
@@ -789,7 +845,7 @@ class OpenDriveWriter:
 
         # Build road XML element
         road_elem = self._build_cr_road_xml(
-            connecting_road, road_id, junction_numeric_id, road_length,
+            connecting_road, junction_numeric_id, road_length,
             geometry_elements, lane_connections, path_meters
         )
         return road_elem
@@ -894,12 +950,12 @@ class OpenDriveWriter:
                 return hdg
         return current_heading
 
-    def _build_cr_road_xml(self, connecting_road: Road, road_id: int,
+    def _build_cr_road_xml(self, connecting_road: Road,
                            junction_numeric_id: int, road_length: float,
                            geometry_elements, lane_connections, path_meters):
         """Build the XML element for a connecting road."""
         road_elem = etree.Element('road')
-        road_elem.set('id', str(road_id))
+        road_elem.set('id', self._remap_road_id(connecting_road.id))
         road_elem.set('name', '')
         road_elem.set('length', f'{road_length:.4f}')
         road_elem.set('junction', str(junction_numeric_id))
@@ -909,12 +965,12 @@ class OpenDriveWriter:
         if connecting_road.predecessor_id:
             pred = etree.SubElement(link, 'predecessor')
             pred.set('elementType', 'road')
-            pred.set('elementId', connecting_road.predecessor_id)
+            pred.set('elementId', self._remap_road_id(connecting_road.predecessor_id))
             pred.set('contactPoint', connecting_road.predecessor_contact)
         if connecting_road.successor_id:
             succ = etree.SubElement(link, 'successor')
             succ.set('elementType', 'road')
-            succ.set('elementId', connecting_road.successor_id)
+            succ.set('elementId', self._remap_road_id(connecting_road.successor_id))
             succ.set('contactPoint', connecting_road.successor_contact)
 
         # Type
@@ -1356,8 +1412,8 @@ class OpenDriveWriter:
 
             connection = etree.SubElement(junction_elem, 'connection')
             connection.set('id', str(connection_id))
-            connection.set('incomingRoad', from_road_id)
-            connection.set('connectingRoad', connecting_road_id)
+            connection.set('incomingRoad', self._remap_road_id(from_road_id))
+            connection.set('connectingRoad', self._remap_road_id(connecting_road_id))
             connection.set('contactPoint', 'start')  # Connecting roads start at junction
 
             # Note: priority is a child element of junction, not an attribute of connection
@@ -1387,7 +1443,7 @@ class OpenDriveWriter:
                 seg_elem.set('type', segment.segment_type)
 
                 if segment.road_id:
-                    seg_elem.set('roadId', segment.road_id)
+                    seg_elem.set('roadId', self._remap_road_id(segment.road_id))
 
                 if segment.segment_type == 'lane':
                     if segment.boundary_lane is not None:

@@ -1387,3 +1387,139 @@ class TestOffsetAndGeoReference:
         assert writer.offset_x == 0.0
         assert writer.offset_y == 0.0
         assert writer.geo_reference_string is None
+
+
+class TestRoadJunctionIdCollision:
+    """Tests for road/junction ID remapping to avoid CARLA incompatibility.
+
+    CARLA's OpenDRIVE parser determines whether a predecessor/successor link
+    targets a road or junction via ``!ContainsRoad(id)``.  If a road and a
+    junction share the same numeric ID, CARLA treats junction references as
+    road-to-road links, breaking junction routing.
+    """
+
+    @pytest.fixture
+    def mock_transformer(self):
+        return MockTransformer(scale=(0.1, 0.1))
+
+    def test_no_road_junction_id_overlap(self, mock_transformer, tmp_path):
+        """Exported XODR must never have a road ID equal to a junction ID."""
+        project = Project()
+
+        # Create polylines for 3 roads — IDs will start at 1
+        for i in range(3):
+            cl = Polyline(id=str(i + 1))
+            cl.line_type = LineType.CENTERLINE
+            cl.points = [(i * 100, 0), (i * 100 + 80, 0)]
+            project.polylines.append(cl)
+
+        road1 = Road(id="1", centerline_id="1", polyline_ids=["1"])
+        road2 = Road(id="2", centerline_id="2", polyline_ids=["2"])
+        road3 = Road(id="3", centerline_id="3", polyline_ids=["3"])
+        for r in (road1, road2, road3):
+            project.roads.append(r)
+
+        # Junction with ID "1" — same numeric ID as road1
+        junction = Junction(id="1", name="Test Junction")
+        junction.connected_road_ids = ["1", "2"]
+        junction.connecting_road_ids = ["10"]
+
+        # Create a connecting road
+        cr = Road(id="10", junction_id="1",
+                  inline_path=[(0, 0), (10, 10)],
+                  predecessor_id="1", successor_id="2")
+        project.roads.append(cr)
+
+        lc = LaneConnection(
+            from_road_id="1", to_road_id="2",
+            from_lane_id=-1, to_lane_id=-1,
+            connecting_road_id="10", connecting_lane_id=-1
+        )
+        junction.lane_connections.append(lc)
+        project.junctions.append(junction)
+
+        output_path = tmp_path / "collision_test.xodr"
+        result = export_to_opendrive(
+            project, mock_transformer, str(output_path),
+            geo_reference_string="+proj=utm +zone=33 +datum=WGS84"
+        )
+        assert result is True
+
+        # Parse output and collect IDs
+        tree = etree.parse(str(output_path))
+        root = tree.getroot()
+        ns = ''
+        if root.tag.startswith('{'):
+            ns = root.tag.split('}')[0] + '}'
+
+        road_ids = {int(r.get('id')) for r in root.findall(f'{ns}road')}
+        junction_ids = {int(j.get('id')) for j in root.findall(f'{ns}junction')}
+
+        overlap = road_ids & junction_ids
+        assert overlap == set(), (
+            f"Road IDs {road_ids} overlap with junction IDs {junction_ids}: {overlap}"
+        )
+
+    def test_remapped_ids_consistent_across_elements(self, mock_transformer, tmp_path):
+        """Road ID remapping must be consistent in road elements, links, and junction connections."""
+        project = Project()
+
+        cl1 = Polyline(id="1", line_type=LineType.CENTERLINE, points=[(0, 0), (80, 0)])
+        cl2 = Polyline(id="2", line_type=LineType.CENTERLINE, points=[(0, 10), (80, 10)])
+        project.polylines.extend([cl1, cl2])
+
+        road1 = Road(id="1", centerline_id="1", polyline_ids=["1"])
+        road2 = Road(id="2", centerline_id="2", polyline_ids=["2"], predecessor_id="1")
+        project.roads.extend([road1, road2])
+
+        junction = Junction(id="1", name="J1")
+        junction.connected_road_ids = ["1", "2"]
+        junction.connecting_road_ids = ["10"]
+
+        cr = Road(id="10", junction_id="1",
+                  inline_path=[(80, 0), (0, 10)],
+                  predecessor_id="1", successor_id="2")
+        project.roads.append(cr)
+
+        lc = LaneConnection(
+            from_road_id="1", to_road_id="2",
+            from_lane_id=-1, to_lane_id=-1,
+            connecting_road_id="10", connecting_lane_id=-1
+        )
+        junction.lane_connections.append(lc)
+        project.junctions.append(junction)
+
+        output_path = tmp_path / "consistency_test.xodr"
+        export_to_opendrive(
+            project, mock_transformer, str(output_path),
+            geo_reference_string="+proj=utm +zone=33 +datum=WGS84"
+        )
+
+        tree = etree.parse(str(output_path))
+        root = tree.getroot()
+        ns = ''
+        if root.tag.startswith('{'):
+            ns = root.tag.split('}')[0] + '}'
+
+        # Junction connection incomingRoad must reference a valid road
+        for junc in root.findall(f'{ns}junction'):
+            for conn in junc.findall(f'{ns}connection'):
+                ir = conn.get('incomingRoad')
+                cr_id = conn.get('connectingRoad')
+                all_road_ids = {r.get('id') for r in root.findall(f'{ns}road')}
+                assert ir in all_road_ids, f"incomingRoad={ir} not found in road IDs {all_road_ids}"
+                assert cr_id in all_road_ids, f"connectingRoad={cr_id} not found in road IDs {all_road_ids}"
+
+        # Connecting road's link predecessor/successor must reference valid roads
+        for road in root.findall(f'{ns}road'):
+            if road.get('junction') != '-1':
+                link = road.find(f'{ns}link')
+                if link is not None:
+                    for tag in ['predecessor', 'successor']:
+                        elem = link.find(f'{ns}{tag}')
+                        if elem is not None and elem.get('elementType') == 'road':
+                            ref_id = elem.get('elementId')
+                            all_road_ids = {r.get('id') for r in root.findall(f'{ns}road')}
+                            assert ref_id in all_road_ids, (
+                                f"CR link {tag} references road {ref_id} not in {all_road_ids}"
+                            )
