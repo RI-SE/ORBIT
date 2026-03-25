@@ -442,10 +442,12 @@ class ConnectingRoad:
 
             # Right lanes (negative IDs in OpenDRIVE: -1, -2, -3, ...)
             for i in range(1, self.lane_count_right + 1):
+                # Outermost lane gets solid; inner lanes get broken
+                mark = RoadMarkType.SOLID if i == self.lane_count_right else RoadMarkType.BROKEN
                 lane = Lane(
                     id=-i,
                     lane_type=LaneType.DRIVING,
-                    road_mark_type=RoadMarkType.SOLID,
+                    road_mark_type=mark,
                     width=width_start,
                     width_end=width_end if width_end != width_start else None
                 )
@@ -453,10 +455,11 @@ class ConnectingRoad:
 
             # Left lanes (positive IDs in OpenDRIVE: 1, 2, 3, ...)
             for i in range(1, self.lane_count_left + 1):
+                mark = RoadMarkType.SOLID if i == self.lane_count_left else RoadMarkType.BROKEN
                 lane = Lane(
                     id=i,
                     lane_type=LaneType.DRIVING,
-                    road_mark_type=RoadMarkType.SOLID,
+                    road_mark_type=mark,
                     width=width_start,
                     width_end=width_end if width_end != width_start else None
                 )

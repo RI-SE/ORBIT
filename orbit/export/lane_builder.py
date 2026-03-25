@@ -97,14 +97,14 @@ class LaneBuilder:
         cumulative_metric_s: Optional[Sequence[float]] = None,
     ) -> None:
         """Create lane elements using lane sections."""
-        # Determine if default lane links are needed at road boundaries.
-        # Road-to-road connections need lane-level links; junction connections
-        # handle lane links through junction <connection> elements instead.
-        has_road_predecessor = (
-            bool(road.predecessor_id) and not road.predecessor_junction_id
+        # Lane-level links are needed at road boundaries for both road-to-road
+        # and road-to-junction connections.  CARLA (and other tools) use these
+        # to resolve lane continuity across junctions.
+        has_road_predecessor = bool(
+            road.predecessor_id or road.predecessor_junction_id
         )
-        has_road_successor = (
-            bool(road.successor_id) and not road.successor_junction_id
+        has_road_successor = bool(
+            road.successor_id or road.successor_junction_id
         )
         num_sections = len(road.lane_sections)
 
@@ -198,6 +198,7 @@ class LaneBuilder:
         road_mark.set('weight', center_lane_obj.road_mark_weight)
         road_mark.set('color', center_lane_obj.road_mark_color)
         road_mark.set('width', f'{center_lane_obj.road_mark_width:.6g}')
+        road_mark.set('laneChange', 'none')
 
         return center_lane
 
@@ -214,6 +215,7 @@ class LaneBuilder:
         road_mark.set('weight', 'standard')
         road_mark.set('color', 'standard')
         road_mark.set('width', '0.13')
+        road_mark.set('laneChange', 'none')
 
         return center_lane
 
@@ -298,6 +300,7 @@ class LaneBuilder:
         road_mark.set('weight', lane_obj.road_mark_weight)
         road_mark.set('color', lane_obj.road_mark_color)
         road_mark.set('width', f'{lane_obj.road_mark_width:.6g}')
+        road_mark.set('laneChange', 'both')
 
         # Lane-level speed limit (if set)
         if lane_obj.speed_limit is not None:

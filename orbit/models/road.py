@@ -283,10 +283,11 @@ class Road:
 
         # Right lanes (negative IDs)
         for i in range(1, self.cr_lane_count_right + 1):
+            mark = RoadMarkType.SOLID if i == self.cr_lane_count_right else RoadMarkType.BROKEN
             lane = Lane(
                 id=-i,
                 lane_type=LaneType.DRIVING,
-                road_mark_type=RoadMarkType.SOLID,
+                road_mark_type=mark,
                 width=width_start,
                 width_end=width_end if abs(width_end - width_start) > 0.001 else None
             )
@@ -294,10 +295,11 @@ class Road:
 
         # Left lanes (positive IDs)
         for i in range(1, self.cr_lane_count_left + 1):
+            mark = RoadMarkType.SOLID if i == self.cr_lane_count_left else RoadMarkType.BROKEN
             lane = Lane(
                 id=i,
                 lane_type=LaneType.DRIVING,
-                road_mark_type=RoadMarkType.SOLID,
+                road_mark_type=mark,
                 width=width_start,
                 width_end=width_end if abs(width_end - width_start) > 0.001 else None
             )
@@ -498,21 +500,26 @@ class Road:
         lanes.append(center)
 
         # Generate right lanes (negative IDs)
-        for i in range(1, self.lane_info.right_count + 1):
+        right_count = self.lane_info.right_count
+        for i in range(1, right_count + 1):
+            # Outermost lane (highest abs ID) gets solid; inner lanes get broken
+            mark = RoadMarkType.SOLID if i == right_count else RoadMarkType.BROKEN
             lane = Lane(
                 id=-i,
                 lane_type=LaneType.DRIVING,
-                road_mark_type=RoadMarkType.SOLID,
+                road_mark_type=mark,
                 width=self.lane_info.lane_width
             )
             lanes.append(lane)
 
         # Generate left lanes (positive IDs)
-        for i in range(1, self.lane_info.left_count + 1):
+        left_count = self.lane_info.left_count
+        for i in range(1, left_count + 1):
+            mark = RoadMarkType.SOLID if i == left_count else RoadMarkType.BROKEN
             lane = Lane(
                 id=i,
                 lane_type=LaneType.DRIVING,
-                road_mark_type=RoadMarkType.SOLID,
+                road_mark_type=mark,
                 width=self.lane_info.lane_width
             )
             lanes.append(lane)

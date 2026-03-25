@@ -126,6 +126,116 @@ CARLA's `JunctionParser.cpp` does not read the `contactPoint` attribute from
 `<connection>` elements. It only reads `id`, `incomingRoad`, and `connectingRoad`.
 The contact point is inferred from the connecting road's geometry and link structure.
 
+## Issue 2: CARLA Agents Don't Lane-Change on Multi-Lane Roundabout Rings
+
+### Problem
+
+On a 2-lane roundabout, CARLA agents on the outer lane (-1) never proactively
+change to the inner lane (-2), even though the OpenDRIVE data permits it.
+
+### Analysis
+
+#### XODR-level: lane change permissions are correct (by default)
+
+ORBIT does **not** emit a `laneChange` attribute on `<roadMark>` elements:
+
+```xml
+<roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12"/>
+<!-- no laneChange attribute -->
+```
+
+However, CARLA's `MapBuilder::CreateRoadMark()` defaults to `LaneChange::Both`
+when the attribute is missing or empty (the `else` branch):
+
+```cpp
+// MapBuilder.cpp ~line 194
+if (lane_change == "increase") { ... }
+else if (lane_change == "decrease") { ... }
+else if (lane_change == "none") { ... }
+else { lc = RoadInfoMarkRecord::LaneChange::Both; }
+```
+
+So the missing attribute is **not** the direct cause.
+
+#### CARLA InMemoryMap: lane change links are built for ring roads
+
+`InMemoryMap.cpp` creates lane change links in `FindAndLinkLaneChange()`, but
+**only for non-junction waypoints**:
+
+```cpp
+for (auto &swp : dense_topology) {
+  if (!swp->CheckJunction()) {      // skip junction waypoints
+    FindAndLinkLaneChange(swp);
+  }
+}
+```
+
+Ring roads have `junction="-1"` → `CheckJunction()` returns false → links ARE
+created. For lane -1, `GetRight()` returns lane -2; for lane -2, `GetLeft()`
+returns lane -1. Both pass the same-side check (`lane_id * other_id > 0`).
+
+**Result**: The lane change topology IS correct in CARLA's internal map.
+
+#### CARLA Traffic Manager: lane changes are reactive, not proactive
+
+The actual lane change decision lives in `LocalizationStage.cpp`:
+
+```cpp
+bool front_waypoint_not_junction = !front_waypoint->CheckJunction();
+
+if (auto_or_force_lane_change
+    && front_waypoint_not_junction
+    && (recently_not_executed_lane_change || done_with_previous_lane_change)) {
+  change_over_point = AssignLaneChange(...);
+}
+```
+
+`AssignLaneChange()` only produces a lane change when:
+1. **There is a blocking vehicle ahead** in the same lane on the same road, OR
+2. **A random lane change** fires (controlled by probability percentage), OR
+3. **A forced lane change** is explicitly requested via the API
+
+There is **no proactive route-based lane change** — the traffic manager follows
+its current lane and only reacts to obstacles. This is a fundamental design
+choice in CARLA's traffic manager.
+
+#### Ring roads: short segments compound the problem
+
+The ring roads in `SaroRound_2laneU.xodr` are very short (3–27 m). CARLA's
+traffic manager has a minimum lane change distance
+(`INTER_LANE_CHANGE_DISTANCE`) and speed threshold (`MIN_LANE_CHANGE_SPEED`).
+On short segments there may not be enough distance to trigger and complete a
+lane change even if the conditions were met.
+
+### Root Cause
+
+**This is a CARLA traffic manager limitation, not an XODR export bug.** CARLA's
+agents do not proactively plan lane changes to optimize their route. They only
+change lanes reactively (obstacle avoidance) or randomly.
+
+### Possible mitigations on the ORBIT side
+
+While this cannot be fully solved in the XODR output, two improvements can help:
+
+1. **Add explicit `laneChange="both"` to `<roadMark>` elements** — good
+   practice for interoperability with other simulators that may not default to
+   "both" when the attribute is missing.
+
+2. **Ensure the road mark type between adjacent same-direction lanes is
+   `broken` (not `solid`)** — currently ORBIT sets `solid` on all roundabout
+   lane boundaries. Some CARLA Python agent scripts check the mark type to
+   decide lane change legality, and `solid` lines may inhibit lane changes.
+
+### CARLA-side workarounds
+
+- Call `traffic_manager.random_left_lanechange_percentage(actor, X)` and
+  `traffic_manager.random_right_lanechange_percentage(actor, X)` to increase
+  random lane change probability
+- Use `traffic_manager.force_lane_change(actor, direction)` for specific
+  vehicles
+- Use `traffic_manager.set_path(actor, waypoints)` to explicitly include
+  waypoints on the desired lane
+
 ## Files analyzed
 
 - `examples/saro_fixed_bidirectional.xodr` — Reference file (SUMO), 15 junctions, works in CARLA
@@ -134,3 +244,10 @@ The contact point is inferred from the connecting road's geometry and link struc
 - CARLA source: `LibCarla/source/carla/opendrive/parser/JunctionParser.cpp`
 - CARLA source: `LibCarla/source/carla/opendrive/parser/RoadParser.cpp`
 - CARLA source: `LibCarla/source/carla/road/MapBuilder.cpp` (`GetLaneNext`, `CreatePointersBetweenRoadSegments`)
+- CARLA source: `LibCarla/source/carla/opendrive/parser/LaneParser.cpp` (roadMark parsing)
+- CARLA source: `LibCarla/source/carla/road/element/RoadInfoMarkRecord.h` (LaneChange enum)
+- CARLA source: `LibCarla/source/carla/road/element/LaneMarking.cpp` (LaneChange conversion)
+- CARLA source: `LibCarla/source/carla/road/Map.cpp` (`GetRight`, `GetLeft`, `GetMarkRecord`)
+- CARLA source: `LibCarla/source/carla/client/Waypoint.cpp` (`GetLaneChange`)
+- CARLA source: `LibCarla/source/carla/trafficmanager/InMemoryMap.cpp` (`FindAndLinkLaneChange`)
+- CARLA source: `LibCarla/source/carla/trafficmanager/LocalizationStage.cpp` (`AssignLaneChange`)

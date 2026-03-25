@@ -1326,6 +1326,7 @@ class OpenDriveWriter:
         roadMark.set('weight', lane_obj.road_mark_weight)
         roadMark.set('color', lane_obj.road_mark_color)
         roadMark.set('width', f'{lane_obj.road_mark_width:.2f}')
+        roadMark.set('laneChange', 'both')
 
         return lane
 
