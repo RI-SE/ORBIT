@@ -1,0 +1,189 @@
+{
+  "format": "ORBIT Georeferencing Data",
+  "version": "1.0",
+  "creator": {
+    "application": "ORBIT",
+    "application_version": "0.8.0"
+  },
+  "source": {
+    "project_file": "/home/fredrik/fwrise/ORBIT/examples/SaroRoundNew/SaroRound_2laneU_adj.orbit",
+    "image_path": "/home/fredrik/fwrise/ORBIT/examples/SaroRound/VIDp_2025-10-16T134059CEST_D_ff.png"
+  },
+  "image_size": [
+    3840,
+    2160
+  ],
+  "transform_method": "unknown",
+  "control_points": [
+    {
+      "pixel_x": 2350.937134662861,
+      "pixel_y": 1281.2171505543179,
+      "longitude": 12.008951647166743,
+      "latitude": 57.484585691968014,
+      "name": "lamppost_1a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 1459.8606936813294,
+      "pixel_y": 1218.6508242803789,
+      "longitude": 12.009611491094834,
+      "latitude": 57.48449667507564,
+      "name": "lamppost_2d",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 357.9638032727684,
+      "pixel_y": 713.9046350688119,
+      "longitude": 12.010498613144026,
+      "latitude": 57.484161220753606,
+      "name": "feature_3a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 376.99205227109576,
+      "pixel_y": 715.9119505700722,
+      "longitude": 12.010482270846094,
+      "latitude": 57.484163889839216,
+      "name": "feature_4a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 2058.47164581714,
+      "pixel_y": 194.0690047381405,
+      "longitude": 12.008980625165208,
+      "latitude": 57.48399774973272,
+      "name": "lamppost_6a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 690.8645978679846,
+      "pixel_y": 1133.4957111738727,
+      "longitude": 12.010202809711753,
+      "latitude": 57.48440235833228,
+      "name": "lamppost_11a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 1327.0197345502745,
+      "pixel_y": 1157.650471093983,
+      "longitude": 12.009709311818519,
+      "latitude": 57.48445961359497,
+      "name": "sign_12a",
+      "is_validation": true
+    },
+    {
+      "pixel_x": 3333.9369184891452,
+      "pixel_y": 985.3237032955352,
+      "longitude": 12.008141239311694,
+      "latitude": 57.484524941330946,
+      "name": "sign_14d",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 3101.2496880888198,
+      "pixel_y": 736.4425633230948,
+      "longitude": 12.008242349213344,
+      "latitude": 57.48438976811276,
+      "name": "lamppost_15d",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 2717.56841309495,
+      "pixel_y": 712.2667604427734,
+      "longitude": 12.00854321814375,
+      "latitude": 57.4843480598807,
+      "name": "sign_16d",
+      "is_validation": true
+    },
+    {
+      "pixel_x": 2723.6274538437965,
+      "pixel_y": 401.2248751145637,
+      "longitude": 12.008449509419696,
+      "latitude": 57.48418076102176,
+      "name": "sign_17d",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 2381.3089541601244,
+      "pixel_y": 505.46837164666726,
+      "longitude": 12.008768555949468,
+      "latitude": 57.484211074418454,
+      "name": "lamppost_18a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 2221.370647465449,
+      "pixel_y": 186.76872451168205,
+      "longitude": 12.008831937495108,
+      "latitude": 57.484007829859024,
+      "name": "sign_19a",
+      "is_validation": false
+    },
+    {
+      "pixel_x": 1782.6359221283242,
+      "pixel_y": 316.4956585286623,
+      "longitude": 12.00924992734681,
+      "latitude": 57.484049667212574,
+      "name": "sign_20d",
+      "is_validation": true
+    },
+    {
+      "pixel_x": 1550.1335714147804,
+      "pixel_y": 493.22702065676333,
+      "longitude": 12.009476137024526,
+      "latitude": 57.484134874431206,
+      "name": "lamppost_21a",
+      "is_validation": false
+    }
+  ],
+  "reference_point": {
+    "longitude": 12.00920930952344,
+    "latitude": 57.48427427837093
+  },
+  "transformation_matrix": [
+    [
+      -0.057869643899711,
+      0.01049628540830572,
+      102.4869680829928
+    ],
+    [
+      0.010350225333680536,
+      0.06902222526365905,
+      -67.5423466033485
+    ],
+    [
+      1.2760263750609135e-05,
+      0.0002154027816585927,
+      1.0
+    ]
+  ],
+  "inverse_matrix": [
+    [
+      -17.353926623393964,
+      -2.4045787714435933,
+      1616.1404311504787
+    ],
+    [
+      2.328242974610848,
+      12.288472230109125,
+      591.3776871632592
+    ],
+    [
+      -0.00028006933228502803,
+      -0.0026162880413671393,
+      0.8519932230147056
+    ]
+  ],
+  "scale_factors": {
+    "x_meters_per_pixel": 0.04992025334731977,
+    "y_meters_per_pixel": 0.059066509699446344
+  },
+  "reprojection_error": {
+    "rmse_pixels": 7.606220334564556e-10,
+    "rmse_meters": 3.8805890545081914e-11
+  },
+  "validation_error": {
+    "rmse_pixels": 5.126423448954136e-13,
+    "rmse_meters": 0.0
+  }
+}
