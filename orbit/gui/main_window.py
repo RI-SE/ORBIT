@@ -653,7 +653,7 @@ class MainWindow(QMainWindow):
 
                 # Load image if specified in project
                 if self.project.image_path:
-                    self.load_image(self.project.image_path)
+                    self.load_image(self.project.image_path, mark_modified=False)
                 elif self.project.synthetic_canvas_width and self.project.synthetic_canvas_height:
                     self.image_view.set_synthetic_canvas(
                         self.project.synthetic_canvas_width,
@@ -753,7 +753,7 @@ class MainWindow(QMainWindow):
             self._remember_directory(file_path)
             self.load_image(Path(file_path))
 
-    def load_image(self, image_path: Path):
+    def load_image(self, image_path: Path, mark_modified: bool = True):
         """Load an image into the view."""
         if image_path.exists():
             self.image_view.load_image(image_path)
@@ -767,8 +767,9 @@ class MainWindow(QMainWindow):
             if not self.project.map_name:
                 self.project.map_name = image_path.stem  # Filename without extension
 
-            self.modified = True
-            self.update_window_title()
+            if mark_modified:
+                self.modified = True
+                self.update_window_title()
             self.statusBar().showMessage(f"Loaded image: {image_path}")
         else:
             show_warning(self, f"Image file not found: {image_path}", "Warning")

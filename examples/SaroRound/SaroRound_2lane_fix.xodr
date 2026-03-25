@@ -1,0 +1,1246 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<OpenDRIVE xmlns="http://code.asam.net/simulation/standard/opendrive_schema">
+  <header revMajor="1" revMinor="8" name="VIDr_ff_2025-10-16T131742CEST" version="1.0" date="2026-03-25T10:50:25.419546" north="41.2761" south="-46.4881" east="84.3235" west="-112.2221" vendor="ORBIT by RISE Research Institutes of Sweden">
+    <geoReference>+proj=utm +zone=33 +north +ellps=WGS84 +datum=WGS84 +units=m +no_defs +lat_0=57.48422286 +lon_0=12.00961678</geoReference>
+    <offset x="320740.8226" y="6375235.5107" z="0.0000" hdg="0.000000"/>
+    <userData code="tool">Produced by ORBIT (https://github.com/RI-SE/ORBIT)</userData>
+    <userData code="license">Licensed under the Open Database License (https://opendatacommons.org/licenses/odbl/1-0/)</userData>
+    <userData code="sourceAttribution">Map data from OpenStreetMap (https://www.openstreetmap.org/copyright)</userData>
+  </header>
+  <road id="47" name="Valldavägen (seg 1/2)" length="34.9941" junction="-1">
+    <link>
+      <predecessor elementType="junction" elementId="3"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="13.89" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="-41.1260" y="-11.0408" hdg="-1.539237" length="1.6882">
+        <line/>
+      </geometry>
+      <geometry s="1.6882" x="-41.0727" y="-12.7282" hdg="-1.575068" length="2.7897">
+        <line/>
+      </geometry>
+      <geometry s="4.4779" x="-41.0846" y="-15.5179" hdg="-1.574639" length="2.5588">
+        <line/>
+      </geometry>
+      <geometry s="7.0367" x="-41.0945" y="-18.0767" hdg="-1.668864" length="3.0713">
+        <line/>
+      </geometry>
+      <geometry s="10.1080" x="-41.3952" y="-21.1332" hdg="-1.679483" length="3.9327">
+        <line/>
+      </geometry>
+      <geometry s="14.0407" x="-41.8218" y="-25.0427" hdg="-1.784531" length="3.5478">
+        <line/>
+      </geometry>
+      <geometry s="17.5885" x="-42.5743" y="-28.5097" hdg="-1.846636" length="10.3592">
+        <line/>
+      </geometry>
+      <geometry s="27.9476" x="-45.3957" y="-38.4773" hdg="-1.953355" length="7.0464">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="none" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.25" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+            <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="48" name="Säröleden" length="60.6660" junction="-1">
+    <link>
+      <predecessor elementType="junction" elementId="1"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="19.44" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="-52.2461" y="30.6438" hdg="-2.817106" length="2.2324">
+        <line/>
+      </geometry>
+      <geometry s="2.2324" x="-54.3620" y="29.9320" hdg="-2.943818" length="2.9649">
+        <line/>
+      </geometry>
+      <geometry s="5.1973" x="-57.2691" y="29.3495" hdg="-2.999543" length="4.9415">
+        <line/>
+      </geometry>
+      <geometry s="10.1387" x="-62.1608" y="28.6499" hdg="-3.054387" length="5.8424">
+        <line/>
+      </geometry>
+      <geometry s="15.9812" x="-67.9810" y="28.1411" hdg="3.066254" length="8.0420">
+        <line/>
+      </geometry>
+      <geometry s="24.0231" x="-76.0002" y="28.7464" hdg="2.980053" length="6.7699">
+        <line/>
+      </geometry>
+      <geometry s="30.7930" x="-82.6819" y="29.8352" hdg="2.796089" length="9.4836">
+        <line/>
+      </geometry>
+      <geometry s="40.2766" x="-91.6051" y="33.0470" hdg="2.773145" length="8.6398">
+        <line/>
+      </geometry>
+      <geometry s="48.9164" x="-99.6650" y="36.1588" hdg="2.690970" length="11.7496">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="none" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+            <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="49" name="Säröleden" length="62.4760" junction="-1">
+    <link>
+      <successor elementType="junction" elementId="2"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="19.44" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="-112.2221" y="40.7491" hdg="-0.416086" length="14.2073">
+        <line/>
+      </geometry>
+      <geometry s="14.2073" x="-99.2270" y="35.0067" hdg="-0.406985" length="13.4924">
+        <line/>
+      </geometry>
+      <geometry s="27.6996" x="-86.8367" y="29.6659" hdg="-0.295244" length="12.8663">
+        <line/>
+      </geometry>
+      <geometry s="40.5659" x="-74.5272" y="25.9222" hdg="-0.251923" length="5.5795">
+        <line/>
+      </geometry>
+      <geometry s="46.1454" x="-69.1238" y="24.5314" hdg="-0.284967" length="7.2771">
+        <line/>
+      </geometry>
+      <geometry s="53.4225" x="-62.1402" y="22.4856" hdg="-0.351454" length="3.2375">
+        <line/>
+      </geometry>
+      <geometry s="56.6599" x="-59.1006" y="21.3711" hdg="-0.433102" length="2.7709">
+        <line/>
+      </geometry>
+      <geometry s="59.4308" x="-56.5856" y="20.2082" hdg="-0.574177" length="2.3275">
+        <line/>
+      </geometry>
+      <geometry s="61.7584" x="-54.6313" y="18.9440" hdg="-1.566296" length="0.7177">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="none" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+            <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+    <signals>
+      <signal id="3" s="55.785950" t="7.007490" name="OSM Signal 1609681052 (give_way)" dynamic="no" orientation="+" hOffset="-1.570796" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
+    </signals>
+  </road>
+  <road id="15" name="Säröleden" length="76.9040" junction="-1">
+    <link>
+      <predecessor elementType="junction" elementId="5"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="19.44" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="1.1751" y="0.7759" hdg="0.334447" length="3.2594">
+        <line/>
+      </geometry>
+      <geometry s="3.2594" x="4.2539" y="1.8458" hdg="0.271170" length="2.8174">
+        <line/>
+      </geometry>
+      <geometry s="6.0768" x="6.9684" y="2.6005" hdg="0.291774" length="7.6538">
+        <line/>
+      </geometry>
+      <geometry s="13.7306" x="14.2987" y="4.8021" hdg="0.169898" length="10.4439">
+        <line/>
+      </geometry>
+      <geometry s="24.1745" x="24.5922" y="6.5680" hdg="0.127484" length="6.0030">
+        <line/>
+      </geometry>
+      <geometry s="30.1776" x="30.5465" y="7.3312" hdg="0.054420" length="6.4887">
+        <line/>
+      </geometry>
+      <geometry s="36.6662" x="37.0256" y="7.6841" hdg="-0.026115" length="7.3668">
+        <line/>
+      </geometry>
+      <geometry s="44.0331" x="44.3899" y="7.4918" hdg="-0.047767" length="5.9276">
+        <line/>
+      </geometry>
+      <geometry s="49.9607" x="50.3107" y="7.2087" hdg="-0.114421" length="10.6706">
+        <line/>
+      </geometry>
+      <geometry s="60.6313" x="60.9115" y="5.9905" hdg="-0.165077" length="16.2728">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="none" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+            <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="21" name="Säröleden Ring 1" length="10.3156" junction="-1">
+    <link>
+      <predecessor elementType="junction" elementId="1"/>
+      <successor elementType="junction" elementId="2"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="19.44" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="-41.8873" y="26.9430" hdg="-2.263006" length="0.3732">
+        <line/>
+      </geometry>
+      <geometry s="0.3732" x="-42.1255" y="26.6557" hdg="-2.055892" length="1.7695">
+        <line/>
+      </geometry>
+      <geometry s="2.1426" x="-42.9506" y="25.0904" hdg="-2.036804" length="2.4663">
+        <line/>
+      </geometry>
+      <geometry s="4.6089" x="-44.0587" y="22.8871" hdg="-1.932894" length="2.2948">
+        <line/>
+      </geometry>
+      <geometry s="6.9037" x="-44.8716" y="20.7411" hdg="-1.739785" length="3.4119">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="22" name="Säröleden Ring 2" length="3.4902" junction="-1">
+    <link>
+      <predecessor elementType="junction" elementId="2"/>
+      <successor elementType="junction" elementId="3"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="19.44" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="-44.3444" y="8.1771" hdg="-1.125176" length="3.4902">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="23" name="Säröleden Ring 3" length="8.7330" junction="-1">
+    <link>
+      <predecessor elementType="junction" elementId="3"/>
+      <successor elementType="junction" elementId="4"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="19.44" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="-36.5666" y="-2.0184" hdg="-0.544543" length="1.8944">
+        <line/>
+      </geometry>
+      <geometry s="1.8944" x="-34.9461" y="-2.9998" hdg="-0.466502" length="2.4938">
+        <line/>
+      </geometry>
+      <geometry s="4.3882" x="-32.7189" y="-4.1214" hdg="-0.297126" length="2.4456">
+        <line/>
+      </geometry>
+      <geometry s="6.8338" x="-30.3804" y="-4.8374" hdg="-0.233799" length="1.8992">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="24" name="Säröleden Ring 4" length="3.4020" junction="-1">
+    <link>
+      <predecessor elementType="junction" elementId="4"/>
+      <successor elementType="junction" elementId="5"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="19.44" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="-17.9921" y="-4.3990" hdg="0.510389" length="3.4020">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="25" name="Säröleden Ring 5" length="13.6555" junction="-1">
+    <link>
+      <predecessor elementType="junction" elementId="5"/>
+      <successor elementType="junction" elementId="6"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="19.44" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="-7.4494" y="4.8406" hdg="1.027786" length="1.9690">
+        <line/>
+      </geometry>
+      <geometry s="1.9690" x="-6.4320" y="6.5263" hdg="1.234245" length="2.6860">
+        <line/>
+      </geometry>
+      <geometry s="4.6549" x="-5.5450" y="9.0616" hdg="1.371576" length="2.6805">
+        <line/>
+      </geometry>
+      <geometry s="7.3354" x="-5.0145" y="11.6891" hdg="1.494291" length="2.8581">
+        <line/>
+      </geometry>
+      <geometry s="10.1935" x="-4.7961" y="14.5388" hdg="1.563651" length="3.4621">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="26" name="Säröleden Ring 6" length="27.2796" junction="-1">
+    <link>
+      <predecessor elementType="junction" elementId="6"/>
+      <successor elementType="junction" elementId="1"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="19.44" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="-9.5068" y="28.0748" hdg="2.222257" length="1.7850">
+        <line/>
+      </geometry>
+      <geometry s="1.7850" x="-10.5891" y="29.4943" hdg="2.306651" length="2.0596">
+        <line/>
+      </geometry>
+      <geometry s="3.8446" x="-11.9716" y="31.0210" hdg="2.514873" length="1.4373">
+        <line/>
+      </geometry>
+      <geometry s="5.2819" x="-13.1357" y="31.8639" hdg="2.579625" length="3.3088">
+        <line/>
+      </geometry>
+      <geometry s="8.5907" x="-15.9356" y="33.6270" hdg="2.779595" length="2.2344">
+        <line/>
+      </geometry>
+      <geometry s="10.8251" x="-18.0252" y="34.4183" hdg="2.835033" length="2.4038">
+        <line/>
+      </geometry>
+      <geometry s="13.2290" x="-20.3170" y="35.1437" hdg="2.986982" length="2.3449">
+        <line/>
+      </geometry>
+      <geometry s="15.5738" x="-22.6339" y="35.5048" hdg="3.051608" length="2.2353">
+        <line/>
+      </geometry>
+      <geometry s="17.8091" x="-24.8601" y="35.7057" hdg="-3.093016" length="3.8339">
+        <line/>
+      </geometry>
+      <geometry s="21.6430" x="-28.6895" y="35.5196" hdg="-2.938769" length="1.6910">
+        <line/>
+      </geometry>
+      <geometry s="23.3340" x="-30.3459" y="35.1789" hdg="-2.852313" length="3.9456">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="45" name="Säröleden (seg 2/2)" length="81.9830" junction="-1">
+    <link>
+      <successor elementType="junction" elementId="6"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="19.44" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="84.3235" y="5.0270" hdg="2.995266" length="20.3542">
+        <line/>
+      </geometry>
+      <geometry s="20.3542" x="64.1868" y="7.9947" hdg="2.990518" length="11.4733">
+        <line/>
+      </geometry>
+      <geometry s="31.8275" x="52.8442" y="9.7214" hdg="3.023239" length="13.8301">
+        <line/>
+      </geometry>
+      <geometry s="45.6575" x="39.1109" y="11.3545" hdg="3.026688" length="14.2601">
+        <line/>
+      </geometry>
+      <geometry s="59.9176" x="24.9448" y="12.9894" hdg="2.992845" length="10.7499">
+        <line/>
+      </geometry>
+      <geometry s="70.6675" x="14.3137" y="14.5825" hdg="2.783663" length="6.3067">
+        <line/>
+      </geometry>
+      <geometry s="76.9742" x="8.4067" y="16.7920" hdg="2.632386" length="5.0088">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="none" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.5" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+            <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+    <signals>
+      <signal id="4" s="81.552500" t="6.596896" name="OSM Signal 1609681090 (give_way)" dynamic="no" orientation="+" hOffset="-1.919862" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
+    </signals>
+  </road>
+  <road id="46" name="Valldavägen (seg 2/2)" length="34.0622" junction="-1">
+    <link>
+      <successor elementType="junction" elementId="4"/>
+    </link>
+    <type s="0.0" type="rural">
+      <speed max="13.89" unit="m/s"/>
+    </type>
+    <planView>
+      <geometry s="0.0000" x="-45.4519" y="-46.4881" hdg="1.178594" length="4.6801">
+        <line/>
+      </geometry>
+      <geometry s="4.6801" x="-43.6631" y="-42.1634" hdg="1.217619" length="13.3283">
+        <line/>
+      </geometry>
+      <geometry s="18.0084" x="-39.0530" y="-29.6577" hdg="1.174830" length="4.1127">
+        <line/>
+      </geometry>
+      <geometry s="22.1211" x="-37.4668" y="-25.8632" hdg="1.114285" length="4.1192">
+        <line/>
+      </geometry>
+      <geometry s="26.2403" x="-35.6509" y="-22.1658" hdg="0.973359" length="5.2395">
+        <line/>
+      </geometry>
+      <geometry s="31.4798" x="-32.7036" y="-17.8339" hdg="0.788320" length="2.5824">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.000000">
+        <center>
+          <lane id="0" type="none" level="false">
+            <roadMark sOffset="0.0" type="none" weight="standard" color="white" width="0.12" laneChange="none"/>
+          </lane>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link/>
+            <width sOffset="0.0" a="3.25" b="0" c="0" d="0"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+            <material sOffset="0" friction="0.9" roughness="0.01" surface="asphalt"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="27" name="" length="10.6283" junction="1">
+    <link>
+      <predecessor elementType="road" elementId="26" contactPoint="end"/>
+      <successor elementType="road" elementId="21" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="-34.1275" y="34.0534" hdg="-2.852313" length="10.6283">
+        <paramPoly3 aU="0.0000000000" bU="15.7872035610" cU="-16.3016846957" dU="9.9801593698" aV="0.0000000000" bV="0.0000000000" cV="5.0297497367" dV="-0.4284020471" pRange="normalized"/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1"/>
+              <successor id="-1"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link>
+              <predecessor id="-2"/>
+              <successor id="-2"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="28" name="" length="18.4473" junction="1">
+    <link>
+      <predecessor elementType="road" elementId="26" contactPoint="end"/>
+      <successor elementType="road" elementId="48" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="-35.1259" y="37.4080" hdg="-2.604233" length="1.7162">
+        <line/>
+      </geometry>
+      <geometry s="1.7162" x="-36.6002" y="36.5295" hdg="-2.752861" length="2.0637">
+        <line/>
+      </geometry>
+      <geometry s="3.7799" x="-38.5100" y="35.7473" hdg="-2.755160" length="2.3241">
+        <line/>
+      </geometry>
+      <geometry s="6.1040" x="-40.6627" y="34.8714" hdg="-2.751344" length="1.6801">
+        <line/>
+      </geometry>
+      <geometry s="7.7841" x="-42.2165" y="34.2323" hdg="-2.741612" length="2.5310">
+        <line/>
+      </geometry>
+      <geometry s="10.3151" x="-44.5477" y="33.2467" hdg="-2.752903" length="1.9867">
+        <line/>
+      </geometry>
+      <geometry s="12.3017" x="-46.3862" y="32.4938" hdg="-2.843464" length="2.0125">
+        <line/>
+      </geometry>
+      <geometry s="14.3142" x="-48.3099" y="31.9027" hdg="-2.818131" length="1.9272">
+        <line/>
+      </geometry>
+      <geometry s="16.2415" x="-50.1372" y="31.2901" hdg="-2.844217" length="2.2058">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-2"/>
+              <successor id="-1"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="29" name="" length="9.4170" junction="2">
+    <link>
+      <predecessor elementType="road" elementId="21" contactPoint="end"/>
+      <successor elementType="road" elementId="22" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="-45.4455" y="17.3779" hdg="-1.739785" length="9.4170">
+        <paramPoly3 aU="0.0000000000" bU="13.8996131839" cU="-12.5016448902" dU="7.4865472855" aV="0.0000000000" bV="0.0000000000" cV="-0.1166220705" dV="2.7494370608" pRange="normalized"/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1"/>
+              <successor id="-1"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link>
+              <predecessor id="-2"/>
+              <successor id="-2"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="30" name="" length="14.1002" junction="2">
+    <link>
+      <predecessor elementType="road" elementId="49" contactPoint="end"/>
+      <successor elementType="road" elementId="22" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="-54.6280" y="18.2263" hdg="-0.469616" length="2.3558">
+        <line/>
+      </geometry>
+      <geometry s="2.3558" x="-52.5273" y="17.1602" hdg="-0.803632" length="1.4427">
+        <line/>
+      </geometry>
+      <geometry s="3.7985" x="-51.5259" y="16.1217" hdg="-1.013305" length="1.4852">
+        <line/>
+      </geometry>
+      <geometry s="5.2837" x="-50.7402" y="14.8613" hdg="-1.145815" length="1.3877">
+        <line/>
+      </geometry>
+      <geometry s="6.6714" x="-50.1680" y="13.5971" hdg="-1.132299" length="1.4348">
+        <line/>
+      </geometry>
+      <geometry s="8.1061" x="-49.5588" y="12.2981" hdg="-1.226851" length="1.9301">
+        <line/>
+      </geometry>
+      <geometry s="10.0362" x="-48.9080" y="10.4810" hdg="-1.238660" length="1.4085">
+        <line/>
+      </geometry>
+      <geometry s="11.4447" x="-48.4488" y="9.1495" hdg="-1.197907" length="1.8255">
+        <line/>
+      </geometry>
+      <geometry s="13.2702" x="-47.7837" y="7.4495" hdg="-1.225251" length="0.8300">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1"/>
+              <successor id="-2"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="31" name="" length="9.5735" junction="3">
+    <link>
+      <predecessor elementType="road" elementId="22" contactPoint="end"/>
+      <successor elementType="road" elementId="23" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="-42.8400" y="5.0277" hdg="-1.125176" length="9.5735">
+        <paramPoly3 aU="0.0000000000" bU="14.1513116563" cU="-12.9487532259" dU="7.8594426672" aV="0.0000000000" bV="0.0000000000" cV="0.1087018421" dV="2.5151145331" pRange="normalized"/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1"/>
+              <successor id="-1"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link>
+              <predecessor id="-2"/>
+              <successor id="-2"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="32" name="" length="15.3976" junction="3">
+    <link>
+      <predecessor elementType="road" elementId="22" contactPoint="end"/>
+      <successor elementType="road" elementId="47" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="-46.0546" y="3.4922" hdg="-1.125176" length="15.3976">
+        <paramPoly3 aU="0.0000000000" bU="23.0465703340" cU="-21.4022310292" dU="13.6189651517" aV="0.0000000000" bV="0.0000000000" cV="3.9939537821" dV="-5.7534186705" pRange="normalized"/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-2"/>
+              <successor id="-1"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="-0.016236" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="33" name="" length="10.8078" junction="4">
+    <link>
+      <predecessor elementType="road" elementId="23" contactPoint="end"/>
+      <successor elementType="road" elementId="24" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="-28.5329" y="-5.2774" hdg="-0.233799" length="10.8078">
+        <paramPoly3 aU="0.0000000000" bU="15.8659525328" cU="-13.2520337600" dU="7.4365691392" aV="0.0000000000" bV="0.0000000000" cV="-0.8576617221" dV="4.1541755991" pRange="normalized"/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1"/>
+              <successor id="-1"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link>
+              <predecessor id="-2"/>
+              <successor id="-2"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="34" name="" length="17.0270" junction="4">
+    <link>
+      <predecessor elementType="road" elementId="46" contactPoint="end"/>
+      <successor elementType="road" elementId="24" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="-30.9272" y="-15.9585" hdg="0.741804" length="1.7814">
+        <line/>
+      </geometry>
+      <geometry s="1.7814" x="-29.6139" y="-14.7549" hdg="0.604997" length="2.6348">
+        <line/>
+      </geometry>
+      <geometry s="4.4162" x="-27.4467" y="-13.2563" hdg="0.531110" length="2.8114">
+        <line/>
+      </geometry>
+      <geometry s="7.2276" x="-25.0226" y="-11.8324" hdg="0.476727" length="2.8521">
+        <line/>
+      </geometry>
+      <geometry s="10.0797" x="-22.4885" y="-10.5236" hdg="0.364598" length="3.0050">
+        <line/>
+      </geometry>
+      <geometry s="13.0848" x="-19.6810" y="-9.4521" hdg="0.515862" length="3.9422">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1"/>
+              <successor id="-2"/>
+            </link>
+            <width sOffset="0.0" a="3.2500" b="0.014683" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+    <signals>
+      <signal id="2" s="3.695486" t="7.620709" name="OSM Signal 1609680977 (give_way)" dynamic="no" orientation="+" hOffset="0.000000" zOffset="2.00" height="0.90" width="0.90" country="SE" type="B" subtype="1"/>
+    </signals>
+  </road>
+  <road id="35" name="" length="10.8437" junction="5">
+    <link>
+      <predecessor elementType="road" elementId="24" contactPoint="end"/>
+      <successor elementType="road" elementId="25" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="-15.0236" y="-2.7370" hdg="0.510389" length="10.8437">
+        <paramPoly3 aU="0.0000000000" bU="16.0710187673" cU="-15.1772344386" dU="9.4169771254" aV="0.0000000000" bV="0.0000000000" cV="0.7862046475" dV="2.1255409342" pRange="normalized"/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1"/>
+              <successor id="-1"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link>
+              <predecessor id="-2"/>
+              <successor id="-2"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="36" name="" length="15.9344" junction="5">
+    <link>
+      <predecessor elementType="road" elementId="24" contactPoint="end"/>
+      <successor elementType="road" elementId="15" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="-13.3138" y="-5.7910" hdg="0.469454" length="2.8358">
+        <line/>
+      </geometry>
+      <geometry s="2.8358" x="-10.7848" y="-4.5081" hdg="0.509017" length="2.8525">
+        <line/>
+      </geometry>
+      <geometry s="5.6883" x="-8.2940" y="-3.1180" hdg="0.447083" length="2.7355">
+        <line/>
+      </geometry>
+      <geometry s="8.4237" x="-5.8274" y="-1.9353" hdg="0.385883" length="4.6512">
+        <line/>
+      </geometry>
+      <geometry s="13.0749" x="-1.5182" y="-0.1847" hdg="0.342620" length="2.8595">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-2"/>
+              <successor id="-1"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="37" name="" length="11.3043" junction="6">
+    <link>
+      <predecessor elementType="road" elementId="25" contactPoint="end"/>
+      <successor elementType="road" elementId="26" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="-4.7713" y="18.0008" hdg="1.563651" length="11.3043">
+        <paramPoly3 aU="0.0000000000" bU="16.6972497756" cU="-16.4796534312" dU="9.8223379625" aV="0.0000000000" bV="0.0000000000" cV="4.2028949237" dV="0.6043920485" pRange="normalized"/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1"/>
+              <successor id="-1"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="broken" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+          <lane id="-2" type="driving" level="false">
+            <link>
+              <predecessor id="-2"/>
+              <successor id="-2"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <road id="38" name="" length="15.4810" junction="6">
+    <link>
+      <predecessor elementType="road" elementId="45" contactPoint="end"/>
+      <successor elementType="road" elementId="26" contactPoint="start"/>
+    </link>
+    <type s="0.0" type="town"/>
+    <planView>
+      <geometry s="0.0000" x="4.0333" y="19.2337" hdg="2.551884" length="2.1486">
+        <line/>
+      </geometry>
+      <geometry s="2.1486" x="2.2476" y="20.4286" hdg="2.401456" length="1.9969">
+        <line/>
+      </geometry>
+      <geometry s="4.1456" x="0.7731" y="21.7753" hdg="2.395019" length="1.9154">
+        <line/>
+      </geometry>
+      <geometry s="6.0610" x="-0.6329" y="23.0761" hdg="2.351545" length="1.6441">
+        <line/>
+      </geometry>
+      <geometry s="7.7051" x="-1.7900" y="24.2441" hdg="2.328851" length="1.3683">
+        <line/>
+      </geometry>
+      <geometry s="9.0734" x="-2.7307" y="25.2377" hdg="2.411877" length="1.4155">
+        <line/>
+      </geometry>
+      <geometry s="10.4889" x="-3.7858" y="26.1813" hdg="2.294560" length="1.7873">
+        <line/>
+      </geometry>
+      <geometry s="12.2762" x="-4.9693" y="27.5206" hdg="2.195063" length="1.9380">
+        <line/>
+      </geometry>
+      <geometry s="14.2142" x="-6.1021" y="29.0931" hdg="2.083521" length="1.2668">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+    </elevationProfile>
+    <lateralProfile/>
+    <lanes>
+      <laneSection s="0.0">
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <link>
+              <predecessor id="-1"/>
+              <successor id="-2"/>
+            </link>
+            <width sOffset="0.0" a="3.5000" b="0.000000" c="0.000000" d="0.000000"/>
+            <roadMark sOffset="0.0" type="solid" weight="standard" color="white" width="0.12" laneChange="both"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+  <junction id="1" name="Säröleden Entry 1" type="default">
+    <connection id="0" incomingRoad="26" connectingRoad="27" contactPoint="start">
+      <laneLink from="-1" to="-1"/>
+      <laneLink from="-2" to="-2"/>
+    </connection>
+    <connection id="1" incomingRoad="26" connectingRoad="28" contactPoint="start">
+      <laneLink from="-2" to="-1"/>
+    </connection>
+  </junction>
+  <junction id="2" name="Säröleden Entry 2" type="default">
+    <connection id="0" incomingRoad="21" connectingRoad="29" contactPoint="start">
+      <laneLink from="-1" to="-1"/>
+      <laneLink from="-2" to="-2"/>
+    </connection>
+    <connection id="1" incomingRoad="49" connectingRoad="30" contactPoint="start">
+      <laneLink from="-1" to="-1"/>
+    </connection>
+  </junction>
+  <junction id="3" name="Säröleden Entry 3" type="default">
+    <connection id="0" incomingRoad="22" connectingRoad="31" contactPoint="start">
+      <laneLink from="-1" to="-1"/>
+      <laneLink from="-2" to="-2"/>
+    </connection>
+    <connection id="1" incomingRoad="22" connectingRoad="32" contactPoint="start">
+      <laneLink from="-2" to="-1"/>
+    </connection>
+  </junction>
+  <junction id="4" name="Säröleden Entry 4" type="default">
+    <connection id="0" incomingRoad="23" connectingRoad="33" contactPoint="start">
+      <laneLink from="-1" to="-1"/>
+      <laneLink from="-2" to="-2"/>
+    </connection>
+    <connection id="1" incomingRoad="46" connectingRoad="34" contactPoint="start">
+      <laneLink from="-1" to="-1"/>
+    </connection>
+  </junction>
+  <junction id="5" name="Säröleden Entry 5" type="default">
+    <connection id="0" incomingRoad="24" connectingRoad="35" contactPoint="start">
+      <laneLink from="-1" to="-1"/>
+      <laneLink from="-2" to="-2"/>
+    </connection>
+    <connection id="1" incomingRoad="24" connectingRoad="36" contactPoint="start">
+      <laneLink from="-2" to="-1"/>
+    </connection>
+  </junction>
+  <junction id="6" name="Säröleden Entry 6" type="default">
+    <connection id="0" incomingRoad="25" connectingRoad="37" contactPoint="start">
+      <laneLink from="-1" to="-1"/>
+      <laneLink from="-2" to="-2"/>
+    </connection>
+    <connection id="1" incomingRoad="45" connectingRoad="38" contactPoint="start">
+      <laneLink from="-1" to="-1"/>
+    </connection>
+  </junction>
+</OpenDRIVE>
