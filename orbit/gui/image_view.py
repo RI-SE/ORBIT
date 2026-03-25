@@ -3664,8 +3664,17 @@ class ImageView(QGraphicsView):
 
         # Insert corresponding entries in per-point metadata
         if polyline.geo_points is not None:
-            new_geo = self._interpolate_geo_for_insert(
-                polyline, insert_index, scene_pos.x(), scene_pos.y())
+            # Prefer the actual transformer for accuracy.  Falls back to
+            # linear interpolation between neighbour geo_points when no
+            # transformer is available.
+            transformer = self._get_geo_transformer()
+            if transformer is not None:
+                lon, lat = transformer.pixel_to_geo(
+                    scene_pos.x(), scene_pos.y())
+                new_geo = (lon, lat)
+            else:
+                new_geo = self._interpolate_geo_for_insert(
+                    polyline, insert_index, scene_pos.x(), scene_pos.y())
             if new_geo is None:
                 if insert_index > 0:
                     new_geo = tuple(polyline.geo_points[insert_index - 1])
@@ -4071,17 +4080,24 @@ class ImageView(QGraphicsView):
                     moved = abs(new_px - old_px) > 0.5 or abs(new_py - old_py) > 0.5
 
                     if moved:
-                        # Compute updated geo_point using local polyline
-                        # context. Never fall back to pixel_to_geo which
-                        # maps to the control-point area, corrupting
-                        # geo_points for roads far from control points.
-                        old_geo = (self._drag_start_geo_points[idx]
-                                   if self._drag_start_geo_points else None)
+                        # Use the active transformer to compute the
+                        # geo_point for the new pixel position.  Falls back
+                        # to a local Jacobian approximation when no
+                        # transformer is available.
+                        transformer = self._get_geo_transformer()
                         new_geo = None
-                        if old_geo:
-                            new_geo = self._compute_dragged_geo_point(
-                                polyline, idx, old_px, old_py, old_geo,
-                                self._get_geo_transformer())
+                        if transformer is not None:
+                            lon, lat = transformer.pixel_to_geo(
+                                new_px, new_py)
+                            new_geo = (lon, lat)
+                        else:
+                            old_geo = (
+                                self._drag_start_geo_points[idx]
+                                if self._drag_start_geo_points else None)
+                            if old_geo:
+                                new_geo = self._compute_dragged_geo_point(
+                                    polyline, idx, old_px, old_py,
+                                    old_geo, None)
                         if new_geo is not None:
                             polyline.geo_points[idx] = new_geo
                         # If new_geo is None, keep existing geo_point unchanged

@@ -1757,6 +1757,19 @@ class MainWindow(QMainWindow):
         self.refresh_control_points()
         # Update scale display
         self.update_scale_display()
+        # Recompute pixel positions from geo coordinates using the new
+        # transformer so the display stays consistent with the geo source
+        # of truth.
+        if self.project.has_georeferencing():
+            try:
+                self._cached_transformer = self._create_transformer(
+                    use_validation=True)
+                self._apply_active_adjustment(self._cached_transformer)
+                if self._cached_transformer is not None:
+                    self.image_view.update_all_from_geo_coords(
+                        self._cached_transformer)
+            except Exception:
+                pass
         # Update lane graphics with new scale
         self.update_affected_road_lanes()
 
