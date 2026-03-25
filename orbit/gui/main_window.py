@@ -671,10 +671,10 @@ class MainWindow(QMainWindow):
                 # (needed for projects saved before this field was set).
                 self.project.link_lane_connections_to_connecting_roads()
 
-                # Apply lane alignment to all junctions so CR visuals are
-                # correct immediately (without requiring the user to open the
-                # lane connection dialog first).
-                self._align_all_junction_connecting_roads(scale_factors)
+                # NOTE: We intentionally do NOT run _align_all_junction_connecting_roads()
+                # on project open. The saved CR paths are the source of truth.
+                # Alignment is applied on import and when the user modifies
+                # lane connections or road geometry.
 
                 # Update UI
                 self.image_view.load_project(self.project, scale_factors)
@@ -2723,19 +2723,12 @@ class MainWindow(QMainWindow):
         return self.controller.get_current_scale()
 
     def _initialize_and_refresh_geo_coords(self):
-        """
-        Refresh pixel coordinates from geo coordinates for all georeferenced elements.
-
-        This is needed when loading a project because saved pixel coords may be from
-        a different transformer state (e.g., before adjustment was applied).
-        Geographic coordinates are the source of truth; pixel coords are derived.
+        """Initialize missing geo coordinates for backward compatibility.
 
         For legacy projects with connecting roads that lack geo_path, initializes
-        geo_path from pixel path for backward compatibility.
-
-        Includes bounds validation: if the transformer produces pixel coordinates
-        far outside the image (e.g., due to homography extrapolation beyond the
-        control point region), the original saved coordinates are preserved.
+        geo_path from pixel path. Pixel coordinates in the file are preserved as
+        the source of truth; geo→pixel refresh only happens when the user applies
+        a transform adjustment (handled by _restore_adjustment_from_project).
         """
         if not self.project.has_georeferencing():
             return
@@ -2748,21 +2741,6 @@ class MainWindow(QMainWindow):
         except Exception:
             return
 
-        # Determine image bounds for validation (allow 3x margin)
-        image_w, image_h = 3840, 2160  # defaults
-        if self.image_view.image_item:
-            pixmap = self.image_view.image_item.pixmap()
-            image_w = pixmap.width()
-            image_h = pixmap.height()
-        max_extent = max(image_w, image_h) * 3
-
-        def _points_in_bounds(points):
-            """Check if all pixel points are within reasonable distance of the image."""
-            for x, y in points:
-                if abs(x) > max_extent or abs(y) > max_extent:
-                    return False
-            return True
-
         # Initialize geo_path for connecting roads that don't have it (legacy support)
         for junction in self.project.junctions:
             for cr_id in junction.connecting_road_ids:
@@ -2770,45 +2748,8 @@ class MainWindow(QMainWindow):
                 if conn_road and conn_road.inline_path and not conn_road.has_geo_coords():
                     conn_road.initialize_geo_path_from_pixels(transformer)
 
-        # Refresh pixel coordinates from geo coordinates for ALL elements,
-        # but revert if the transformer produces out-of-bounds results
-        skipped = 0
-        for polyline in self.project.polylines:
-            if polyline.has_geo_coords():
-                saved_points = list(polyline.points)
-                polyline.update_pixel_points_from_geo(transformer)
-                if not _points_in_bounds(polyline.points):
-                    polyline.points = saved_points
-                    skipped += 1
-
-        for junction in self.project.junctions:
-            if junction.has_geo_coords():
-                junction.update_pixel_coords_from_geo(transformer)
-            for cr_id in junction.connecting_road_ids:
-                conn_road = self.project.get_road(cr_id)
-                if conn_road and conn_road.has_geo_coords():
-                    saved_path = list(conn_road.inline_path)
-                    conn_road.update_pixel_path_from_geo(transformer)
-                    if not _points_in_bounds(conn_road.inline_path):
-                        conn_road.inline_path = saved_path
-                        skipped += 1
-
-        for signal in self.project.signals:
-            if signal.has_geo_coords():
-                signal.update_pixel_position_from_geo(transformer)
-
-        for obj in self.project.objects:
-            if obj.has_geo_coords():
-                obj.update_pixel_coords_from_geo(transformer)
-
-        if skipped > 0:
-            logger.warning(
-                f"Skipped pixel coordinate refresh for {skipped} elements "
-                f"(geo coordinates outside control point coverage area)"
-            )
-
         # Snap connecting road endpoints to match road endpoints exactly
-        # This prevents gaps due to transformer precision issues
+        # (only for CRs without lane connections; lane-aligned CRs are skipped)
         self._snap_connecting_road_endpoints()
 
     def _snap_connecting_road_endpoints(self):

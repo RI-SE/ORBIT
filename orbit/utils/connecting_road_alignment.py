@@ -115,10 +115,9 @@ def _compute_lane_alignment_shift(
 ) -> Optional[Tuple[float, float]]:
     """Compute pixel shift to align a CR lane with a target lane on a connected road.
 
-    The road lane offset is measured along the road's perpendicular, while the
-    CR lane offset uses the CR's forward-direction perpendicular (matching how
-    lane polygons are rendered). cr_fwd_p1→cr_fwd_p2 defines the CR's forward
-    direction at this endpoint.
+    Uses the road's perpendicular for both the road-side and CR-side lane offsets.
+    This makes the target position deterministic (depends only on road geometry
+    and lane widths), ensuring idempotency across open-save cycles.
     """
     from orbit.utils.geometry import calculate_perpendicular
 
@@ -146,15 +145,14 @@ def _compute_lane_alignment_shift(
     lane_center_x = road_cl_pos[0] + road_off_px * road_perp[0]
     lane_center_y = road_cl_pos[1] + road_off_px * road_perp[1]
 
-    # CR forward-direction perpendicular (same direction as lane rendering)
-    cr_perp = calculate_perpendicular(cr_fwd_p1, cr_fwd_p2)
+    # CR lane offset — use road perpendicular (not CR path direction) so
+    # the target position is deterministic and doesn't drift when the CR
+    # path is regenerated.
     cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width)
     cr_off_px = cr_lane_off / scale
 
-    # CR CL must be placed so its lane center lands on road lane center:
-    # target_cr_cl = road_lane_center - cr_lane_offset along CR perpendicular
-    target_x = lane_center_x - cr_off_px * cr_perp[0]
-    target_y = lane_center_y - cr_off_px * cr_perp[1]
+    target_x = lane_center_x - cr_off_px * road_perp[0]
+    target_y = lane_center_y - cr_off_px * road_perp[1]
 
     dx = target_x - cr_endpoint[0]
     dy = target_y - cr_endpoint[1]
