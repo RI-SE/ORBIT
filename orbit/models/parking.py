@@ -172,6 +172,31 @@ class ParkingSpace:
         if self.geo_points and transformer:
             self.points = [transformer.geo_to_pixel(lon, lat) for lon, lat in self.geo_points]
 
+    def update_point(self, index: int, pixel_point: Tuple[float, float],
+                     geo_point: Optional[Tuple[float, float]] = None):
+        """Update a polygon vertex at the given index."""
+        if 0 <= index < len(self.points):
+            self.points[index] = pixel_point
+        if self.geo_points is not None and 0 <= index < len(self.geo_points):
+            if geo_point is not None:
+                self.geo_points[index] = geo_point
+
+    def insert_point(self, index: int, pixel_point: Tuple[float, float],
+                     geo_point: Optional[Tuple[float, float]] = None):
+        """Insert a polygon vertex at the given index."""
+        self.points.insert(index, pixel_point)
+        if self.geo_points is not None:
+            self.geo_points.insert(index, geo_point if geo_point else (0.0, 0.0))
+
+    def remove_point(self, index: int) -> bool:
+        """Remove a polygon vertex (enforces minimum 3 points). Returns True on success."""
+        if len(self.points) <= 3:
+            return False
+        self.points.pop(index)
+        if self.geo_points is not None and index < len(self.geo_points):
+            self.geo_points.pop(index)
+        return True
+
     def get_display_name(self) -> str:
         """Get display name for UI."""
         if self.name:

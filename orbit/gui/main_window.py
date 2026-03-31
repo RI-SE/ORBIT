@@ -2602,12 +2602,13 @@ class MainWindow(QMainWindow):
             self.toggle_aerial_action.setChecked(False)
             return
 
-        # Save original state
+        # Save original state (including any active adjustment)
         self._original_transformer = self._create_transformer(use_validation=True)
         if self._original_transformer is None:
             show_warning(self, "Cannot create coordinate transformer.")
             self.toggle_aerial_action.setChecked(False)
             return
+        self._apply_active_adjustment(self._original_transformer)
         self._original_image_np = self.image_view.image_np.copy() if self.image_view.image_np is not None else None
 
         # Remove ghost overlay before switching (will be rebuilt on return)
@@ -2713,6 +2714,11 @@ class MainWindow(QMainWindow):
         self._cached_transformer = self._original_transformer
         # Re-apply the alignment adjustment (it's relative to the original image)
         self._apply_active_adjustment(self._cached_transformer)
+        # Recompute pixel positions from geo coords using the adjusted transformer
+        # so entities land in the correct adjusted positions.
+        adj = self.image_view.current_adjustment
+        if adj and not adj.is_identity():
+            self.image_view.update_all_from_geo_coords(self._cached_transformer)
         self._aerial_view_active = False
 
         # Refresh scene
