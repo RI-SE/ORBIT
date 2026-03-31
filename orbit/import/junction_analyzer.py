@@ -536,31 +536,40 @@ def create_connecting_roads_from_patterns(
     patterns: List[ConnectionPattern],
     endpoint_lookup: Dict[str, 'RoadEndpointInfo'],
     transformer: Optional['CoordinateTransformer'] = None,
-    project: Optional[Project] = None
+    project: Optional[Project] = None,
+    bidirectional_turns: bool = True,
 ) -> None:
-    """Create connecting roads and lane connections from pre-detected patterns."""
+    """Create connecting roads and lane connections from pre-detected patterns.
+
+    When bidirectional_turns is True, all complementary road pairs (A→B + B→A)
+    are merged into single bidirectional CRs regardless of turn type. When
+    False, only straight-through pairs are merged (legacy behavior).
+    """
     if not patterns:
         return
 
-    # Step 4: Identify straight-through pairs (A->B and B->A both straight)
-    straight_pairs = {}
+    # Group complementary pairs by sorted road-pair key
+    pair_groups: Dict[tuple, list] = {}
     for pattern in patterns:
-        if pattern.turn_type == "straight":
-            key = tuple(sorted([pattern.from_road_id, pattern.to_road_id]))
-            if key not in straight_pairs:
-                straight_pairs[key] = []
-            straight_pairs[key].append(pattern)
+        key = tuple(sorted([pattern.from_road_id, pattern.to_road_id]))
+        if key not in pair_groups:
+            pair_groups[key] = []
+        pair_groups[key].append(pattern)
 
-    # Step 5: Create bidirectional CRs for straight-through pairs
-    handled_patterns = set()
-    for pair_patterns in straight_pairs.values():
-        if len(pair_patterns) == 2:
+    # Create bidirectional CRs for eligible pairs
+    handled_patterns: set = set()
+    for pair_patterns in pair_groups.values():
+        if len(pair_patterns) != 2:
+            continue
+        # Pair straights always; pair turns only when bidirectional_turns is on
+        both_straight = all(p.turn_type == "straight" for p in pair_patterns)
+        if both_straight or bidirectional_turns:
             handled = _create_bidirectional_cr(
                 junction, pair_patterns, endpoint_lookup, transformer, project
             )
             handled_patterns.update(handled)
 
-    # Step 6: Handle remaining patterns (turns and unpaired straights)
+    # Handle remaining patterns (unpaired or non-bidirectional turns)
     for pattern in patterns:
         if id(pattern) in handled_patterns:
             continue
@@ -939,16 +948,17 @@ def generate_junction_connections(junction: Junction,
                                  polylines_dict: Dict[str, Polyline],
                                  scale: float = 1.0,
                                  transformer: Optional['CoordinateTransformer'] = None,
-                                 project: Optional[Project] = None) -> None:
+                                 project: Optional[Project] = None,
+                                 bidirectional_turns: bool = True) -> None:
     """
     Generate connecting roads and lane connections for a junction.
 
     Creates Road objects (with junction_id set) and adds them to project.roads.
     Stores connecting road IDs in junction.connecting_road_ids.
 
-    For straight-through connections between bidirectional roads, creates a single
-    bidirectional connecting road with both left and right lanes. For turns,
-    creates separate unidirectional connecting roads.
+    When bidirectional_turns is True (default), complementary turn pairs are
+    merged into single bidirectional CRs. When False, only straight-through
+    pairs are merged (legacy behavior for tool compatibility).
 
     Virtual junctions (path crossings) are skipped - they represent visual crossings
     where roads don't actually connect (e.g., pedestrian path crossing over a road).
@@ -986,7 +996,10 @@ def generate_junction_connections(junction: Junction,
     endpoint_lookup = {ep.road_id: ep for ep in geometry_info['endpoints']}
 
     # Steps 4-6: Create connecting roads using the shared function
-    create_connecting_roads_from_patterns(junction, patterns, endpoint_lookup, transformer, project)
+    create_connecting_roads_from_patterns(
+        junction, patterns, endpoint_lookup, transformer, project,
+        bidirectional_turns=bidirectional_turns,
+    )
 
     # Step 7: Clear any stale road-to-road predecessor/successor links
     # In OpenDRIVE, roads connecting through a junction should link to the junction,

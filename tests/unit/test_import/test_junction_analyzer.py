@@ -5,7 +5,7 @@ import math
 
 import pytest
 
-from orbit.models import Junction, LineType, Polyline, Road
+from orbit.models import Junction, LineType, Polyline, Project, Road
 
 # Import using importlib since 'import' is a reserved keyword
 junction_analyzer = importlib.import_module('orbit.import.junction_analyzer')
@@ -1030,6 +1030,124 @@ class TestCreateConnectingRoadsFromPatterns:
         # Should have created connections
         total_connections = len(junction.connecting_road_ids) + len(junction.lane_connections)
         assert total_connections > 0
+
+    def test_complementary_turns_become_bidirectional_when_enabled(self):
+        """Complementary right+left turn pair merges into one bidirectional CR."""
+        junction = Junction(name="Test Junction")
+        junction.center_point = (100.0, 100.0)
+
+        ep1 = RoadEndpointInfo(
+            road_id="road1", road_name="Road 1",
+            position=(50.0, 100.0), heading=0.0,
+            at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+        ep2 = RoadEndpointInfo(
+            road_id="road2", road_name="Road 2",
+            position=(100.0, 50.0), heading=-math.pi / 2,
+            at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+
+        right_turn = ConnectionPattern(
+            from_road_id="road1", to_road_id="road2",
+            turn_type="right", turn_angle=-math.pi / 2,
+            from_endpoint=ep1, to_endpoint=ep2
+        )
+        left_turn = ConnectionPattern(
+            from_road_id="road2", to_road_id="road1",
+            turn_type="left", turn_angle=math.pi / 2,
+            from_endpoint=ep2, to_endpoint=ep1
+        )
+
+        endpoint_lookup = {"road1": ep1, "road2": ep2}
+
+        project = Project()
+        create_connecting_roads_from_patterns(
+            junction, [right_turn, left_turn], endpoint_lookup,
+            bidirectional_turns=True, project=project,
+        )
+
+        # Should produce exactly 1 bidirectional CR
+        assert len(junction.connecting_road_ids) == 1
+        # Both directions should have lane connections
+        assert len(junction.lane_connections) == 2
+
+    def test_complementary_turns_stay_separate_when_disabled(self):
+        """With bidirectional_turns=False, turns produce separate CRs."""
+        junction = Junction(name="Test Junction")
+        junction.center_point = (100.0, 100.0)
+
+        ep1 = RoadEndpointInfo(
+            road_id="road1", road_name="Road 1",
+            position=(50.0, 100.0), heading=0.0,
+            at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+        ep2 = RoadEndpointInfo(
+            road_id="road2", road_name="Road 2",
+            position=(100.0, 50.0), heading=-math.pi / 2,
+            at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+
+        right_turn = ConnectionPattern(
+            from_road_id="road1", to_road_id="road2",
+            turn_type="right", turn_angle=-math.pi / 2,
+            from_endpoint=ep1, to_endpoint=ep2
+        )
+        left_turn = ConnectionPattern(
+            from_road_id="road2", to_road_id="road1",
+            turn_type="left", turn_angle=math.pi / 2,
+            from_endpoint=ep2, to_endpoint=ep1
+        )
+
+        endpoint_lookup = {"road1": ep1, "road2": ep2}
+
+        project = Project()
+        create_connecting_roads_from_patterns(
+            junction, [right_turn, left_turn], endpoint_lookup,
+            bidirectional_turns=False, project=project,
+        )
+
+        # Should produce 2 separate unidirectional CRs
+        assert len(junction.connecting_road_ids) == 2
+
+    def test_unpaired_turn_stays_unidirectional(self):
+        """Single turn (no complement) produces unidirectional CR regardless of option."""
+        junction = Junction(name="Test Junction")
+        junction.center_point = (100.0, 100.0)
+
+        ep1 = RoadEndpointInfo(
+            road_id="road1", road_name="Road 1",
+            position=(50.0, 100.0), heading=0.0,
+            at_junction="end", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+        ep2 = RoadEndpointInfo(
+            road_id="road2", road_name="Road 2",
+            position=(100.0, 50.0), heading=-math.pi / 2,
+            at_junction="start", is_incoming=True, is_outgoing=True,
+            left_lane_count=1, right_lane_count=1, lane_width=3.5
+        )
+
+        right_turn = ConnectionPattern(
+            from_road_id="road1", to_road_id="road2",
+            turn_type="right", turn_angle=-math.pi / 2,
+            from_endpoint=ep1, to_endpoint=ep2
+        )
+
+        endpoint_lookup = {"road1": ep1, "road2": ep2}
+
+        project = Project()
+        create_connecting_roads_from_patterns(
+            junction, [right_turn], endpoint_lookup,
+            bidirectional_turns=True, project=project,
+        )
+
+        # Single pattern → unidirectional
+        assert len(junction.connecting_road_ids) == 1
+        assert len(junction.lane_connections) == 1
 
 
 class TestConnectionPatternPriority:
