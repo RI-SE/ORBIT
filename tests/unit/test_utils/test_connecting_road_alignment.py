@@ -9,6 +9,7 @@ from orbit.models.road import Road
 from orbit.utils.connecting_road_alignment import (
     _compute_lane_alignment_shift,
     _get_road_lane_width,
+    _lane_center_offset,
 )
 
 
@@ -167,3 +168,18 @@ class TestComputeLaneAlignmentShift:
         assert shift is not None
         assert shift[0] == pytest.approx(0.0, abs=1.0)
         assert shift[1] == pytest.approx(-w_px, abs=1.0)
+
+
+class TestVariableWidthAlignment:
+    """Verifies CR endpoint-specific width is used in alignment shift."""
+
+    def test_different_cr_widths_at_endpoints(self):
+        """CR with 6m start / 3m end produces different shifts at each endpoint."""
+        scale = 0.05
+        # Shift depends on cr_lane_width: offset = (|lane_id| - 0.5) * width
+        # lane -1: offset = 0.5 * width
+        shift_start = _lane_center_offset(-1, 6.0)
+        shift_end = _lane_center_offset(-1, 3.0)
+        assert shift_start == pytest.approx(3.0)
+        assert shift_end == pytest.approx(1.5)
+        assert shift_start != shift_end

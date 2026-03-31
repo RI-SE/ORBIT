@@ -66,6 +66,12 @@ def align_connecting_road_paths(
             pred_target_lane_id = conn.to_lane_id
             succ_target_lane_id = conn.from_lane_id
 
+        # Get CR lane width at each endpoint
+        cr.ensure_cr_lanes_initialized()
+        cr_lane = cr.get_cr_lane(cr_lane_id)
+        cr_width_start = cr_lane.width if cr_lane else cr.lane_info.lane_width
+        cr_width_end = cr_lane.get_width_at_end() if cr_lane else cr.lane_info.lane_width
+
         # Predecessor end (CR start) — forward direction is path[0]→path[1]
         start_shift = _compute_lane_alignment_shift(
             project=project,
@@ -73,7 +79,7 @@ def align_connecting_road_paths(
             contact_point=cr.predecessor_contact,
             target_lane_id=pred_target_lane_id,
             cr_lane_id=cr_lane_id,
-            cr_lane_width=cr.lane_info.lane_width,
+            cr_lane_width=cr_width_start,
             cr_endpoint=cr.inline_path[0],
             cr_fwd_p1=cr.inline_path[0],
             cr_fwd_p2=cr.inline_path[1],
@@ -87,7 +93,7 @@ def align_connecting_road_paths(
             contact_point=cr.successor_contact,
             target_lane_id=succ_target_lane_id,
             cr_lane_id=cr_lane_id,
-            cr_lane_width=cr.lane_info.lane_width,
+            cr_lane_width=cr_width_end,
             cr_endpoint=cr.inline_path[-1],
             cr_fwd_p1=cr.inline_path[-2],
             cr_fwd_p2=cr.inline_path[-1],
@@ -185,15 +191,17 @@ def _lane_center_offset(lane_id: int, lane_width: float) -> float:
 
 
 def _get_road_lane_width(road, contact_point: str = "end") -> float:
-    """Get average lane width for a road in meters at the given contact point.
-
-    Args:
-        road: Road with lane_sections
-        contact_point: "start" uses first section, "end" uses last section
-    """
+    """Get average lane width for a road at the given contact point (meters)."""
     if road.lane_sections:
         section = road.lane_sections[0] if contact_point == "start" else road.lane_sections[-1]
-        widths = [lane.width for lane in section.lanes if lane.id != 0 and lane.width > 0]
+        widths = []
+        for lane in section.lanes:
+            if lane.id == 0 or lane.width <= 0:
+                continue
+            if contact_point == "end":
+                widths.append(lane.get_width_at_end())
+            else:
+                widths.append(lane.width)
         if widths:
             return sum(widths) / len(widths)
     if hasattr(road, "lane_info") and road.lane_info:

@@ -362,8 +362,11 @@ class Road:
 
         polygons: Dict[int, List[Tuple[float, float]]] = {}
 
-        uses_polynomial = any(
+        # Use distance-based (s_values) rendering when any lane has non-constant width.
+        # This ensures correct interpolation for CR paths with non-uniform point spacing.
+        uses_distance_based_width = any(
             lane.width_b != 0.0 or lane.width_c != 0.0 or lane.width_d != 0.0
+            or lane.has_variable_width
             for lane in lanes if lane.id != 0
         )
 
@@ -375,7 +378,7 @@ class Road:
                 continue
             inner_lanes = [lane_map.get(-i) for i in range(1, lane_num) if lane_map.get(-i)]
 
-            if uses_polynomial and path_length_m > 0:
+            if uses_distance_based_width and path_length_m > 0:
                 def inner_width_func(s_px, _il=inner_lanes):
                     s_m = s_px * scale
                     return sum(il.get_width_at_s(s_m, path_length_m) / scale for il in _il)
@@ -408,7 +411,7 @@ class Road:
                 continue
             inner_lanes = [lane_map.get(i) for i in range(1, lane_num) if lane_map.get(i)]
 
-            if uses_polynomial and path_length_m > 0:
+            if uses_distance_based_width and path_length_m > 0:
                 def inner_width_func(s_px, _il=inner_lanes):
                     s_m = s_px * scale
                     return sum(il.get_width_at_s(s_m, path_length_m) / scale for il in _il)

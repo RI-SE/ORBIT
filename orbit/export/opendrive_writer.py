@@ -1152,6 +1152,13 @@ class OpenDriveWriter:
                 pred_target_lane_id = primary_conn.to_lane_id
                 succ_target_lane_id = primary_conn.from_lane_id
 
+        # Get CR lane width at each endpoint
+        connecting_road.ensure_cr_lanes_initialized()
+        cr_lane_obj = connecting_road.get_cr_lane(cr_lane_id)
+        cr_width_start = cr_lane_obj.width if cr_lane_obj else connecting_road.lane_info.lane_width
+        cr_width_end = (cr_lane_obj.get_width_at_end() if cr_lane_obj
+                        else connecting_road.lane_info.lane_width)
+
         # Snap start to predecessor road endpoint
         pred_road = self.road_map.get(connecting_road.predecessor_id)
         if pred_road and pred_road.centerline_id:
@@ -1164,7 +1171,7 @@ class OpenDriveWriter:
                         snap_pt, pred_road, pred_road.centerline_id,
                         connecting_road.predecessor_contact,
                         pred_target_lane_id, cr_lane_id,
-                        connecting_road.lane_info.lane_width,
+                        cr_width_start,
                         path_meters, is_start=True,
                     )
                 path_meters[0] = snap_pt
@@ -1181,7 +1188,7 @@ class OpenDriveWriter:
                         snap_pt, succ_road, succ_road.centerline_id,
                         connecting_road.successor_contact,
                         succ_target_lane_id, cr_lane_id,
-                        connecting_road.lane_info.lane_width,
+                        cr_width_end,
                         path_meters, is_start=False,
                     )
                 path_meters[-1] = snap_pt

@@ -958,3 +958,82 @@ class TestRoadMissingCoverage:
 
         # Should create default section for road2
         assert len(sections_road2) >= 1
+
+
+class TestCRLaneWidths:
+    """Tests for connecting road lane width handling."""
+
+    def _make_cr(self, lane_width_start=3.5, lane_width_end=3.5,
+                 left_lanes=1, right_lanes=1):
+        """Create a CR with an inline path for testing."""
+        road = Road(
+            name="test CR",
+            junction_id="j1",
+            cr_lane_count_left=left_lanes,
+            cr_lane_count_right=right_lanes,
+            lane_width_start=lane_width_start,
+            lane_width_end=lane_width_end,
+            lane_info=LaneInfo(lane_width=(lane_width_start + lane_width_end) / 2),
+        )
+        # Straight path with 10 equally-spaced points
+        road.inline_path = [(i * 10.0, 0.0) for i in range(10)]
+        return road
+
+    def test_ensure_cr_lanes_initialized_creates_lanes(self):
+        """Lanes are created with correct start/end widths."""
+        cr = self._make_cr(lane_width_start=3.0, lane_width_end=6.0)
+        cr.ensure_cr_lanes_initialized()
+        lane = cr.get_cr_lane(-1)
+        assert lane is not None
+        assert lane.width == 3.0
+        assert lane.width_end == 6.0
+
+    def test_ensure_cr_lanes_constant_width(self):
+        """Constant width sets width_end=None."""
+        cr = self._make_cr(lane_width_start=3.5, lane_width_end=3.5)
+        cr.ensure_cr_lanes_initialized()
+        lane = cr.get_cr_lane(-1)
+        assert lane.width == 3.5
+        assert lane.width_end is None
+
+    def test_per_lane_widths_independent(self):
+        """Individual lane widths can differ from each other."""
+        cr = self._make_cr(lane_width_start=3.0, lane_width_end=3.0)
+        cr.ensure_cr_lanes_initialized()
+        # Manually set left lane to wider width
+        left_lane = cr.get_cr_lane(1)
+        left_lane.width = 6.0
+        left_lane.width_end = 6.0
+        right_lane = cr.get_cr_lane(-1)
+        # Right lane should still be 3.0
+        assert right_lane.width == 3.0
+        assert left_lane.width == 6.0
+
+    def test_variable_width_uses_distance_based_rendering(self):
+        """CR with variable width produces polygon via distance-based path."""
+        cr = self._make_cr(lane_width_start=3.0, lane_width_end=6.0)
+        scale = 0.1  # 0.1 m/px
+        polygons = cr.get_cr_lane_polygons(scale)
+        assert -1 in polygons
+        # Polygon should exist and have a reasonable number of points
+        assert len(polygons[-1]) >= 6
+
+    def test_per_lane_variable_width_different_polygons(self):
+        """Left and right lanes with different widths produce different polygons."""
+        cr = self._make_cr(lane_width_start=3.0, lane_width_end=3.0)
+        cr.ensure_cr_lanes_initialized()
+        # Make right lane taper 3→6, left stays constant 3
+        right_lane = cr.get_cr_lane(-1)
+        right_lane.width = 3.0
+        right_lane.width_end = 6.0
+        left_lane = cr.get_cr_lane(1)
+        left_lane.width = 3.0
+        left_lane.width_end = None
+
+        scale = 0.1
+        polygons = cr.get_cr_lane_polygons(scale)
+        assert -1 in polygons
+        assert 1 in polygons
+        # Right lane polygon should be wider at end than left lane
+        # (they should be different shapes)
+        assert polygons[-1] != polygons[1]

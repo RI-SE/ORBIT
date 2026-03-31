@@ -356,6 +356,10 @@ class MainWindow(QMainWindow):
         self.merge_roads_action.setStatusTip("Merge two consecutive roads into one (select two roads in sidebar)")
         self.merge_roads_action.triggered.connect(self.merge_selected_roads)
 
+        self.realign_junctions_action = QAction("Re-&align All Junctions", self)
+        self.realign_junctions_action.setStatusTip("Re-compute lane alignment for all junction connecting roads")
+        self.realign_junctions_action.triggered.connect(self._realign_all_junctions)
+
         self.add_signal_action = QAction("Add &Signal", self)
         self.add_signal_action.setShortcut(QKeySequence("Ctrl+T"))
         self.add_signal_action.setStatusTip("Add a traffic signal/sign")
@@ -469,6 +473,7 @@ class MainWindow(QMainWindow):
         roads_menu.addAction(self.create_roundabout_action)
         roads_menu.addSeparator()
         roads_menu.addAction(self.merge_roads_action)
+        roads_menu.addAction(self.realign_junctions_action)
 
         # Georeferencing menu
         georef_menu = menubar.addMenu("&Georeferencing")
@@ -2794,6 +2799,15 @@ class MainWindow(QMainWindow):
     def _align_all_junction_connecting_roads(self, scale_factors):
         """Apply lane alignment to all junctions' connecting roads."""
         self.controller.align_all_junction_crs(scale_factors)
+
+    def _realign_all_junctions(self):
+        """Re-align all junction CRs and refresh graphics (menu action)."""
+        scale_factors = self.get_current_scale()
+        self._align_all_junction_connecting_roads(scale_factors)
+        for junction in self.project.junctions:
+            for cr_id in junction.connecting_road_ids:
+                self.image_view.update_connecting_road_graphics(cr_id, scale_factors)
+        self.modified = True
 
     def regenerate_affected_connecting_roads(self, polyline_id: str):
         """Regenerate CRs when a road centerline endpoint is modified."""
