@@ -672,8 +672,12 @@ def _create_bidirectional_cr(junction, pair_patterns, endpoint_lookup,
         return set()
 
     aU, bU, cU, dU, aV, bV, cV, dV = coeffs
-    conn_left = max(1, min(from_endpoint.left_lane_count, to_endpoint.left_lane_count))
-    conn_right = max(1, min(from_endpoint.right_lane_count, to_endpoint.right_lane_count))
+    conn_left = min(from_endpoint.left_lane_count, to_endpoint.left_lane_count)
+    conn_right = min(from_endpoint.right_lane_count, to_endpoint.right_lane_count)
+
+    # Both directions need at least one lane for a bidirectional CR
+    if conn_left < 1 or conn_right < 1:
+        return set()
 
     connecting_road = Road(
         name=f"CR {junction.id}",

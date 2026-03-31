@@ -2367,7 +2367,7 @@ class ImageView(QGraphicsView):
                 x, y = obj.position
                 self.centerOn(x, y)
 
-    def _get_connecting_road_lane_id(self, junction, connecting_road_id: str, source_lane_id: int) -> int:
+    def _get_connecting_road_lane_id(self, junction, connecting_road_id: str, source_lane_id: int) -> int | None:
         """
         Determine which lane on a connecting road corresponds to a source lane.
 
@@ -2400,10 +2400,8 @@ class ImageView(QGraphicsView):
                 return right_lanes[lane_ordinal]
             elif right_lanes:
                 return right_lanes[-1]  # Use last available right lane
-            elif left_lanes:
-                return left_lanes[0]  # Fall back to first left lane
             else:
-                return -1  # Default
+                return None  # No right lanes on CR
         else:
             # Source is a left lane, map to connecting road left lanes
             lane_ordinal = source_lane_id - 1  # 0-indexed ordinal
@@ -2411,10 +2409,8 @@ class ImageView(QGraphicsView):
                 return left_lanes[lane_ordinal]
             elif left_lanes:
                 return left_lanes[-1]  # Use last available left lane
-            elif right_lanes:
-                return right_lanes[0]  # Fall back to first right lane
             else:
-                return -1  # Default
+                return None  # No left lanes on CR
 
     def find_connected_lanes(self, road_id: str, section_number: int, lane_id: int) -> dict:
         """

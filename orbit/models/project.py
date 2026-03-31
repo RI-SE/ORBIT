@@ -478,11 +478,15 @@ class Project:
 
                 # Always set connecting_lane_id when missing, even for
                 # connections already linked (e.g. set during OSM import).
-                # Right lanes (negative IDs) → CR lane -1; left → +1.
-                if lc.connecting_lane_id is None:
-                    lc.connecting_lane_id = (
-                        -1 if lc.from_lane_id < 0 else 1
-                    )
+                if lc.connecting_lane_id is None and lc.connecting_road_id:
+                    cr = self.get_road(lc.connecting_road_id)
+                    if cr and cr.is_connecting_road:
+                        if lc.from_lane_id < 0:
+                            lc.connecting_lane_id = -1 if cr.cr_lane_count_right > 0 else 1
+                        else:
+                            lc.connecting_lane_id = 1 if cr.cr_lane_count_left > 0 else -1
+                    else:
+                        lc.connecting_lane_id = -1 if lc.from_lane_id < 0 else 1
 
         return linked
 
