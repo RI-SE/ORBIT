@@ -1069,13 +1069,21 @@ class OpenDriveWriter:
         # Lateral profile
         etree.SubElement(road_elem, 'lateralProfile')
 
-        # Lanes
+        # Lanes — cr_lane_link_map: CR lane ID → (predecessor_lane, successor_lane).
+        # For reversed-path CRs (pred=to_road, succ=from_road), the from/to
+        # lane IDs must be swapped to match the CR's path direction.
         cr_lane_link_map = {}
         if lane_connections:
             for lc in lane_connections:
                 if lc.connecting_road_id == connecting_road.id and lc.connecting_lane_id is not None:
+                    if connecting_road.predecessor_id == lc.from_road_id:
+                        pred_lane = lc.from_lane_id
+                        succ_lane = lc.to_lane_id
+                    else:
+                        pred_lane = lc.to_lane_id
+                        succ_lane = lc.from_lane_id
                     cr_lane_link_map[lc.connecting_lane_id] = (
-                        lc.from_lane_id, lc.to_lane_id
+                        pred_lane, succ_lane
                     )
         road_elem.append(self._create_connecting_road_lanes(
             connecting_road, road_length, cr_lane_link_map
@@ -1133,6 +1141,17 @@ class OpenDriveWriter:
         else:
             cr_lane_id = 1
 
+        # Determine correct lane IDs for pred/succ.
+        # For reversed-path CRs (left-lane, pred=to_road, succ=from_road),
+        # from/to lane IDs must be swapped to match the CR's path direction.
+        if primary_conn:
+            if connecting_road.predecessor_id == primary_conn.from_road_id:
+                pred_target_lane_id = primary_conn.from_lane_id
+                succ_target_lane_id = primary_conn.to_lane_id
+            else:
+                pred_target_lane_id = primary_conn.to_lane_id
+                succ_target_lane_id = primary_conn.from_lane_id
+
         # Snap start to predecessor road endpoint
         pred_road = self.road_map.get(connecting_road.predecessor_id)
         if pred_road and pred_road.centerline_id:
@@ -1144,8 +1163,9 @@ class OpenDriveWriter:
                     snap_pt = self._apply_lane_offset_to_snap_point(
                         snap_pt, pred_road, pred_road.centerline_id,
                         connecting_road.predecessor_contact,
-                        primary_conn.from_lane_id, cr_lane_id,
+                        pred_target_lane_id, cr_lane_id,
                         connecting_road.lane_info.lane_width,
+                        path_meters, is_start=True,
                     )
                 path_meters[0] = snap_pt
 
@@ -1160,8 +1180,9 @@ class OpenDriveWriter:
                     snap_pt = self._apply_lane_offset_to_snap_point(
                         snap_pt, succ_road, succ_road.centerline_id,
                         connecting_road.successor_contact,
-                        primary_conn.to_lane_id, cr_lane_id,
+                        succ_target_lane_id, cr_lane_id,
                         connecting_road.lane_info.lane_width,
+                        path_meters, is_start=False,
                     )
                 path_meters[-1] = snap_pt
 
@@ -1170,14 +1191,13 @@ class OpenDriveWriter:
     def _apply_lane_offset_to_snap_point(
         self, snap_pt, road, centerline_id, contact_point,
         target_lane_id, cr_lane_id, cr_lane_width,
+        path_meters=None, is_start=True,
     ):
         """Offset a snap point perpendicular to road heading for lane alignment.
 
-        Computes how far the CR centerline must be from the road centerline
-        so that the CR's lane center aligns with the target lane center on
-        the connected road.
-
-        Returns the offset point, or the original snap_pt if no offset needed.
+        When the CR heading is ~180° from the road heading (reversed-path CRs),
+        the CR lane offset is negated so the exported geometry stays on the
+        correct side.
         """
         from orbit.utils.connecting_road_alignment import (
             _get_road_lane_width,
@@ -1187,14 +1207,32 @@ class OpenDriveWriter:
         road_lane_width = _get_road_lane_width(road, contact_point)
         road_lane_off = _lane_center_offset(target_lane_id, road_lane_width)
         cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width)
+
+        # Heading-sign correction: check if CR and road perpendiculars are
+        # anti-aligned (headings ~180° apart) and negate CR offset if so.
+        heading = self._get_road_heading_at_contact_meters(
+            centerline_id, contact_point
+        )
+        if heading is not None and path_meters and len(path_meters) >= 2:
+            road_perp = (math.sin(heading), -math.cos(heading))
+            if is_start:
+                cr_dx = path_meters[1][0] - path_meters[0][0]
+                cr_dy = path_meters[1][1] - path_meters[0][1]
+            else:
+                cr_dx = path_meters[-1][0] - path_meters[-2][0]
+                cr_dy = path_meters[-1][1] - path_meters[-2][1]
+            cr_len = math.sqrt(cr_dx * cr_dx + cr_dy * cr_dy)
+            if cr_len > 1e-9:
+                cr_perp = (cr_dy / cr_len, -cr_dx / cr_len)
+                dot = road_perp[0] * cr_perp[0] + road_perp[1] * cr_perp[1]
+                if dot < 0:
+                    cr_lane_off = -cr_lane_off
+
         offset_m = road_lane_off - cr_lane_off
 
         if abs(offset_m) < 0.01:
             return snap_pt
 
-        heading = self._get_road_heading_at_contact_meters(
-            centerline_id, contact_point
-        )
         if heading is None:
             return snap_pt
 
@@ -1494,7 +1532,17 @@ class OpenDriveWriter:
             connection.set('id', str(connection_id))
             connection.set('incomingRoad', self._remap_road_id(from_road_id))
             connection.set('connectingRoad', self._remap_road_id(connecting_road_id))
-            connection.set('contactPoint', 'start')  # Connecting roads start at junction
+
+            # Determine contactPoint: which end of the connecting road
+            # touches the incoming road.
+            cr = self.road_map.get(connecting_road_id)
+            if cr and cr.predecessor_id == from_road_id:
+                contact_pt = 'start'
+            elif cr and cr.successor_id == from_road_id:
+                contact_pt = 'end'
+            else:
+                contact_pt = 'start'  # fallback
+            connection.set('contactPoint', contact_pt)
 
             # Note: priority is a child element of junction, not an attribute of connection
             # Priority handling would need to be done at the junction level if needed

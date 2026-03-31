@@ -115,9 +115,11 @@ def _compute_lane_alignment_shift(
 ) -> Optional[Tuple[float, float]]:
     """Compute pixel shift to align a CR lane with a target lane on a connected road.
 
-    Uses the road's perpendicular for both the road-side and CR-side lane offsets.
-    This makes the target position deterministic (depends only on road geometry
-    and lane widths), ensuring idempotency across open-save cycles.
+    Uses the road's perpendicular for the road-side offset and adjusts the
+    CR-side offset based on the heading relationship (dot product of road and
+    CR perpendiculars). When the CR heading is ~180° from the road heading
+    (reversed-path left-lane CRs), the CR offset is negated so the lane
+    polygon ends up on the correct side.
     """
     from orbit.utils.geometry import calculate_perpendicular
 
@@ -145,10 +147,15 @@ def _compute_lane_alignment_shift(
     lane_center_x = road_cl_pos[0] + road_off_px * road_perp[0]
     lane_center_y = road_cl_pos[1] + road_off_px * road_perp[1]
 
-    # CR lane offset — use road perpendicular (not CR path direction) so
-    # the target position is deterministic and doesn't drift when the CR
-    # path is regenerated.
-    cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width)
+    # CR lane offset — use road perpendicular for deterministic positioning.
+    # When the CR heading is ~180° from the road heading (reversed-path CRs),
+    # the CR's perpendicular is flipped, so the lane offset direction must be
+    # negated to keep the lane polygon on the correct side.
+    cr_perp = calculate_perpendicular(cr_fwd_p1, cr_fwd_p2)
+    dot = road_perp[0] * cr_perp[0] + road_perp[1] * cr_perp[1]
+    heading_sign = 1.0 if dot >= 0 else -1.0
+
+    cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width) * heading_sign
     cr_off_px = cr_lane_off / scale
 
     target_x = lane_center_x - cr_off_px * road_perp[0]
