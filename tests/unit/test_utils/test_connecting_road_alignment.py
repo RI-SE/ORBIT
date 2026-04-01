@@ -175,7 +175,6 @@ class TestVariableWidthAlignment:
 
     def test_different_cr_widths_at_endpoints(self):
         """CR with 6m start / 3m end produces different shifts at each endpoint."""
-        scale = 0.05
         # Shift depends on cr_lane_width: offset = (|lane_id| - 0.5) * width
         # lane -1: offset = 0.5 * width
         shift_start = _lane_center_offset(-1, 6.0)
