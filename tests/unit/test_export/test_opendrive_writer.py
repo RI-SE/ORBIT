@@ -1583,18 +1583,19 @@ class TestCarlaCompat:
         assert root.tag == 'OpenDRIVE'
         assert root.nsmap == {}
 
-    def test_no_vendor_in_carla_mode(self, project_with_road, mock_transformer, tmp_path):
-        """CARLA mode omits vendor attribute from header."""
+    def test_vendor_in_carla_mode(self, project_with_road, mock_transformer, tmp_path):
+        """CARLA mode still includes vendor attribute in header."""
         root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=True)
         header = root.find('header')
-        assert header.get('vendor') is None
+        assert header.get('vendor') is not None
+        assert 'RISE' in header.get('vendor')
 
-    def test_no_userdata_in_carla_mode(self, project_with_road, mock_transformer, tmp_path):
-        """CARLA mode omits userData elements from header."""
+    def test_userdata_in_carla_mode(self, project_with_road, mock_transformer, tmp_path):
+        """CARLA mode still includes userData elements in header."""
         root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=True)
         header = root.find('header')
         user_data = header.findall('userData')
-        assert len(user_data) == 0
+        assert len(user_data) >= 2
 
     def test_road_type_unknown_mapped_to_town(self, project_with_road, mock_transformer, tmp_path):
         """CARLA mode maps 'unknown' road type to 'town'."""

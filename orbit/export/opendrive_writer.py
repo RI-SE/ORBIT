@@ -596,8 +596,7 @@ class OpenDriveWriter:
             header.set('east', '0.0')
             header.set('west', '0.0')
 
-        if not self.carla_compat:
-            header.set('vendor', 'ORBIT by RISE Research Institutes of Sweden')
+        header.set('vendor', 'ORBIT by RISE Research Institutes of Sweden')
 
         # OpenDRIVE schema requires elements in order: geoReference, offset, license, userData
         # Add georef first if available
@@ -625,21 +624,20 @@ class OpenDriveWriter:
             offset_elem.set('z', '0.0000')
             offset_elem.set('hdg', '0.000000')
 
-        # Add tool/license userData only in 1.8 mode (not recognized by CARLA's 1.4 parser)
-        if not self.carla_compat:
-            tool_data = etree.SubElement(header, 'userData')
-            tool_data.set('code', 'tool')
-            tool_data.text = 'Produced by ORBIT (https://github.com/RI-SE/ORBIT)'
+        # Add tool/license userData
+        tool_data = etree.SubElement(header, 'userData')
+        tool_data.set('code', 'tool')
+        tool_data.text = 'Produced by ORBIT (https://github.com/RI-SE/ORBIT)'
 
-            license_data = etree.SubElement(header, 'userData')
-            license_data.set('code', 'license')
-            license_data.text = 'Licensed under the Open Database License (https://opendatacommons.org/licenses/odbl/1-0/)'
+        license_data = etree.SubElement(header, 'userData')
+        license_data.set('code', 'license')
+        license_data.text = 'Licensed under the Open Database License (https://opendatacommons.org/licenses/odbl/1-0/)'
 
-            # Source attribution userData only if OpenStreetMap was used
-            if self.project.openstreetmap_used:
-                source_data = etree.SubElement(header, 'userData')
-                source_data.set('code', 'sourceAttribution')
-                source_data.text = 'Map data from OpenStreetMap (https://www.openstreetmap.org/copyright)'
+        # Source attribution userData only if OpenStreetMap was used
+        if self.project.openstreetmap_used:
+            source_data = etree.SubElement(header, 'userData')
+            source_data.set('code', 'sourceAttribution')
+            source_data.text = 'Map data from OpenStreetMap (https://www.openstreetmap.org/copyright)'
 
         return header
 
