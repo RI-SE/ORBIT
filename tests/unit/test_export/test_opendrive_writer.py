@@ -1774,3 +1774,129 @@ class TestCarlaCompat:
         assert root.tag == 'OpenDRIVE'  # No namespace
         header = root.find('header')
         assert header.get('revMinor') == '4'
+
+
+class TestJunctionLinkOverrides:
+    """Tests for manual junction link overrides on road export."""
+
+    @pytest.fixture
+    def mock_transformer(self):
+        return MockTransformer(scale=(0.1, 0.1))
+
+    @pytest.fixture
+    def project_with_junction(self):
+        """Project with a road, junction, and connecting road."""
+        project = Project()
+
+        road1 = Road(name="Main Road")
+        road1.add_polyline("poly1")
+        poly1 = Polyline(id="poly1", points=[(0, 0), (100, 0)])
+        project.add_polyline(poly1)
+        project.add_road(road1)
+
+        road2 = Road(name="Side Road")
+        road2.add_polyline("poly2")
+        poly2 = Polyline(id="poly2", points=[(100, 0), (200, 0)])
+        project.add_polyline(poly2)
+        project.add_road(road2)
+
+        junction = Junction(name="J1")
+        project.add_junction(junction)
+
+        cr = Road(name="CR1")
+        cr.junction_id = junction.id  # Makes it a connecting road
+        cr.predecessor_id = road1.id
+        cr.successor_id = road2.id
+        cr.inline_path = [(100, 0), (100, 10)]
+        junction.connecting_road_ids.append(cr.id)
+        project.add_road(cr)
+
+        return project
+
+    def test_explicit_junction_id_used(self, project_with_junction, mock_transformer):
+        """When successor_junction_id is set to a junction ID, export uses it."""
+        project = project_with_junction
+        road = project.roads[0]  # Main Road
+        junction = project.junctions[0]
+        road.successor_junction_id = junction.id
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        road_elem = etree.Element('road')
+        writer._build_road_link_xml(road_elem, road)
+
+        link = road_elem.find('link')
+        succ = link.find('successor')
+        assert succ is not None
+        assert succ.get('elementType') == 'junction'
+
+    def test_none_sentinel_suppresses_auto_detect(self, project_with_junction, mock_transformer):
+        """When successor_junction_id is '__none__', no junction link is emitted."""
+        project = project_with_junction
+        road = project.roads[0]
+        road.successor_junction_id = "__none__"
+        road.successor_id = None  # No road link either
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        road_elem = etree.Element('road')
+        writer._build_road_link_xml(road_elem, road)
+
+        link = road_elem.find('link')
+        succ = link.find('successor')
+        assert succ is None
+
+    def test_auto_detect_when_none(self, project_with_junction, mock_transformer):
+        """When predecessor_junction_id is None (default), auto-detection runs."""
+        project = project_with_junction
+        road = project.roads[0]
+        assert road.predecessor_junction_id is None
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        road_elem = etree.Element('road')
+        writer._build_road_link_xml(road_elem, road)
+
+        # Auto-detect may or may not find a junction — the point is it doesn't crash
+        link = road_elem.find('link')
+        assert link is not None
+
+    def test_junction_id_roundtrip_serialization(self):
+        """Junction IDs (including __none__) survive to_dict/from_dict."""
+        road = Road(name="Test")
+        road.predecessor_junction_id = "__none__"
+        road.successor_junction_id = "some-junction-id"
+
+        data = road.to_dict()
+        restored = Road.from_dict(data)
+
+        assert restored.predecessor_junction_id == "__none__"
+        assert restored.successor_junction_id == "some-junction-id"
+
+    def test_junction_id_none_not_in_dict(self):
+        """When junction IDs are None, they are omitted from dict."""
+        road = Road(name="Test")
+        assert road.predecessor_junction_id is None
+        assert road.successor_junction_id is None
+
+        data = road.to_dict()
+        assert 'predecessor_junction_id' not in data
+        assert 'successor_junction_id' not in data
+
+    def test_both_pred_and_succ_junction_overrides(self, project_with_junction, mock_transformer):
+        """Both predecessor and successor junction overrides work independently."""
+        project = project_with_junction
+        road = project.roads[0]
+        junction = project.junctions[0]
+        road.predecessor_junction_id = "__none__"  # Suppress predecessor
+        road.successor_junction_id = junction.id   # Explicit successor
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        road_elem = etree.Element('road')
+        writer._build_road_link_xml(road_elem, road)
+
+        link = road_elem.find('link')
+        pred = link.find('predecessor')
+        succ = link.find('successor')
+        # Predecessor suppressed (no road link either since predecessor_id is None)
+        assert pred is None
+        # Successor explicitly set to junction
+        assert succ is not None
+        assert succ.get('elementType') == 'junction'

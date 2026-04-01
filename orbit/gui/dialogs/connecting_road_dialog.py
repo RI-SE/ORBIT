@@ -18,7 +18,8 @@ from PyQt6.QtWidgets import (
 )
 
 from orbit.models import Project
-from orbit.models.road import Road
+from orbit.models.road import Road, RoadType
+from orbit.utils import format_enum_name
 from orbit.utils.geometry import generate_simple_connection_path
 
 from .base_dialog import BaseDialog
@@ -37,38 +38,60 @@ class ConnectingRoadDialog(BaseDialog):
 
     def setup_ui(self):
         """Setup the dialog UI."""
-        # Connecting road identification (read-only)
+        # Connecting road identification
         id_layout = self.add_form_group("Connection Information")
 
-        # Get road names with IDs
-        if self.project:
-            pred_road = self.project.get_road(self.connecting_road.predecessor_id)
-            succ_road = self.project.get_road(self.connecting_road.successor_id)
-            pred_id_short = self.connecting_road.predecessor_id[:8]
-            succ_id_short = self.connecting_road.successor_id[:8]
-            pred_name = (
-                f"{pred_road.name} ({pred_id_short})"
-                if pred_road and pred_road.name
-                else f"Road {pred_id_short}"
-            )
-            succ_name = (
-                f"{succ_road.name} ({succ_id_short})"
-                if succ_road and succ_road.name
-                else f"Road {succ_id_short}"
-            )
-        else:
-            pred_name = f"Road {self.connecting_road.predecessor_id[:8]}"
-            succ_name = f"Road {self.connecting_road.successor_id[:8]}"
+        # Build list of non-connecting roads for predecessor/successor selection
+        non_connecting_roads = (
+            [r for r in self.project.roads if not r.is_connecting_road] if self.project else []
+        )
 
-        self.connection_label = QLabel(f"{pred_name} → {succ_name}")
-        self.connection_label.setStyleSheet("QLabel { font-weight: bold; }")
-        id_layout.addRow("Connection:", self.connection_label)
+        self.predecessor_road_combo = QComboBox()
+        self.predecessor_road_combo.addItem("(None)", None)
+        for road in non_connecting_roads:
+            id_short = road.id[:8]
+            label = f"{road.name} ({id_short})" if road.name else f"Road {id_short}"
+            self.predecessor_road_combo.addItem(label, road.id)
+        idx = self.predecessor_road_combo.findData(self.connecting_road.predecessor_id)
+        if idx >= 0:
+            self.predecessor_road_combo.setCurrentIndex(idx)
+        id_layout.addRow("Predecessor:", self.predecessor_road_combo)
+
+        self.successor_road_combo = QComboBox()
+        self.successor_road_combo.addItem("(None)", None)
+        for road in non_connecting_roads:
+            id_short = road.id[:8]
+            label = f"{road.name} ({id_short})" if road.name else f"Road {id_short}"
+            self.successor_road_combo.addItem(label, road.id)
+        idx = self.successor_road_combo.findData(self.connecting_road.successor_id)
+        if idx >= 0:
+            self.successor_road_combo.setCurrentIndex(idx)
+        id_layout.addRow("Successor:", self.successor_road_combo)
 
         self.geometry_type_label = QLabel()
         id_layout.addRow("Geometry Type:", self.geometry_type_label)
 
         self.lane_count_label = QLabel()
         id_layout.addRow("Lanes:", self.lane_count_label)
+
+        # Road properties
+        props_layout = self.add_form_group("Road Properties")
+
+        self.road_type_combo = QComboBox()
+        for road_type in RoadType:
+            self.road_type_combo.addItem(format_enum_name(road_type), road_type.value)
+        idx = self.road_type_combo.findData(self.connecting_road.road_type.value)
+        if idx >= 0:
+            self.road_type_combo.setCurrentIndex(idx)
+        props_layout.addRow("Road Type:", self.road_type_combo)
+
+        self.speed_limit_spin = QDoubleSpinBox()
+        self.speed_limit_spin.setRange(0, 100)
+        self.speed_limit_spin.setSingleStep(1.0)
+        self.speed_limit_spin.setDecimals(1)
+        self.speed_limit_spin.setSuffix(" m/s")
+        self.speed_limit_spin.setValue(self.connecting_road.speed_limit or 0.0)
+        props_layout.addRow("Speed Limit:", self.speed_limit_spin)
 
         # Lane configuration
         lane_layout = self.add_form_group("Lane Configuration")
@@ -438,6 +461,15 @@ class ConnectingRoadDialog(BaseDialog):
 
     def accept(self):
         """Save changes and accept dialog."""
+        # Save predecessor/successor roads
+        self.connecting_road.predecessor_id = self.predecessor_road_combo.currentData()
+        self.connecting_road.successor_id = self.successor_road_combo.currentData()
+
+        # Save road type and speed limit
+        self.connecting_road.road_type = RoadType(self.road_type_combo.currentData())
+        speed = self.speed_limit_spin.value()
+        self.connecting_road.speed_limit = speed if speed > 0 else None
+
         # Get new lane counts
         old_left = self.connecting_road.cr_lane_count_left
         old_right = self.connecting_road.cr_lane_count_right

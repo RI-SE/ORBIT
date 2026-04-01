@@ -212,6 +212,38 @@ class RoadPropertiesDialog(QDialog):
         self.successor_contact_combo.addItem("End of successor", "end")
         links_layout.addRow("Connects at:", self.successor_contact_combo)
 
+        # Junction link overrides (normally auto-detected during export)
+        _AUTO = "__auto__"
+        self.predecessor_junction_combo = QComboBox()
+        self.predecessor_junction_combo.addItem("(Auto-detect)", _AUTO)
+        self.predecessor_junction_combo.addItem("(None)", "__none__")
+        for junction in self.project.junctions:
+            jid = junction.id[:8] + "..." if len(junction.id) > 8 else junction.id
+            display = f"{junction.name} (ID: {jid})"
+            self.predecessor_junction_combo.addItem(display, junction.id)
+        self.predecessor_junction_combo.setToolTip(
+            "Override the predecessor junction link for export.\n"
+            "Auto-detect: export uses spatial proximity (default).\n"
+            "None: no junction link is emitted.\n"
+            "Specific junction: always link to this junction."
+        )
+        links_layout.addRow("Predecessor Junction:", self.predecessor_junction_combo)
+
+        self.successor_junction_combo = QComboBox()
+        self.successor_junction_combo.addItem("(Auto-detect)", _AUTO)
+        self.successor_junction_combo.addItem("(None)", "__none__")
+        for junction in self.project.junctions:
+            jid = junction.id[:8] + "..." if len(junction.id) > 8 else junction.id
+            display = f"{junction.name} (ID: {jid})"
+            self.successor_junction_combo.addItem(display, junction.id)
+        self.successor_junction_combo.setToolTip(
+            "Override the successor junction link for export.\n"
+            "Auto-detect: export uses spatial proximity (default).\n"
+            "None: no junction link is emitted.\n"
+            "Specific junction: always link to this junction."
+        )
+        links_layout.addRow("Successor Junction:", self.successor_junction_combo)
+
         links_main_layout.addLayout(links_layout)
         links_group.setLayout(links_main_layout)
         layout.addWidget(links_group)
@@ -583,6 +615,18 @@ class RoadPropertiesDialog(QDialog):
             # Set successor contact point
             set_combo_by_data(self.successor_contact_combo, self.road.successor_contact)
 
+            # Set junction link overrides
+            _AUTO = "__auto__"
+            if self.road.predecessor_junction_id is not None:
+                set_combo_by_data(self.predecessor_junction_combo, self.road.predecessor_junction_id)
+            else:
+                set_combo_by_data(self.predecessor_junction_combo, _AUTO)
+
+            if self.road.successor_junction_id is not None:
+                set_combo_by_data(self.successor_junction_combo, self.road.successor_junction_id)
+            else:
+                set_combo_by_data(self.successor_junction_combo, _AUTO)
+
         # Set lane info
         self.left_lanes_spin.setValue(self.road.lane_info.left_count)
         self.right_lanes_spin.setValue(self.road.lane_info.right_count)
@@ -669,6 +713,14 @@ class RoadPropertiesDialog(QDialog):
             self.road.predecessor_contact = self.predecessor_contact_combo.currentData()
             self.road.successor_id = self.successor_combo.currentData()
             self.road.successor_contact = self.successor_contact_combo.currentData()
+
+            # Junction link overrides
+            _AUTO = "__auto__"
+            pred_junc = self.predecessor_junction_combo.currentData()
+            self.road.predecessor_junction_id = None if pred_junc == _AUTO else pred_junc
+
+            succ_junc = self.successor_junction_combo.currentData()
+            self.road.successor_junction_id = None if succ_junc == _AUTO else succ_junc
 
             # Enforce endpoint coordinate alignment with connected roads
             self.project.enforce_road_link_coordinates(self.road.id)

@@ -845,20 +845,27 @@ class OpenDriveWriter:
 
         predecessor_junction = None
         successor_junction = None
-        if road.predecessor_junction_id:
+
+        # "__none__" sentinel means user explicitly disabled junction auto-detection
+        pred_junc_id = road.predecessor_junction_id
+        succ_junc_id = road.successor_junction_id
+        pred_suppress = pred_junc_id == "__none__"
+        succ_suppress = succ_junc_id == "__none__"
+
+        if pred_junc_id and not pred_suppress:
             try:
-                predecessor_junction = int(road.predecessor_junction_id)
+                predecessor_junction = int(pred_junc_id)
             except (ValueError, TypeError):
                 pass
-        if road.successor_junction_id:
+        if succ_junc_id and not succ_suppress:
             try:
-                successor_junction = int(road.successor_junction_id)
+                successor_junction = int(succ_junc_id)
             except (ValueError, TypeError):
                 pass
 
-        if predecessor_junction is None:
+        if predecessor_junction is None and not pred_suppress:
             predecessor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=True)
-        if successor_junction is None:
+        if successor_junction is None and not succ_suppress:
             successor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=False)
 
         if predecessor_junction is not None:
