@@ -2,7 +2,7 @@
   "metadata": {
     "version": "0.7.0",
     "created": "2026-03-20T10:14:56.448226",
-    "modified": "2026-03-25T16:30:14.487942"
+    "modified": "2026-04-01T15:37:01.499242"
   },
   "image_path": "/home/fredrik/fwrise/ORBIT/examples/SaroRound/VIDp_2025-10-16T134059CEST_D_ff.png",
   "polylines": [
@@ -2086,6 +2086,7 @@
       "successor_id": null,
       "successor_contact": "start",
       "predecessor_junction_id": "2",
+      "successor_junction_id": "3",
       "elevation_profile": [
         [
           0.0,
@@ -8092,6 +8093,7 @@
   "junction_offset_distance_meters": 8.0,
   "roundabout_ring_offset_distance_meters": 4.0,
   "roundabout_approach_offset_distance_meters": 8.0,
+  "bidirectional_turn_connections": false,
   "georef_validation": {
     "transform_method": "homography",
     "reprojection_error": {

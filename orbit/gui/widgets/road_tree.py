@@ -599,9 +599,12 @@ class RoadTreeWidget(QWidget):
             edit_action.triggered.connect(lambda: self.edit_road(data["id"]))
             menu.addAction(edit_action)
 
-            # Edit Lane Connections - only shown if road connects to junctions
-            lane_conn_action = QAction("Edit Lane Connections", self)
             road_id = data["id"]
+            junctions = self._find_junctions_for_road(road_id)
+            if junctions:
+                lane_conn_action = QAction("Edit Junction Lane Connections", self)
+            else:
+                lane_conn_action = QAction("Edit Lane Links", self)
             lane_conn_action.triggered.connect(
                 lambda checked=False, rid=road_id: self._edit_lane_connections_for_road(rid)
             )
@@ -676,14 +679,27 @@ class RoadTreeWidget(QWidget):
         return junctions
 
     def _edit_lane_connections_for_road(self, road_id: str):
-        """Open lane connections dialog for junctions connected to this road."""
-        from ..dialogs.lane_connection_dialog import LaneConnectionDialog
-
+        """Open appropriate lane link dialog for this road."""
         junctions = self._find_junctions_for_road(road_id)
 
         if not junctions:
-            show_info(self, "This road is not connected to any junctions.", "No Junctions")
+            # No junction connections — edit per-lane predecessor/successor IDs directly
+            from ..dialogs.road_lane_links_dialog import RoadLaneLinksDialog
+            road = self.project.get_road(road_id)
+            if road:
+                if not road.lane_sections:
+                    show_info(
+                        self,
+                        "This road has no lane sections yet.\n"
+                        "Generate lanes first via Edit Road → Lane Configuration.",
+                        "No Lane Sections"
+                    )
+                    return
+                if RoadLaneLinksDialog.edit_lane_links(road, self):
+                    self.road_modified.emit(road_id)
             return
+
+        from ..dialogs.lane_connection_dialog import LaneConnectionDialog
 
         if len(junctions) == 1:
             junction = junctions[0]
