@@ -113,6 +113,9 @@ class LaneBuilder:
         # Track which cumulative_metric_s index the previous section ended at
         prev_end_idx = 0
 
+        # Road speed in m/s for CARLA lane fallback (road.speed_limit is km/h)
+        road_speed_ms = road.speed_limit / 3.6 if road.speed_limit else None
+
         for idx, section in enumerate(road.lane_sections):
             lane_section = etree.SubElement(lanes, 'laneSection')
 
@@ -158,7 +161,7 @@ class LaneBuilder:
                     boundary_info = boundary_map.get(lane_obj.id)
                     lane = self._create_lane(
                         lane_obj, boundary_info, section_length_m,
-                        add_pred, add_succ
+                        add_pred, add_succ, road_speed_ms
                     )
                     left.append(lane)
 
@@ -181,7 +184,7 @@ class LaneBuilder:
                     boundary_info = boundary_map.get(lane_obj.id)
                     lane = self._create_lane(
                         lane_obj, boundary_info, section_length_m,
-                        add_pred, add_succ
+                        add_pred, add_succ, road_speed_ms
                     )
                     right.append(lane)
 
@@ -227,7 +230,8 @@ class LaneBuilder:
         boundary_info: Optional[BoundaryInfo] = None,
         section_length_m: float = 0.0,
         add_pred_link: bool = False,
-        add_succ_link: bool = False
+        add_succ_link: bool = False,
+        road_speed_ms: Optional[float] = None,
     ) -> etree.Element:
         """Create a single lane element with data-driven road mark.
 
@@ -236,6 +240,8 @@ class LaneBuilder:
                 the lane's own ID (for road-to-road connections at first section).
             add_succ_link: If True and no explicit successor_id, default to
                 the lane's own ID (for road-to-road connections at last section).
+            road_speed_ms: Road-level speed limit in m/s; used as CARLA fallback
+                when the lane has no explicit speed limit.
         """
         lane = etree.Element('lane')
         lane.set('id', str(lane_obj.id))
@@ -311,10 +317,12 @@ class LaneBuilder:
             speed.set('max', f'{lane_obj.speed_limit:.6g}')
             speed.set('unit', lane_obj.speed_limit_unit)
         elif self.carla_compat and lane_obj.lane_type.value == 'driving':
-            # CARLA agents need speed targets on driving lanes; default 50 km/h
+            # CARLA agents need speed targets on driving lanes.
+            # Prefer the road-level speed; fall back to 50 km/h if unknown.
+            carla_speed = road_speed_ms if road_speed_ms is not None else 13.89
             speed = etree.SubElement(lane, 'speed')
             speed.set('sOffset', '0.0')
-            speed.set('max', '13.89')
+            speed.set('max', f'{carla_speed:.2f}')
             speed.set('unit', 'm/s')
 
         # Access restrictions (for shared paths)

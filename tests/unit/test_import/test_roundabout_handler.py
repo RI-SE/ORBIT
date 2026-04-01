@@ -719,6 +719,52 @@ class TestAnalyzeRoundabout:
 
         assert info.speed_limit == 30.0
 
+    def test_analyze_extracts_implicit_speed_limit(self):
+        """Implicit maxspeed value like SE:rural is parsed correctly."""
+        nodes = {
+            1: OSMNode(1, 0.010, 0.000),
+            2: OSMNode(2, 0.000, 0.010),
+            3: OSMNode(3, -0.010, 0.000),
+        }
+
+        roundabout_way = OSMWay(
+            id=1000,
+            nodes=[1, 2, 3, 1],
+            tags={'highway': 'primary', 'junction': 'roundabout', 'maxspeed': 'SE:rural'}
+        )
+
+        osm_data = OSMData()
+        osm_data.nodes = nodes
+        osm_data.ways = {1000: roundabout_way}
+
+        transformer = MockTransformer()
+        info = analyze_roundabout(roundabout_way, osm_data, transformer)
+
+        assert info.speed_limit == 80.0  # SE:rural = 80 km/h
+
+    def test_analyze_speed_limit_fallback_to_road_type(self):
+        """Road-type default speed is applied when no maxspeed tag."""
+        nodes = {
+            1: OSMNode(1, 0.010, 0.000),
+            2: OSMNode(2, 0.000, 0.010),
+            3: OSMNode(3, -0.010, 0.000),
+        }
+
+        roundabout_way = OSMWay(
+            id=1000,
+            nodes=[1, 2, 3, 1],
+            tags={'highway': 'residential', 'junction': 'roundabout'}
+        )
+
+        osm_data = OSMData()
+        osm_data.nodes = nodes
+        osm_data.ways = {1000: roundabout_way}
+
+        transformer = MockTransformer()
+        info = analyze_roundabout(roundabout_way, osm_data, transformer)
+
+        assert info.speed_limit == 30.0  # DEFAULT_SPEED_LIMITS['residential']
+
     def test_analyze_too_few_points_raises(self):
         """Roundabout with < 3 points raises ValueError."""
         nodes = {

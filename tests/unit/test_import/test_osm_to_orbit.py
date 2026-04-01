@@ -821,7 +821,45 @@ class TestCreateRoadFromOsm:
         road, _ = result
         assert road.speed_limit == 50.0
 
-    def test_creates_cycleway(self, mock_osm_way, mock_transformer):
+    def test_speed_limit_default_from_road_type(self, mock_osm_way, mock_transformer):
+        """Uses road-type default speed when no maxspeed tag."""
+        way = mock_osm_way(
+            id=123,
+            nodes=[1, 2],
+            coords=[(0, 0), (1, 0)],
+            tags={'highway': 'primary'}
+        )
+
+        with patch.object(osm_to_orbit, 'should_import_highway', return_value=True):
+            with patch.object(osm_to_orbit, 'get_road_type_for_highway', return_value='rural'):
+                with patch.object(osm_to_orbit, 'is_oneway', return_value=False):
+                    with patch.object(osm_to_orbit, 'is_reverse_oneway', return_value=False):
+                        with patch.object(osm_to_orbit, 'estimate_lane_count', return_value=(1, 1)):
+                            with patch.object(osm_to_orbit, 'get_lane_width_for_highway', return_value=3.5):
+                                result = osm_to_orbit.create_road_from_osm(way, mock_transformer)
+
+        road, _ = result
+        assert road.speed_limit == 80.0  # DEFAULT_SPEED_LIMITS['primary']
+
+    def test_speed_limit_from_maxspeed_forward(self, mock_osm_way, mock_transformer):
+        """Uses maxspeed:forward when maxspeed tag is absent."""
+        way = mock_osm_way(
+            id=123,
+            nodes=[1, 2],
+            coords=[(0, 0), (1, 0)],
+            tags={'highway': 'primary', 'maxspeed:forward': '90'}
+        )
+
+        with patch.object(osm_to_orbit, 'should_import_highway', return_value=True):
+            with patch.object(osm_to_orbit, 'get_road_type_for_highway', return_value='rural'):
+                with patch.object(osm_to_orbit, 'is_oneway', return_value=False):
+                    with patch.object(osm_to_orbit, 'is_reverse_oneway', return_value=False):
+                        with patch.object(osm_to_orbit, 'estimate_lane_count', return_value=(1, 1)):
+                            with patch.object(osm_to_orbit, 'get_lane_width_for_highway', return_value=3.5):
+                                result = osm_to_orbit.create_road_from_osm(way, mock_transformer)
+
+        road, _ = result
+        assert road.speed_limit == 90.0
         """Creates bicycle path from cycleway."""
         way = mock_osm_way(
             id=123,
