@@ -8,7 +8,13 @@ from lxml import etree
 from orbit.export.curve_fitting import CurveFitter, GeometryElement, GeometryType
 from orbit.export.opendrive_writer import OpenDriveWriter, export_to_opendrive, validate_opendrive_file
 from orbit.models import Junction, LineType, Polyline, Project, Road
-from orbit.models.junction import LaneConnection, JunctionBoundary, JunctionBoundarySegment, JunctionElevationGrid, JunctionElevationGridPoint
+from orbit.models.junction import (
+    JunctionBoundary,
+    JunctionBoundarySegment,
+    JunctionElevationGrid,
+    JunctionElevationGridPoint,
+    LaneConnection,
+)
 from orbit.models.lane import Lane
 from orbit.models.lane import LaneType as ModelLaneType
 from orbit.models.road import RoadType
@@ -938,9 +944,10 @@ class TestExportToOpendrive:
         road = Road(id="1")
         road.centerline_id = centerline.id
         road.polyline_ids = [centerline.id]
-        
+
         # Add a lane with direction and advisory
-        from orbit.models.lane import Lane, LaneType as ModelLaneType
+        from orbit.models.lane import Lane
+        from orbit.models.lane import LaneType as ModelLaneType
         from orbit.models.lane_section import LaneSection
         lane_center = Lane(id=0, lane_type=ModelLaneType.NONE)
         lane = Lane(id=1, lane_type=ModelLaneType.DRIVING)
@@ -998,7 +1005,7 @@ class TestExportToOpendrive:
         tree_1_8 = ET.parse(output_path_1_8)
         root_1_8 = tree_1_8.getroot()
         ns = {"od": "http://code.asam.net/simulation/standard/opendrive_schema"}
-        
+
         # In 1.8, namespace is used
         header_1_8 = root_1_8.find('od:header', ns)
         assert header_1_8.attrib['revMinor'] == '8'
@@ -1016,7 +1023,7 @@ class TestExportToOpendrive:
         # Parse 1.4 and assert features are suppressed
         tree_1_4 = ET.parse(output_path_1_4)
         root_1_4 = tree_1_4.getroot()
-        
+
         # In 1.4, no namespace is used
         header_1_4 = root_1_4.find('header')
         assert header_1_4.attrib['revMinor'] == '4'
