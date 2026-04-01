@@ -39,14 +39,16 @@ def convert_road_mark_type(road_mark_type: RoadMarkType) -> str:
 class LaneBuilder:
     """Builds lane XML elements for OpenDRIVE export."""
 
-    def __init__(self, scale_x: float = 1.0):
+    def __init__(self, scale_x: float = 1.0, opendrive_version: str = "1.8"):
         """
         Initialize lane builder.
 
         Args:
             scale_x: Scale factor in meters per pixel for s-coordinate conversion
+            opendrive_version: Target OpenDRIVE version (e.g. "1.8" or "1.4")
         """
         self.scale_x = scale_x
+        self.opendrive_version = opendrive_version
 
     def create_lanes(
         self,
@@ -241,10 +243,11 @@ class LaneBuilder:
         lane.set('level', 'true' if lane_obj.level else 'false')
 
         # V1.8 direction and advisory attributes
-        if lane_obj.direction is not None:
-            lane.set('direction', lane_obj.direction)
-        if lane_obj.advisory is not None:
-            lane.set('advisory', lane_obj.advisory)
+        if self.opendrive_version == "1.8":
+            if lane_obj.direction is not None:
+                lane.set('direction', lane_obj.direction)
+            if lane_obj.advisory is not None:
+                lane.set('advisory', lane_obj.advisory)
 
         # Lane link with predecessor/successor
         pred_id = lane_obj.predecessor_id

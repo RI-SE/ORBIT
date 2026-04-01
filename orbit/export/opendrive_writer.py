@@ -34,6 +34,7 @@ class ExportOptions:
     country_code: str = "se"
     use_tmerc: bool = False
     use_german_codes: bool = False
+    opendrive_version: str = "1.8"
     offset_x: float = 0.0
     offset_y: float = 0.0
     geo_reference_string: Optional[str] = None
@@ -52,6 +53,7 @@ class OpenDriveWriter:
         country_code: str = "se",
         use_tmerc: bool = False,
         use_german_codes: bool = False,
+        opendrive_version: str = "1.8",
         offset_x: float = 0.0,
         offset_y: float = 0.0,
         geo_reference_string: Optional[str] = None,
@@ -73,6 +75,7 @@ class OpenDriveWriter:
             country_code=country_code,
             use_tmerc=use_tmerc,
             use_german_codes=use_german_codes,
+            opendrive_version=opendrive_version,
             offset_x=offset_x,
             offset_y=offset_y,
             geo_reference_string=geo_reference_string,
@@ -81,6 +84,7 @@ class OpenDriveWriter:
         self.right_hand_traffic = opts.right_hand_traffic
         self.country_code = opts.country_code.lower()
         self.use_tmerc = opts.use_tmerc
+        self.opendrive_version = opts.opendrive_version
         self.offset_x = opts.offset_x
         self.offset_y = opts.offset_y
         self.geo_reference_string = opts.geo_reference_string
@@ -113,7 +117,7 @@ class OpenDriveWriter:
         self.lane_analyzer = LaneAnalyzer(project, self.right_hand_traffic, scale_factors, transformer)
 
         # Initialize builders
-        self.lane_builder = LaneBuilder(scale_x=self.scale_x)
+        self.lane_builder = LaneBuilder(scale_x=self.scale_x, opendrive_version=self.opendrive_version)
         self.signal_builder = SignalBuilder(
             scale_x=self.scale_x,
             country_code=opts.country_code,
@@ -290,9 +294,12 @@ class OpenDriveWriter:
 
     def _create_opendrive_root(self) -> etree.Element:
         """Create the root OpenDRIVE element with all content."""
-        # OpenDRIVE 1.8 namespace
-        nsmap = {None: "http://code.asam.net/simulation/standard/opendrive_schema"}
-        root = etree.Element('OpenDRIVE', nsmap=nsmap)
+        # OpenDRIVE namespace (only for 1.8)
+        if self.opendrive_version == "1.8":
+            nsmap = {None: "http://code.asam.net/simulation/standard/opendrive_schema"}
+            root = etree.Element('OpenDRIVE', nsmap=nsmap)
+        else:
+            root = etree.Element('OpenDRIVE')
 
         # Add header
         header = self._create_header()
@@ -566,7 +573,10 @@ class OpenDriveWriter:
         """Create OpenDrive header element."""
         header = etree.Element('header')
         header.set('revMajor', '1')
-        header.set('revMinor', '8')
+        if self.opendrive_version == "1.8":
+            header.set('revMinor', '8')
+        else:
+            header.set('revMinor', '4')
 
         # Use map name from project, fallback to 'ORBIT Export' if empty
         map_name = self.project.map_name if self.project.map_name else 'ORBIT Export'
@@ -1571,7 +1581,7 @@ class OpenDriveWriter:
             connection_id += 1
 
         # Add boundary (V1.8 feature)
-        if junction.boundary and junction.boundary.segments:
+        if self.opendrive_version == "1.8" and junction.boundary and junction.boundary.segments:
             boundary_elem = etree.SubElement(junction_elem, 'boundary')
             for segment in junction.boundary.segments:
                 seg_elem = etree.SubElement(boundary_elem, 'segment')
@@ -1598,7 +1608,7 @@ class OpenDriveWriter:
                         seg_elem.set('transitionLength', f'{segment.transition_length:.6g}')
 
         # Add elevation grid (V1.8 feature)
-        if junction.elevation_grid and junction.elevation_grid.elevations:
+        if self.opendrive_version == "1.8" and junction.elevation_grid and junction.elevation_grid.elevations:
             eg_elem = etree.SubElement(junction_elem, 'elevationGrid')
             if junction.elevation_grid.grid_spacing:
                 eg_elem.set('gridSpacing', junction.elevation_grid.grid_spacing)
@@ -1660,6 +1670,7 @@ def export_to_opendrive(
     country_code: str = "se",
     use_tmerc: bool = False,
     use_german_codes: bool = False,
+    opendrive_version: str = "1.8",
     offset_x: float = 0.0,
     offset_y: float = 0.0,
     geo_reference_string: Optional[str] = None,
@@ -1692,7 +1703,7 @@ def export_to_opendrive(
     curve_fitter = CurveFitter(line_tolerance, arc_tolerance, preserve_geometry)
     writer = OpenDriveWriter(
         project, transformer, curve_fitter, right_hand_traffic,
-        country_code, use_tmerc, use_german_codes,
+        country_code, use_tmerc, use_german_codes, opendrive_version,
         offset_x, offset_y, geo_reference_string, export_object_types
     )
     return writer.write(output_path)

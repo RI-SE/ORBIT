@@ -8,7 +8,7 @@ from lxml import etree
 from orbit.export.curve_fitting import CurveFitter, GeometryElement, GeometryType
 from orbit.export.opendrive_writer import OpenDriveWriter, export_to_opendrive, validate_opendrive_file
 from orbit.models import Junction, LineType, Polyline, Project, Road
-from orbit.models.junction import LaneConnection
+from orbit.models.junction import LaneConnection, JunctionBoundary, JunctionBoundarySegment, JunctionElevationGrid, JunctionElevationGridPoint
 from orbit.models.lane import Lane
 from orbit.models.lane import LaneType as ModelLaneType
 from orbit.models.road import RoadType
@@ -926,6 +926,111 @@ class TestExportToOpendrive:
 
         assert result is True
 
+    def test_export_opendrive_1_4_suppresses_1_8_features(self, mock_transformer, tmp_path):
+        """Export to OpenDRIVE 1.4 suppresses 1.8-specific features like boundary, elevationGrid, direction, advisory."""
+        project = Project()
+
+        centerline = Polyline(id="1")
+        centerline.line_type = LineType.CENTERLINE
+        centerline.points = [(0, 0), (100, 0)]
+        project.polylines.append(centerline)
+
+        road = Road(id="1")
+        road.centerline_id = centerline.id
+        road.polyline_ids = [centerline.id]
+        
+        # Add a lane with direction and advisory
+        from orbit.models.lane import Lane, LaneType as ModelLaneType
+        from orbit.models.lane_section import LaneSection
+        lane_center = Lane(id=0, lane_type=ModelLaneType.NONE)
+        lane = Lane(id=1, lane_type=ModelLaneType.DRIVING)
+        lane.direction = "samedir"
+        lane.advisory = "advisory1"
+        road.left_count = 1
+        road.right_count = 0
+        road.lane_sections = [LaneSection(section_number=1, s_start=0.0, s_end=100.0, lanes=[lane_center, lane])]
+        project.roads.append(road)
+
+        road2 = Road(id="2", junction_id="1")
+        road2.centerline_id = centerline.id
+        road2.polyline_ids = [centerline.id]
+        project.roads.append(road2)
+
+        # Add a junction with boundary and elevation_grid
+        junction = Junction(id="1")
+        junction.name = "TestJunction"
+        junction.connected_road_ids = ['1', '2']
+        junction.lane_connections = [
+            LaneConnection(from_road_id='1', to_road_id='2', from_lane_id=-1, to_lane_id=-1, connecting_road_id='2')
+        ]
+        junction.boundary = JunctionBoundary(
+            segments=[JunctionBoundarySegment(segment_type='lane', road_id='1')]
+        )
+        junction.elevation_grid = JunctionElevationGrid(
+            elevations=[JunctionElevationGridPoint(center="1")]
+        )
+        project.junctions.append(junction)
+
+        output_path_1_4 = tmp_path / "export_1_4.xodr"
+        output_path_1_8 = tmp_path / "export_1_8.xodr"
+
+        # Export 1.8
+        result_1_8 = export_to_opendrive(
+            project,
+            mock_transformer,
+            str(output_path_1_8),
+            opendrive_version="1.8"
+        )
+        assert result_1_8 is True
+
+        # Export 1.4
+        result_1_4 = export_to_opendrive(
+            project,
+            mock_transformer,
+            str(output_path_1_4),
+            opendrive_version="1.4"
+        )
+        assert result_1_4 is True
+
+        import xml.etree.ElementTree as ET
+
+        # Parse 1.8 and assert features exist
+        tree_1_8 = ET.parse(output_path_1_8)
+        root_1_8 = tree_1_8.getroot()
+        ns = {"od": "http://code.asam.net/simulation/standard/opendrive_schema"}
+        
+        # In 1.8, namespace is used
+        header_1_8 = root_1_8.find('od:header', ns)
+        assert header_1_8.attrib['revMinor'] == '8'
+
+        junction_1_8 = root_1_8.find('.//od:junction', ns)
+        assert junction_1_8 is not None
+        assert junction_1_8.find('od:boundary', ns) is not None
+        assert junction_1_8.find('od:elevationGrid', ns) is not None
+
+        lane_1_8 = root_1_8.find('.//od:lane', ns)
+        assert lane_1_8 is not None
+        assert lane_1_8.get('direction') == 'samedir'
+        assert lane_1_8.get('advisory') == 'advisory1'
+
+        # Parse 1.4 and assert features are suppressed
+        tree_1_4 = ET.parse(output_path_1_4)
+        root_1_4 = tree_1_4.getroot()
+        
+        # In 1.4, no namespace is used
+        header_1_4 = root_1_4.find('header')
+        assert header_1_4.attrib['revMinor'] == '4'
+
+        junction_1_4 = root_1_4.find('.//junction')
+        assert junction_1_4 is not None
+        assert junction_1_4.find('boundary') is None
+        assert junction_1_4.find('elevationGrid') is None
+
+        lane_1_4 = root_1_4.find('.//lane')
+        assert lane_1_4 is not None
+        assert lane_1_4.get('direction') is None
+        assert lane_1_4.get('advisory') is None
+
 
 class TestValidateOpendrive:
     """Tests for validate_opendrive_file function."""
@@ -1523,3 +1628,4 @@ class TestRoadJunctionIdCollision:
                             assert ref_id in all_road_ids, (
                                 f"CR link {tag} references road {ref_id} not in {all_road_ids}"
                             )
+

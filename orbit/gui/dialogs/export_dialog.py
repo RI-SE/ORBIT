@@ -109,6 +109,13 @@ class ExportDialog(BaseDialog):
         self.arc_tolerance_spin.setToolTip("Maximum deviation for arc fitting")
         options_layout.addRow("Arc Tolerance:", self.arc_tolerance_spin)
 
+        # OpenDRIVE version selection
+        self.opendrive_version_combo = QComboBox()
+        self.opendrive_version_combo.addItem("1.8", "1.8")
+        self.opendrive_version_combo.addItem("1.4", "1.4")
+        self.opendrive_version_combo.setToolTip("Select the OpenDRIVE version to export.")
+        options_layout.addRow("OpenDRIVE Version:", self.opendrive_version_combo)
+
         # Preserve geometry checkbox
         self.preserve_geometry_checkbox = QCheckBox("Preserve all polyline points")
         self.preserve_geometry_checkbox.setChecked(True)
@@ -502,6 +509,7 @@ class ExportDialog(BaseDialog):
                 country_code=country_code,
                 use_tmerc=use_tmerc,
                 use_german_codes=self.use_german_codes_checkbox.isChecked(),
+                opendrive_version=self.opendrive_version_combo.currentData(),
                 offset_x=offset_x,
                 offset_y=offset_y,
                 geo_reference_string=geo_reference_string,
