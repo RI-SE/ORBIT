@@ -76,6 +76,8 @@ def mock_affine_transformer():
         'rmse_meters': 0.15
     }
     transformer.validation_error = None
+    transformer.has_adjustment.return_value = False
+    transformer.adjustment = None
     return transformer
 
 
@@ -97,6 +99,8 @@ def mock_homography_transformer():
         'rmse_meters': 0.2
     }
     transformer.H = np.eye(3)  # Indicates homography
+    transformer.has_adjustment.return_value = False
+    transformer.adjustment = None
     return transformer
 
 
@@ -221,6 +225,8 @@ class TestBuildGeorefData:
         transformer.inverse_matrix = np.eye(3)
         transformer.reprojection_error = {}
         transformer.validation_error = None
+        transformer.has_adjustment.return_value = False
+        transformer.adjustment = None
 
         data = build_georef_data(project, transformer, (1000, 1000))
 
@@ -448,6 +454,8 @@ class TestExportGeoreferencing:
         transformer.inverse_matrix = np.eye(3)
         transformer.reprojection_error = {}  # Empty
         transformer.validation_error = None
+        transformer.has_adjustment.return_value = False
+        transformer.adjustment = None
 
         result = export_georeferencing(
             project,
@@ -463,3 +471,87 @@ class TestExportGeoreferencing:
 
         assert data['reprojection_error']['rmse_pixels'] == 0.0
         assert data['reprojection_error']['rmse_meters'] == 0.0
+
+
+# ==== Tests for adjustment data in georef export ====
+
+class TestGeorefExportAdjustment:
+    """Tests that adjustment data is included in georef export when active."""
+
+    def test_adjustment_included_when_active(self, mock_project, mock_affine_transformer):
+        """Adjustment section is exported when transformer has an adjustment."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+
+        project = mock_project()
+        adj = TransformAdjustment(translation_x=10.0, translation_y=5.0, rotation=1.5)
+
+        mock_affine_transformer.has_adjustment = Mock(return_value=True)
+        mock_affine_transformer.adjustment = adj
+
+        data = build_georef_data(project, mock_affine_transformer, (1000, 1000))
+
+        assert "adjustment" in data
+        assert data["adjustment"]["translation_x"] == 10.0
+        assert data["adjustment"]["translation_y"] == 5.0
+        assert data["adjustment"]["rotation"] == 1.5
+        assert "adjustment_matrix" in data
+        assert len(data["adjustment_matrix"]) == 3  # 3x3 matrix
+
+    def test_no_adjustment_when_inactive(self, mock_project, mock_affine_transformer):
+        """No adjustment section when transformer has no adjustment."""
+        project = mock_project()
+
+        mock_affine_transformer.has_adjustment = Mock(return_value=False)
+        mock_affine_transformer.adjustment = None
+
+        data = build_georef_data(project, mock_affine_transformer, (1000, 1000))
+
+        assert "adjustment" not in data
+        assert "adjustment_matrix" not in data
+
+    def test_adjustment_exported_to_json(self, mock_project, mock_affine_transformer, tmp_path):
+        """Adjustment data is written to JSON file."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+
+        project = mock_project()
+        adj = TransformAdjustment(translation_x=3.0, translation_y=-2.0)
+
+        mock_affine_transformer.has_adjustment = Mock(return_value=True)
+        mock_affine_transformer.adjustment = adj
+
+        output_path = tmp_path / "georef.json"
+        result = export_georeferencing(project, output_path, mock_affine_transformer, (1000, 1000))
+
+        assert result is True
+
+        with open(output_path) as f:
+            data = json.load(f)
+
+        assert "adjustment" in data
+        assert data["adjustment"]["translation_x"] == 3.0
+
+
+# ==== Tests for HybridTransformer detection ====
+
+class TestHybridTransformerDetection:
+    """Tests that HybridTransformer is correctly detected in georef export."""
+
+    def test_hybrid_transformer_detected_as_homography(self, mock_project):
+        """HybridTransformer should be detected as homography method."""
+        from orbit.utils.coordinate_transform import HybridTransformer
+
+        project = mock_project()
+        transformer = Mock(spec=HybridTransformer)
+        transformer.get_scale_factor.return_value = (0.1, 0.1)
+        transformer.reference_lon = 12.0
+        transformer.reference_lat = 57.7
+        transformer.transform_matrix = np.eye(3)
+        transformer.inverse_matrix = np.eye(3)
+        transformer.reprojection_error = {}
+        transformer.validation_error = None
+        transformer.has_adjustment = Mock(return_value=False)
+        transformer.adjustment = None
+
+        data = build_georef_data(project, transformer, (1000, 1000))
+
+        assert data["transform_method"] == "homography"

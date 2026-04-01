@@ -831,7 +831,12 @@ class MainWindow(QMainWindow):
             return
 
         # Show export dialog with optional schema path for validation
-        dialog = ExportDialog(self.project, self, xodr_schema_path=self.xodr_schema_path)
+        adjustment = self.image_view.current_adjustment if hasattr(self.image_view, 'current_adjustment') else None
+        dialog = ExportDialog(
+            self.project, self,
+            xodr_schema_path=self.xodr_schema_path,
+            adjustment=adjustment,
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.statusBar().showMessage("Export completed successfully")
         else:
@@ -875,6 +880,7 @@ class MainWindow(QMainWindow):
             # Create transformer for pixel→geo conversion (needed for connecting
             # roads that only have pixel coordinates, e.g. roundabout entries/exits)
             transformer = self._create_transformer(use_validation=True)
+            self._apply_active_adjustment(transformer)
 
             success, message, _stats = export_to_osm(
                 self.project, _Path(file_path), transformer=transformer
@@ -920,6 +926,8 @@ class MainWindow(QMainWindow):
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
             return
+
+        self._apply_active_adjustment(transformer)
 
         # Get image size
         if self.image_view.image_item:

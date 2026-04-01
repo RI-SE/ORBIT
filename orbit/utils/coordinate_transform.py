@@ -756,9 +756,17 @@ class AffineTransformer(CoordinateTransformer):
             self.compute_validation_error()
 
     def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
-        """Convert pixel coordinates to geographic coordinates."""
+        """Convert pixel coordinates to geographic coordinates.
+
+        If an adjustment is set, applies its inverse before the base
+        transformation so that adjusted pixel positions map to the
+        correct geographic location.
+        """
         if self.transform_matrix is None:
             raise RuntimeError("Transformation not initialized")
+
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_inverse_to_point(pixel_x, pixel_y)
 
         point = np.array([pixel_x, pixel_y, 1.0])
         result = self.transform_matrix @ point
@@ -906,9 +914,17 @@ class HomographyTransformer(CoordinateTransformer):
             self.compute_validation_error()
 
     def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
-        """Convert pixel coordinates to geographic coordinates."""
+        """Convert pixel coordinates to geographic coordinates.
+
+        If an adjustment is set, applies its inverse before the base
+        transformation so that adjusted pixel positions map to the
+        correct geographic location.
+        """
         if self.transform_matrix is None:
             raise RuntimeError("Transformation not initialized")
+
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_inverse_to_point(pixel_x, pixel_y)
 
         # Apply homography to get metric coordinates
         pixel_homo = np.array([pixel_x, pixel_y, 1.0])
@@ -1158,7 +1174,15 @@ class HybridTransformer(CoordinateTransformer):
         return px, py
 
     def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
-        """Blended pixel->geo: homography inside image, affine outside."""
+        """Blended pixel->geo: homography inside image, affine outside.
+
+        If an adjustment is set, applies its inverse before the base
+        transformation so that adjusted pixel positions map to the
+        correct geographic location.
+        """
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_inverse_to_point(pixel_x, pixel_y)
+
         t = self._blend_factor(pixel_x, pixel_y)
 
         if t >= 1.0:
