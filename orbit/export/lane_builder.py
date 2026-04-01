@@ -39,14 +39,16 @@ def convert_road_mark_type(road_mark_type: RoadMarkType) -> str:
 class LaneBuilder:
     """Builds lane XML elements for OpenDRIVE export."""
 
-    def __init__(self, scale_x: float = 1.0):
+    def __init__(self, scale_x: float = 1.0, carla_compat: bool = False):
         """
         Initialize lane builder.
 
         Args:
             scale_x: Scale factor in meters per pixel for s-coordinate conversion
+            carla_compat: When True, add default speed limits on driving lanes
         """
         self.scale_x = scale_x
+        self.carla_compat = carla_compat
 
     def create_lanes(
         self,
@@ -308,6 +310,12 @@ class LaneBuilder:
             speed.set('sOffset', '0.0')
             speed.set('max', f'{lane_obj.speed_limit:.6g}')
             speed.set('unit', lane_obj.speed_limit_unit)
+        elif self.carla_compat and lane_obj.lane_type.value == 'driving':
+            # CARLA agents need speed targets on driving lanes; default 50 km/h
+            speed = etree.SubElement(lane, 'speed')
+            speed.set('sOffset', '0.0')
+            speed.set('max', '13.89')
+            speed.set('unit', 'm/s')
 
         # Access restrictions (for shared paths)
         if lane_obj.access_restrictions:

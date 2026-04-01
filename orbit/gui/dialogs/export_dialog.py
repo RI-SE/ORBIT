@@ -183,6 +183,16 @@ class ExportDialog(BaseDialog):
         )
         options_layout.addRow("Signal Codes:", self.use_german_codes_checkbox)
 
+        # CARLA compatibility checkbox
+        self.carla_compat_checkbox = QCheckBox("CARLA compatibility (OpenDRIVE 1.4)")
+        self.carla_compat_checkbox.setChecked(False)
+        self.carla_compat_checkbox.setToolTip(
+            "Export OpenDRIVE 1.4 compatible with the CARLA simulator.\n"
+            "Removes 1.8-only features (xmlns, junction boundary/type, userData),\n"
+            "adds default speed limits, and maps unknown road types to 'town'."
+        )
+        options_layout.addRow("Compatibility:", self.carla_compat_checkbox)
+
         # Feature categories (only shown if project has non-road objects)
         self.feature_checkboxes: dict[ObjectType, QCheckBox] = {}
         self._setup_feature_categories()
@@ -505,7 +515,8 @@ class ExportDialog(BaseDialog):
                 offset_x=offset_x,
                 offset_y=offset_y,
                 geo_reference_string=geo_reference_string,
-                export_object_types=self._get_export_object_types()
+                export_object_types=self._get_export_object_types(),
+                carla_compat=self.carla_compat_checkbox.isChecked(),
             )
 
             if success:
