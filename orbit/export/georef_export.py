@@ -150,13 +150,6 @@ def build_georef_data(
             "rmse_meters": transformer.validation_error.get("rmse_meters", 0.0),
         }
 
-    # Add adjustment data if an adjustment is active
-    if transformer.has_adjustment():
-        adj = transformer.adjustment
-        adj_matrix = adj.get_adjustment_matrix()
-        data["adjustment"] = adj.to_dict()
-        data["adjustment_matrix"] = _matrix_to_list(adj_matrix)
-
     return data
 
 

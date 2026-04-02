@@ -1146,19 +1146,37 @@ class HybridTransformer(CoordinateTransformer):
             px, py = self._refine_inverse(px, py, longitude, latitude)
         return px, py
 
+    def _pixel_to_geo_base(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
+        """Blended pixel->geo without adjustment (base transform only)."""
+        t = self._blend_factor(pixel_x, pixel_y)
+
+        if t >= 1.0:
+            return self._homography.pixel_to_geo(pixel_x, pixel_y)
+        elif t <= 0.0:
+            return self._affine.pixel_to_geo(pixel_x, pixel_y)
+        else:
+            h_lon, h_lat = self._homography.pixel_to_geo(pixel_x, pixel_y)
+            a_lon, a_lat = self._affine.pixel_to_geo(pixel_x, pixel_y)
+            return t * h_lon + (1 - t) * a_lon, t * h_lat + (1 - t) * a_lat
+
     def _refine_inverse(self, px: float, py: float,
                         target_lon: float, target_lat: float) -> Tuple[float, float]:
-        """Newton refinement so pixel_to_geo(px, py) ≈ (target_lon, target_lat)."""
+        """Newton refinement so pixel_to_geo(px, py) ≈ (target_lon, target_lat).
+
+        Uses the base transform (without adjustment) because this is called
+        from geo_to_pixel before the adjustment is applied — the input coords
+        are unadjusted pixel positions.
+        """
         eps = 0.5
         for _ in range(4):
-            lon0, lat0 = self.pixel_to_geo(px, py)
+            lon0, lat0 = self._pixel_to_geo_base(px, py)
             err_lon = target_lon - lon0
             err_lat = target_lat - lat0
             if abs(err_lon) < 1e-12 and abs(err_lat) < 1e-12:
                 break
             # Numerical Jacobian of pixel_to_geo
-            lon_dx, lat_dx = self.pixel_to_geo(px + eps, py)
-            lon_dy, lat_dy = self.pixel_to_geo(px, py + eps)
+            lon_dx, lat_dx = self._pixel_to_geo_base(px + eps, py)
+            lon_dy, lat_dy = self._pixel_to_geo_base(px, py + eps)
             J = np.array([
                 [(lon_dx - lon0) / eps, (lon_dy - lon0) / eps],
                 [(lat_dx - lat0) / eps, (lat_dy - lat0) / eps],

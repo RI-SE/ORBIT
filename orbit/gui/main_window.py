@@ -681,15 +681,19 @@ class MainWindow(QMainWindow):
                 # Alignment is applied on import and when the user modifies
                 # lane connections or road geometry.
 
+                # Restore persisted alignment adjustment BEFORE loading graphics
+                # so pixel positions are recalculated from geo_points using
+                # the adjusted transformer.  This ensures the initial display
+                # is consistent with the transformer + adjustment and prevents
+                # a shift on the first aerial view round-trip.
+                self._restore_adjustment_from_project()
+
                 # Update UI
                 self.image_view.load_project(self.project, scale_factors)
                 self.elements_tree.set_project(self.project)
                 self.road_tree.set_project(self.project)
                 self.update_window_title()
                 self.update_scale_display()
-
-                # Restore persisted alignment adjustment (if any)
-                self._restore_adjustment_from_project()
 
                 self.statusBar().showMessage(f"Opened project: {file_path}")
 
@@ -706,9 +710,11 @@ class MainWindow(QMainWindow):
             self._switch_to_original()
             self.toggle_aerial_action.setChecked(False)
 
-    def save_project(self):
-        """Save the current project."""
+    def save_project(self) -> bool:
+        """Save the current project. Returns False if the user cancels."""
         self._ensure_original_view_for_save()
+        if not self._prompt_and_handle_unapplied_adjustment():
+            return False
         self._sync_adjustment_to_project()
         if self.current_project_file:
             try:
@@ -717,14 +723,18 @@ class MainWindow(QMainWindow):
                 self.modified = False
                 self.update_window_title()
                 self.statusBar().showMessage(f"Project saved: {self.current_project_file}")
+                return True
             except Exception as e:
                 show_error(self, f"Failed to save project:\n{str(e)}", "Error")
+                return False
         else:
-            self.save_project_as()
+            return self.save_project_as()
 
-    def save_project_as(self):
-        """Save the project with a new name."""
+    def save_project_as(self) -> bool:
+        """Save the project with a new name. Returns False if the user cancels."""
         self._ensure_original_view_for_save()
+        if not self._prompt_and_handle_unapplied_adjustment():
+            return False
         self._sync_adjustment_to_project()
         file_path, _ = QFileDialog.getSaveFileName(
             self,
@@ -742,8 +752,11 @@ class MainWindow(QMainWindow):
                 self.modified = False
                 self.update_window_title()
                 self.statusBar().showMessage(f"Project saved: {file_path}")
+                return True
             except Exception as e:
                 show_error(self, f"Failed to save project:\n{str(e)}", "Error")
+                return False
+        return False
 
     def load_image_dialog(self):
         """Show dialog to load an image."""
@@ -824,6 +837,9 @@ class MainWindow(QMainWindow):
         """Export project to OpenDrive format."""
         from .dialogs.export_dialog import ExportDialog
 
+        if not self._prompt_and_handle_unapplied_adjustment():
+            return
+
         # Check if we have any roads
         if not self.project.roads:
             show_warning(self, "Cannot export: No roads defined in the project.\n"
@@ -847,6 +863,9 @@ class MainWindow(QMainWindow):
         from pathlib import Path as _Path
 
         from orbit.export.osm_writer import export_to_osm
+
+        if not self._prompt_and_handle_unapplied_adjustment():
+            return
 
         # Check if any element has geo coordinates
         has_geo = any(
@@ -921,13 +940,16 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # Resolve any unapplied adjustment before exporting — downstream tools do not
+        # support the adjustment field, so the exported matrices must be fully committed.
+        if not self._prompt_and_handle_unapplied_adjustment():
+            return
+
         transformer = self._create_transformer(use_validation=True)
         if not transformer:
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
             return
-
-        self._apply_active_adjustment(transformer)
 
         # Get image size
         if self.image_view.image_item:
@@ -1858,12 +1880,58 @@ class MainWindow(QMainWindow):
             transformer.set_adjustment(adj)
 
     def _sync_adjustment_to_project(self):
-        """Store the current adjustment from ImageView into the project for persistence."""
+        """Clear any stored adjustment from the project (adjustments are resolved before save)."""
+        self.project.transform_adjustment = None
+
+    def _has_unapplied_adjustment(self) -> bool:
+        """Return True if there is an active non-identity adjustment that has not been baked."""
         adj = self.image_view.current_adjustment
-        if adj and not adj.is_identity():
-            self.project.transform_adjustment = adj.to_dict()
+        return adj is not None and not adj.is_identity()
+
+    def _bake_adjustment_into_control_points(self):
+        """Bake the current adjustment into CP pixel positions and clear it (no dialog)."""
+        adj = self.image_view.current_adjustment
+        if adj is None or adj.is_identity():
+            return
+        for cp in self.project.control_points:
+            cp.pixel_x, cp.pixel_y = adj.apply_to_point(cp.pixel_x, cp.pixel_y)
+        self.image_view.reset_adjustment()
+        self._remove_adjustment_ghost()
+        self._invalidate_cached_transformer()
+        self._cached_transformer = self._create_transformer(use_validation=True)
+        self.refresh_imported_geometry()
+
+    def _prompt_and_handle_unapplied_adjustment(self) -> bool:
+        """Prompt the user when saving/closing with an unapplied alignment adjustment.
+
+        Returns:
+            True if the caller should proceed (user chose Apply or Discard).
+            False if the user cancelled (abort the save/close).
+        """
+        if not self._has_unapplied_adjustment():
+            return True
+
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Unapplied Alignment Adjustment")
+        msg_box.setText(
+            "You have an alignment adjustment that has not been applied.\n\n"
+            "What would you like to do?"
+        )
+        apply_btn = msg_box.addButton("Apply and Save", QMessageBox.ButtonRole.AcceptRole)
+        discard_btn = msg_box.addButton("Discard and Save", QMessageBox.ButtonRole.DestructiveRole)
+        msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        msg_box.setDefaultButton(apply_btn)
+        msg_box.exec()
+
+        clicked = msg_box.clickedButton()
+        if clicked is apply_btn:
+            self._bake_adjustment_into_control_points()
+            return True
+        elif clicked is discard_btn:
+            self.reset_adjustment()
+            return True
         else:
-            self.project.transform_adjustment = None
+            return False
 
     def _restore_adjustment_from_project(self):
         """Restore a saved adjustment from the project into the ImageView and transformer."""
@@ -1873,6 +1941,8 @@ class MainWindow(QMainWindow):
         if adj.is_identity():
             return
         self.image_view.current_adjustment = adj
+        if self._cached_transformer is None:
+            self._cached_transformer = self._create_transformer(use_validation=True)
         if self._cached_transformer is not None:
             self._cached_transformer.set_adjustment(adj)
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
@@ -2717,18 +2787,27 @@ class MainWindow(QMainWindow):
             self.toggle_aerial_action.setText("&Aerial Map View")
             return
 
-        # Re-project geometry back to original pixel space
+        # Temporarily clear adjustment so reprojection uses the base transform.
+        # The adjustment must not shift control point pixel positions — it only
+        # affects where geo-derived geometry appears on the image.
+        saved_adjustment = self._original_transformer.adjustment
+        self._original_transformer.clear_adjustment()
+
+        # Re-project geometry back to original pixel space (unadjusted)
         reproject_project_geometry(
             self.project, self._aerial_transformer, self._original_transformer,
         )
 
-        # Restore background
+        # Restore adjustment and reposition geo-derived entities
+        if saved_adjustment is not None:
+            self._original_transformer.set_adjustment(saved_adjustment)
+
         self.image_view.swap_background(self._original_image_np)
         self._cached_transformer = self._original_transformer
-        # Re-apply the alignment adjustment (it's relative to the original image)
-        self._apply_active_adjustment(self._cached_transformer)
+
         # Recompute pixel positions from geo coords using the adjusted transformer
-        # so entities land in the correct adjusted positions.
+        # so entities land in the correct adjusted positions.  Control points are
+        # NOT updated here — they keep their unadjusted positions from reprojection.
         adj = self.image_view.current_adjustment
         if adj and not adj.is_identity():
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
@@ -3938,7 +4017,9 @@ class MainWindow(QMainWindow):
     # Utility methods
     def check_unsaved_changes(self) -> bool:
         """Check for unsaved changes and prompt user. Returns True if ok to continue."""
-        if self.modified:
+        # An unapplied adjustment also counts as unsaved state even if modified=False.
+        has_changes = self.modified or self._has_unapplied_adjustment()
+        if has_changes:
             reply = QMessageBox.question(
                 self,
                 "Unsaved Changes",
@@ -3949,9 +4030,14 @@ class MainWindow(QMainWindow):
             )
 
             if reply == QMessageBox.StandardButton.Save:
-                self.save_project()
-                return True
+                saved = self.save_project()
+                # If the user cancelled the save (e.g. cancelled adjustment prompt
+                # or file dialog), abort the whole close/new-project action too.
+                return saved
             elif reply == QMessageBox.StandardButton.Discard:
+                # If discarding, also clear any unapplied adjustment so it doesn't linger
+                if self._has_unapplied_adjustment():
+                    self.reset_adjustment()
                 return True
             else:
                 return False
