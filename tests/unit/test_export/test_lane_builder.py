@@ -211,6 +211,8 @@ class TestCreateLanesWithLaneOffset:
         road.lane_sections = [section]
         road.speed_limit = None
         return road
+
+    def test_lane_offset_element_created(self, builder, mock_road_with_offset):
         """Lane offset element created."""
         result = builder.create_lanes(mock_road_with_offset, 100.0, [])
 

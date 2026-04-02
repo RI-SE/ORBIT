@@ -2,8 +2,7 @@
 
 import pytest
 
-from orbit.models import Lane, LaneInfo, LaneSection, LaneType, Road
-from orbit.models.lane_section import LaneSection as LS
+from orbit.models import LaneInfo, Road
 
 
 @pytest.fixture
