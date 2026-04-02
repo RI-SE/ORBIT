@@ -184,6 +184,12 @@ class ImageView(QGraphicsView):
         self.drag_connecting_road_id: Optional[str] = None
         # drag_point_index is also used for connecting road point dragging
 
+        # Parking polygon vertex drag state
+        self.dragging_parking_point = False
+        self.drag_parking_id: Optional[str] = None
+        self._drag_start_parking_points: Optional[list] = None
+        self._drag_start_parking_geo_points: Optional[list] = None
+
         # Endpoint snap state (for road connection during drag)
         self._dragging_endpoint = False  # True if drag_point_index is 0 or last
         self._snap_target: Optional[tuple] = None  # (road_id, polyline_id, point_index, point_coords)
@@ -2361,7 +2367,7 @@ class ImageView(QGraphicsView):
                 x, y = obj.position
                 self.centerOn(x, y)
 
-    def _get_connecting_road_lane_id(self, junction, connecting_road_id: str, source_lane_id: int) -> int:
+    def _get_connecting_road_lane_id(self, junction, connecting_road_id: str, source_lane_id: int) -> int | None:
         """
         Determine which lane on a connecting road corresponds to a source lane.
 
@@ -2394,10 +2400,8 @@ class ImageView(QGraphicsView):
                 return right_lanes[lane_ordinal]
             elif right_lanes:
                 return right_lanes[-1]  # Use last available right lane
-            elif left_lanes:
-                return left_lanes[0]  # Fall back to first left lane
             else:
-                return -1  # Default
+                return None  # No right lanes on CR
         else:
             # Source is a left lane, map to connecting road left lanes
             lane_ordinal = source_lane_id - 1  # 0-indexed ordinal
@@ -2405,10 +2409,8 @@ class ImageView(QGraphicsView):
                 return left_lanes[lane_ordinal]
             elif left_lanes:
                 return left_lanes[-1]  # Use last available left lane
-            elif right_lanes:
-                return right_lanes[0]  # Fall back to first right lane
             else:
-                return -1  # Default
+                return None  # No left lanes on CR
 
     def find_connected_lanes(self, road_id: str, section_number: int, lane_id: int) -> dict:
         """
@@ -3491,6 +3493,56 @@ class ImageView(QGraphicsView):
         item.update_graphics()
         self.object_modified.emit(object_id)
 
+    def _show_parking_vertex_menu(self, view_pos, parking_id: str, point_index: int,
+                                  scene_pos, segment_index: int = -1):
+        """Show context menu for parking polygon vertices/edges."""
+        menu = QMenu()
+        delete_action = None
+        insert_action = None
+
+        if point_index >= 0:
+            item = self.parking_items.get(parking_id)
+            if item and len(item.parking.points) > 3:
+                delete_action = menu.addAction("Delete Vertex")
+        elif segment_index >= 0:
+            insert_action = menu.addAction("Insert Vertex Here")
+
+        if not delete_action and not insert_action:
+            return
+
+        action = menu.exec(self.mapToGlobal(view_pos))
+        if action == delete_action:
+            self._delete_parking_point(parking_id, point_index)
+        elif action == insert_action:
+            self._insert_parking_point(parking_id, segment_index, scene_pos)
+
+    def _delete_parking_point(self, parking_id: str, point_index: int):
+        """Delete a vertex from a parking polygon."""
+        item = self.parking_items.get(parking_id)
+        if not item:
+            return
+        if not item.parking.remove_point(point_index):
+            return
+        item.update_graphics()
+        if item.parking_changed:
+            item.parking_changed(item.parking)
+
+    def _insert_parking_point(self, parking_id: str, segment_index: int, scene_pos):
+        """Insert a vertex on a parking polygon edge."""
+        item = self.parking_items.get(parking_id)
+        if not item:
+            return
+        insert_idx = segment_index + 1
+        geo_point = None
+        transformer = self._get_geo_transformer()
+        if transformer:
+            lon, lat = transformer.pixel_to_geo(scene_pos.x(), scene_pos.y())
+            geo_point = (lon, lat)
+        item.parking.insert_point(insert_idx, (scene_pos.x(), scene_pos.y()), geo_point)
+        item.update_graphics()
+        if item.parking_changed:
+            item.parking_changed(item.parking)
+
     # Event handlers
     def wheelEvent(self, event: QWheelEvent):
         """Handle mouse wheel for zooming."""
@@ -3664,8 +3716,17 @@ class ImageView(QGraphicsView):
 
         # Insert corresponding entries in per-point metadata
         if polyline.geo_points is not None:
-            new_geo = self._interpolate_geo_for_insert(
-                polyline, insert_index, scene_pos.x(), scene_pos.y())
+            # Prefer the actual transformer for accuracy.  Falls back to
+            # linear interpolation between neighbour geo_points when no
+            # transformer is available.
+            transformer = self._get_geo_transformer()
+            if transformer is not None:
+                lon, lat = transformer.pixel_to_geo(
+                    scene_pos.x(), scene_pos.y())
+                new_geo = (lon, lat)
+            else:
+                new_geo = self._interpolate_geo_for_insert(
+                    polyline, insert_index, scene_pos.x(), scene_pos.y())
             if new_geo is None:
                 if insert_index > 0:
                     new_geo = tuple(polyline.geo_points[insert_index - 1])
@@ -3722,6 +3783,20 @@ class ImageView(QGraphicsView):
                     self._drag_start_obj_points = list(item.obj.points)
                     self._drag_start_obj_geo_points = (
                         list(item.obj.geo_points) if item.obj.geo_points else None
+                    )
+                    return True
+
+        # Parking polygon vertex drag
+        for parking_id, item in self.parking_items.items():
+            if item.parking.is_polygon():
+                point_index = item.get_point_at(scene_pos)
+                if point_index >= 0:
+                    self.dragging_parking_point = True
+                    self.drag_parking_id = parking_id
+                    self.drag_point_index = point_index
+                    self._drag_start_parking_points = list(item.parking.points)
+                    self._drag_start_parking_geo_points = (
+                        list(item.parking.geo_points) if item.parking.geo_points else None
                     )
                     return True
 
@@ -3783,8 +3858,20 @@ class ImageView(QGraphicsView):
                     clicked_object_id = object_id
                     break
 
-        clicked_polyline_id = None
+        clicked_parking_id = None
         if not clicked_junction_id and not clicked_signal_id and not clicked_object_id:
+            for parking_id, item in self.parking_items.items():
+                if item.parking.is_polygon():
+                    if item.get_point_at(scene_pos) >= 0 or item.get_segment_at(scene_pos) >= 0:
+                        clicked_parking_id = parking_id
+                        break
+                elif item.contains(item.mapFromScene(scene_pos)):
+                    clicked_parking_id = parking_id
+                    break
+
+        clicked_polyline_id = None
+        if (not clicked_junction_id and not clicked_signal_id
+                and not clicked_object_id and not clicked_parking_id):
             for polyline_id, item in self.polyline_items.items():
                 if item.is_near_line(scene_pos):
                     clicked_polyline_id = polyline_id
@@ -3804,6 +3891,9 @@ class ImageView(QGraphicsView):
             self.selected_object_id = clicked_object_id
             self.object_items[clicked_object_id].set_selected(True)
             self.object_selected.emit(clicked_object_id)
+        elif clicked_parking_id:
+            self.selected_parking_id = clicked_parking_id
+            self.parking_items[clicked_parking_id].setSelected(True)
         elif clicked_polyline_id:
             self.selected_polyline_id = clicked_polyline_id
             self.polyline_items[clicked_polyline_id].set_selected(True)
@@ -3823,6 +3913,9 @@ class ImageView(QGraphicsView):
         if self.selected_object_id and self.selected_object_id in self.object_items:
             self.object_items[self.selected_object_id].set_selected(False)
         self.selected_object_id = None
+        if self.selected_parking_id and self.selected_parking_id in self.parking_items:
+            self.parking_items[self.selected_parking_id].setSelected(False)
+        self.selected_parking_id = None
 
     def _handle_right_press(self, scene_pos, event: QMouseEvent):
         """Handle right-button press events."""
@@ -3865,6 +3958,18 @@ class ImageView(QGraphicsView):
             if self._is_click_on_object(item, scene_pos):
                 self._show_object_menu(event.pos(), object_id, scene_pos)
                 return
+
+        # Parking polygon vertex context menu
+        for parking_id, item in self.parking_items.items():
+            if item.parking.is_polygon():
+                point_index = item.get_point_at(scene_pos)
+                if point_index >= 0:
+                    self._show_parking_vertex_menu(event.pos(), parking_id, point_index, scene_pos)
+                    return
+                segment_index = item.get_segment_at(scene_pos)
+                if segment_index >= 0:
+                    self._show_parking_vertex_menu(event.pos(), parking_id, -1, scene_pos, segment_index)
+                    return
 
         for polyline_id, item in self.polyline_items.items():
             point_index = item.get_point_at(scene_pos)
@@ -3915,6 +4020,12 @@ class ImageView(QGraphicsView):
             if self.drag_point_index >= 0 and self.drag_point_index < len(obj.points):
                 obj.points[self.drag_point_index] = (scene_pos.x(), scene_pos.y())
                 obj.update_centroid()
+                item.update_graphics()
+        elif self.dragging_parking_point and self.drag_parking_id:
+            # Dragging a parking polygon vertex
+            item = self.parking_items.get(self.drag_parking_id)
+            if item and self.drag_point_index >= 0 and self.drag_point_index < len(item.parking.points):
+                item.parking.points[self.drag_point_index] = (scene_pos.x(), scene_pos.y())
                 item.update_graphics()
         elif self.dragging_junction and self.drag_junction_id:
             # Update junction position directly through the junction item
@@ -4029,6 +4140,23 @@ class ImageView(QGraphicsView):
                 self.object_modified.emit(self.drag_object_id)
             self.drag_object_id = None
             self.drag_point_index = -1
+        elif self.dragging_parking_point:
+            self.dragging_parking_point = False
+            if self.drag_parking_id:
+                item = self.parking_items.get(self.drag_parking_id)
+                if item:
+                    parking = item.parking
+                    transformer = self._get_geo_transformer()
+                    if transformer and self.drag_point_index >= 0 and self.drag_point_index < len(parking.points):
+                        px, py = parking.points[self.drag_point_index]
+                        lon, lat = transformer.pixel_to_geo(px, py)
+                        if parking.geo_points and self.drag_point_index < len(parking.geo_points):
+                            parking.geo_points[self.drag_point_index] = (lon, lat)
+                    item.update_graphics()
+                    if item.parking_changed:
+                        item.parking_changed(parking)
+            self.drag_parking_id = None
+            self.drag_point_index = -1
         elif self.dragging_junction:
             self.dragging_junction = False
             if self.drag_junction_id:
@@ -4071,17 +4199,24 @@ class ImageView(QGraphicsView):
                     moved = abs(new_px - old_px) > 0.5 or abs(new_py - old_py) > 0.5
 
                     if moved:
-                        # Compute updated geo_point using local polyline
-                        # context. Never fall back to pixel_to_geo which
-                        # maps to the control-point area, corrupting
-                        # geo_points for roads far from control points.
-                        old_geo = (self._drag_start_geo_points[idx]
-                                   if self._drag_start_geo_points else None)
+                        # Use the active transformer to compute the
+                        # geo_point for the new pixel position.  Falls back
+                        # to a local Jacobian approximation when no
+                        # transformer is available.
+                        transformer = self._get_geo_transformer()
                         new_geo = None
-                        if old_geo:
-                            new_geo = self._compute_dragged_geo_point(
-                                polyline, idx, old_px, old_py, old_geo,
-                                self._get_geo_transformer())
+                        if transformer is not None:
+                            lon, lat = transformer.pixel_to_geo(
+                                new_px, new_py)
+                            new_geo = (lon, lat)
+                        else:
+                            old_geo = (
+                                self._drag_start_geo_points[idx]
+                                if self._drag_start_geo_points else None)
+                            if old_geo:
+                                new_geo = self._compute_dragged_geo_point(
+                                    polyline, idx, old_px, old_py,
+                                    old_geo, None)
                         if new_geo is not None:
                             polyline.geo_points[idx] = new_geo
                         # If new_geo is None, keep existing geo_point unchanged

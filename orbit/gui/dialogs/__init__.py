@@ -24,6 +24,7 @@ from .roundabout_wizard_dialog import RoundaboutWizardDialog
 from .section_properties_dialog import SectionPropertiesDialog
 from .signal_properties_dialog import SignalPropertiesDialog
 from .signal_selection_dialog import SignalSelectionDialog
+from .road_lane_links_dialog import RoadLaneLinksDialog
 from .csv_import_dialog import CSVImportDialog  # noqa: E402 - must be after other dialogs to avoid circular import
 
 __all__ = [
@@ -51,4 +52,5 @@ __all__ = [
     'RoundaboutWizardDialog',
     'JunctionGroupDialog',
     'BatchDeleteDialog',
+    'RoadLaneLinksDialog',
 ]

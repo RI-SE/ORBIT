@@ -633,16 +633,9 @@ class LanePropertiesDialog(BaseDialog):
                     self.width_end_spin.setValue(self.lane.width)
                     self.width_end_spin.setEnabled(False)
         elif self.width_start_spin is not None and self.width_end_spin is not None:
-            # Connecting road driving lane - load from connecting road
-            if self.connecting_road.lane_width_start is not None:
-                self.width_start_spin.setValue(self.connecting_road.lane_width_start)
-            else:
-                self.width_start_spin.setValue(self.connecting_road.lane_info.lane_width)
-
-            if self.connecting_road.lane_width_end is not None:
-                self.width_end_spin.setValue(self.connecting_road.lane_width_end)
-            else:
-                self.width_end_spin.setValue(self.connecting_road.lane_info.lane_width)
+            # Connecting road driving lane - load from lane object
+            self.width_start_spin.setValue(self.lane.width)
+            self.width_end_spin.setValue(self.lane.get_width_at_end())
 
             self.update_width_info()
 
@@ -1000,16 +993,11 @@ class LanePropertiesDialog(BaseDialog):
                 else:
                     self.lane.width_end = None  # Constant width
         elif self.width_start_spin is not None and self.width_end_spin is not None and self.connecting_road is not None:
-            # Connecting road driving lane - save to connecting road
-            self.connecting_road.lane_width_start = self.width_start_spin.value()
-            self.connecting_road.lane_width_end = self.width_end_spin.value()
-            # Update average width for backward compatibility
-            avg_width = (
-                self.connecting_road.lane_width_start + self.connecting_road.lane_width_end
-            ) / 2
-            self.connecting_road.lane_info.lane_width = avg_width
-            # Also update the individual lane's width to the average
-            self.lane.width = avg_width
+            # Connecting road driving lane - save per-lane width
+            width_start = self.width_start_spin.value()
+            width_end = self.width_end_spin.value()
+            self.lane.width = width_start
+            self.lane.width_end = width_end if abs(width_end - width_start) > 0.001 else None
 
         # Update access restrictions (for path lanes)
         access_restrictions = []

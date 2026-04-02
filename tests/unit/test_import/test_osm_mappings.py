@@ -90,10 +90,28 @@ class TestParseMaxspeed:
         assert speed == 50
         assert unit == 'kmh'
 
-    def test_rural_default(self):
-        """Country-specific 'rural' defaults to 100 km/h."""
+    def test_de_rural_default(self):
+        """German rural defaults to 100 km/h."""
         speed, unit = parse_maxspeed("DE:rural")
         assert speed == 100
+        assert unit == 'kmh'
+
+    def test_se_rural_default(self):
+        """Swedish rural defaults to 80 km/h (lowered from 90 in 2008)."""
+        speed, unit = parse_maxspeed("SE:rural")
+        assert speed == 80
+        assert unit == 'kmh'
+
+    def test_se_motorway_default(self):
+        """Swedish motorway implicit value is 110 km/h."""
+        speed, unit = parse_maxspeed("SE:motorway")
+        assert speed == 110
+        assert unit == 'kmh'
+
+    def test_se_urban_default(self):
+        """Swedish urban defaults to 50 km/h."""
+        speed, unit = parse_maxspeed("SE:urban")
+        assert speed == 50
         assert unit == 'kmh'
 
     def test_case_insensitive(self):
@@ -824,6 +842,11 @@ class TestDictionaryMappings:
         assert 'default' in DEFAULT_SPEED_LIMITS
         # Motorway should be fastest
         assert DEFAULT_SPEED_LIMITS['motorway'] >= DEFAULT_SPEED_LIMITS['residential']
+        # Swedish-baseline sanity checks
+        assert DEFAULT_SPEED_LIMITS['primary'] == 80
+        assert DEFAULT_SPEED_LIMITS['secondary'] == 70
+        assert DEFAULT_SPEED_LIMITS['living_street'] == 10
+        assert 'unclassified' in DEFAULT_SPEED_LIMITS
 
     def test_swedish_signs_in_combined_mapping(self):
         """Swedish signs are included in combined mapping."""

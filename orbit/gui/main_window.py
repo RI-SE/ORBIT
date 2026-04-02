@@ -356,6 +356,10 @@ class MainWindow(QMainWindow):
         self.merge_roads_action.setStatusTip("Merge two consecutive roads into one (select two roads in sidebar)")
         self.merge_roads_action.triggered.connect(self.merge_selected_roads)
 
+        self.realign_junctions_action = QAction("Re-&align All Junctions", self)
+        self.realign_junctions_action.setStatusTip("Re-compute lane alignment for all junction connecting roads")
+        self.realign_junctions_action.triggered.connect(self._realign_all_junctions)
+
         self.add_signal_action = QAction("Add &Signal", self)
         self.add_signal_action.setShortcut(QKeySequence("Ctrl+T"))
         self.add_signal_action.setStatusTip("Add a traffic signal/sign")
@@ -469,6 +473,7 @@ class MainWindow(QMainWindow):
         roads_menu.addAction(self.create_roundabout_action)
         roads_menu.addSeparator()
         roads_menu.addAction(self.merge_roads_action)
+        roads_menu.addAction(self.realign_junctions_action)
 
         # Georeferencing menu
         georef_menu = menubar.addMenu("&Georeferencing")
@@ -653,7 +658,7 @@ class MainWindow(QMainWindow):
 
                 # Load image if specified in project
                 if self.project.image_path:
-                    self.load_image(self.project.image_path)
+                    self.load_image(self.project.image_path, mark_modified=False)
                 elif self.project.synthetic_canvas_width and self.project.synthetic_canvas_height:
                     self.image_view.set_synthetic_canvas(
                         self.project.synthetic_canvas_width,
@@ -671,10 +676,10 @@ class MainWindow(QMainWindow):
                 # (needed for projects saved before this field was set).
                 self.project.link_lane_connections_to_connecting_roads()
 
-                # Apply lane alignment to all junctions so CR visuals are
-                # correct immediately (without requiring the user to open the
-                # lane connection dialog first).
-                self._align_all_junction_connecting_roads(scale_factors)
+                # NOTE: We intentionally do NOT run _align_all_junction_connecting_roads()
+                # on project open. The saved CR paths are the source of truth.
+                # Alignment is applied on import and when the user modifies
+                # lane connections or road geometry.
 
                 # Update UI
                 self.image_view.load_project(self.project, scale_factors)
@@ -753,7 +758,7 @@ class MainWindow(QMainWindow):
             self._remember_directory(file_path)
             self.load_image(Path(file_path))
 
-    def load_image(self, image_path: Path):
+    def load_image(self, image_path: Path, mark_modified: bool = True):
         """Load an image into the view."""
         if image_path.exists():
             self.image_view.load_image(image_path)
@@ -767,8 +772,9 @@ class MainWindow(QMainWindow):
             if not self.project.map_name:
                 self.project.map_name = image_path.stem  # Filename without extension
 
-            self.modified = True
-            self.update_window_title()
+            if mark_modified:
+                self.modified = True
+                self.update_window_title()
             self.statusBar().showMessage(f"Loaded image: {image_path}")
         else:
             show_warning(self, f"Image file not found: {image_path}", "Warning")
@@ -825,7 +831,12 @@ class MainWindow(QMainWindow):
             return
 
         # Show export dialog with optional schema path for validation
-        dialog = ExportDialog(self.project, self, xodr_schema_path=self.xodr_schema_path)
+        adjustment = self.image_view.current_adjustment if hasattr(self.image_view, 'current_adjustment') else None
+        dialog = ExportDialog(
+            self.project, self,
+            xodr_schema_path=self.xodr_schema_path,
+            adjustment=adjustment,
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.statusBar().showMessage("Export completed successfully")
         else:
@@ -869,6 +880,7 @@ class MainWindow(QMainWindow):
             # Create transformer for pixel→geo conversion (needed for connecting
             # roads that only have pixel coordinates, e.g. roundabout entries/exits)
             transformer = self._create_transformer(use_validation=True)
+            self._apply_active_adjustment(transformer)
 
             success, message, _stats = export_to_osm(
                 self.project, _Path(file_path), transformer=transformer
@@ -914,6 +926,8 @@ class MainWindow(QMainWindow):
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
             return
+
+        self._apply_active_adjustment(transformer)
 
         # Get image size
         if self.image_view.image_item:
@@ -1137,6 +1151,7 @@ class MainWindow(QMainWindow):
             import_junctions=options_dict['import_junctions'],
             filter_outside_image=options_dict.get('filter_outside_image', False),
             auto_adjust_junctions=options_dict.get('auto_adjust_junctions', True),
+            bidirectional_turn_connections=options_dict.get('bidirectional_turn_connections', True),
             timeout=60, verbose=self.verbose
         )
 
@@ -1756,6 +1771,19 @@ class MainWindow(QMainWindow):
         self.refresh_control_points()
         # Update scale display
         self.update_scale_display()
+        # Recompute pixel positions from geo coordinates using the new
+        # transformer so the display stays consistent with the geo source
+        # of truth.
+        if self.project.has_georeferencing():
+            try:
+                self._cached_transformer = self._create_transformer(
+                    use_validation=True)
+                self._apply_active_adjustment(self._cached_transformer)
+                if self._cached_transformer is not None:
+                    self.image_view.update_all_from_geo_coords(
+                        self._cached_transformer)
+            except Exception:
+                pass
         # Update lane graphics with new scale
         self.update_affected_road_lanes()
 
@@ -2587,12 +2615,13 @@ class MainWindow(QMainWindow):
             self.toggle_aerial_action.setChecked(False)
             return
 
-        # Save original state
+        # Save original state (including any active adjustment)
         self._original_transformer = self._create_transformer(use_validation=True)
         if self._original_transformer is None:
             show_warning(self, "Cannot create coordinate transformer.")
             self.toggle_aerial_action.setChecked(False)
             return
+        self._apply_active_adjustment(self._original_transformer)
         self._original_image_np = self.image_view.image_np.copy() if self.image_view.image_np is not None else None
 
         # Remove ghost overlay before switching (will be rebuilt on return)
@@ -2698,6 +2727,11 @@ class MainWindow(QMainWindow):
         self._cached_transformer = self._original_transformer
         # Re-apply the alignment adjustment (it's relative to the original image)
         self._apply_active_adjustment(self._cached_transformer)
+        # Recompute pixel positions from geo coords using the adjusted transformer
+        # so entities land in the correct adjusted positions.
+        adj = self.image_view.current_adjustment
+        if adj and not adj.is_identity():
+            self.image_view.update_all_from_geo_coords(self._cached_transformer)
         self._aerial_view_active = False
 
         # Refresh scene
@@ -2723,19 +2757,12 @@ class MainWindow(QMainWindow):
         return self.controller.get_current_scale()
 
     def _initialize_and_refresh_geo_coords(self):
-        """
-        Refresh pixel coordinates from geo coordinates for all georeferenced elements.
-
-        This is needed when loading a project because saved pixel coords may be from
-        a different transformer state (e.g., before adjustment was applied).
-        Geographic coordinates are the source of truth; pixel coords are derived.
+        """Initialize missing geo coordinates for backward compatibility.
 
         For legacy projects with connecting roads that lack geo_path, initializes
-        geo_path from pixel path for backward compatibility.
-
-        Includes bounds validation: if the transformer produces pixel coordinates
-        far outside the image (e.g., due to homography extrapolation beyond the
-        control point region), the original saved coordinates are preserved.
+        geo_path from pixel path. Pixel coordinates in the file are preserved as
+        the source of truth; geo→pixel refresh only happens when the user applies
+        a transform adjustment (handled by _restore_adjustment_from_project).
         """
         if not self.project.has_georeferencing():
             return
@@ -2748,21 +2775,6 @@ class MainWindow(QMainWindow):
         except Exception:
             return
 
-        # Determine image bounds for validation (allow 3x margin)
-        image_w, image_h = 3840, 2160  # defaults
-        if self.image_view.image_item:
-            pixmap = self.image_view.image_item.pixmap()
-            image_w = pixmap.width()
-            image_h = pixmap.height()
-        max_extent = max(image_w, image_h) * 3
-
-        def _points_in_bounds(points):
-            """Check if all pixel points are within reasonable distance of the image."""
-            for x, y in points:
-                if abs(x) > max_extent or abs(y) > max_extent:
-                    return False
-            return True
-
         # Initialize geo_path for connecting roads that don't have it (legacy support)
         for junction in self.project.junctions:
             for cr_id in junction.connecting_road_ids:
@@ -2770,45 +2782,8 @@ class MainWindow(QMainWindow):
                 if conn_road and conn_road.inline_path and not conn_road.has_geo_coords():
                     conn_road.initialize_geo_path_from_pixels(transformer)
 
-        # Refresh pixel coordinates from geo coordinates for ALL elements,
-        # but revert if the transformer produces out-of-bounds results
-        skipped = 0
-        for polyline in self.project.polylines:
-            if polyline.has_geo_coords():
-                saved_points = list(polyline.points)
-                polyline.update_pixel_points_from_geo(transformer)
-                if not _points_in_bounds(polyline.points):
-                    polyline.points = saved_points
-                    skipped += 1
-
-        for junction in self.project.junctions:
-            if junction.has_geo_coords():
-                junction.update_pixel_coords_from_geo(transformer)
-            for cr_id in junction.connecting_road_ids:
-                conn_road = self.project.get_road(cr_id)
-                if conn_road and conn_road.has_geo_coords():
-                    saved_path = list(conn_road.inline_path)
-                    conn_road.update_pixel_path_from_geo(transformer)
-                    if not _points_in_bounds(conn_road.inline_path):
-                        conn_road.inline_path = saved_path
-                        skipped += 1
-
-        for signal in self.project.signals:
-            if signal.has_geo_coords():
-                signal.update_pixel_position_from_geo(transformer)
-
-        for obj in self.project.objects:
-            if obj.has_geo_coords():
-                obj.update_pixel_coords_from_geo(transformer)
-
-        if skipped > 0:
-            logger.warning(
-                f"Skipped pixel coordinate refresh for {skipped} elements "
-                f"(geo coordinates outside control point coverage area)"
-            )
-
         # Snap connecting road endpoints to match road endpoints exactly
-        # This prevents gaps due to transformer precision issues
+        # (only for CRs without lane connections; lane-aligned CRs are skipped)
         self._snap_connecting_road_endpoints()
 
     def _snap_connecting_road_endpoints(self):
@@ -2832,6 +2807,15 @@ class MainWindow(QMainWindow):
     def _align_all_junction_connecting_roads(self, scale_factors):
         """Apply lane alignment to all junctions' connecting roads."""
         self.controller.align_all_junction_crs(scale_factors)
+
+    def _realign_all_junctions(self):
+        """Re-align all junction CRs and refresh graphics (menu action)."""
+        scale_factors = self.get_current_scale()
+        self._align_all_junction_connecting_roads(scale_factors)
+        for junction in self.project.junctions:
+            for cr_id in junction.connecting_road_ids:
+                self.image_view.update_connecting_road_graphics(cr_id, scale_factors)
+        self.modified = True
 
     def regenerate_affected_connecting_roads(self, polyline_id: str):
         """Regenerate CRs when a road centerline endpoint is modified."""

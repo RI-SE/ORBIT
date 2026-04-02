@@ -283,10 +283,11 @@ class Road:
 
         # Right lanes (negative IDs)
         for i in range(1, self.cr_lane_count_right + 1):
+            mark = RoadMarkType.SOLID if i == self.cr_lane_count_right else RoadMarkType.BROKEN
             lane = Lane(
                 id=-i,
                 lane_type=LaneType.DRIVING,
-                road_mark_type=RoadMarkType.SOLID,
+                road_mark_type=mark,
                 width=width_start,
                 width_end=width_end if abs(width_end - width_start) > 0.001 else None
             )
@@ -294,10 +295,11 @@ class Road:
 
         # Left lanes (positive IDs)
         for i in range(1, self.cr_lane_count_left + 1):
+            mark = RoadMarkType.SOLID if i == self.cr_lane_count_left else RoadMarkType.BROKEN
             lane = Lane(
                 id=i,
                 lane_type=LaneType.DRIVING,
-                road_mark_type=RoadMarkType.SOLID,
+                road_mark_type=mark,
                 width=width_start,
                 width_end=width_end if abs(width_end - width_start) > 0.001 else None
             )
@@ -360,8 +362,11 @@ class Road:
 
         polygons: Dict[int, List[Tuple[float, float]]] = {}
 
-        uses_polynomial = any(
+        # Use distance-based (s_values) rendering when any lane has non-constant width.
+        # This ensures correct interpolation for CR paths with non-uniform point spacing.
+        uses_distance_based_width = any(
             lane.width_b != 0.0 or lane.width_c != 0.0 or lane.width_d != 0.0
+            or lane.has_variable_width
             for lane in lanes if lane.id != 0
         )
 
@@ -373,7 +378,7 @@ class Road:
                 continue
             inner_lanes = [lane_map.get(-i) for i in range(1, lane_num) if lane_map.get(-i)]
 
-            if uses_polynomial and path_length_m > 0:
+            if uses_distance_based_width and path_length_m > 0:
                 def inner_width_func(s_px, _il=inner_lanes):
                     s_m = s_px * scale
                     return sum(il.get_width_at_s(s_m, path_length_m) / scale for il in _il)
@@ -406,7 +411,7 @@ class Road:
                 continue
             inner_lanes = [lane_map.get(i) for i in range(1, lane_num) if lane_map.get(i)]
 
-            if uses_polynomial and path_length_m > 0:
+            if uses_distance_based_width and path_length_m > 0:
                 def inner_width_func(s_px, _il=inner_lanes):
                     s_m = s_px * scale
                     return sum(il.get_width_at_s(s_m, path_length_m) / scale for il in _il)
@@ -498,21 +503,26 @@ class Road:
         lanes.append(center)
 
         # Generate right lanes (negative IDs)
-        for i in range(1, self.lane_info.right_count + 1):
+        right_count = self.lane_info.right_count
+        for i in range(1, right_count + 1):
+            # Outermost lane (highest abs ID) gets solid; inner lanes get broken
+            mark = RoadMarkType.SOLID if i == right_count else RoadMarkType.BROKEN
             lane = Lane(
                 id=-i,
                 lane_type=LaneType.DRIVING,
-                road_mark_type=RoadMarkType.SOLID,
+                road_mark_type=mark,
                 width=self.lane_info.lane_width
             )
             lanes.append(lane)
 
         # Generate left lanes (positive IDs)
-        for i in range(1, self.lane_info.left_count + 1):
+        left_count = self.lane_info.left_count
+        for i in range(1, left_count + 1):
+            mark = RoadMarkType.SOLID if i == left_count else RoadMarkType.BROKEN
             lane = Lane(
                 id=i,
                 lane_type=LaneType.DRIVING,
-                road_mark_type=RoadMarkType.SOLID,
+                road_mark_type=mark,
                 width=self.lane_info.lane_width
             )
             lanes.append(lane)

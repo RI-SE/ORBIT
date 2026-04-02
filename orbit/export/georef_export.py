@@ -16,6 +16,7 @@ from orbit.utils.coordinate_transform import (
     AffineTransformer,
     CoordinateTransformer,
     HomographyTransformer,
+    HybridTransformer,
 )
 from orbit.utils.logging_config import get_logger
 
@@ -77,7 +78,9 @@ def build_georef_data(
         Dictionary with georeferencing data
     """
     # Determine transform method string
-    if isinstance(transformer, HomographyTransformer):
+    if isinstance(transformer, HybridTransformer):
+        method = "homography"
+    elif isinstance(transformer, HomographyTransformer):
         method = "homography"
     elif isinstance(transformer, AffineTransformer):
         method = "affine"
@@ -146,6 +149,13 @@ def build_georef_data(
             "rmse_pixels": transformer.validation_error.get("rmse_pixels", 0.0),
             "rmse_meters": transformer.validation_error.get("rmse_meters", 0.0),
         }
+
+    # Add adjustment data if an adjustment is active
+    if transformer.has_adjustment():
+        adj = transformer.adjustment
+        adj_matrix = adj.get_adjustment_matrix()
+        data["adjustment"] = adj.to_dict()
+        data["adjustment_matrix"] = _matrix_to_list(adj_matrix)
 
     return data
 

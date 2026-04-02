@@ -69,6 +69,7 @@ class ImportOptions:
     verbose: bool = False  # Print debug information
     filter_outside_image: bool = False  # Filter out roads with no endpoint inside image
     auto_adjust_junctions: bool = True  # Adaptive offsets + CR curvature fix
+    bidirectional_turn_connections: bool = True  # Pair complementary turns into bidirectional CRs
 
 
 @dataclass
@@ -418,6 +419,7 @@ class OSMImporter:
                 endpoint_lookup,
                 self.transformer,
                 project=self.project,
+                bidirectional_turns=options.bidirectional_turn_connections,
             )
 
             if options.auto_adjust_junctions:
@@ -617,6 +619,9 @@ class OSMImporter:
 
         # Link lane connections to connecting roads (must happen after ID assignment)
         self.project.link_lane_connections_to_connecting_roads()
+
+        # Store junction connection scheme on project for future regeneration
+        self.project.bidirectional_turn_connections = options.bidirectional_turn_connections
 
         # Mark success if we imported anything
         result.success = (

@@ -74,8 +74,8 @@ class Lane:
         road_mark_color: Road mark color (white, yellow, etc.)
         road_mark_weight: Road mark weight (standard, bold)
         road_mark_width: Road mark width in meters
-        speed_limit: Lane-level speed limit in m/s (optional)
-        speed_limit_unit: Unit for speed limit (m/s, km/h, mph)
+        speed_limit: Lane-level speed limit value; unit is specified by speed_limit_unit (optional)
+        speed_limit_unit: Unit for speed limit ("m/s", "km/h", or "mph"); defaults to m/s per OpenDRIVE spec
         left_boundary_id: Optional polyline ID defining left boundary
         right_boundary_id: Optional polyline ID defining right boundary
         access_restrictions: List of allowed vehicle/user types for OpenDRIVE access element
@@ -95,8 +95,8 @@ class Lane:
     road_mark_color: str = "white"
     road_mark_weight: str = "standard"
     road_mark_width: float = 0.12
-    speed_limit: Optional[float] = None  # Speed limit in m/s
-    speed_limit_unit: str = "m/s"  # Unit: "m/s", "km/h", or "mph"
+    speed_limit: Optional[float] = None  # Speed limit value in speed_limit_unit
+    speed_limit_unit: str = "m/s"  # Per OpenDRIVE spec, m/s is the SI default
     left_boundary_id: Optional[str] = None
     right_boundary_id: Optional[str] = None
     access_restrictions: List[str] = field(default_factory=list)

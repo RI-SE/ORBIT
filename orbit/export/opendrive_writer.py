@@ -38,6 +38,7 @@ class ExportOptions:
     offset_y: float = 0.0
     geo_reference_string: Optional[str] = None
     export_object_types: Optional[Set] = None
+    carla_compat: bool = False
 
 
 class OpenDriveWriter:
@@ -57,6 +58,7 @@ class OpenDriveWriter:
         geo_reference_string: Optional[str] = None,
         export_object_types: Optional[set] = None,
         options: Optional[ExportOptions] = None,
+        carla_compat: bool = False,
     ):
         """Initialize OpenDrive writer.
 
@@ -77,6 +79,7 @@ class OpenDriveWriter:
             offset_y=offset_y,
             geo_reference_string=geo_reference_string,
             export_object_types=export_object_types,
+            carla_compat=carla_compat,
         )
         self.right_hand_traffic = opts.right_hand_traffic
         self.country_code = opts.country_code.lower()
@@ -85,6 +88,7 @@ class OpenDriveWriter:
         self.offset_y = opts.offset_y
         self.geo_reference_string = opts.geo_reference_string
         self.export_object_types = opts.export_object_types
+        self.carla_compat = opts.carla_compat
 
         # Build lookup maps
         self.polyline_map = {p.id: p for p in project.polylines}
@@ -93,6 +97,11 @@ class OpenDriveWriter:
 
         # Junction numeric IDs (derived from junction.id during export)
         self.junction_numeric_ids: dict[str, int] = {}
+
+        # Road numeric IDs — remapped during export to avoid collisions with
+        # junction IDs (CARLA's parser does not distinguish elementType and uses
+        # ContainsRoad() to decide if a link target is a road or junction).
+        self.road_numeric_ids: dict[str, str] = {}
 
         # Get scale factors for lane width calculations
         scale_factors = transformer.get_scale_factor() if transformer else None
@@ -108,7 +117,7 @@ class OpenDriveWriter:
         self.lane_analyzer = LaneAnalyzer(project, self.right_hand_traffic, scale_factors, transformer)
 
         # Initialize builders
-        self.lane_builder = LaneBuilder(scale_x=self.scale_x)
+        self.lane_builder = LaneBuilder(scale_x=self.scale_x, carla_compat=self.carla_compat)
         self.signal_builder = SignalBuilder(
             scale_x=self.scale_x,
             country_code=opts.country_code,
@@ -139,6 +148,85 @@ class OpenDriveWriter:
 
         # Reference validation warnings (populated during write)
         self.reference_warnings: List[str] = []
+
+        # Ensure geo_points are consistent with the current transformer
+        self._validate_and_refresh_geo_points()
+
+    # ------------------------------------------------------------------
+    # Geo-point consistency
+    # ------------------------------------------------------------------
+
+    def _validate_and_refresh_geo_points(self):
+        """Refresh stale geo_points so the export uses accurate geo coords.
+
+        Checks each polyline's geo_points against the current transformer
+        by comparing ``geo_to_pixel(geo_point)`` with the stored pixel
+        position. Points that diverge beyond a threshold are recomputed
+        from pixels via ``pixel_to_geo``.
+
+        Also validates ``inline_geo_path`` on connecting roads.
+        """
+        if self.transformer is None:
+            return
+
+        PIXEL_THRESHOLD = 2.0  # px — flags even ~0.2 m drift at typical resolution
+
+        refreshed_polylines = 0
+        refreshed_points = 0
+
+        for polyline in self.project.polylines:
+            if not polyline.geo_points or len(polyline.geo_points) != len(polyline.points):
+                continue
+
+            stale_indices = []
+            for i, (px, py) in enumerate(polyline.points):
+                lon, lat = polyline.geo_points[i]
+                try:
+                    rpx, rpy = self.transformer.geo_to_pixel(lon, lat)
+                except Exception:
+                    stale_indices.append(i)
+                    continue
+                if abs(rpx - px) > PIXEL_THRESHOLD or abs(rpy - py) > PIXEL_THRESHOLD:
+                    stale_indices.append(i)
+
+            if stale_indices:
+                refreshed_polylines += 1
+                refreshed_points += len(stale_indices)
+                for i in stale_indices:
+                    px, py = polyline.points[i]
+                    new_lon, new_lat = self.transformer.pixel_to_geo(px, py)
+                    polyline.geo_points[i] = (new_lon, new_lat)
+
+        # Validate inline_geo_path on connecting roads
+        for road in self.project.roads:
+            if not road.inline_geo_path or not road.inline_path:
+                continue
+            if len(road.inline_geo_path) != len(road.inline_path):
+                continue
+
+            stale_indices = []
+            for i, (px, py) in enumerate(road.inline_path):
+                lon, lat = road.inline_geo_path[i]
+                try:
+                    rpx, rpy = self.transformer.geo_to_pixel(lon, lat)
+                except Exception:
+                    stale_indices.append(i)
+                    continue
+                if abs(rpx - px) > PIXEL_THRESHOLD or abs(rpy - py) > PIXEL_THRESHOLD:
+                    stale_indices.append(i)
+
+            if stale_indices:
+                refreshed_points += len(stale_indices)
+                for i in stale_indices:
+                    px, py = road.inline_path[i]
+                    new_lon, new_lat = self.transformer.pixel_to_geo(px, py)
+                    road.inline_geo_path[i] = (new_lon, new_lat)
+
+        if refreshed_points > 0:
+            logger.info(
+                "Refreshed %d stale geo_points across %d polyline(s)",
+                refreshed_points, refreshed_polylines,
+            )
 
     def write(self, output_path: str) -> bool:
         """
@@ -206,9 +294,13 @@ class OpenDriveWriter:
 
     def _create_opendrive_root(self) -> etree.Element:
         """Create the root OpenDRIVE element with all content."""
-        # OpenDRIVE 1.8 namespace
-        nsmap = {None: "http://code.asam.net/simulation/standard/opendrive_schema"}
-        root = etree.Element('OpenDRIVE', nsmap=nsmap)
+        if self.carla_compat:
+            # CARLA targets OpenDRIVE 1.4 — omit the 1.8 XML namespace
+            root = etree.Element('OpenDRIVE')
+        else:
+            # OpenDRIVE 1.8 namespace
+            nsmap = {None: "http://code.asam.net/simulation/standard/opendrive_schema"}
+            root = etree.Element('OpenDRIVE', nsmap=nsmap)
 
         # Add header
         header = self._create_header()
@@ -229,6 +321,13 @@ class OpenDriveWriter:
                 except (ValueError, TypeError):
                     # Fallback for non-numeric IDs (shouldn't happen after migration)
                     self.junction_numeric_ids[junction.id] = idx + 1
+
+        # Build road ID remapping to avoid collisions with junction IDs.
+        # CARLA determines whether a predecessor/successor link references a road
+        # or a junction by checking ContainsRoad(id).  If a road and a junction
+        # share the same numeric ID, CARLA treats junction references as
+        # road-to-road links, breaking junction routing entirely.
+        self.road_numeric_ids = self._build_road_id_remap()
 
         # Pre-pass: filter and auto-assign objects to nearest roads
         self._export_objects = self._get_export_objects()
@@ -290,6 +389,52 @@ class OpenDriveWriter:
                 root.append(jg_elem)
 
         return root
+
+    def _build_road_id_remap(self) -> dict[str, str]:
+        """Build a mapping from internal road ID → export road ID.
+
+        Ensures no exported road ID collides with any exported junction ID.
+        Roads whose numeric ID does not collide are kept as-is.  Colliding
+        roads are assigned new IDs starting above the maximum of all existing
+        road and junction IDs.
+        """
+        junction_id_set = set(self.junction_numeric_ids.values())
+        if not junction_id_set:
+            return {r.id: r.id for r in self.project.roads}
+
+        remap: dict[str, str] = {}
+        max_id = 0
+        for road in self.project.roads:
+            try:
+                rid = int(road.id)
+                if rid > max_id:
+                    max_id = rid
+            except (ValueError, TypeError):
+                pass
+        for jid in junction_id_set:
+            if jid > max_id:
+                max_id = jid
+
+        next_safe_id = max_id + 1
+
+        for road in self.project.roads:
+            try:
+                rid = int(road.id)
+            except (ValueError, TypeError):
+                remap[road.id] = road.id
+                continue
+
+            if rid in junction_id_set:
+                remap[road.id] = str(next_safe_id)
+                next_safe_id += 1
+            else:
+                remap[road.id] = road.id
+
+        return remap
+
+    def _remap_road_id(self, road_id: str) -> str:
+        """Return the export-safe road ID for a given internal road ID."""
+        return self.road_numeric_ids.get(road_id, road_id)
 
     def _get_export_objects(self) -> list:
         """Get filtered list of objects to export based on export_object_types.
@@ -429,7 +574,7 @@ class OpenDriveWriter:
         """Create OpenDrive header element."""
         header = etree.Element('header')
         header.set('revMajor', '1')
-        header.set('revMinor', '8')
+        header.set('revMinor', '4' if self.carla_compat else '8')
 
         # Use map name from project, fallback to 'ORBIT Export' if empty
         map_name = self.project.map_name if self.project.map_name else 'ORBIT Export'
@@ -479,12 +624,11 @@ class OpenDriveWriter:
             offset_elem.set('z', '0.0000')
             offset_elem.set('hdg', '0.000000')
 
-        # Add tool information as userData (after geoReference per schema order)
+        # Add tool/license userData
         tool_data = etree.SubElement(header, 'userData')
         tool_data.set('code', 'tool')
         tool_data.text = 'Produced by ORBIT (https://github.com/RI-SE/ORBIT)'
 
-        # Add license information as userData
         license_data = etree.SubElement(header, 'userData')
         license_data.set('code', 'license')
         license_data.text = 'Licensed under the Open Database License (https://opendatacommons.org/licenses/odbl/1-0/)'
@@ -584,7 +728,7 @@ class OpenDriveWriter:
 
         # Create road element
         road_elem = etree.Element('road')
-        road_elem.set('id', road.id)
+        road_elem.set('id', self._remap_road_id(road.id))
         road_elem.set('name', road.name)
         road_elem.set('length', f'{road_length:.4f}')
         road_elem.set('junction', road.junction_id if road.junction_id else '-1')
@@ -595,11 +739,19 @@ class OpenDriveWriter:
         # Add road type
         type_elem = etree.SubElement(road_elem, 'type')
         type_elem.set('s', '0.0')
-        type_elem.set('type', road.road_type.value)
+        road_type_str = road.road_type.value
+        if self.carla_compat:
+            road_type_str = self._carla_road_type(road_type_str)
+        type_elem.set('type', road_type_str)
 
         if road.speed_limit:
             speed = etree.SubElement(type_elem, 'speed')
             speed.set('max', f'{road.speed_limit / 3.6:.2f}')  # Convert km/h to m/s
+            speed.set('unit', 'm/s')
+        elif self.carla_compat:
+            # CARLA agents need speed targets; default 50 km/h for town/rural
+            speed = etree.SubElement(type_elem, 'speed')
+            speed.set('max', '13.89')
             speed.set('unit', 'm/s')
 
         # Add plan view (reference line geometry)
@@ -653,6 +805,8 @@ class OpenDriveWriter:
         )
         if signals is not None:
             road_elem.append(signals)
+        elif self.carla_compat:
+            road_elem.append(etree.Element('signals'))
 
         # Add objects for this road (including parking spaces)
         export_objects = getattr(self, '_export_objects', None)
@@ -675,6 +829,8 @@ class OpenDriveWriter:
             for parking_elem in parking_objects:
                 objects.append(parking_elem)
             road_elem.append(objects)
+        elif self.carla_compat:
+            road_elem.append(etree.Element('objects'))
 
         # Add surface CRG references if present
         self._build_surface_crg_xml(road_elem, road)
@@ -687,20 +843,27 @@ class OpenDriveWriter:
 
         predecessor_junction = None
         successor_junction = None
-        if road.predecessor_junction_id:
+
+        # "__none__" sentinel means user explicitly disabled junction auto-detection
+        pred_junc_id = road.predecessor_junction_id
+        succ_junc_id = road.successor_junction_id
+        pred_suppress = pred_junc_id == "__none__"
+        succ_suppress = succ_junc_id == "__none__"
+
+        if pred_junc_id and not pred_suppress:
             try:
-                predecessor_junction = int(road.predecessor_junction_id)
+                predecessor_junction = int(pred_junc_id)
             except (ValueError, TypeError):
                 pass
-        if road.successor_junction_id:
+        if succ_junc_id and not succ_suppress:
             try:
-                successor_junction = int(road.successor_junction_id)
+                successor_junction = int(succ_junc_id)
             except (ValueError, TypeError):
                 pass
 
-        if predecessor_junction is None:
+        if predecessor_junction is None and not pred_suppress:
             predecessor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=True)
-        if successor_junction is None:
+        if successor_junction is None and not succ_suppress:
             successor_junction = self._find_junction_for_road_endpoint(road.id, is_predecessor=False)
 
         if predecessor_junction is not None:
@@ -710,7 +873,7 @@ class OpenDriveWriter:
         elif road.predecessor_id:
             pred = etree.SubElement(link, 'predecessor')
             pred.set('elementType', 'road')
-            pred.set('elementId', road.predecessor_id)
+            pred.set('elementId', self._remap_road_id(road.predecessor_id))
             pred.set('contactPoint', road.predecessor_contact)
 
         if successor_junction is not None:
@@ -720,8 +883,19 @@ class OpenDriveWriter:
         elif road.successor_id:
             succ = etree.SubElement(link, 'successor')
             succ.set('elementType', 'road')
-            succ.set('elementId', road.successor_id)
+            succ.set('elementId', self._remap_road_id(road.successor_id))
             succ.set('contactPoint', road.successor_contact)
+
+    @staticmethod
+    def _carla_road_type(road_type_str: str) -> str:
+        """Map OpenDRIVE road types to CARLA 1.4-compatible values."""
+        # Types supported in OpenDRIVE 1.4
+        carla_14_types = {'unknown', 'rural', 'motorway', 'town', 'lowSpeed', 'pedestrian', 'bicycle'}
+        if road_type_str in carla_14_types:
+            # Map 'unknown' to 'town' — CARLA may skip waypoints for unknown types
+            return 'town' if road_type_str == 'unknown' else road_type_str
+        # 1.7+ types (townExpressway, townCollector, etc.) → 'town'
+        return 'town'
 
     @staticmethod
     def _build_surface_crg_xml(road_elem, road: Road):
@@ -756,8 +930,6 @@ class OpenDriveWriter:
         if not connecting_road.inline_path or len(connecting_road.inline_path) < 2:
             return None
 
-        road_id = int(connecting_road.id)
-
         # Transform path points from pixels to meters
         # Use geo coords directly if available (more precise, avoids double conversion)
         if connecting_road.inline_geo_path:
@@ -789,7 +961,7 @@ class OpenDriveWriter:
 
         # Build road XML element
         road_elem = self._build_cr_road_xml(
-            connecting_road, road_id, junction_numeric_id, road_length,
+            connecting_road, junction_numeric_id, road_length,
             geometry_elements, lane_connections, path_meters
         )
         return road_elem
@@ -894,12 +1066,12 @@ class OpenDriveWriter:
                 return hdg
         return current_heading
 
-    def _build_cr_road_xml(self, connecting_road: Road, road_id: int,
+    def _build_cr_road_xml(self, connecting_road: Road,
                            junction_numeric_id: int, road_length: float,
                            geometry_elements, lane_connections, path_meters):
         """Build the XML element for a connecting road."""
         road_elem = etree.Element('road')
-        road_elem.set('id', str(road_id))
+        road_elem.set('id', self._remap_road_id(connecting_road.id))
         road_elem.set('name', '')
         road_elem.set('length', f'{road_length:.4f}')
         road_elem.set('junction', str(junction_numeric_id))
@@ -909,18 +1081,23 @@ class OpenDriveWriter:
         if connecting_road.predecessor_id:
             pred = etree.SubElement(link, 'predecessor')
             pred.set('elementType', 'road')
-            pred.set('elementId', connecting_road.predecessor_id)
+            pred.set('elementId', self._remap_road_id(connecting_road.predecessor_id))
             pred.set('contactPoint', connecting_road.predecessor_contact)
         if connecting_road.successor_id:
             succ = etree.SubElement(link, 'successor')
             succ.set('elementType', 'road')
-            succ.set('elementId', connecting_road.successor_id)
+            succ.set('elementId', self._remap_road_id(connecting_road.successor_id))
             succ.set('contactPoint', connecting_road.successor_contact)
 
         # Type
         type_elem = etree.SubElement(road_elem, 'type')
         type_elem.set('s', '0.0')
         type_elem.set('type', 'town')
+
+        if self.carla_compat:
+            speed = etree.SubElement(type_elem, 'speed')
+            speed.set('max', '13.89')
+            speed.set('unit', 'm/s')
 
         # Plan view
         road_elem.append(self._create_plan_view(geometry_elements))
@@ -934,13 +1111,21 @@ class OpenDriveWriter:
         # Lateral profile
         etree.SubElement(road_elem, 'lateralProfile')
 
-        # Lanes
+        # Lanes — cr_lane_link_map: CR lane ID → (predecessor_lane, successor_lane).
+        # For reversed-path CRs (pred=to_road, succ=from_road), the from/to
+        # lane IDs must be swapped to match the CR's path direction.
         cr_lane_link_map = {}
         if lane_connections:
             for lc in lane_connections:
                 if lc.connecting_road_id == connecting_road.id and lc.connecting_lane_id is not None:
+                    if connecting_road.predecessor_id == lc.from_road_id:
+                        pred_lane = lc.from_lane_id
+                        succ_lane = lc.to_lane_id
+                    else:
+                        pred_lane = lc.to_lane_id
+                        succ_lane = lc.from_lane_id
                     cr_lane_link_map[lc.connecting_lane_id] = (
-                        lc.from_lane_id, lc.to_lane_id
+                        pred_lane, succ_lane
                     )
         road_elem.append(self._create_connecting_road_lanes(
             connecting_road, road_length, cr_lane_link_map
@@ -952,6 +1137,11 @@ class OpenDriveWriter:
         )
         if cr_signals is not None:
             road_elem.append(cr_signals)
+        elif self.carla_compat:
+            road_elem.append(etree.Element('signals'))
+
+        if self.carla_compat:
+            road_elem.append(etree.Element('objects'))
 
         return road_elem
 
@@ -998,6 +1188,24 @@ class OpenDriveWriter:
         else:
             cr_lane_id = 1
 
+        # Determine correct lane IDs for pred/succ.
+        # For reversed-path CRs (left-lane, pred=to_road, succ=from_road),
+        # from/to lane IDs must be swapped to match the CR's path direction.
+        if primary_conn:
+            if connecting_road.predecessor_id == primary_conn.from_road_id:
+                pred_target_lane_id = primary_conn.from_lane_id
+                succ_target_lane_id = primary_conn.to_lane_id
+            else:
+                pred_target_lane_id = primary_conn.to_lane_id
+                succ_target_lane_id = primary_conn.from_lane_id
+
+        # Get CR lane width at each endpoint
+        connecting_road.ensure_cr_lanes_initialized()
+        cr_lane_obj = connecting_road.get_cr_lane(cr_lane_id)
+        cr_width_start = cr_lane_obj.width if cr_lane_obj else connecting_road.lane_info.lane_width
+        cr_width_end = (cr_lane_obj.get_width_at_end() if cr_lane_obj
+                        else connecting_road.lane_info.lane_width)
+
         # Snap start to predecessor road endpoint
         pred_road = self.road_map.get(connecting_road.predecessor_id)
         if pred_road and pred_road.centerline_id:
@@ -1009,8 +1217,9 @@ class OpenDriveWriter:
                     snap_pt = self._apply_lane_offset_to_snap_point(
                         snap_pt, pred_road, pred_road.centerline_id,
                         connecting_road.predecessor_contact,
-                        primary_conn.from_lane_id, cr_lane_id,
-                        connecting_road.lane_info.lane_width,
+                        pred_target_lane_id, cr_lane_id,
+                        cr_width_start,
+                        path_meters, is_start=True,
                     )
                 path_meters[0] = snap_pt
 
@@ -1025,8 +1234,9 @@ class OpenDriveWriter:
                     snap_pt = self._apply_lane_offset_to_snap_point(
                         snap_pt, succ_road, succ_road.centerline_id,
                         connecting_road.successor_contact,
-                        primary_conn.to_lane_id, cr_lane_id,
-                        connecting_road.lane_info.lane_width,
+                        succ_target_lane_id, cr_lane_id,
+                        cr_width_end,
+                        path_meters, is_start=False,
                     )
                 path_meters[-1] = snap_pt
 
@@ -1035,14 +1245,13 @@ class OpenDriveWriter:
     def _apply_lane_offset_to_snap_point(
         self, snap_pt, road, centerline_id, contact_point,
         target_lane_id, cr_lane_id, cr_lane_width,
+        path_meters=None, is_start=True,
     ):
         """Offset a snap point perpendicular to road heading for lane alignment.
 
-        Computes how far the CR centerline must be from the road centerline
-        so that the CR's lane center aligns with the target lane center on
-        the connected road.
-
-        Returns the offset point, or the original snap_pt if no offset needed.
+        When the CR heading is ~180° from the road heading (reversed-path CRs),
+        the CR lane offset is negated so the exported geometry stays on the
+        correct side.
         """
         from orbit.utils.connecting_road_alignment import (
             _get_road_lane_width,
@@ -1052,14 +1261,32 @@ class OpenDriveWriter:
         road_lane_width = _get_road_lane_width(road, contact_point)
         road_lane_off = _lane_center_offset(target_lane_id, road_lane_width)
         cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width)
+
+        # Heading-sign correction: check if CR and road perpendiculars are
+        # anti-aligned (headings ~180° apart) and negate CR offset if so.
+        heading = self._get_road_heading_at_contact_meters(
+            centerline_id, contact_point
+        )
+        if heading is not None and path_meters and len(path_meters) >= 2:
+            road_perp = (math.sin(heading), -math.cos(heading))
+            if is_start:
+                cr_dx = path_meters[1][0] - path_meters[0][0]
+                cr_dy = path_meters[1][1] - path_meters[0][1]
+            else:
+                cr_dx = path_meters[-1][0] - path_meters[-2][0]
+                cr_dy = path_meters[-1][1] - path_meters[-2][1]
+            cr_len = math.sqrt(cr_dx * cr_dx + cr_dy * cr_dy)
+            if cr_len > 1e-9:
+                cr_perp = (cr_dy / cr_len, -cr_dx / cr_len)
+                dot = road_perp[0] * cr_perp[0] + road_perp[1] * cr_perp[1]
+                if dot < 0:
+                    cr_lane_off = -cr_lane_off
+
         offset_m = road_lane_off - cr_lane_off
 
         if abs(offset_m) < 0.01:
             return snap_pt
 
-        heading = self._get_road_heading_at_contact_meters(
-            centerline_id, contact_point
-        )
         if heading is None:
             return snap_pt
 
@@ -1270,6 +1497,7 @@ class OpenDriveWriter:
         roadMark.set('weight', lane_obj.road_mark_weight)
         roadMark.set('color', lane_obj.road_mark_color)
         roadMark.set('width', f'{lane_obj.road_mark_width:.2f}')
+        roadMark.set('laneChange', 'both')
 
         return lane
 
@@ -1332,7 +1560,9 @@ class OpenDriveWriter:
         junction_elem = etree.Element('junction')
         junction_elem.set('id', str(junction_numeric_id))
         junction_elem.set('name', junction.name)
-        junction_elem.set('type', junction.junction_type)
+        # OpenDRIVE 1.4 has no 'type' attribute on junctions; omit for CARLA compat
+        if not self.carla_compat:
+            junction_elem.set('type', junction.junction_type)
 
         # Virtual junctions (path crossings) have no connections
         if junction.junction_type == "virtual":
@@ -1356,9 +1586,19 @@ class OpenDriveWriter:
 
             connection = etree.SubElement(junction_elem, 'connection')
             connection.set('id', str(connection_id))
-            connection.set('incomingRoad', from_road_id)
-            connection.set('connectingRoad', connecting_road_id)
-            connection.set('contactPoint', 'start')  # Connecting roads start at junction
+            connection.set('incomingRoad', self._remap_road_id(from_road_id))
+            connection.set('connectingRoad', self._remap_road_id(connecting_road_id))
+
+            # Determine contactPoint: which end of the connecting road
+            # touches the incoming road.
+            cr = self.road_map.get(connecting_road_id)
+            if cr and cr.predecessor_id == from_road_id:
+                contact_pt = 'start'
+            elif cr and cr.successor_id == from_road_id:
+                contact_pt = 'end'
+            else:
+                contact_pt = 'start'  # fallback
+            connection.set('contactPoint', contact_pt)
 
             # Note: priority is a child element of junction, not an attribute of connection
             # Priority handling would need to be done at the junction level if needed
@@ -1379,46 +1619,48 @@ class OpenDriveWriter:
 
             connection_id += 1
 
-        # Add boundary (V1.8 feature)
-        if junction.boundary and junction.boundary.segments:
-            boundary_elem = etree.SubElement(junction_elem, 'boundary')
-            for segment in junction.boundary.segments:
-                seg_elem = etree.SubElement(boundary_elem, 'segment')
-                seg_elem.set('type', segment.segment_type)
+        # boundary and elevationGrid are V1.8 features; skip for CARLA compat
+        if not self.carla_compat:
+            # Add boundary (V1.8 feature)
+            if junction.boundary and junction.boundary.segments:
+                boundary_elem = etree.SubElement(junction_elem, 'boundary')
+                for segment in junction.boundary.segments:
+                    seg_elem = etree.SubElement(boundary_elem, 'segment')
+                    seg_elem.set('type', segment.segment_type)
 
-                if segment.road_id:
-                    seg_elem.set('roadId', segment.road_id)
+                    if segment.road_id:
+                        seg_elem.set('roadId', self._remap_road_id(segment.road_id))
 
-                if segment.segment_type == 'lane':
-                    if segment.boundary_lane is not None:
-                        seg_elem.set('boundaryLane', str(segment.boundary_lane))
-                    if segment.s_start is not None:
-                        seg_elem.set('sStart', f'{segment.s_start:.6g}')
-                    if segment.s_end is not None:
-                        seg_elem.set('sEnd', f'{segment.s_end:.6g}')
-                elif segment.segment_type == 'joint':
-                    if segment.contact_point:
-                        seg_elem.set('contactPoint', segment.contact_point)
-                    if segment.joint_lane_start is not None:
-                        seg_elem.set('jointLaneStart', str(segment.joint_lane_start))
-                    if segment.joint_lane_end is not None:
-                        seg_elem.set('jointLaneEnd', str(segment.joint_lane_end))
-                    if segment.transition_length is not None:
-                        seg_elem.set('transitionLength', f'{segment.transition_length:.6g}')
+                    if segment.segment_type == 'lane':
+                        if segment.boundary_lane is not None:
+                            seg_elem.set('boundaryLane', str(segment.boundary_lane))
+                        if segment.s_start is not None:
+                            seg_elem.set('sStart', f'{segment.s_start:.6g}')
+                        if segment.s_end is not None:
+                            seg_elem.set('sEnd', f'{segment.s_end:.6g}')
+                    elif segment.segment_type == 'joint':
+                        if segment.contact_point:
+                            seg_elem.set('contactPoint', segment.contact_point)
+                        if segment.joint_lane_start is not None:
+                            seg_elem.set('jointLaneStart', str(segment.joint_lane_start))
+                        if segment.joint_lane_end is not None:
+                            seg_elem.set('jointLaneEnd', str(segment.joint_lane_end))
+                        if segment.transition_length is not None:
+                            seg_elem.set('transitionLength', f'{segment.transition_length:.6g}')
 
-        # Add elevation grid (V1.8 feature)
-        if junction.elevation_grid and junction.elevation_grid.elevations:
-            eg_elem = etree.SubElement(junction_elem, 'elevationGrid')
-            if junction.elevation_grid.grid_spacing:
-                eg_elem.set('gridSpacing', junction.elevation_grid.grid_spacing)
-            for elev_point in junction.elevation_grid.elevations:
-                elev_elem = etree.SubElement(eg_elem, 'elevation')
-                if elev_point.center:
-                    elev_elem.set('center', elev_point.center)
-                if elev_point.left:
-                    elev_elem.set('left', elev_point.left)
-                if elev_point.right:
-                    elev_elem.set('right', elev_point.right)
+            # Add elevation grid (V1.8 feature)
+            if junction.elevation_grid and junction.elevation_grid.elevations:
+                eg_elem = etree.SubElement(junction_elem, 'elevationGrid')
+                if junction.elevation_grid.grid_spacing:
+                    eg_elem.set('gridSpacing', junction.elevation_grid.grid_spacing)
+                for elev_point in junction.elevation_grid.elevations:
+                    elev_elem = etree.SubElement(eg_elem, 'elevation')
+                    if elev_point.center:
+                        elev_elem.set('center', elev_point.center)
+                    if elev_point.left:
+                        elev_elem.set('left', elev_point.left)
+                    if elev_point.right:
+                        elev_elem.set('right', elev_point.right)
 
         return junction_elem
 
@@ -1472,7 +1714,8 @@ def export_to_opendrive(
     offset_x: float = 0.0,
     offset_y: float = 0.0,
     geo_reference_string: Optional[str] = None,
-    export_object_types: Optional[set] = None
+    export_object_types: Optional[set] = None,
+    carla_compat: bool = False,
 ) -> bool:
     """
     Export project to OpenDrive format.
@@ -1494,6 +1737,7 @@ def export_to_opendrive(
         geo_reference_string: Explicit proj string for the geoReference element
         export_object_types: If set, only export objects whose type is in this set.
             If None (default), all objects are exported.
+        carla_compat: If True, export OpenDRIVE 1.4 compatible with CARLA simulator
 
     Returns:
         True if successful
@@ -1502,7 +1746,8 @@ def export_to_opendrive(
     writer = OpenDriveWriter(
         project, transformer, curve_fitter, right_hand_traffic,
         country_code, use_tmerc, use_german_codes,
-        offset_x, offset_y, geo_reference_string, export_object_types
+        offset_x, offset_y, geo_reference_string, export_object_types,
+        carla_compat=carla_compat,
     )
     return writer.write(output_path)
 

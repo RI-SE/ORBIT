@@ -148,6 +148,15 @@ class OSMImportDialog(BaseDialog):
         self.auto_adjust_check.setChecked(True)
         options_layout.addWidget(self.auto_adjust_check)
 
+        # Bidirectional turn connecting roads (only visible when junctions enabled)
+        self.bidir_turns_check = QCheckBox("Bidirectional connecting roads for turns")
+        self.bidir_turns_check.setToolTip(
+            "Merge complementary turn pairs (e.g. A→B right + B→A left) into "
+            "single bidirectional connecting roads. Produces fewer, simpler CRs. "
+            "Uncheck for compatibility with tools that expect one-directional CRs.")
+        self.bidir_turns_check.setChecked(True)
+        options_layout.addWidget(self.bidir_turns_check)
+
         # Filter roads outside image
         self.filter_outside_image_check = QCheckBox("Filter roads outside image bounds")
         self.filter_outside_image_check.setToolTip(
@@ -389,6 +398,7 @@ Longitude: {min_lon:.6f}\u00b0 to {max_lon:.6f}\u00b0<br>
             'import_junctions': self.get_import_junctions(),
             'filter_outside_image': self.get_filter_outside_image(),
             'auto_adjust_junctions': self.auto_adjust_check.isChecked(),
+            'bidirectional_turn_connections': self.bidir_turns_check.isChecked(),
         }
 
         if self.api_radio.isChecked():
@@ -400,6 +410,7 @@ Longitude: {min_lon:.6f}\u00b0 to {max_lon:.6f}\u00b0<br>
     def _on_junctions_toggled(self, checked: bool):
         """Show/hide junction sub-options based on import junctions checkbox."""
         self.auto_adjust_check.setVisible(checked)
+        self.bidir_turns_check.setVisible(checked)
 
     def _on_source_changed(self):
         """Handle import source radio button change."""

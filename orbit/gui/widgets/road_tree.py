@@ -599,6 +599,17 @@ class RoadTreeWidget(QWidget):
             edit_action.triggered.connect(lambda: self.edit_road(data["id"]))
             menu.addAction(edit_action)
 
+            road_id = data["id"]
+            junctions = self._find_junctions_for_road(road_id)
+            if junctions:
+                lane_conn_action = QAction("Edit Junction Lane Connections", self)
+            else:
+                lane_conn_action = QAction("Edit Lane Links", self)
+            lane_conn_action.triggered.connect(
+                lambda checked=False, rid=road_id: self._edit_lane_connections_for_road(rid)
+            )
+            menu.addAction(lane_conn_action)
+
             delete_action = QAction("Delete Road", self)
             delete_action.triggered.connect(lambda: self.delete_road(data["id"]))
             menu.addAction(delete_action)
@@ -654,6 +665,61 @@ class RoadTreeWidget(QWidget):
         """Edit a road's properties."""
         # Emit signal for main_window to handle with undo support
         self.road_edit_requested.emit(road_id)
+
+    def _find_junctions_for_road(self, road_id: str):
+        """Find all junctions that a road connects to (via connecting roads)."""
+        junctions = []
+        for junction in self.project.junctions:
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if cr and (cr.predecessor_id == road_id or cr.successor_id == road_id):
+                    if junction not in junctions:
+                        junctions.append(junction)
+                    break
+        return junctions
+
+    def _edit_lane_connections_for_road(self, road_id: str):
+        """Open appropriate lane link dialog for this road."""
+        junctions = self._find_junctions_for_road(road_id)
+
+        if not junctions:
+            # No junction connections — edit per-lane predecessor/successor IDs directly
+            from ..dialogs.road_lane_links_dialog import RoadLaneLinksDialog
+            road = self.project.get_road(road_id)
+            if road:
+                if not road.lane_sections:
+                    show_info(
+                        self,
+                        "This road has no lane sections yet.\n"
+                        "Generate lanes first via Edit Road → Lane Configuration.",
+                        "No Lane Sections"
+                    )
+                    return
+                if RoadLaneLinksDialog.edit_lane_links(road, self):
+                    self.road_modified.emit(road_id)
+            return
+
+        from ..dialogs.lane_connection_dialog import LaneConnectionDialog
+
+        if len(junctions) == 1:
+            junction = junctions[0]
+            if LaneConnectionDialog.edit_connections(junction, self.project, self):
+                self.road_modified.emit(road_id)
+                self.refresh_tree()
+        else:
+            from PyQt6.QtWidgets import QInputDialog
+            names = [f"{j.name} ({j.id[:8]}...)" for j in junctions]
+            choice, ok = QInputDialog.getItem(
+                self, "Select Junction",
+                "This road connects to multiple junctions. Select one:",
+                names, 0, False
+            )
+            if ok:
+                idx = names.index(choice)
+                junction = junctions[idx]
+                if LaneConnectionDialog.edit_connections(junction, self.project, self):
+                    self.road_modified.emit(road_id)
+                    self.refresh_tree()
 
     def delete_road(self, road_id: str):
         """Delete a road."""

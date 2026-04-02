@@ -1424,3 +1424,154 @@ class TestExportProjection:
 
         assert abs(east) < 1.0
         assert abs(north) < 1.0
+
+
+# ============================================================================
+# Test Adjustment in pixel_to_geo
+# ============================================================================
+
+class TestPixelToGeoWithAdjustment:
+    """Test that pixel_to_geo correctly applies the inverse adjustment."""
+
+    def test_affine_pixel_to_geo_uses_inverse_adjustment(
+        self, sample_control_points: List[ControlPoint]
+    ):
+        """Affine pixel_to_geo should apply inverse adjustment before transform."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False,
+        )
+        assert transformer is not None
+
+        # Get geo coords without adjustment
+        px, py = 300.0, 200.0
+        lon_orig, lat_orig = transformer.pixel_to_geo(px, py)
+
+        # Apply a translation adjustment
+        adj = TransformAdjustment(translation_x=10.0, translation_y=5.0)
+        transformer.set_adjustment(adj)
+
+        # pixel_to_geo should now give a *different* result because the
+        # pixel has been "shifted" by the adjustment
+        lon_adj, lat_adj = transformer.pixel_to_geo(px, py)
+        assert (lon_adj, lat_adj) != pytest.approx((lon_orig, lat_orig), abs=1e-10)
+
+    def test_affine_round_trip_with_adjustment(
+        self, sample_control_points: List[ControlPoint]
+    ):
+        """geo_to_pixel → pixel_to_geo should round-trip with adjustment."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False,
+        )
+        assert transformer is not None
+
+        adj = TransformAdjustment(translation_x=15.0, translation_y=-8.0, rotation=1.5)
+        transformer.set_adjustment(adj)
+
+        lon_in, lat_in = 12.942, 57.720
+        px, py = transformer.geo_to_pixel(lon_in, lat_in)
+        lon_out, lat_out = transformer.pixel_to_geo(px, py)
+
+        assert lon_out == pytest.approx(lon_in, abs=1e-6)
+        assert lat_out == pytest.approx(lat_in, abs=1e-6)
+
+    def test_homography_pixel_to_geo_uses_inverse_adjustment(
+        self, sample_control_points: List[ControlPoint]
+    ):
+        """Homography pixel_to_geo should apply inverse adjustment."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+
+        points = sample_control_points + [
+            ControlPoint(400.0, 300.0, 12.943000, 57.719500, "CP4")
+        ]
+        transformer = create_transformer(
+            points,
+            method=TransformMethod.HOMOGRAPHY,
+            use_validation=False,
+        )
+        assert transformer is not None
+
+        px, py = 300.0, 200.0
+        lon_orig, lat_orig = transformer.pixel_to_geo(px, py)
+
+        adj = TransformAdjustment(translation_x=10.0, translation_y=5.0)
+        transformer.set_adjustment(adj)
+
+        lon_adj, lat_adj = transformer.pixel_to_geo(px, py)
+        assert (lon_adj, lat_adj) != pytest.approx((lon_orig, lat_orig), abs=1e-10)
+
+    def test_homography_round_trip_with_adjustment(
+        self, sample_control_points: List[ControlPoint]
+    ):
+        """Homography geo_to_pixel → pixel_to_geo round-trip with adjustment."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+
+        points = sample_control_points + [
+            ControlPoint(400.0, 300.0, 12.943000, 57.719500, "CP4")
+        ]
+        transformer = create_transformer(
+            points,
+            method=TransformMethod.HOMOGRAPHY,
+            use_validation=False,
+        )
+        assert transformer is not None
+
+        adj = TransformAdjustment(translation_x=15.0, translation_y=-8.0, rotation=1.5)
+        transformer.set_adjustment(adj)
+
+        lon_in, lat_in = 12.942, 57.720
+        px, py = transformer.geo_to_pixel(lon_in, lat_in)
+        lon_out, lat_out = transformer.pixel_to_geo(px, py)
+
+        assert lon_out == pytest.approx(lon_in, abs=1e-5)
+        assert lat_out == pytest.approx(lat_in, abs=1e-5)
+
+    def test_no_adjustment_pixel_to_geo_unchanged(
+        self, sample_control_points: List[ControlPoint]
+    ):
+        """pixel_to_geo without adjustment produces same result as before."""
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False,
+        )
+        assert transformer is not None
+
+        px, py = 300.0, 200.0
+        lon1, lat1 = transformer.pixel_to_geo(px, py)
+
+        # Clear any adjustment explicitly
+        transformer.clear_adjustment()
+        lon2, lat2 = transformer.pixel_to_geo(px, py)
+
+        assert lon1 == pytest.approx(lon2, abs=1e-12)
+        assert lat1 == pytest.approx(lat2, abs=1e-12)
+
+    def test_pixel_to_meters_with_adjustment(
+        self, sample_control_points: List[ControlPoint]
+    ):
+        """pixel_to_meters (used by export) should respect the adjustment."""
+        from orbit.utils.coordinate_transform import TransformAdjustment
+
+        transformer = create_transformer(
+            sample_control_points,
+            method=TransformMethod.AFFINE,
+            use_validation=False,
+        )
+        assert transformer is not None
+
+        px, py = 300.0, 200.0
+        mx_orig, my_orig = transformer.pixel_to_meters(px, py)
+
+        adj = TransformAdjustment(translation_x=20.0, translation_y=10.0)
+        transformer.set_adjustment(adj)
+
+        mx_adj, my_adj = transformer.pixel_to_meters(px, py)
+        assert (mx_adj, my_adj) != pytest.approx((mx_orig, my_orig), abs=1e-6)

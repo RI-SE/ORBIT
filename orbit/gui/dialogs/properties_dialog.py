@@ -179,42 +179,106 @@ class RoadPropertiesDialog(QDialog):
 
         links_title = InfoIconLabel(
             "Road Links (Predecessor/Successor)",
-            "These links define road connectivity for OpenDRIVE export. "
-            "Set predecessor and successor to connect roads end-to-end."
+            "Each endpoint connects to either a junction OR a road — not both. "
+            "Junction links take priority over road links during export. "
+            "Set junction to '(Auto-detect)' to let the exporter determine this spatially."
         )
         links_main_layout.addWidget(links_title)
 
-        links_layout = QFormLayout()
+        _AUTO = "__auto__"
+
+        # --- Predecessor endpoint group ---
+        pred_group = QGroupBox("Predecessor")
+        pred_layout = QFormLayout()
+
+        self.predecessor_junction_combo = QComboBox()
+        self.predecessor_junction_combo.addItem("(Auto-detect)", _AUTO)
+        self.predecessor_junction_combo.addItem("(None — road link only)", "__none__")
+        for junction in self.project.junctions:
+            jid = junction.id[:8] + "..." if len(junction.id) > 8 else junction.id
+            self.predecessor_junction_combo.addItem(f"{junction.name} ({jid})", junction.id)
+        self.predecessor_junction_combo.setToolTip(
+            "Auto-detect: exporter checks spatial proximity at export time.\n"
+            "None: no junction link — road link below is used instead.\n"
+            "Specific junction: always link to this junction (road link ignored)."
+        )
+        pred_layout.addRow("Junction:", self.predecessor_junction_combo)
+
+        self.pred_junction_note = QLabel("⚠ Junction set — road link below is ignored in export.")
+        self.pred_junction_note.setStyleSheet("QLabel { color: #b07000; font-style: italic; }")
+        self.pred_junction_note.setVisible(False)
+        pred_layout.addRow("", self.pred_junction_note)
 
         self.predecessor_combo = QComboBox()
-        self.predecessor_combo.addItem("(No predecessor)", None)
+        self.predecessor_combo.addItem("(No predecessor road)", None)
         for other_road in self.project.roads:
             if other_road.id != self.road.id:
                 display_text = f"{other_road.name} (ID: {other_road.id[:8]}...)"
                 self.predecessor_combo.addItem(display_text, other_road.id)
-        links_layout.addRow("Predecessor Road:", self.predecessor_combo)
+        pred_layout.addRow("Road:", self.predecessor_combo)
 
         self.predecessor_contact_combo = QComboBox()
         self.predecessor_contact_combo.addItem("End of predecessor", "end")
         self.predecessor_contact_combo.addItem("Start of predecessor", "start")
-        links_layout.addRow("Connects at:", self.predecessor_contact_combo)
+        pred_layout.addRow("Contact point:", self.predecessor_contact_combo)
+
+        pred_group.setLayout(pred_layout)
+        links_main_layout.addWidget(pred_group)
+
+        # --- Successor endpoint group ---
+        succ_group = QGroupBox("Successor")
+        succ_layout = QFormLayout()
+
+        self.successor_junction_combo = QComboBox()
+        self.successor_junction_combo.addItem("(Auto-detect)", _AUTO)
+        self.successor_junction_combo.addItem("(None — road link only)", "__none__")
+        for junction in self.project.junctions:
+            jid = junction.id[:8] + "..." if len(junction.id) > 8 else junction.id
+            self.successor_junction_combo.addItem(f"{junction.name} ({jid})", junction.id)
+        self.successor_junction_combo.setToolTip(
+            "Auto-detect: exporter checks spatial proximity at export time.\n"
+            "None: no junction link — road link below is used instead.\n"
+            "Specific junction: always link to this junction (road link ignored)."
+        )
+        succ_layout.addRow("Junction:", self.successor_junction_combo)
+
+        self.succ_junction_note = QLabel("⚠ Junction set — road link below is ignored in export.")
+        self.succ_junction_note.setStyleSheet("QLabel { color: #b07000; font-style: italic; }")
+        self.succ_junction_note.setVisible(False)
+        succ_layout.addRow("", self.succ_junction_note)
 
         self.successor_combo = QComboBox()
-        self.successor_combo.addItem("(No successor)", None)
+        self.successor_combo.addItem("(No successor road)", None)
         for other_road in self.project.roads:
             if other_road.id != self.road.id:
                 display_text = f"{other_road.name} (ID: {other_road.id[:8]}...)"
                 self.successor_combo.addItem(display_text, other_road.id)
-        links_layout.addRow("Successor Road:", self.successor_combo)
+        succ_layout.addRow("Road:", self.successor_combo)
 
         self.successor_contact_combo = QComboBox()
         self.successor_contact_combo.addItem("Start of successor", "start")
         self.successor_contact_combo.addItem("End of successor", "end")
-        links_layout.addRow("Connects at:", self.successor_contact_combo)
+        succ_layout.addRow("Contact point:", self.successor_contact_combo)
 
-        links_main_layout.addLayout(links_layout)
+        succ_group.setLayout(succ_layout)
+        links_main_layout.addWidget(succ_group)
+
         links_group.setLayout(links_main_layout)
         layout.addWidget(links_group)
+
+        # Wire up dynamic priority notes
+        self.predecessor_junction_combo.currentIndexChanged.connect(self._update_pred_junction_note)
+        self.successor_junction_combo.currentIndexChanged.connect(self._update_succ_junction_note)
+
+    def _update_pred_junction_note(self):
+        """Show/hide the predecessor junction priority warning."""
+        data = self.predecessor_junction_combo.currentData()
+        self.pred_junction_note.setVisible(data not in ("__auto__", "__none__", None))
+
+    def _update_succ_junction_note(self):
+        """Show/hide the successor junction priority warning."""
+        data = self.successor_junction_combo.currentData()
+        self.succ_junction_note.setVisible(data not in ("__auto__", "__none__", None))
 
     def _create_lane_config_section(self, layout):
         """Create the lane configuration group."""
@@ -583,6 +647,22 @@ class RoadPropertiesDialog(QDialog):
             # Set successor contact point
             set_combo_by_data(self.successor_contact_combo, self.road.successor_contact)
 
+            # Set junction link overrides
+            _AUTO = "__auto__"
+            if self.road.predecessor_junction_id is not None:
+                set_combo_by_data(self.predecessor_junction_combo, self.road.predecessor_junction_id)
+            else:
+                set_combo_by_data(self.predecessor_junction_combo, _AUTO)
+
+            if self.road.successor_junction_id is not None:
+                set_combo_by_data(self.successor_junction_combo, self.road.successor_junction_id)
+            else:
+                set_combo_by_data(self.successor_junction_combo, _AUTO)
+
+            # Update priority notes after loading values
+            self._update_pred_junction_note()
+            self._update_succ_junction_note()
+
         # Set lane info
         self.left_lanes_spin.setValue(self.road.lane_info.left_count)
         self.right_lanes_spin.setValue(self.road.lane_info.right_count)
@@ -669,6 +749,14 @@ class RoadPropertiesDialog(QDialog):
             self.road.predecessor_contact = self.predecessor_contact_combo.currentData()
             self.road.successor_id = self.successor_combo.currentData()
             self.road.successor_contact = self.successor_contact_combo.currentData()
+
+            # Junction link overrides
+            _AUTO = "__auto__"
+            pred_junc = self.predecessor_junction_combo.currentData()
+            self.road.predecessor_junction_id = None if pred_junc == _AUTO else pred_junc
+
+            succ_junc = self.successor_junction_combo.currentData()
+            self.road.successor_junction_id = None if succ_junc == _AUTO else succ_junc
 
             # Enforce endpoint coordinate alignment with connected roads
             self.project.enforce_road_link_coordinates(self.road.id)

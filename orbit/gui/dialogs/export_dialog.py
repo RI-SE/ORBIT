@@ -39,13 +39,15 @@ logger = get_logger(__name__)
 class ExportDialog(BaseDialog):
     """Dialog for OpenDrive export with preview."""
 
-    def __init__(self, project: Project, parent=None, xodr_schema_path: Optional[str] = None):
+    def __init__(self, project: Project, parent=None, xodr_schema_path: Optional[str] = None,
+                 adjustment=None):
         super().__init__("Export to OpenDrive", parent, min_width=700, min_height=600)
 
         self.project = project
         self.transformer: Optional[CoordinateTransformer] = None
         self.output_path: Optional[Path] = None
         self.xodr_schema_path = xodr_schema_path  # Path to XSD schema for validation (optional)
+        self._adjustment = adjustment  # TransformAdjustment from interactive fine-tuning
 
         self.setup_ui()
         self.load_properties()
@@ -181,6 +183,16 @@ class ExportDialog(BaseDialog):
         )
         options_layout.addRow("Signal Codes:", self.use_german_codes_checkbox)
 
+        # CARLA compatibility checkbox
+        self.carla_compat_checkbox = QCheckBox("CARLA compatibility (OpenDRIVE 1.4)")
+        self.carla_compat_checkbox.setChecked(False)
+        self.carla_compat_checkbox.setToolTip(
+            "Export OpenDRIVE 1.4 compatible with the CARLA simulator.\n"
+            "Removes 1.8-only features (xmlns, junction boundary/type, userData),\n"
+            "adds default speed limits, and maps unknown road types to 'town'."
+        )
+        options_layout.addRow("Compatibility:", self.carla_compat_checkbox)
+
         # Feature categories (only shown if project has non-road objects)
         self.feature_checkboxes: dict[ObjectType, QCheckBox] = {}
         self._setup_feature_categories()
@@ -245,6 +257,9 @@ class ExportDialog(BaseDialog):
                 self.project.transform_method,
                 use_validation=True,
             )
+
+            if self.transformer and self._adjustment and not self._adjustment.is_identity():
+                self.transformer.set_adjustment(self._adjustment)
 
             if self.transformer:
                 method = self.project.transform_method.upper()
@@ -450,6 +465,10 @@ class ExportDialog(BaseDialog):
                 self.status_label.setText("<b>Export failed.</b>")
                 return
 
+            # Apply manual alignment adjustment if one is active
+            if self._adjustment and not self._adjustment.is_identity():
+                export_transformer.set_adjustment(self._adjustment)
+
             # Compute origin offset: project the selected origin lat/lon
             # to get the offset that will be subtracted from all coordinates.
             origin_selection = self.origin_combo.currentData()
@@ -496,7 +515,8 @@ class ExportDialog(BaseDialog):
                 offset_x=offset_x,
                 offset_y=offset_y,
                 geo_reference_string=geo_reference_string,
-                export_object_types=self._get_export_object_types()
+                export_object_types=self._get_export_object_types(),
+                carla_compat=self.carla_compat_checkbox.isChecked(),
             )
 
             if success:

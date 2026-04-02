@@ -39,14 +39,16 @@ def convert_road_mark_type(road_mark_type: RoadMarkType) -> str:
 class LaneBuilder:
     """Builds lane XML elements for OpenDRIVE export."""
 
-    def __init__(self, scale_x: float = 1.0):
+    def __init__(self, scale_x: float = 1.0, carla_compat: bool = False):
         """
         Initialize lane builder.
 
         Args:
             scale_x: Scale factor in meters per pixel for s-coordinate conversion
+            carla_compat: When True, add default speed limits on driving lanes
         """
         self.scale_x = scale_x
+        self.carla_compat = carla_compat
 
     def create_lanes(
         self,
@@ -97,19 +99,22 @@ class LaneBuilder:
         cumulative_metric_s: Optional[Sequence[float]] = None,
     ) -> None:
         """Create lane elements using lane sections."""
-        # Determine if default lane links are needed at road boundaries.
-        # Road-to-road connections need lane-level links; junction connections
-        # handle lane links through junction <connection> elements instead.
-        has_road_predecessor = (
-            bool(road.predecessor_id) and not road.predecessor_junction_id
+        # Lane-level links are needed at road boundaries for both road-to-road
+        # and road-to-junction connections.  CARLA (and other tools) use these
+        # to resolve lane continuity across junctions.
+        has_road_predecessor = bool(
+            road.predecessor_id or road.predecessor_junction_id
         )
-        has_road_successor = (
-            bool(road.successor_id) and not road.successor_junction_id
+        has_road_successor = bool(
+            road.successor_id or road.successor_junction_id
         )
         num_sections = len(road.lane_sections)
 
         # Track which cumulative_metric_s index the previous section ended at
         prev_end_idx = 0
+
+        # Road speed in m/s for CARLA lane fallback (road.speed_limit is km/h)
+        road_speed_ms = road.speed_limit / 3.6 if road.speed_limit else None
 
         for idx, section in enumerate(road.lane_sections):
             lane_section = etree.SubElement(lanes, 'laneSection')
@@ -156,7 +161,7 @@ class LaneBuilder:
                     boundary_info = boundary_map.get(lane_obj.id)
                     lane = self._create_lane(
                         lane_obj, boundary_info, section_length_m,
-                        add_pred, add_succ
+                        add_pred, add_succ, road_speed_ms
                     )
                     left.append(lane)
 
@@ -179,7 +184,7 @@ class LaneBuilder:
                     boundary_info = boundary_map.get(lane_obj.id)
                     lane = self._create_lane(
                         lane_obj, boundary_info, section_length_m,
-                        add_pred, add_succ
+                        add_pred, add_succ, road_speed_ms
                     )
                     right.append(lane)
 
@@ -198,6 +203,7 @@ class LaneBuilder:
         road_mark.set('weight', center_lane_obj.road_mark_weight)
         road_mark.set('color', center_lane_obj.road_mark_color)
         road_mark.set('width', f'{center_lane_obj.road_mark_width:.6g}')
+        road_mark.set('laneChange', 'none')
 
         return center_lane
 
@@ -214,6 +220,7 @@ class LaneBuilder:
         road_mark.set('weight', 'standard')
         road_mark.set('color', 'standard')
         road_mark.set('width', '0.13')
+        road_mark.set('laneChange', 'none')
 
         return center_lane
 
@@ -223,7 +230,8 @@ class LaneBuilder:
         boundary_info: Optional[BoundaryInfo] = None,
         section_length_m: float = 0.0,
         add_pred_link: bool = False,
-        add_succ_link: bool = False
+        add_succ_link: bool = False,
+        road_speed_ms: Optional[float] = None,
     ) -> etree.Element:
         """Create a single lane element with data-driven road mark.
 
@@ -232,6 +240,8 @@ class LaneBuilder:
                 the lane's own ID (for road-to-road connections at first section).
             add_succ_link: If True and no explicit successor_id, default to
                 the lane's own ID (for road-to-road connections at last section).
+            road_speed_ms: Road-level speed limit in m/s; used as CARLA fallback
+                when the lane has no explicit speed limit.
         """
         lane = etree.Element('lane')
         lane.set('id', str(lane_obj.id))
@@ -298,6 +308,7 @@ class LaneBuilder:
         road_mark.set('weight', lane_obj.road_mark_weight)
         road_mark.set('color', lane_obj.road_mark_color)
         road_mark.set('width', f'{lane_obj.road_mark_width:.6g}')
+        road_mark.set('laneChange', 'both')
 
         # Lane-level speed limit (if set)
         if lane_obj.speed_limit is not None:
@@ -305,6 +316,14 @@ class LaneBuilder:
             speed.set('sOffset', '0.0')
             speed.set('max', f'{lane_obj.speed_limit:.6g}')
             speed.set('unit', lane_obj.speed_limit_unit)
+        elif self.carla_compat and lane_obj.lane_type.value == 'driving':
+            # CARLA agents need speed targets on driving lanes.
+            # Prefer the road-level speed; fall back to 50 km/h if unknown.
+            carla_speed = road_speed_ms if road_speed_ms is not None else 13.89
+            speed = etree.SubElement(lane, 'speed')
+            speed.set('sOffset', '0.0')
+            speed.set('max', f'{carla_speed:.2f}')
+            speed.set('unit', 'm/s')
 
         # Access restrictions (for shared paths)
         if lane_obj.access_restrictions:

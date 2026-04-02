@@ -66,6 +66,12 @@ def align_connecting_road_paths(
             pred_target_lane_id = conn.to_lane_id
             succ_target_lane_id = conn.from_lane_id
 
+        # Get CR lane width at each endpoint
+        cr.ensure_cr_lanes_initialized()
+        cr_lane = cr.get_cr_lane(cr_lane_id)
+        cr_width_start = cr_lane.width if cr_lane else cr.lane_info.lane_width
+        cr_width_end = cr_lane.get_width_at_end() if cr_lane else cr.lane_info.lane_width
+
         # Predecessor end (CR start) — forward direction is path[0]→path[1]
         start_shift = _compute_lane_alignment_shift(
             project=project,
@@ -73,7 +79,7 @@ def align_connecting_road_paths(
             contact_point=cr.predecessor_contact,
             target_lane_id=pred_target_lane_id,
             cr_lane_id=cr_lane_id,
-            cr_lane_width=cr.lane_info.lane_width,
+            cr_lane_width=cr_width_start,
             cr_endpoint=cr.inline_path[0],
             cr_fwd_p1=cr.inline_path[0],
             cr_fwd_p2=cr.inline_path[1],
@@ -87,7 +93,7 @@ def align_connecting_road_paths(
             contact_point=cr.successor_contact,
             target_lane_id=succ_target_lane_id,
             cr_lane_id=cr_lane_id,
-            cr_lane_width=cr.lane_info.lane_width,
+            cr_lane_width=cr_width_end,
             cr_endpoint=cr.inline_path[-1],
             cr_fwd_p1=cr.inline_path[-2],
             cr_fwd_p2=cr.inline_path[-1],
@@ -115,10 +121,11 @@ def _compute_lane_alignment_shift(
 ) -> Optional[Tuple[float, float]]:
     """Compute pixel shift to align a CR lane with a target lane on a connected road.
 
-    The road lane offset is measured along the road's perpendicular, while the
-    CR lane offset uses the CR's forward-direction perpendicular (matching how
-    lane polygons are rendered). cr_fwd_p1→cr_fwd_p2 defines the CR's forward
-    direction at this endpoint.
+    Uses the road's perpendicular for the road-side offset and adjusts the
+    CR-side offset based on the heading relationship (dot product of road and
+    CR perpendiculars). When the CR heading is ~180° from the road heading
+    (reversed-path left-lane CRs), the CR offset is negated so the lane
+    polygon ends up on the correct side.
     """
     from orbit.utils.geometry import calculate_perpendicular
 
@@ -146,15 +153,19 @@ def _compute_lane_alignment_shift(
     lane_center_x = road_cl_pos[0] + road_off_px * road_perp[0]
     lane_center_y = road_cl_pos[1] + road_off_px * road_perp[1]
 
-    # CR forward-direction perpendicular (same direction as lane rendering)
+    # CR lane offset — use road perpendicular for deterministic positioning.
+    # When the CR heading is ~180° from the road heading (reversed-path CRs),
+    # the CR's perpendicular is flipped, so the lane offset direction must be
+    # negated to keep the lane polygon on the correct side.
     cr_perp = calculate_perpendicular(cr_fwd_p1, cr_fwd_p2)
-    cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width)
+    dot = road_perp[0] * cr_perp[0] + road_perp[1] * cr_perp[1]
+    heading_sign = 1.0 if dot >= 0 else -1.0
+
+    cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width) * heading_sign
     cr_off_px = cr_lane_off / scale
 
-    # CR CL must be placed so its lane center lands on road lane center:
-    # target_cr_cl = road_lane_center - cr_lane_offset along CR perpendicular
-    target_x = lane_center_x - cr_off_px * cr_perp[0]
-    target_y = lane_center_y - cr_off_px * cr_perp[1]
+    target_x = lane_center_x - cr_off_px * road_perp[0]
+    target_y = lane_center_y - cr_off_px * road_perp[1]
 
     dx = target_x - cr_endpoint[0]
     dy = target_y - cr_endpoint[1]
@@ -180,15 +191,17 @@ def _lane_center_offset(lane_id: int, lane_width: float) -> float:
 
 
 def _get_road_lane_width(road, contact_point: str = "end") -> float:
-    """Get average lane width for a road in meters at the given contact point.
-
-    Args:
-        road: Road with lane_sections
-        contact_point: "start" uses first section, "end" uses last section
-    """
+    """Get average lane width for a road at the given contact point (meters)."""
     if road.lane_sections:
         section = road.lane_sections[0] if contact_point == "start" else road.lane_sections[-1]
-        widths = [lane.width for lane in section.lanes if lane.id != 0 and lane.width > 0]
+        widths = []
+        for lane in section.lanes:
+            if lane.id == 0 or lane.width <= 0:
+                continue
+            if contact_point == "end":
+                widths.append(lane.get_width_at_end())
+            else:
+                widths.append(lane.width)
         if widths:
             return sum(widths) / len(widths)
     if hasattr(road, "lane_info") and road.lane_info:

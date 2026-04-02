@@ -44,9 +44,24 @@ class ProjectController:
     # -- Connecting road geometry pipeline ------------------------------------
 
     def snap_connecting_road_endpoints(self) -> None:
-        """Snap CR pixel endpoints to match their connected road endpoints."""
+        """Snap CR pixel endpoints to match their connected road endpoints.
+
+        Skips CRs that have lane connections, since those are positioned at
+        lane-boundary offsets (not on the centerline) and handled by
+        align_all_junction_crs instead.
+        """
         for junction in self.project.junctions:
+            # Build set of CR IDs that have lane connections in this junction
+            aligned_cr_ids = {
+                c.connecting_road_id
+                for c in (junction.lane_connections or [])
+                if c.connecting_road_id
+            }
+
             for cr_id in junction.connecting_road_ids:
+                if cr_id in aligned_cr_ids:
+                    continue
+
                 conn_road = self.project.get_road(cr_id)
                 if not conn_road or not conn_road.inline_path or len(conn_road.inline_path) < 2:
                     continue

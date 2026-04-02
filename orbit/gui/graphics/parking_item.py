@@ -68,6 +68,8 @@ class ParkingGraphicsItem(QGraphicsItemGroup):
         self.corner_handles: List[QGraphicsEllipseItem] = []
         self.rotate_handle: Optional[QGraphicsEllipseItem] = None
         self.rotate_line: Optional[QGraphicsPathItem] = None
+        # Vertex handles (for polygon parking)
+        self.vertex_handles: List[QGraphicsPathItem] = []
 
         # Interaction state
         self.dragging_handle = -1  # -1 = not dragging, 0-3 = corner index, 4 = rotate
@@ -197,6 +199,9 @@ class ParkingGraphicsItem(QGraphicsItemGroup):
         for handle in self.corner_handles:
             self.removeFromGroup(handle)
         self.corner_handles.clear()
+        for handle in self.vertex_handles:
+            self.removeFromGroup(handle)
+        self.vertex_handles.clear()
 
         if self.rotate_handle:
             self.removeFromGroup(self.rotate_handle)
@@ -205,11 +210,15 @@ class ParkingGraphicsItem(QGraphicsItemGroup):
             self.removeFromGroup(self.rotate_line)
             self.rotate_line = None
 
-        # Only show handles for selected point parking
-        if not self.isSelected() or self.parking.is_polygon():
+        # Only show handles for selected items
+        if not self.isSelected():
             return
 
-        # Create corner handles
+        if self.parking.is_polygon():
+            self._draw_polygon_vertex_handles()
+            return
+
+        # Create corner handles for point parking
         corners = self._get_rotated_corners()
         for i, (cx, cy) in enumerate(corners):
             handle = QGraphicsEllipseItem(
@@ -251,6 +260,51 @@ class ParkingGraphicsItem(QGraphicsItemGroup):
         self.rotate_line.setPen(QPen(ROTATE_HANDLE_COLOR, 1, Qt.PenStyle.DashLine))
         self.rotate_line.setZValue(9)
         self.addToGroup(self.rotate_line)
+
+    def _draw_polygon_vertex_handles(self):
+        """Draw draggable vertex handles at all polygon vertices."""
+        point_pen = QPen(QColor(255, 255, 255), 2)
+        point_brush = QBrush(HANDLE_COLOR)
+        radius = 5
+
+        for x, y in self.parking.points:
+            handle = QGraphicsPathItem()
+            path = QPainterPath()
+            path.addEllipse(x - radius, y - radius, radius * 2, radius * 2)
+            handle.setPath(path)
+            handle.setPen(point_pen)
+            handle.setBrush(point_brush)
+            handle.setZValue(10)
+            self.addToGroup(handle)
+            self.vertex_handles.append(handle)
+
+    def get_point_at(self, scene_pos: QPointF, tolerance: float = 10.0) -> int:
+        """Return index of polygon vertex near scene_pos, or -1."""
+        if not self.parking.is_polygon():
+            return -1
+        for i, (px, py) in enumerate(self.parking.points):
+            if ((scene_pos.x() - px) ** 2 + (scene_pos.y() - py) ** 2) ** 0.5 <= tolerance:
+                return i
+        return -1
+
+    def get_segment_at(self, scene_pos: QPointF, tolerance: float = 8.0) -> int:
+        """Return index of first vertex of polygon edge near scene_pos, or -1."""
+        if not self.parking.is_polygon():
+            return -1
+        n = len(self.parking.points)
+        for i in range(n):
+            x1, y1 = self.parking.points[i]
+            x2, y2 = self.parking.points[(i + 1) % n]
+            dx, dy = x2 - x1, y2 - y1
+            length_sq = dx * dx + dy * dy
+            if length_sq == 0:
+                continue
+            t = max(0, min(1, ((scene_pos.x() - x1) * dx + (scene_pos.y() - y1) * dy) / length_sq))
+            proj_x = x1 + t * dx
+            proj_y = y1 + t * dy
+            if ((scene_pos.x() - proj_x) ** 2 + (scene_pos.y() - proj_y) ** 2) ** 0.5 <= tolerance:
+                return i
+        return -1
 
     def _get_handle_at(self, local_pos: QPointF) -> int:
         """

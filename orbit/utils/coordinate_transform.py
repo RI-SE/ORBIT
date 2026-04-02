@@ -756,9 +756,17 @@ class AffineTransformer(CoordinateTransformer):
             self.compute_validation_error()
 
     def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
-        """Convert pixel coordinates to geographic coordinates."""
+        """Convert pixel coordinates to geographic coordinates.
+
+        If an adjustment is set, applies its inverse before the base
+        transformation so that adjusted pixel positions map to the
+        correct geographic location.
+        """
         if self.transform_matrix is None:
             raise RuntimeError("Transformation not initialized")
+
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_inverse_to_point(pixel_x, pixel_y)
 
         point = np.array([pixel_x, pixel_y, 1.0])
         result = self.transform_matrix @ point
@@ -906,9 +914,17 @@ class HomographyTransformer(CoordinateTransformer):
             self.compute_validation_error()
 
     def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
-        """Convert pixel coordinates to geographic coordinates."""
+        """Convert pixel coordinates to geographic coordinates.
+
+        If an adjustment is set, applies its inverse before the base
+        transformation so that adjusted pixel positions map to the
+        correct geographic location.
+        """
         if self.transform_matrix is None:
             raise RuntimeError("Transformation not initialized")
+
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_inverse_to_point(pixel_x, pixel_y)
 
         # Apply homography to get metric coordinates
         pixel_homo = np.array([pixel_x, pixel_y, 1.0])
@@ -1069,7 +1085,11 @@ class HybridTransformer(CoordinateTransformer):
         return self._smoothstep((d + self._margin) / self._margin)
 
     def geo_to_pixel(self, longitude: float, latitude: float) -> Tuple[float, float]:
-        """Blended geo->pixel: homography inside image, affine outside."""
+        """Blended geo->pixel: homography inside image, affine outside.
+
+        Uses Newton iteration with numerical Jacobian to ensure
+        pixel_to_geo(geo_to_pixel(g)) ≈ g in the blend zone.
+        """
         # Compute homography result with w check
         east, north = self.latlon_to_meters(latitude, longitude)
         ground_homo = np.array([east, north, 1.0])
@@ -1077,19 +1097,24 @@ class HybridTransformer(CoordinateTransformer):
         w = pixel_homo[2]
 
         if abs(w) < 1e-10:
-            return self._affine.geo_to_pixel(longitude, latitude)
-
-        hpx, hpy = pixel_homo[0] / w, pixel_homo[1] / w
-        t = self._blend_factor(hpx, hpy, w)
-
-        if t >= 1.0:
-            px, py = hpx, hpy
-        elif t <= 0.0:
             px, py = self._affine.geo_to_pixel(longitude, latitude)
         else:
-            apx, apy = self._affine.geo_to_pixel(longitude, latitude)
-            px = t * hpx + (1 - t) * apx
-            py = t * hpy + (1 - t) * apy
+            hpx, hpy = pixel_homo[0] / w, pixel_homo[1] / w
+            t = self._blend_factor(hpx, hpy, w)
+
+            if t >= 1.0:
+                px, py = hpx, hpy
+            else:
+                apx, apy = self._affine.geo_to_pixel(longitude, latitude)
+                if t <= 0.0:
+                    px, py = apx, apy
+                else:
+                    px = t * hpx + (1 - t) * apx
+                    py = t * hpy + (1 - t) * apy
+                # Refine whenever outside the image (blend zone is possible)
+                if self._margin > 0:
+                    px, py = self._refine_inverse(
+                        px, py, longitude, latitude)
 
         if self.adjustment is not None:
             px, py = self.adjustment.apply_to_point(px, py)
@@ -1110,14 +1135,54 @@ class HybridTransformer(CoordinateTransformer):
 
         if t >= 1.0:
             return hpx, hpy
-        elif t <= 0.0:
-            return self._affine.geo_to_pixel_unadjusted(longitude, latitude)
+
+        apx, apy = self._affine.geo_to_pixel_unadjusted(longitude, latitude)
+        if t <= 0.0:
+            px, py = apx, apy
         else:
-            apx, apy = self._affine.geo_to_pixel_unadjusted(longitude, latitude)
-            return t * hpx + (1 - t) * apx, t * hpy + (1 - t) * apy
+            px = t * hpx + (1 - t) * apx
+            py = t * hpy + (1 - t) * apy
+        if self._margin > 0:
+            px, py = self._refine_inverse(px, py, longitude, latitude)
+        return px, py
+
+    def _refine_inverse(self, px: float, py: float,
+                        target_lon: float, target_lat: float) -> Tuple[float, float]:
+        """Newton refinement so pixel_to_geo(px, py) ≈ (target_lon, target_lat)."""
+        eps = 0.5
+        for _ in range(4):
+            lon0, lat0 = self.pixel_to_geo(px, py)
+            err_lon = target_lon - lon0
+            err_lat = target_lat - lat0
+            if abs(err_lon) < 1e-12 and abs(err_lat) < 1e-12:
+                break
+            # Numerical Jacobian of pixel_to_geo
+            lon_dx, lat_dx = self.pixel_to_geo(px + eps, py)
+            lon_dy, lat_dy = self.pixel_to_geo(px, py + eps)
+            J = np.array([
+                [(lon_dx - lon0) / eps, (lon_dy - lon0) / eps],
+                [(lat_dx - lat0) / eps, (lat_dy - lat0) / eps],
+            ])
+            det = J[0, 0] * J[1, 1] - J[0, 1] * J[1, 0]
+            if abs(det) < 1e-30:
+                break
+            # Inverse Jacobian * error
+            dpx = (J[1, 1] * err_lon - J[0, 1] * err_lat) / det
+            dpy = (-J[1, 0] * err_lon + J[0, 0] * err_lat) / det
+            px += dpx
+            py += dpy
+        return px, py
 
     def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
-        """Blended pixel->geo: homography inside image, affine outside."""
+        """Blended pixel->geo: homography inside image, affine outside.
+
+        If an adjustment is set, applies its inverse before the base
+        transformation so that adjusted pixel positions map to the
+        correct geographic location.
+        """
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_inverse_to_point(pixel_x, pixel_y)
+
         t = self._blend_factor(pixel_x, pixel_y)
 
         if t >= 1.0:

@@ -140,6 +140,7 @@ class TestCreateLanes:
 
         section.lanes = [center_lane, right_lane]
         road.lane_sections = [section]
+        road.speed_limit = None
         return road
 
     def test_creates_lanes_element(self, builder, mock_road):
@@ -208,9 +209,10 @@ class TestCreateLanesWithLaneOffset:
         section.single_side = None
         section.lanes = []
         road.lane_sections = [section]
+        road.speed_limit = None
         return road
 
-    def test_lane_offset_element(self, builder, mock_road_with_offset):
+    def test_lane_offset_element_created(self, builder, mock_road_with_offset):
         """Lane offset element created."""
         result = builder.create_lanes(mock_road_with_offset, 100.0, [])
 
@@ -242,6 +244,7 @@ class TestCreateSectionBasedLanes:
         section.single_side = 'right'
         section.lanes = []
         road.lane_sections = [section]
+        road.speed_limit = None
 
         result = builder.create_lanes(road, 100.0, [])
 
@@ -266,6 +269,7 @@ class TestCreateSectionBasedLanes:
         section2.lanes = []
 
         road.lane_sections = [section1, section2]
+        road.speed_limit = None
 
         result = builder.create_lanes(road, 100.0, [])
 
@@ -303,6 +307,7 @@ class TestCreateSectionBasedLanes:
 
         section.lanes = [lane1, lane2]  # Out of order
         road.lane_sections = [section]
+        road.speed_limit = None
 
         result = builder.create_lanes(road, 100.0, [])
 

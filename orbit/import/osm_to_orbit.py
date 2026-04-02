@@ -22,6 +22,7 @@ from orbit.utils.geometry import calculate_path_length, find_point_at_distance_a
 from orbit.utils.logging_config import get_logger
 
 from .osm_mappings import (
+    DEFAULT_SPEED_LIMITS,
     estimate_lane_count,
     get_lane_width_for_highway,
     get_object_type_from_osm,
@@ -1650,7 +1651,7 @@ def _create_normal_road(osm_way: OSMWay, highway: str, centerline: Polyline,
         lane_info=LaneInfo(left_count=left_lanes, right_count=right_lanes, lane_width=lane_width)
     )
     road.add_polyline(centerline.id)
-    _apply_speed_limit(road, osm_way.tags)
+    _apply_speed_limit(road, osm_way.tags, highway)
 
     turn_lanes_forward, turn_lanes_backward = _parse_turn_lane_tags(osm_way.tags, oneway)
     surface_material = _resolve_surface_material(osm_way.tags)
@@ -1688,14 +1689,19 @@ def _resolve_lane_width(tags: dict, highway: str, total_lanes: int,
     return lane_width
 
 
-def _apply_speed_limit(road: Road, tags: dict):
-    """Set speed limit on road from OSM maxspeed tag."""
-    if 'maxspeed' in tags:
-        speed_value, speed_unit = parse_maxspeed(tags['maxspeed'])
-        if speed_value:
-            if speed_unit == 'mph':
-                speed_value = int(speed_value * 1.60934)
-            road.speed_limit = float(speed_value)
+def _apply_speed_limit(road: Road, tags: dict, highway: str = ''):
+    """Set speed limit on road from OSM maxspeed tag, falling back to road-type default."""
+    for key in ('maxspeed', 'maxspeed:forward', 'maxspeed:backward'):
+        if key in tags:
+            speed_value, speed_unit = parse_maxspeed(tags[key])
+            if speed_value:
+                if speed_unit == 'mph':
+                    speed_value = int(speed_value * 1.60934)
+                road.speed_limit = float(speed_value)
+                return
+    # Fall back to road-type default when no maxspeed tag (or unparseable value)
+    default = DEFAULT_SPEED_LIMITS.get(highway, DEFAULT_SPEED_LIMITS['default'])
+    road.speed_limit = float(default)
 
 
 def _parse_turn_lane_tags(tags: dict, oneway: bool):

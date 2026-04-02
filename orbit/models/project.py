@@ -117,6 +117,8 @@ class Project:
     roundabout_ring_offset_distance_meters: float = 4.0
     # Distance to offset approach road endpoints from roundabout junctions (meters)
     roundabout_approach_offset_distance_meters: float = 8.0
+    # Use bidirectional CRs for complementary turn pairs at junctions
+    bidirectional_turn_connections: bool = True
     georef_validation: Dict[str, Any] = field(default_factory=dict)
     uncertainty_grid_cache: Optional[List[List[float]]] = None  # Cached uncertainty grid
     uncertainty_grid_resolution: Tuple[int, int] = (50, 50)  # Grid resolution
@@ -476,11 +478,15 @@ class Project:
 
                 # Always set connecting_lane_id when missing, even for
                 # connections already linked (e.g. set during OSM import).
-                # Right lanes (negative IDs) → CR lane -1; left → +1.
-                if lc.connecting_lane_id is None:
-                    lc.connecting_lane_id = (
-                        -1 if lc.from_lane_id < 0 else 1
-                    )
+                if lc.connecting_lane_id is None and lc.connecting_road_id:
+                    cr = self.get_road(lc.connecting_road_id)
+                    if cr and cr.is_connecting_road:
+                        if lc.from_lane_id < 0:
+                            lc.connecting_lane_id = -1 if cr.cr_lane_count_right > 0 else 1
+                        else:
+                            lc.connecting_lane_id = 1 if cr.cr_lane_count_left > 0 else -1
+                    else:
+                        lc.connecting_lane_id = -1 if lc.from_lane_id < 0 else 1
 
         return linked
 
@@ -1503,6 +1509,7 @@ class Project:
             'junction_offset_distance_meters': self.junction_offset_distance_meters,
             'roundabout_ring_offset_distance_meters': self.roundabout_ring_offset_distance_meters,
             'roundabout_approach_offset_distance_meters': self.roundabout_approach_offset_distance_meters,
+            'bidirectional_turn_connections': self.bidirectional_turn_connections,
             'georef_validation': self.georef_validation,
             'uncertainty_grid_cache': self.uncertainty_grid_cache,
             'uncertainty_grid_resolution': self.uncertainty_grid_resolution,
@@ -1561,6 +1568,8 @@ class Project:
             roundabout_approach_offset_distance_meters=data.get(
                 'roundabout_approach_offset_distance_meters', 8.0
             ),
+            # Default False for existing files (backward compat); new projects use True
+            bidirectional_turn_connections=data.get('bidirectional_turn_connections', False),
             georef_validation=data.get('georef_validation', {}),
             uncertainty_grid_cache=data.get('uncertainty_grid_cache'),
             uncertainty_grid_resolution=tuple(data.get('uncertainty_grid_resolution', [50, 50])),

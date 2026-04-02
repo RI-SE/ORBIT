@@ -1387,3 +1387,517 @@ class TestOffsetAndGeoReference:
         assert writer.offset_x == 0.0
         assert writer.offset_y == 0.0
         assert writer.geo_reference_string is None
+
+
+class TestRoadJunctionIdCollision:
+    """Tests for road/junction ID remapping to avoid CARLA incompatibility.
+
+    CARLA's OpenDRIVE parser determines whether a predecessor/successor link
+    targets a road or junction via ``!ContainsRoad(id)``.  If a road and a
+    junction share the same numeric ID, CARLA treats junction references as
+    road-to-road links, breaking junction routing.
+    """
+
+    @pytest.fixture
+    def mock_transformer(self):
+        return MockTransformer(scale=(0.1, 0.1))
+
+    def test_no_road_junction_id_overlap(self, mock_transformer, tmp_path):
+        """Exported XODR must never have a road ID equal to a junction ID."""
+        project = Project()
+
+        # Create polylines for 3 roads — IDs will start at 1
+        for i in range(3):
+            cl = Polyline(id=str(i + 1))
+            cl.line_type = LineType.CENTERLINE
+            cl.points = [(i * 100, 0), (i * 100 + 80, 0)]
+            project.polylines.append(cl)
+
+        road1 = Road(id="1", centerline_id="1", polyline_ids=["1"])
+        road2 = Road(id="2", centerline_id="2", polyline_ids=["2"])
+        road3 = Road(id="3", centerline_id="3", polyline_ids=["3"])
+        for r in (road1, road2, road3):
+            project.roads.append(r)
+
+        # Junction with ID "1" — same numeric ID as road1
+        junction = Junction(id="1", name="Test Junction")
+        junction.connected_road_ids = ["1", "2"]
+        junction.connecting_road_ids = ["10"]
+
+        # Create a connecting road
+        cr = Road(id="10", junction_id="1",
+                  inline_path=[(0, 0), (10, 10)],
+                  predecessor_id="1", successor_id="2")
+        project.roads.append(cr)
+
+        lc = LaneConnection(
+            from_road_id="1", to_road_id="2",
+            from_lane_id=-1, to_lane_id=-1,
+            connecting_road_id="10", connecting_lane_id=-1
+        )
+        junction.lane_connections.append(lc)
+        project.junctions.append(junction)
+
+        output_path = tmp_path / "collision_test.xodr"
+        result = export_to_opendrive(
+            project, mock_transformer, str(output_path),
+            geo_reference_string="+proj=utm +zone=33 +datum=WGS84"
+        )
+        assert result is True
+
+        # Parse output and collect IDs
+        tree = etree.parse(str(output_path))
+        root = tree.getroot()
+        ns = ''
+        if root.tag.startswith('{'):
+            ns = root.tag.split('}')[0] + '}'
+
+        road_ids = {int(r.get('id')) for r in root.findall(f'{ns}road')}
+        junction_ids = {int(j.get('id')) for j in root.findall(f'{ns}junction')}
+
+        overlap = road_ids & junction_ids
+        assert overlap == set(), (
+            f"Road IDs {road_ids} overlap with junction IDs {junction_ids}: {overlap}"
+        )
+
+    def test_remapped_ids_consistent_across_elements(self, mock_transformer, tmp_path):
+        """Road ID remapping must be consistent in road elements, links, and junction connections."""
+        project = Project()
+
+        cl1 = Polyline(id="1", line_type=LineType.CENTERLINE, points=[(0, 0), (80, 0)])
+        cl2 = Polyline(id="2", line_type=LineType.CENTERLINE, points=[(0, 10), (80, 10)])
+        project.polylines.extend([cl1, cl2])
+
+        road1 = Road(id="1", centerline_id="1", polyline_ids=["1"])
+        road2 = Road(id="2", centerline_id="2", polyline_ids=["2"], predecessor_id="1")
+        project.roads.extend([road1, road2])
+
+        junction = Junction(id="1", name="J1")
+        junction.connected_road_ids = ["1", "2"]
+        junction.connecting_road_ids = ["10"]
+
+        cr = Road(id="10", junction_id="1",
+                  inline_path=[(80, 0), (0, 10)],
+                  predecessor_id="1", successor_id="2")
+        project.roads.append(cr)
+
+        lc = LaneConnection(
+            from_road_id="1", to_road_id="2",
+            from_lane_id=-1, to_lane_id=-1,
+            connecting_road_id="10", connecting_lane_id=-1
+        )
+        junction.lane_connections.append(lc)
+        project.junctions.append(junction)
+
+        output_path = tmp_path / "consistency_test.xodr"
+        export_to_opendrive(
+            project, mock_transformer, str(output_path),
+            geo_reference_string="+proj=utm +zone=33 +datum=WGS84"
+        )
+
+        tree = etree.parse(str(output_path))
+        root = tree.getroot()
+        ns = ''
+        if root.tag.startswith('{'):
+            ns = root.tag.split('}')[0] + '}'
+
+        # Junction connection incomingRoad must reference a valid road
+        for junc in root.findall(f'{ns}junction'):
+            for conn in junc.findall(f'{ns}connection'):
+                ir = conn.get('incomingRoad')
+                cr_id = conn.get('connectingRoad')
+                all_road_ids = {r.get('id') for r in root.findall(f'{ns}road')}
+                assert ir in all_road_ids, f"incomingRoad={ir} not found in road IDs {all_road_ids}"
+                assert cr_id in all_road_ids, f"connectingRoad={cr_id} not found in road IDs {all_road_ids}"
+
+        # Connecting road's link predecessor/successor must reference valid roads
+        for road in root.findall(f'{ns}road'):
+            if road.get('junction') != '-1':
+                link = road.find(f'{ns}link')
+                if link is not None:
+                    for tag in ['predecessor', 'successor']:
+                        elem = link.find(f'{ns}{tag}')
+                        if elem is not None and elem.get('elementType') == 'road':
+                            ref_id = elem.get('elementId')
+                            all_road_ids = {r.get('id') for r in root.findall(f'{ns}road')}
+                            assert ref_id in all_road_ids, (
+                                f"CR link {tag} references road {ref_id} not in {all_road_ids}"
+                            )
+
+
+class TestCarlaCompat:
+    """Tests for CARLA compatibility mode (OpenDRIVE 1.4)."""
+
+    @pytest.fixture
+    def mock_transformer(self):
+        return MockTransformer(scale=(0.1, 0.1))
+
+    @pytest.fixture
+    def project_with_road(self):
+        """Create project with a road that has unknown road type and no speed limit."""
+        project = Project()
+        centerline = Polyline(id="1")
+        centerline.line_type = LineType.CENTERLINE
+        centerline.points = [(0, 0), (100, 0), (200, 0)]
+        project.polylines.append(centerline)
+
+        road = Road(id="1")
+        road.name = "Test Road"
+        road.centerline_id = centerline.id
+        road.polyline_ids = [centerline.id]
+        road.road_type = RoadType.UNKNOWN
+        road.speed_limit = None
+        project.roads.append(road)
+        return project
+
+    def _write_and_parse(self, project, transformer, tmp_path, carla_compat=False):
+        """Helper: write export and parse back the XML."""
+        writer = OpenDriveWriter(
+            project=project,
+            transformer=transformer,
+            carla_compat=carla_compat,
+        )
+        output_path = tmp_path / "test.xodr"
+        writer.write(str(output_path))
+        tree = etree.parse(str(output_path))
+        return tree.getroot()
+
+    def test_header_version_14(self, project_with_road, mock_transformer, tmp_path):
+        """CARLA mode sets revMinor=4."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=True)
+        header = root.find('header')
+        assert header.get('revMajor') == '1'
+        assert header.get('revMinor') == '4'
+
+    def test_header_version_18_default(self, project_with_road, mock_transformer, tmp_path):
+        """Default mode sets revMinor=8."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=False)
+        # Namespace-aware: tag includes namespace
+        ns = '{http://code.asam.net/simulation/standard/opendrive_schema}'
+        header = root.find(f'{ns}header')
+        assert header.get('revMinor') == '8'
+
+    def test_no_xmlns_in_carla_mode(self, project_with_road, mock_transformer, tmp_path):
+        """CARLA mode omits xmlns namespace."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=True)
+        assert root.tag == 'OpenDRIVE'
+        assert root.nsmap == {}
+
+    def test_vendor_in_carla_mode(self, project_with_road, mock_transformer, tmp_path):
+        """CARLA mode still includes vendor attribute in header."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=True)
+        header = root.find('header')
+        assert header.get('vendor') is not None
+        assert 'RISE' in header.get('vendor')
+
+    def test_userdata_in_carla_mode(self, project_with_road, mock_transformer, tmp_path):
+        """CARLA mode still includes userData elements in header."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=True)
+        header = root.find('header')
+        user_data = header.findall('userData')
+        assert len(user_data) >= 2
+
+    def test_road_type_unknown_mapped_to_town(self, project_with_road, mock_transformer, tmp_path):
+        """CARLA mode maps 'unknown' road type to 'town'."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=True)
+        road = root.find('road')
+        type_elem = road.find('type')
+        assert type_elem.get('type') == 'town'
+
+    def test_road_type_unknown_preserved_in_default_mode(self, project_with_road, mock_transformer, tmp_path):
+        """Default mode preserves 'unknown' road type."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=False)
+        ns = '{http://code.asam.net/simulation/standard/opendrive_schema}'
+        road = root.find(f'{ns}road')
+        type_elem = road.find(f'{ns}type')
+        assert type_elem.get('type') == 'unknown'
+
+    def test_default_speed_on_road_type(self, project_with_road, mock_transformer, tmp_path):
+        """CARLA mode adds default speed to road type when none set."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=True)
+        road = root.find('road')
+        type_elem = road.find('type')
+        speed = type_elem.find('speed')
+        assert speed is not None
+        assert speed.get('max') == '13.89'
+        assert speed.get('unit') == 'm/s'
+
+    def test_default_speed_on_driving_lanes(self, project_with_road, mock_transformer, tmp_path):
+        """CARLA mode adds default speed to driving lanes."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=True)
+        road = root.find('road')
+        lanes = road.find('lanes')
+        right = lanes.find('.//laneSection/right')
+        if right is not None:
+            for lane in right.findall('lane'):
+                if lane.get('type') == 'driving':
+                    speed = lane.find('speed')
+                    assert speed is not None, "Driving lane missing speed element"
+                    assert speed.get('max') == '13.89'
+
+    def test_empty_signals_in_carla_mode(self, project_with_road, mock_transformer, tmp_path):
+        """CARLA mode adds empty <signals/> element on roads."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=True)
+        road = root.find('road')
+        signals = road.find('signals')
+        assert signals is not None
+
+    def test_empty_objects_in_carla_mode(self, project_with_road, mock_transformer, tmp_path):
+        """CARLA mode adds empty <objects/> element on roads."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=True)
+        road = root.find('road')
+        objects = road.find('objects')
+        assert objects is not None
+
+    def test_no_signals_in_default_mode_when_empty(self, project_with_road, mock_transformer, tmp_path):
+        """Default mode omits signals element when no signals exist."""
+        root = self._write_and_parse(project_with_road, mock_transformer, tmp_path, carla_compat=False)
+        ns = '{http://code.asam.net/simulation/standard/opendrive_schema}'
+        road = root.find(f'{ns}road')
+        signals = road.find(f'{ns}signals')
+        assert signals is None
+
+    def test_carla_road_type_mapping(self):
+        """Test _carla_road_type maps correctly."""
+        assert OpenDriveWriter._carla_road_type('unknown') == 'town'
+        assert OpenDriveWriter._carla_road_type('rural') == 'rural'
+        assert OpenDriveWriter._carla_road_type('motorway') == 'motorway'
+        assert OpenDriveWriter._carla_road_type('town') == 'town'
+        assert OpenDriveWriter._carla_road_type('lowSpeed') == 'lowSpeed'
+        assert OpenDriveWriter._carla_road_type('pedestrian') == 'pedestrian'
+        assert OpenDriveWriter._carla_road_type('bicycle') == 'bicycle'
+        # 1.7+ types map to 'town'
+        assert OpenDriveWriter._carla_road_type('townExpressway') == 'town'
+        assert OpenDriveWriter._carla_road_type('townCollector') == 'town'
+        assert OpenDriveWriter._carla_road_type('townArterial') == 'town'
+
+    def test_junction_no_type_attr_in_carla_mode(self, mock_transformer, tmp_path):
+        """CARLA mode omits 'type' attribute on junction elements."""
+        project = Project()
+
+        # Create two roads connected by a junction
+        cl1 = Polyline(id="cl1")
+        cl1.line_type = LineType.CENTERLINE
+        cl1.points = [(0, 0), (50, 0), (100, 0)]
+        project.polylines.append(cl1)
+        r1 = Road(id="r1", name="Road1", centerline_id="cl1", polyline_ids=["cl1"])
+        project.roads.append(r1)
+
+        cl2 = Polyline(id="cl2")
+        cl2.line_type = LineType.CENTERLINE
+        cl2.points = [(100, 0), (150, 0), (200, 0)]
+        project.polylines.append(cl2)
+        r2 = Road(id="r2", name="Road2", centerline_id="cl2", polyline_ids=["cl2"])
+        project.roads.append(r2)
+
+        # Connecting road
+        cl3 = Polyline(id="cl3")
+        cl3.line_type = LineType.CENTERLINE
+        cl3.points = [(95, 5), (100, 0), (105, -5)]
+        project.polylines.append(cl3)
+        cr = Road(id="cr", name="CR", centerline_id="cl3", polyline_ids=["cl3"])
+        cr.predecessor_id = "r1"
+        cr.predecessor_contact = "end"
+        cr.successor_id = "r2"
+        cr.successor_contact = "start"
+        cr.junction_id = "j1"
+        project.roads.append(cr)
+
+        junc = Junction(id="j1", name="J1", center_point=(100, 0))
+        junc.connected_road_ids = ["r1", "r2", "cr"]
+        junc.lane_connections = [
+            LaneConnection(from_road_id="r1", to_road_id="r2",
+                           from_lane_id=-1, to_lane_id=-1,
+                           connecting_road_id="cr", connecting_lane_id=-1)
+        ]
+        project.junctions.append(junc)
+
+        root = self._write_and_parse(project, mock_transformer, tmp_path, carla_compat=True)
+        junc_elems = root.findall('junction')
+        for j in junc_elems:
+            assert j.get('type') is None, f"Junction {j.get('id')} should not have 'type' attr"
+
+    def test_junction_has_type_in_default_mode(self, mock_transformer, tmp_path):
+        """Default mode includes 'type' attribute on junction elements."""
+        project = Project()
+        cl1 = Polyline(id="cl1")
+        cl1.line_type = LineType.CENTERLINE
+        cl1.points = [(0, 0), (50, 0), (100, 0)]
+        project.polylines.append(cl1)
+        r1 = Road(id="r1", name="Road1", centerline_id="cl1", polyline_ids=["cl1"])
+        project.roads.append(r1)
+
+        cl2 = Polyline(id="cl2")
+        cl2.line_type = LineType.CENTERLINE
+        cl2.points = [(100, 0), (150, 0), (200, 0)]
+        project.polylines.append(cl2)
+        r2 = Road(id="r2", name="Road2", centerline_id="cl2", polyline_ids=["cl2"])
+        project.roads.append(r2)
+
+        cl3 = Polyline(id="cl3")
+        cl3.line_type = LineType.CENTERLINE
+        cl3.points = [(95, 5), (100, 0), (105, -5)]
+        project.polylines.append(cl3)
+        cr = Road(id="cr", name="CR", centerline_id="cl3", polyline_ids=["cl3"])
+        cr.predecessor_id = "r1"
+        cr.predecessor_contact = "end"
+        cr.successor_id = "r2"
+        cr.successor_contact = "start"
+        cr.junction_id = "j1"
+        project.roads.append(cr)
+
+        junc = Junction(id="j1", name="J1", center_point=(100, 0))
+        junc.connected_road_ids = ["r1", "r2", "cr"]
+        junc.lane_connections = [
+            LaneConnection(from_road_id="r1", to_road_id="r2",
+                           from_lane_id=-1, to_lane_id=-1,
+                           connecting_road_id="cr", connecting_lane_id=-1)
+        ]
+        project.junctions.append(junc)
+
+        root = self._write_and_parse(project, mock_transformer, tmp_path, carla_compat=False)
+        ns = '{http://code.asam.net/simulation/standard/opendrive_schema}'
+        junc_elems = root.findall(f'{ns}junction')
+        for j in junc_elems:
+            assert j.get('type') == 'default'
+
+    def test_export_to_opendrive_carla_compat_kwarg(self, project_with_road, mock_transformer, tmp_path):
+        """export_to_opendrive() passes carla_compat through."""
+        output_path = tmp_path / "carla.xodr"
+        result = export_to_opendrive(
+            project_with_road, mock_transformer, str(output_path),
+            carla_compat=True,
+        )
+        assert result is True
+
+        tree = etree.parse(str(output_path))
+        root = tree.getroot()
+        assert root.tag == 'OpenDRIVE'  # No namespace
+        header = root.find('header')
+        assert header.get('revMinor') == '4'
+
+
+class TestJunctionLinkOverrides:
+    """Tests for manual junction link overrides on road export."""
+
+    @pytest.fixture
+    def mock_transformer(self):
+        return MockTransformer(scale=(0.1, 0.1))
+
+    @pytest.fixture
+    def project_with_junction(self):
+        """Project with a road, junction, and connecting road."""
+        project = Project()
+
+        road1 = Road(name="Main Road")
+        road1.add_polyline("poly1")
+        poly1 = Polyline(id="poly1", points=[(0, 0), (100, 0)])
+        project.add_polyline(poly1)
+        project.add_road(road1)
+
+        road2 = Road(name="Side Road")
+        road2.add_polyline("poly2")
+        poly2 = Polyline(id="poly2", points=[(100, 0), (200, 0)])
+        project.add_polyline(poly2)
+        project.add_road(road2)
+
+        junction = Junction(name="J1")
+        project.add_junction(junction)
+
+        cr = Road(name="CR1")
+        cr.junction_id = junction.id  # Makes it a connecting road
+        cr.predecessor_id = road1.id
+        cr.successor_id = road2.id
+        cr.inline_path = [(100, 0), (100, 10)]
+        junction.connecting_road_ids.append(cr.id)
+        project.add_road(cr)
+
+        return project
+
+    def test_explicit_junction_id_used(self, project_with_junction, mock_transformer):
+        """When successor_junction_id is set to a junction ID, export uses it."""
+        project = project_with_junction
+        road = project.roads[0]  # Main Road
+        junction = project.junctions[0]
+        road.successor_junction_id = junction.id
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        road_elem = etree.Element('road')
+        writer._build_road_link_xml(road_elem, road)
+
+        link = road_elem.find('link')
+        succ = link.find('successor')
+        assert succ is not None
+        assert succ.get('elementType') == 'junction'
+
+    def test_none_sentinel_suppresses_auto_detect(self, project_with_junction, mock_transformer):
+        """When successor_junction_id is '__none__', no junction link is emitted."""
+        project = project_with_junction
+        road = project.roads[0]
+        road.successor_junction_id = "__none__"
+        road.successor_id = None  # No road link either
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        road_elem = etree.Element('road')
+        writer._build_road_link_xml(road_elem, road)
+
+        link = road_elem.find('link')
+        succ = link.find('successor')
+        assert succ is None
+
+    def test_auto_detect_when_none(self, project_with_junction, mock_transformer):
+        """When predecessor_junction_id is None (default), auto-detection runs."""
+        project = project_with_junction
+        road = project.roads[0]
+        assert road.predecessor_junction_id is None
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        road_elem = etree.Element('road')
+        writer._build_road_link_xml(road_elem, road)
+
+        # Auto-detect may or may not find a junction — the point is it doesn't crash
+        link = road_elem.find('link')
+        assert link is not None
+
+    def test_junction_id_roundtrip_serialization(self):
+        """Junction IDs (including __none__) survive to_dict/from_dict."""
+        road = Road(name="Test")
+        road.predecessor_junction_id = "__none__"
+        road.successor_junction_id = "some-junction-id"
+
+        data = road.to_dict()
+        restored = Road.from_dict(data)
+
+        assert restored.predecessor_junction_id == "__none__"
+        assert restored.successor_junction_id == "some-junction-id"
+
+    def test_junction_id_none_not_in_dict(self):
+        """When junction IDs are None, they are omitted from dict."""
+        road = Road(name="Test")
+        assert road.predecessor_junction_id is None
+        assert road.successor_junction_id is None
+
+        data = road.to_dict()
+        assert 'predecessor_junction_id' not in data
+        assert 'successor_junction_id' not in data
+
+    def test_both_pred_and_succ_junction_overrides(self, project_with_junction, mock_transformer):
+        """Both predecessor and successor junction overrides work independently."""
+        project = project_with_junction
+        road = project.roads[0]
+        junction = project.junctions[0]
+        road.predecessor_junction_id = "__none__"  # Suppress predecessor
+        road.successor_junction_id = junction.id   # Explicit successor
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        road_elem = etree.Element('road')
+        writer._build_road_link_xml(road_elem, road)
+
+        link = road_elem.find('link')
+        pred = link.find('predecessor')
+        succ = link.find('successor')
+        # Predecessor suppressed (no road link either since predecessor_id is None)
+        assert pred is None
+        # Successor explicitly set to junction
+        assert succ is not None
+        assert succ.get('elementType') == 'junction'

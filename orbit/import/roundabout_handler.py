@@ -19,6 +19,7 @@ from orbit.models.road import LaneInfo, RoadType
 from orbit.utils.geometry import generate_simple_connection_path
 from orbit.utils.logging_config import get_logger
 
+from .osm_mappings import DEFAULT_SPEED_LIMITS, parse_maxspeed
 from .osm_parser import OSMData, OSMWay
 
 logger = get_logger(__name__)
@@ -216,13 +217,16 @@ def analyze_roundabout(
             pass
 
     # Extract speed limit
+    highway = osm_way.tags.get('highway', '')
     speed_limit = None
     if 'maxspeed' in osm_way.tags:
-        try:
-            speed_str = osm_way.tags['maxspeed'].replace(' km/h', '').replace('km/h', '')
-            speed_limit = float(speed_str)
-        except ValueError:
-            pass
+        speed_value, speed_unit = parse_maxspeed(osm_way.tags['maxspeed'])
+        if speed_value:
+            if speed_unit == 'mph':
+                speed_value = int(speed_value * 1.60934)
+            speed_limit = float(speed_value)
+    if speed_limit is None:
+        speed_limit = float(DEFAULT_SPEED_LIMITS.get(highway, DEFAULT_SPEED_LIMITS['default']))
 
     # Find shared nodes (connection points)
     shared_nodes = find_shared_nodes(osm_way, osm_data)

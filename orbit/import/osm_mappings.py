@@ -42,16 +42,38 @@ DEFAULT_LANE_WIDTHS = {
 }
 
 # Speed limits by road type (km/h) - used if maxspeed tag missing
+# Values reflect Swedish road regulations as baseline
 DEFAULT_SPEED_LIMITS = {
+    'motorway': 110,       # SE: standard motorway (motorväg)
+    'trunk': 90,           # SE: riksväg / European route
+    'primary': 80,         # SE: national primary road
+    'secondary': 70,       # SE: county road
+    'tertiary': 50,        # SE: local road
+    'unclassified': 50,    # SE: minor road
+    'residential': 30,     # SE: bostadsgata
+    'service': 20,         # SE: service road
+    'living_street': 10,   # SE: gångfartsområde (walking pace)
+    'track': 30,           # Unpaved track, estimate
+    'default': 50,         # Generic fallback (urban default)
+}
+
+# Implicit maxspeed values for country:context OSM tags (km/h)
+# Checked before generic pattern matching in parse_maxspeed
+IMPLICIT_SPEED_LIMITS = {
+    # Sweden (SE) - https://www.transportstyrelsen.se
+    'se:urban': 50,
+    'se:rural': 80,       # Lowered from 90 to 80 in 2008
+    'se:motorway': 110,
+    'se:living_street': 10,
+    # Germany (DE)
+    'de:urban': 50,
+    'de:rural': 100,
+    'de:living_street': 10,
+    # Generic fallbacks (used when no country prefix matches)
+    'urban': 50,
+    'rural': 80,           # Conservative generic default
     'motorway': 110,
-    'trunk': 90,
-    'primary': 70,
-    'secondary': 60,
-    'tertiary': 50,
-    'residential': 30,
-    'service': 20,
-    'living_street': 20,
-    'default': 50,
+    'living_street': 10,
 }
 
 # OSM traffic sign types to ORBIT SignalType
@@ -99,17 +121,9 @@ OSM_HIGHWAY_SIGN_TYPES = {
 }
 
 # OSM maxspeed formats
-# Examples: "50", "50 km/h", "30 mph", "DE:urban"
+# Examples: "50", "50 km/h", "30 mph", "SE:rural", "DE:urban"
 def parse_maxspeed(maxspeed_str: str) -> tuple[int | None, str]:
-    """
-    Parse OSM maxspeed tag.
-
-    Args:
-        maxspeed_str: Value of maxspeed tag
-
-    Returns:
-        Tuple of (speed_value, unit) or (None, 'kmh') if unparseable
-    """
+    """Parse OSM maxspeed tag. Returns (speed_km/h, unit) or (None, 'kmh')."""
     if not maxspeed_str:
         return None, 'kmh'
 
@@ -119,11 +133,14 @@ def parse_maxspeed(maxspeed_str: str) -> tuple[int | None, str]:
     if maxspeed_str in ['none', 'unlimited', 'signals', 'variable']:
         return None, 'kmh'
 
-    # Country-specific defaults
-    if 'urban' in maxspeed_str:
-        return 50, 'kmh'
-    if 'rural' in maxspeed_str:
-        return 100, 'kmh'
+    # Country-specific implicit values (e.g. "SE:rural", "DE:urban")
+    if maxspeed_str in IMPLICIT_SPEED_LIMITS:
+        return IMPLICIT_SPEED_LIMITS[maxspeed_str], 'kmh'
+
+    # Generic implicit context (e.g. "urban", "rural") — check suffix after colon
+    suffix = maxspeed_str.split(':')[-1]
+    if suffix in IMPLICIT_SPEED_LIMITS:
+        return IMPLICIT_SPEED_LIMITS[suffix], 'kmh'
 
     # Parse numeric value
     import re
