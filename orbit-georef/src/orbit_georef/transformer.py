@@ -35,6 +35,7 @@ class GeoTransformer:
         scale_y: float = 1.0,
         control_points: Optional[List[ControlPoint]] = None,
         source_info: Optional[Dict[str, Any]] = None,
+        proj_string: Optional[str] = None,
     ):
         """
         Initialize transformer with precomputed matrices.
@@ -61,6 +62,7 @@ class GeoTransformer:
         self._scale_y = scale_y
         self.control_points = control_points or []
         self.source_info = source_info or {}
+        self.proj_string = proj_string
 
     @classmethod
     def from_file(cls, path: str) -> "GeoTransformer":
@@ -145,15 +147,19 @@ class GeoTransformer:
             Tuple of (x, y) in the target coordinate system. If `proj_string` is `None`, returns (longitude, latitude).
         """
         if self.method == "homography":
-            # Homography: pixel → meters → geo
+            # Homography: pixel → projected coords → geo
             pixel_homo = np.array([pixel_x, pixel_y, 1.0])
             ground_homo = self.transform_matrix @ pixel_homo
             mx = ground_homo[0] / ground_homo[2]
             my = ground_homo[1] / ground_homo[2]
 
-            if proj_string:
+            if self.proj_string:
+                # Matrix was fitted in self.proj_string CRS — invert back to lon/lat
+                t = pyproj.Transformer.from_crs(self.proj_string, "EPSG:4326", always_xy=True)
+                lon, lat = t.transform(mx, my)
+                return lon, lat
+            elif proj_string:
                 return self._meters_to_proj(mx, my, proj_string)
-
             else:
                 lat, lon = self._meters_to_latlon(mx, my)
                 return lon, lat
@@ -205,8 +211,12 @@ class GeoTransformer:
             Tuple of (pixel_x, pixel_y)
         """
         if self.method == "homography":
-            # Homography: geo → meters → pixel
-            east, north = self._latlon_to_meters(latitude, longitude)
+            # Homography: geo → projected coords → pixel
+            if self.proj_string:
+                t = pyproj.Transformer.from_crs("EPSG:4326", self.proj_string, always_xy=True)
+                east, north = t.transform(longitude, latitude)
+            else:
+                east, north = self._latlon_to_meters(latitude, longitude)
             ground_homo = np.array([east, north, 1.0])
             pixel_homo = self.inverse_matrix @ ground_homo
             return pixel_homo[0] / pixel_homo[2], pixel_homo[1] / pixel_homo[2]

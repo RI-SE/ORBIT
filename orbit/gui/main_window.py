@@ -912,6 +912,34 @@ class MainWindow(QMainWindow):
         except Exception as e:
             show_error(self, f"OSM export failed:\n{e}", "Export Error")
 
+    def _ask_projection_type(self) -> Optional[str]:
+        """Show projection selector dialog. Returns 'utm', 'tmerc', 'preserved', or None if cancelled."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QComboBox, QLabel, QDialogButtonBox
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Select Projection")
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Coordinate system for exported georef:"))
+
+        combo = QComboBox()
+        combo.addItem("UTM", "utm")
+        combo.addItem("Transverse Mercator", "tmerc")
+        if self.project.imported_geo_reference:
+            combo.addItem("Preserved from import", "preserved")
+        layout.addWidget(combo)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.setLayout(layout)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return combo.currentData()
+
     def export_georeferencing(self):
         """Export georeferencing parameters to JSON file."""
         from orbit.export import export_georeferencing
@@ -945,7 +973,30 @@ class MainWindow(QMainWindow):
         if not self._prompt_and_handle_unapplied_adjustment():
             return
 
-        transformer = self._create_transformer(use_validation=True)
+        base_transformer = self._create_transformer(use_validation=True)
+        if not base_transformer:
+            show_error(self, "Failed to create coordinate transformer.\n"
+                "Please check your control points.", "Transformation Error")
+            return
+
+        projection_type = self._ask_projection_type()
+        if projection_type is None:
+            return  # user cancelled
+
+        if projection_type == "preserved":
+            proj_string = self.project.imported_geo_reference
+        elif projection_type == "tmerc":
+            proj_string = base_transformer.get_projection_string()
+        else:
+            proj_string = base_transformer.get_utm_projection_string()
+
+        from orbit.utils.coordinate_transform import create_transformer as _create_transformer
+        transformer = _create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            use_validation=True,
+            export_proj_string=proj_string,
+        )
         if not transformer:
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
