@@ -117,7 +117,7 @@ def save_georef(transformer: GeoTransformer, path: Union[str, Path]) -> None:
 
     data = {
         "format": "ORBIT Georeferencing Data",
-        "version": "1.0",
+        "version": "1.1" if transformer.proj_string else "1.0",
         "creator": creator,
         "source": source_info,
         "transform_method": transformer.method,
