@@ -178,9 +178,13 @@ class ProjectController:
         pred_pos, pred_heading = get_contact_pos_heading(
             pred_pl, conn_road.predecessor_contact
         )
+        if conn_road.predecessor_contact == "start":
+            pred_heading += math.pi  # CR exits against pred's defined direction
         succ_pos, succ_heading = get_contact_pos_heading(
             succ_pl, conn_road.successor_contact
         )
+        if conn_road.successor_contact == "end":
+            succ_heading += math.pi  # CR enters against suc's defined direction
 
         path, coeffs = generate_simple_connection_path(
             from_pos=pred_pos, from_heading=pred_heading,
@@ -400,7 +404,12 @@ class ProjectController:
 
 
 def get_contact_pos_heading(polyline, contact_point) -> Tuple[Tuple[float, float], float]:
-    """Get position and heading at a polyline contact point."""
+    """Get position and raw road direction at a polyline contact point.
+
+    Returns the road's own travel direction at the contact, NOT the direction
+    of the connecting road. Callers must add π where the connecting road opposes
+    the road's defined direction (predecessor "start", successor "end").
+    """
     if contact_point == "end":
         pos = polyline.points[-1]
         if len(polyline.points) >= 2:
@@ -414,7 +423,7 @@ def get_contact_pos_heading(polyline, contact_point) -> Tuple[Tuple[float, float
         if len(polyline.points) >= 2:
             dx = polyline.points[1][0] - polyline.points[0][0]
             dy = polyline.points[1][1] - polyline.points[0][1]
-            heading = math.atan2(dy, dx) + math.pi
+            heading = math.atan2(dy, dx)
         else:
-            heading = math.pi
+            heading = 0.0
     return pos, heading

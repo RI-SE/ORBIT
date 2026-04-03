@@ -211,9 +211,18 @@ def create_variable_width_lane_polygon(
     inner_boundary = []
     outer_boundary = []
 
+    # Pre-compute cumulative arc-length for each point so width is
+    # distributed uniformly per unit distance, not per index step.
+    cumul = [0.0]
+    for i in range(1, n_points):
+        dx = centerline_points[i][0] - centerline_points[i - 1][0]
+        dy = centerline_points[i][1] - centerline_points[i - 1][1]
+        cumul.append(cumul[-1] + math.sqrt(dx * dx + dy * dy))
+    total_length = cumul[-1]
+
     for i, point in enumerate(centerline_points):
-        # Calculate interpolation factor (0 at start, 1 at end)
-        t = i / (n_points - 1) if n_points > 1 else 0
+        # Arc-length fraction (0 at start, 1 at end)
+        t = cumul[i] / total_length if total_length > 0 else 0
 
         # Interpolate offsets
         inner_offset = inner_offset_start + t * (inner_offset_end - inner_offset_start)
@@ -1096,8 +1105,20 @@ def calculate_bezier_control_points(
             )
             control_points.append(ctrl2)
         else:
-            # Use intersection as the control point (quadratic Bezier)
-            control_points.append(intersect)
+            # Use cubic Bezier: two control points proportional to distance.
+            # This distributes curvature evenly instead of concentrating it at a
+            # single intersection point (which creates a visual "waist" in large turns).
+            tangent_len = dist / 3
+            ctrl1 = (
+                start_pos[0] + start_tangent[0] * tangent_len,
+                start_pos[1] + start_tangent[1] * tangent_len,
+            )
+            ctrl2 = (
+                end_pos[0] - end_tangent[0] * tangent_len,
+                end_pos[1] - end_tangent[1] * tangent_len,
+            )
+            control_points.append(ctrl1)
+            control_points.append(ctrl2)
 
     control_points.append(end_pos)
     return control_points
