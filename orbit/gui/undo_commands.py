@@ -733,6 +733,44 @@ class DeleteSectionCommand(QUndoCommand):
         self.main_window._refresh_trees()
 
 
+class MergeSectionsCommand(QUndoCommand):
+    """Command for merging consecutive lane sections."""
+
+    def __init__(self, main_window: 'MainWindow', road_id: str,
+                 old_road_data: dict, new_road_data: dict):
+        super().__init__("Merge Lane Sections")
+        self.main_window = main_window
+        self.road_id = road_id
+        self.old_road_data = old_road_data
+        self.new_road_data = new_road_data
+        self._first_redo = True
+
+    def redo(self):
+        if self._first_redo:
+            self._first_redo = False
+            return
+        self._apply_road_data(self.new_road_data)
+
+    def undo(self):
+        self._apply_road_data(self.old_road_data)
+
+    def _apply_road_data(self, data: dict):
+        # Restore lane sections in-place — do NOT remove/add road from project,
+        # as remove_road clears predecessor_id/successor_id on connecting roads.
+        from orbit.models.lane_section import LaneSection as LS
+        road = self.main_window.project.get_road(self.road_id)
+        if not road:
+            return
+        road.lane_sections = [LS.from_dict(s) for s in data.get('lane_sections', [])]
+        self.main_window.image_view.remove_road_lanes(self.road_id)
+        if road.centerline_id:
+            scale_factors = self.main_window.get_current_scale()
+            self.main_window.image_view.add_road_lanes_graphics(road, scale_factors)
+        self.main_window.image_view.remove_section_boundaries(self.road_id)
+        self.main_window.image_view.draw_section_boundaries(road)
+        self.main_window._refresh_trees()
+
+
 class SplitRoadCommand(QUndoCommand):
     """Command for splitting a road into two roads."""
 

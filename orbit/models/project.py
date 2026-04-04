@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from orbit.utils.logging_config import get_logger
 
 from .junction import Junction, JunctionGroup
+from .lane_section import LaneSection
 from .object import RoadObject
 from .parking import ParkingSpace
 from .polyline import Polyline
@@ -1056,6 +1057,116 @@ class Project:
         logger.info(f"Merged roads into '{road1.name}' (id={road1.id})")
 
         return road1
+
+    def merge_lane_sections(
+        self,
+        road_id: str,
+        section_numbers: list,
+        resolved_attrs: dict,
+    ):
+        """
+        Merge consecutive lane sections within a road into one.
+
+        resolved_attrs: {lane_id: {attr_name: value}} — conflict winners chosen by user.
+        Width is always handled as taper: start from first section, end from last section.
+        Returns the modified Road, or None on validation failure.
+        """
+        from copy import deepcopy
+
+        road = self.get_road(road_id)
+        if not road:
+            logger.error(f"Road not found: {road_id}")
+            return None
+
+        section_numbers = sorted(section_numbers)
+
+        # Validate consecutiveness
+        expected = list(range(section_numbers[0], section_numbers[-1] + 1))
+        if section_numbers != expected:
+            logger.error(f"Section numbers are not consecutive: {section_numbers}")
+            return None
+
+        sections = [road.get_section(n) for n in section_numbers]
+        if any(s is None for s in sections):
+            logger.error(f"One or more sections not found: {section_numbers}")
+            return None
+
+        # Validate identical lane IDs across all sections
+        lane_ids = [sorted(lane.id for lane in s.lanes) for s in sections]
+        if len(set(map(tuple, lane_ids))) > 1:
+            logger.error("Sections have different lane IDs — cannot merge")
+            return None
+
+        first = sections[0]
+        last = sections[-1]
+
+        # Build merged lanes
+        merged_lanes = []
+        for lane_id in sorted(lane.id for lane in first.lanes):
+            first_lane = first.get_lane(lane_id)
+            last_lane = last.get_lane(lane_id)
+
+            # Start from first section's lane as base
+            merged_lane = deepcopy(first_lane)
+
+            # Width: preserve taper (linear — drop higher polynomial terms)
+            merged_lane.width = first_lane.width
+            merged_lane.width_end = last_lane.width_end
+            merged_lane.width_b = 0.0
+            merged_lane.width_c = 0.0
+            merged_lane.width_d = 0.0
+
+            # Links: predecessor from first, successor from last
+            merged_lane.predecessor_id = first_lane.predecessor_id
+            merged_lane.successor_id = last_lane.successor_id
+
+            # Apply user-resolved conflict winners
+            lane_overrides = resolved_attrs.get(lane_id, {})
+            for attr, value in lane_overrides.items():
+                setattr(merged_lane, attr, value)
+
+            # Materials and heights: concatenate with adjusted s_offsets
+            merged_lane.materials = list(first_lane.materials)
+            for i, section in enumerate(sections[1:], start=1):
+                s_delta = section.s_start - first.s_start
+                lane = section.get_lane(lane_id)
+                for entry in lane.materials:
+                    merged_lane.materials.append(
+                        (entry[0] + s_delta, *entry[1:])
+                    )
+
+            merged_lane.heights = list(first_lane.heights)
+            for i, section in enumerate(sections[1:], start=1):
+                s_delta = section.s_start - first.s_start
+                lane = section.get_lane(lane_id)
+                for entry in lane.heights:
+                    merged_lane.heights.append(
+                        (entry[0] + s_delta, *entry[1:])
+                    )
+
+            merged_lanes.append(merged_lane)
+
+        # Build merged section
+        merged_section = LaneSection(
+            section_number=first.section_number,
+            s_start=first.s_start,
+            s_end=last.s_end,
+            single_side=first.single_side,
+            lanes=merged_lanes,
+            end_point_index=last.end_point_index,
+        )
+
+        # Replace all merged sections with the one merged section
+        insert_idx = road.lane_sections.index(first)
+        for section in sections:
+            road.lane_sections.remove(section)
+        road.lane_sections.insert(insert_idx, merged_section)
+        road.renumber_sections()
+
+        logger.info(
+            f"Merged {len(sections)} lane sections in road '{road.name}' (id={road_id})"
+        )
+        return road
 
     def _remap_junctions_after_road_merge(
         self,

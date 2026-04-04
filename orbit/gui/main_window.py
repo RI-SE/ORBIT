@@ -577,6 +577,7 @@ class MainWindow(QMainWindow):
         self.road_tree.polyline_delete_requested.connect(self.on_polyline_delete_requested)
         self.road_tree.lane_selected.connect(self.on_lane_selected_in_tree)
         self.road_tree.roads_merge_requested.connect(self.on_roads_merge_requested)
+        self.road_tree.sections_merge_requested.connect(self.on_sections_merge_requested)
         self.road_tree.section_delete_requested.connect(self.on_section_delete_requested)
 
         # Adjustment dock for transform adjustment
@@ -3926,6 +3927,10 @@ class MainWindow(QMainWindow):
                 )
                 self.undo_stack.push(cmd)
 
+            # Remove road2's lane graphics (road2 no longer exists in project)
+            self.image_view.remove_road_lanes(road2_id)
+            self.image_view.remove_section_boundaries(road2_id)
+
             # Remove graphics for deleted polylines (road2's polylines that are no longer in project)
             for pid in road2_polylines:
                 # Check if this polyline still exists (some were merged, some deleted)
@@ -3962,6 +3967,72 @@ class MainWindow(QMainWindow):
                 "Failed to merge roads. Check the console for details.",
                 "Merge Failed"
             )
+
+    def on_sections_merge_requested(self, road_id: str, section_numbers: list):
+        """Handle lane section merge request from RoadTreeWidget."""
+        from .dialogs.merge_sections_dialog import MergeSectionsDialog, detect_section_conflicts
+        from .undo_commands import MergeSectionsCommand
+
+        road = self.project.get_road(road_id)
+        if not road:
+            return
+
+        section_numbers = sorted(section_numbers)
+
+        # Validate consecutiveness
+        expected = list(range(section_numbers[0], section_numbers[-1] + 1))
+        if section_numbers != expected:
+            show_warning(
+                self,
+                "The selected sections are not consecutive. Only consecutive sections can be merged.",
+                "Cannot Merge"
+            )
+            return
+
+        sections = [road.get_section(n) for n in section_numbers]
+        if any(s is None for s in sections):
+            show_warning(self, "One or more selected sections were not found.", "Cannot Merge")
+            return
+
+        # Validate identical lane IDs
+        lane_ids = [sorted(lane.id for lane in s.lanes) for s in sections]
+        if len(set(map(tuple, lane_ids))) > 1:
+            show_warning(
+                self,
+                "The selected sections have different lane counts or lane IDs and cannot be merged.",
+                "Cannot Merge"
+            )
+            return
+
+        conflicts = detect_section_conflicts(sections)
+        resolved_attrs = {}
+        if conflicts:
+            dlg = MergeSectionsDialog(sections[0], sections[-1], conflicts, self)
+            if dlg.exec() != QDialog.DialogCode.Accepted:
+                return
+            resolved_attrs = dlg.get_resolved_attrs()
+
+        old_road_data = road.to_dict()
+        result = self.project.merge_lane_sections(road_id, section_numbers, resolved_attrs)
+        if result:
+            new_road_data = result.to_dict()
+            cmd = MergeSectionsCommand(self, road_id, old_road_data, new_road_data)
+            self.undo_stack.push(cmd)
+
+            # Refresh lane graphics without touching the project model
+            # (remove_road would clear topology references on connecting roads)
+            self.image_view.remove_road_lanes(road_id)
+            scale_factors = self.get_current_scale()
+            self.image_view.add_road_lanes_graphics(result, scale_factors)
+            self.image_view.remove_section_boundaries(road_id)
+            self.image_view.draw_section_boundaries(result)
+            self._refresh_trees()
+            n = len(section_numbers)
+            self.statusBar().showMessage(
+                f"Merged {n} lane sections in '{road.name}'"
+            )
+        else:
+            show_warning(self, "Failed to merge lane sections.", "Merge Failed")
 
     def merge_selected_roads(self):
         """
