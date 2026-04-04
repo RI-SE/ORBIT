@@ -378,6 +378,12 @@ class MainWindow(QMainWindow):
         self.add_parking_action.setCheckable(True)
         self.add_parking_action.triggered.connect(self.add_parking)
 
+        self.add_landuse_action = QAction("Add &Land Use", self)
+        self.add_landuse_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
+        self.add_landuse_action.setStatusTip("Add a land use area polygon (forest, farmland, water, etc.)")
+        self.add_landuse_action.setCheckable(True)
+        self.add_landuse_action.triggered.connect(self.add_landuse)
+
         self.georef_action = QAction("&Control Points...", self)
         self.georef_action.setShortcut(QKeySequence("Ctrl+Shift+G"))
         self.georef_action.setStatusTip("Configure georeferencing control points")
@@ -465,6 +471,7 @@ class MainWindow(QMainWindow):
         draw_menu.addAction(self.add_signal_action)
         draw_menu.addAction(self.add_object_action)
         draw_menu.addAction(self.add_parking_action)
+        draw_menu.addAction(self.add_landuse_action)
 
         # Roads menu (road-specific operations)
         roads_menu = menubar.addMenu("&Roads")
@@ -504,6 +511,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.add_signal_action)
         toolbar.addAction(self.add_object_action)
         toolbar.addAction(self.add_parking_action)
+        toolbar.addAction(self.add_landuse_action)
         toolbar.addSeparator()
 
         # Roads group - tools for road structure
@@ -1684,6 +1692,12 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Ready")
             return
 
+        # Deactivate landuse mode if active
+        if hasattr(self, 'landuse_mode_active') and self.landuse_mode_active:
+            self.landuse_mode_active = False
+            self.image_view.set_object_mode(False)
+            self.add_landuse_action.setChecked(False)
+
         # Show object selection dialog
         dialog = ObjectSelectionDialog(self)
         if dialog.exec():
@@ -1749,6 +1763,39 @@ class MainWindow(QMainWindow):
                 self.image_view.set_parking_mode(False)
                 self.add_parking_action.setChecked(False)
                 self.statusBar().showMessage("Ready")
+
+    def add_landuse(self):
+        """Add a land use area polygon by selecting type and drawing on the map."""
+        from .dialogs.landuse_selection_dialog import LandUseSelectionDialog
+
+        # Toggle off if already active
+        if hasattr(self, 'landuse_mode_active') and self.landuse_mode_active:
+            self.landuse_mode_active = False
+            self.image_view.set_object_mode(False)
+            self.add_landuse_action.setChecked(False)
+            self.statusBar().showMessage("Ready")
+            return
+
+        # Deactivate object mode if active
+        if hasattr(self, 'object_mode_active') and self.object_mode_active:
+            self.object_mode_active = False
+            self.image_view.set_object_mode(False)
+            self.add_object_action.setChecked(False)
+
+        dialog = LandUseSelectionDialog(self)
+        if dialog.exec():
+            object_type = dialog.get_selection()
+            if object_type:
+                self.landuse_mode_active = True
+                self.object_type_to_place = object_type
+                self.image_view.set_object_mode(True, object_type)
+                self.add_landuse_action.setChecked(True)
+                self.statusBar().showMessage(
+                    "Click to place polygon vertices. Double-click or Enter to finish. Esc to cancel."
+                )
+        else:
+            self.add_landuse_action.setChecked(False)
+            self.statusBar().showMessage("Ready")
 
     def toggle_measure_mode(self):
         """Toggle measure mode."""

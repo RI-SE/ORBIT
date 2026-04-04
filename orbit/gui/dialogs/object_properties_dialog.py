@@ -9,6 +9,7 @@ from orbit.utils.enum_formatting import format_enum_name, format_snake_case
 
 from ..utils import format_with_metric, get_scale_factors
 from .base_dialog import BaseDialog, InfoIconLabel
+from .landuse_selection_dialog import LANDUSE_DISPLAY_NAMES, LANDUSE_TYPES
 
 
 class ObjectPropertiesDialog(BaseDialog):
@@ -41,9 +42,17 @@ class ObjectPropertiesDialog(BaseDialog):
         self.name_edit = QLineEdit()
         basic_layout.addRow("Name:", self.name_edit)
 
-        # Type (read-only)
-        type_label = QLabel(format_enum_name(self.obj.type))
-        basic_layout.addRow("Type:", type_label)
+        # Type: editable combo for land use, read-only label otherwise
+        if self.obj.type.get_category() == "land_use":
+            self.type_combo = QComboBox()
+            for ltype in LANDUSE_TYPES:
+                display_name = LANDUSE_DISPLAY_NAMES.get(ltype, ltype.value.replace('_', ' ').title())
+                self.type_combo.addItem(display_name, ltype)
+            basic_layout.addRow("Type:", self.type_combo)
+        else:
+            self.type_combo = None
+            type_label = QLabel(format_enum_name(self.obj.type))
+            basic_layout.addRow("Type:", type_label)
 
         # Category (read-only)
         category_label = QLabel(format_snake_case(self.obj.type.get_category()))
@@ -197,6 +206,11 @@ class ObjectPropertiesDialog(BaseDialog):
         """Load object values into the form."""
         self.name_edit.setText(self.obj.name)
 
+        if self.type_combo is not None:
+            idx = self.type_combo.findData(self.obj.type)
+            if idx >= 0:
+                self.type_combo.setCurrentIndex(idx)
+
         # Position (only for point objects)
         if self.x_spin and self.y_spin:
             self.x_spin.setValue(self.obj.position[0])
@@ -281,6 +295,9 @@ class ObjectPropertiesDialog(BaseDialog):
     def accept(self):
         """Save changes and close dialog."""
         self.obj.name = self.name_edit.text()
+
+        if self.type_combo is not None:
+            self.obj.type = self.type_combo.currentData()
 
         # Position (only for point objects)
         if self.x_spin and self.y_spin:

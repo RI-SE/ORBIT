@@ -195,6 +195,9 @@ class ImageView(QGraphicsView):
         self._snap_target: Optional[tuple] = None  # (road_id, polyline_id, point_index, point_coords)
         self._snap_indicator: Optional[QGraphicsEllipseItem] = None  # Visual ring on target
 
+        # Shift-pan state: Shift+drag pans while in polygon drawing modes
+        self._shift_panning = False
+
         # Area selection state (Alt+drag rubber-band)
         self._area_selecting = False
         self._area_select_start: Optional[QPointF] = None
@@ -3574,6 +3577,17 @@ class ImageView(QGraphicsView):
             self._handle_autofit_click(scene_pos)
             return True
 
+        # Shift+click in any polygon drawing mode: pan instead of placing a point
+        in_polygon_mode = (
+            self.drawing_mode
+            or (self.object_mode and self.object_polygon_mode)
+            or (self.parking_mode and self.parking_polygon_mode)
+        )
+        if in_polygon_mode and (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+            self._shift_panning = True
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+            return False  # Let super handle the drag
+
         if self.drawing_mode:
             self.current_polyline.add_point(scene_pos.x(), scene_pos.y())
             self.current_polyline_item.update_graphics()
@@ -4072,6 +4086,12 @@ class ImageView(QGraphicsView):
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         """Handle mouse release events."""
+        if self._shift_panning and event.button() == Qt.MouseButton.LeftButton:
+            self._shift_panning = False
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+            super().mouseReleaseEvent(event)
+            return
+
         if self._area_selecting:
             # Finalize area selection
             self._area_selecting = False
@@ -4362,3 +4382,10 @@ class ImageView(QGraphicsView):
                 self.delete_selected()
             else:
                 super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event: QKeyEvent):
+        """Handle key release — restore NoDrag if Shift released during pan."""
+        if self._shift_panning and event.key() == Qt.Key.Key_Shift:
+            self._shift_panning = False
+            self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        super().keyReleaseEvent(event)

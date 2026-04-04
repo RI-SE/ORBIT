@@ -11,6 +11,7 @@ from .import_report_dialog import ImportReportDialog, show_opendrive_import_repo
 from .junction_dialog import JunctionDialog
 from .junction_group_dialog import JunctionGroupDialog
 from .lane_properties_dialog import LanePropertiesDialog
+from .landuse_selection_dialog import LandUseSelectionDialog
 from .object_properties_dialog import ObjectPropertiesDialog
 from .object_selection_dialog import ObjectSelectionDialog
 from .opendrive_import_dialog import OpenDriveImportDialog
@@ -41,6 +42,7 @@ __all__ = [
     'ObjectPropertiesDialog',
     'ConnectingRoadDialog',
     'SignalSelectionDialog',
+    'LandUseSelectionDialog',
     'ObjectSelectionDialog',
     'ParkingSelectionDialog',
     'ParkingPropertiesDialog',
