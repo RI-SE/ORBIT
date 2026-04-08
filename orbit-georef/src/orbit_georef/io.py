@@ -73,6 +73,9 @@ def load_georef(path: Union[str, Path]) -> GeoTransformer:
     # Parse method
     method = data.get("transform_method", "homography")
 
+    # Parse proj_string (None for old files → backward compat)
+    proj_string = data.get("proj_string")
+
     # Parse source info (new format with "source" key, or legacy with "image_path" at root)
     source_info = data.get("source", {})
     if not source_info and "image_path" in data:
@@ -94,6 +97,7 @@ def load_georef(path: Union[str, Path]) -> GeoTransformer:
         scale_y=scale_y,
         control_points=control_points,
         source_info=source_info,
+        proj_string=proj_string,
     )
 
 
@@ -113,7 +117,7 @@ def save_georef(transformer: GeoTransformer, path: Union[str, Path]) -> None:
 
     data = {
         "format": "ORBIT Georeferencing Data",
-        "version": "1.0",
+        "version": "1.1" if transformer.proj_string else "1.0",
         "creator": creator,
         "source": source_info,
         "transform_method": transformer.method,
@@ -139,6 +143,9 @@ def save_georef(transformer: GeoTransformer, path: Union[str, Path]) -> None:
             "y_meters_per_pixel": transformer._scale_y,
         },
     }
+
+    if transformer.proj_string:
+        data["proj_string"] = transformer.proj_string
 
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)

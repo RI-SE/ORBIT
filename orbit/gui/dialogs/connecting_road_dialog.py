@@ -409,11 +409,11 @@ class ConnectingRoadDialog(BaseDialog):
                     if self.connecting_road.successor_contact == "start":
                         dx = succ_polyline.points[1][0] - succ_polyline.points[0][0]
                         dy = succ_polyline.points[1][1] - succ_polyline.points[0][1]
-                        end_heading = math.atan2(dy, dx) + math.pi
+                        end_heading = math.atan2(dy, dx)
                     else:
                         dx = succ_polyline.points[-1][0] - succ_polyline.points[-2][0]
                         dy = succ_polyline.points[-1][1] - succ_polyline.points[-2][1]
-                        end_heading = math.atan2(dy, dx)
+                        end_heading = math.atan2(dy, dx) + math.pi
 
         # Last resort: approximate from path points
         if start_heading is None:
@@ -492,7 +492,7 @@ class ConnectingRoadDialog(BaseDialog):
 
         # The curve has already been updated by on_regenerate_curve if the user clicked preview
         # Otherwise, update tangent_scale without regenerating
-        if self.connecting_road.geometry_type == "parampoly3":
+        if self.connecting_road.geometry_type == "parampoly3" and hasattr(self, 'tangent_scale_spin'):
             self.connecting_road.tangent_scale = self.tangent_scale_spin.value()
             # If user changed tangent_scale but didn't preview, regenerate now
             self.on_regenerate_curve()

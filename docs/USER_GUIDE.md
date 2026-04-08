@@ -215,6 +215,17 @@ Roads can be divided into sections where lane configuration changes.
 2. Double-click section or right-click → "Edit Section Properties"
 3. Modify the `singleSide` attribute if needed (OpenDRIVE attribute)
 
+### Merging Sections
+
+Two or more consecutive sections with the same lane IDs can be merged back into one:
+
+1. In the Road Tree, hold **Shift** and click to select two or more consecutive sections under the same road
+2. Right-click → **Merge Lane Sections**
+3. If any lane attributes differ across sections (speed limit, road mark type, etc.) a dialog appears — choose which value to keep per attribute
+4. Width is always handled as a linear taper: start width from the first section, end width from the last
+
+> **Note**: Merging resets the width polynomial to linear. If sections had cubic width polynomials those are simplified.
+
 ### Section Properties
 
 - **Section Number**: Sequential numbering (1, 2, 3...)
@@ -362,6 +373,23 @@ Place physical objects along roads.
 **Editing/Removing**:
 - Double-click an object to edit properties
 - Right-click → Edit Properties or Remove
+
+### Land Use Areas
+
+Draw polygon areas representing land use and natural features.
+
+**Adding a Land Use Area**:
+1. Press **Ctrl+Shift+L** or Tools → Add Land Use
+2. A dialog asks for the land use type:
+   - Forest, Farmland, Meadow / Grass, Scrub / Heath, Water, Wetland
+3. Click on the map to place polygon vertices; double-click or press **Enter** to finish
+4. Press **Esc** to cancel
+
+**Panning while drawing**: Hold **Shift** and drag to pan the view without placing a vertex. This works for land use, parking, and any other polygon drawing mode.
+
+**Editing**:
+- Double-click a land use area to open properties
+- The **Type** field is a drop-down — you can change the land use category after placement
 
 ---
 
@@ -595,6 +623,7 @@ For an output path `image_layout_mask.png`:
 |--------|--------|
 | Zoom in/out | Mouse wheel |
 | Pan view | Click and drag (when not drawing) |
+| Pan while drawing | **Shift** + drag (works in all polygon drawing modes) |
 | Zoom in | Ctrl + + |
 | Zoom out | Ctrl + - |
 | Fit to window | Ctrl + 0 |
@@ -671,6 +700,7 @@ Access via **Edit → Preferences**.
 | Ctrl+Shift+R | Create roundabout |
 | Ctrl+T | Add signal |
 | Ctrl+Alt+O | Add object |
+| Ctrl+Shift+L | Add land use area |
 | Ctrl+Shift+P | Add parking |
 
 ### Georeferencing

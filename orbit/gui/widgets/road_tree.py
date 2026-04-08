@@ -164,6 +164,7 @@ class RoadTreeWidget(QWidget):
     road_delete_requested = pyqtSignal(str)  # Emits road ID - handler should do deletion
     road_edit_requested = pyqtSignal(str)  # Emits road ID - handler should open dialog with undo
     roads_merge_requested = pyqtSignal(str, str)  # Emits (road1_id, road2_id) for merge
+    sections_merge_requested = pyqtSignal(str, list)  # Emits (road_id, section_numbers)
     polyline_selected = pyqtSignal(str)  # Emits polyline ID
     polyline_deleted = pyqtSignal(str)  # Emits polyline ID (legacy)
     polyline_delete_requested = pyqtSignal(str)  # Emits polyline ID - handler does deletion
@@ -559,6 +560,33 @@ class RoadTreeWidget(QWidget):
             sel_data = sel_item.data(0, Qt.ItemDataRole.UserRole)
             if isinstance(sel_data, dict) and sel_data.get("type") == "road":
                 selected_roads.append(sel_data["id"])
+
+        # If 2+ lane sections from the same road selected, show merge sections menu
+        selected_section_items = [
+            item for item in selected_items
+            if isinstance(item.data(0, Qt.ItemDataRole.UserRole), dict)
+            and item.data(0, Qt.ItemDataRole.UserRole).get("type") == "lane_section"
+        ]
+        if len(selected_section_items) >= 2:
+            road_ids = {
+                item.data(0, Qt.ItemDataRole.UserRole)["road_id"]
+                for item in selected_section_items
+            }
+            if len(road_ids) == 1:
+                section_numbers = sorted(
+                    item.data(0, Qt.ItemDataRole.UserRole)["section_number"]
+                    for item in selected_section_items
+                )
+                road_id = list(road_ids)[0]
+                menu = QMenu(self)
+                merge_sections_action = QAction("Merge Lane Sections", self)
+                merge_sections_action.triggered.connect(
+                    lambda checked=False, rid=road_id, sn=section_numbers:
+                        self.sections_merge_requested.emit(rid, sn)
+                )
+                menu.addAction(merge_sections_action)
+                menu.exec(self.tree.viewport().mapToGlobal(position))
+                return
 
         # If exactly 2 roads selected, show merge menu
         if len(selected_roads) == 2:

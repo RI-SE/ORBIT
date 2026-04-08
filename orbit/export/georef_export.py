@@ -22,7 +22,7 @@ from orbit.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-GEOREF_FORMAT_VERSION = "1.0"
+GEOREF_FORMAT_VERSION = "1.1"
 
 
 def export_georeferencing(
@@ -150,12 +150,10 @@ def build_georef_data(
             "rmse_meters": transformer.validation_error.get("rmse_meters", 0.0),
         }
 
-    # Add adjustment data if an adjustment is active
-    if transformer.has_adjustment():
-        adj = transformer.adjustment
-        adj_matrix = adj.get_adjustment_matrix()
-        data["adjustment"] = adj.to_dict()
-        data["adjustment_matrix"] = _matrix_to_list(adj_matrix)
+    # Add proj_string if the transformer was built with one (UTM or other CRS)
+    proj_string = getattr(transformer, '_export_proj_string', None)
+    if proj_string:
+        data["proj_string"] = proj_string
 
     return data
 

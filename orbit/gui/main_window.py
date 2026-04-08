@@ -378,6 +378,12 @@ class MainWindow(QMainWindow):
         self.add_parking_action.setCheckable(True)
         self.add_parking_action.triggered.connect(self.add_parking)
 
+        self.add_landuse_action = QAction("Add &Land Use", self)
+        self.add_landuse_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
+        self.add_landuse_action.setStatusTip("Add a land use area polygon (forest, farmland, water, etc.)")
+        self.add_landuse_action.setCheckable(True)
+        self.add_landuse_action.triggered.connect(self.add_landuse)
+
         self.georef_action = QAction("&Control Points...", self)
         self.georef_action.setShortcut(QKeySequence("Ctrl+Shift+G"))
         self.georef_action.setStatusTip("Configure georeferencing control points")
@@ -465,6 +471,7 @@ class MainWindow(QMainWindow):
         draw_menu.addAction(self.add_signal_action)
         draw_menu.addAction(self.add_object_action)
         draw_menu.addAction(self.add_parking_action)
+        draw_menu.addAction(self.add_landuse_action)
 
         # Roads menu (road-specific operations)
         roads_menu = menubar.addMenu("&Roads")
@@ -504,6 +511,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.add_signal_action)
         toolbar.addAction(self.add_object_action)
         toolbar.addAction(self.add_parking_action)
+        toolbar.addAction(self.add_landuse_action)
         toolbar.addSeparator()
 
         # Roads group - tools for road structure
@@ -569,6 +577,7 @@ class MainWindow(QMainWindow):
         self.road_tree.polyline_delete_requested.connect(self.on_polyline_delete_requested)
         self.road_tree.lane_selected.connect(self.on_lane_selected_in_tree)
         self.road_tree.roads_merge_requested.connect(self.on_roads_merge_requested)
+        self.road_tree.sections_merge_requested.connect(self.on_sections_merge_requested)
         self.road_tree.section_delete_requested.connect(self.on_section_delete_requested)
 
         # Adjustment dock for transform adjustment
@@ -681,15 +690,19 @@ class MainWindow(QMainWindow):
                 # Alignment is applied on import and when the user modifies
                 # lane connections or road geometry.
 
+                # Restore persisted alignment adjustment BEFORE loading graphics
+                # so pixel positions are recalculated from geo_points using
+                # the adjusted transformer.  This ensures the initial display
+                # is consistent with the transformer + adjustment and prevents
+                # a shift on the first aerial view round-trip.
+                self._restore_adjustment_from_project()
+
                 # Update UI
                 self.image_view.load_project(self.project, scale_factors)
                 self.elements_tree.set_project(self.project)
                 self.road_tree.set_project(self.project)
                 self.update_window_title()
                 self.update_scale_display()
-
-                # Restore persisted alignment adjustment (if any)
-                self._restore_adjustment_from_project()
 
                 self.statusBar().showMessage(f"Opened project: {file_path}")
 
@@ -706,9 +719,11 @@ class MainWindow(QMainWindow):
             self._switch_to_original()
             self.toggle_aerial_action.setChecked(False)
 
-    def save_project(self):
-        """Save the current project."""
+    def save_project(self) -> bool:
+        """Save the current project. Returns False if the user cancels."""
         self._ensure_original_view_for_save()
+        if not self._prompt_and_handle_unapplied_adjustment():
+            return False
         self._sync_adjustment_to_project()
         if self.current_project_file:
             try:
@@ -717,14 +732,18 @@ class MainWindow(QMainWindow):
                 self.modified = False
                 self.update_window_title()
                 self.statusBar().showMessage(f"Project saved: {self.current_project_file}")
+                return True
             except Exception as e:
                 show_error(self, f"Failed to save project:\n{str(e)}", "Error")
+                return False
         else:
-            self.save_project_as()
+            return self.save_project_as()
 
-    def save_project_as(self):
-        """Save the project with a new name."""
+    def save_project_as(self) -> bool:
+        """Save the project with a new name. Returns False if the user cancels."""
         self._ensure_original_view_for_save()
+        if not self._prompt_and_handle_unapplied_adjustment():
+            return False
         self._sync_adjustment_to_project()
         file_path, _ = QFileDialog.getSaveFileName(
             self,
@@ -742,8 +761,11 @@ class MainWindow(QMainWindow):
                 self.modified = False
                 self.update_window_title()
                 self.statusBar().showMessage(f"Project saved: {file_path}")
+                return True
             except Exception as e:
                 show_error(self, f"Failed to save project:\n{str(e)}", "Error")
+                return False
+        return False
 
     def load_image_dialog(self):
         """Show dialog to load an image."""
@@ -824,6 +846,9 @@ class MainWindow(QMainWindow):
         """Export project to OpenDrive format."""
         from .dialogs.export_dialog import ExportDialog
 
+        if not self._prompt_and_handle_unapplied_adjustment():
+            return
+
         # Check if we have any roads
         if not self.project.roads:
             show_warning(self, "Cannot export: No roads defined in the project.\n"
@@ -847,6 +872,9 @@ class MainWindow(QMainWindow):
         from pathlib import Path as _Path
 
         from orbit.export.osm_writer import export_to_osm
+
+        if not self._prompt_and_handle_unapplied_adjustment():
+            return
 
         # Check if any element has geo coordinates
         has_geo = any(
@@ -893,6 +921,34 @@ class MainWindow(QMainWindow):
         except Exception as e:
             show_error(self, f"OSM export failed:\n{e}", "Export Error")
 
+    def _ask_projection_type(self) -> Optional[str]:
+        """Show projection selector dialog. Returns 'utm', 'tmerc', 'preserved', or None if cancelled."""
+        from PyQt6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Select Projection")
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Coordinate system for exported georef:"))
+
+        combo = QComboBox()
+        combo.addItem("UTM", "utm")
+        combo.addItem("Transverse Mercator", "tmerc")
+        if self.project.imported_geo_reference:
+            combo.addItem("Preserved from import", "preserved")
+        layout.addWidget(combo)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.setLayout(layout)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return combo.currentData()
+
     def export_georeferencing(self):
         """Export georeferencing parameters to JSON file."""
         from orbit.export import export_georeferencing
@@ -921,13 +977,39 @@ class MainWindow(QMainWindow):
             )
             return
 
-        transformer = self._create_transformer(use_validation=True)
-        if not transformer:
+        # Resolve any unapplied adjustment before exporting — downstream tools do not
+        # support the adjustment field, so the exported matrices must be fully committed.
+        if not self._prompt_and_handle_unapplied_adjustment():
+            return
+
+        base_transformer = self._create_transformer(use_validation=True)
+        if not base_transformer:
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
             return
 
-        self._apply_active_adjustment(transformer)
+        projection_type = self._ask_projection_type()
+        if projection_type is None:
+            return  # user cancelled
+
+        if projection_type == "preserved":
+            proj_string = self.project.imported_geo_reference
+        elif projection_type == "tmerc":
+            proj_string = base_transformer.get_projection_string()
+        else:
+            proj_string = base_transformer.get_utm_projection_string()
+
+        from orbit.utils.coordinate_transform import create_transformer as _create_transformer
+        transformer = _create_transformer(
+            self.project.control_points,
+            self.project.transform_method,
+            use_validation=True,
+            export_proj_string=proj_string,
+        )
+        if not transformer:
+            show_error(self, "Failed to create coordinate transformer.\n"
+                "Please check your control points.", "Transformation Error")
+            return
 
         # Get image size
         if self.image_view.image_item:
@@ -1611,6 +1693,12 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Ready")
             return
 
+        # Deactivate landuse mode if active
+        if hasattr(self, 'landuse_mode_active') and self.landuse_mode_active:
+            self.landuse_mode_active = False
+            self.image_view.set_object_mode(False)
+            self.add_landuse_action.setChecked(False)
+
         # Show object selection dialog
         dialog = ObjectSelectionDialog(self)
         if dialog.exec():
@@ -1676,6 +1764,39 @@ class MainWindow(QMainWindow):
                 self.image_view.set_parking_mode(False)
                 self.add_parking_action.setChecked(False)
                 self.statusBar().showMessage("Ready")
+
+    def add_landuse(self):
+        """Add a land use area polygon by selecting type and drawing on the map."""
+        from .dialogs.landuse_selection_dialog import LandUseSelectionDialog
+
+        # Toggle off if already active
+        if hasattr(self, 'landuse_mode_active') and self.landuse_mode_active:
+            self.landuse_mode_active = False
+            self.image_view.set_object_mode(False)
+            self.add_landuse_action.setChecked(False)
+            self.statusBar().showMessage("Ready")
+            return
+
+        # Deactivate object mode if active
+        if hasattr(self, 'object_mode_active') and self.object_mode_active:
+            self.object_mode_active = False
+            self.image_view.set_object_mode(False)
+            self.add_object_action.setChecked(False)
+
+        dialog = LandUseSelectionDialog(self)
+        if dialog.exec():
+            object_type = dialog.get_selection()
+            if object_type:
+                self.landuse_mode_active = True
+                self.object_type_to_place = object_type
+                self.image_view.set_object_mode(True, object_type)
+                self.add_landuse_action.setChecked(True)
+                self.statusBar().showMessage(
+                    "Click to place polygon vertices. Double-click or Enter to finish. Esc to cancel."
+                )
+        else:
+            self.add_landuse_action.setChecked(False)
+            self.statusBar().showMessage("Ready")
 
     def toggle_measure_mode(self):
         """Toggle measure mode."""
@@ -1858,12 +1979,58 @@ class MainWindow(QMainWindow):
             transformer.set_adjustment(adj)
 
     def _sync_adjustment_to_project(self):
-        """Store the current adjustment from ImageView into the project for persistence."""
+        """Clear any stored adjustment from the project (adjustments are resolved before save)."""
+        self.project.transform_adjustment = None
+
+    def _has_unapplied_adjustment(self) -> bool:
+        """Return True if there is an active non-identity adjustment that has not been baked."""
         adj = self.image_view.current_adjustment
-        if adj and not adj.is_identity():
-            self.project.transform_adjustment = adj.to_dict()
+        return adj is not None and not adj.is_identity()
+
+    def _bake_adjustment_into_control_points(self):
+        """Bake the current adjustment into CP pixel positions and clear it (no dialog)."""
+        adj = self.image_view.current_adjustment
+        if adj is None or adj.is_identity():
+            return
+        for cp in self.project.control_points:
+            cp.pixel_x, cp.pixel_y = adj.apply_to_point(cp.pixel_x, cp.pixel_y)
+        self.image_view.reset_adjustment()
+        self._remove_adjustment_ghost()
+        self._invalidate_cached_transformer()
+        self._cached_transformer = self._create_transformer(use_validation=True)
+        self.refresh_imported_geometry()
+
+    def _prompt_and_handle_unapplied_adjustment(self) -> bool:
+        """Prompt the user when saving/closing with an unapplied alignment adjustment.
+
+        Returns:
+            True if the caller should proceed (user chose Apply or Discard).
+            False if the user cancelled (abort the save/close).
+        """
+        if not self._has_unapplied_adjustment():
+            return True
+
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Unapplied Alignment Adjustment")
+        msg_box.setText(
+            "You have an alignment adjustment that has not been applied.\n\n"
+            "What would you like to do?"
+        )
+        apply_btn = msg_box.addButton("Apply and Save", QMessageBox.ButtonRole.AcceptRole)
+        discard_btn = msg_box.addButton("Discard and Save", QMessageBox.ButtonRole.DestructiveRole)
+        msg_box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        msg_box.setDefaultButton(apply_btn)
+        msg_box.exec()
+
+        clicked = msg_box.clickedButton()
+        if clicked is apply_btn:
+            self._bake_adjustment_into_control_points()
+            return True
+        elif clicked is discard_btn:
+            self.reset_adjustment()
+            return True
         else:
-            self.project.transform_adjustment = None
+            return False
 
     def _restore_adjustment_from_project(self):
         """Restore a saved adjustment from the project into the ImageView and transformer."""
@@ -1873,6 +2040,8 @@ class MainWindow(QMainWindow):
         if adj.is_identity():
             return
         self.image_view.current_adjustment = adj
+        if self._cached_transformer is None:
+            self._cached_transformer = self._create_transformer(use_validation=True)
         if self._cached_transformer is not None:
             self._cached_transformer.set_adjustment(adj)
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
@@ -2717,18 +2886,27 @@ class MainWindow(QMainWindow):
             self.toggle_aerial_action.setText("&Aerial Map View")
             return
 
-        # Re-project geometry back to original pixel space
+        # Temporarily clear adjustment so reprojection uses the base transform.
+        # The adjustment must not shift control point pixel positions — it only
+        # affects where geo-derived geometry appears on the image.
+        saved_adjustment = self._original_transformer.adjustment
+        self._original_transformer.clear_adjustment()
+
+        # Re-project geometry back to original pixel space (unadjusted)
         reproject_project_geometry(
             self.project, self._aerial_transformer, self._original_transformer,
         )
 
-        # Restore background
+        # Restore adjustment and reposition geo-derived entities
+        if saved_adjustment is not None:
+            self._original_transformer.set_adjustment(saved_adjustment)
+
         self.image_view.swap_background(self._original_image_np)
         self._cached_transformer = self._original_transformer
-        # Re-apply the alignment adjustment (it's relative to the original image)
-        self._apply_active_adjustment(self._cached_transformer)
+
         # Recompute pixel positions from geo coords using the adjusted transformer
-        # so entities land in the correct adjusted positions.
+        # so entities land in the correct adjusted positions.  Control points are
+        # NOT updated here — they keep their unadjusted positions from reprojection.
         adj = self.image_view.current_adjustment
         if adj and not adj.is_identity():
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
@@ -3749,6 +3927,10 @@ class MainWindow(QMainWindow):
                 )
                 self.undo_stack.push(cmd)
 
+            # Remove road2's lane graphics (road2 no longer exists in project)
+            self.image_view.remove_road_lanes(road2_id)
+            self.image_view.remove_section_boundaries(road2_id)
+
             # Remove graphics for deleted polylines (road2's polylines that are no longer in project)
             for pid in road2_polylines:
                 # Check if this polyline still exists (some were merged, some deleted)
@@ -3785,6 +3967,72 @@ class MainWindow(QMainWindow):
                 "Failed to merge roads. Check the console for details.",
                 "Merge Failed"
             )
+
+    def on_sections_merge_requested(self, road_id: str, section_numbers: list):
+        """Handle lane section merge request from RoadTreeWidget."""
+        from .dialogs.merge_sections_dialog import MergeSectionsDialog, detect_section_conflicts
+        from .undo_commands import MergeSectionsCommand
+
+        road = self.project.get_road(road_id)
+        if not road:
+            return
+
+        section_numbers = sorted(section_numbers)
+
+        # Validate consecutiveness
+        expected = list(range(section_numbers[0], section_numbers[-1] + 1))
+        if section_numbers != expected:
+            show_warning(
+                self,
+                "The selected sections are not consecutive. Only consecutive sections can be merged.",
+                "Cannot Merge"
+            )
+            return
+
+        sections = [road.get_section(n) for n in section_numbers]
+        if any(s is None for s in sections):
+            show_warning(self, "One or more selected sections were not found.", "Cannot Merge")
+            return
+
+        # Validate identical lane IDs
+        lane_ids = [sorted(lane.id for lane in s.lanes) for s in sections]
+        if len(set(map(tuple, lane_ids))) > 1:
+            show_warning(
+                self,
+                "The selected sections have different lane counts or lane IDs and cannot be merged.",
+                "Cannot Merge"
+            )
+            return
+
+        conflicts = detect_section_conflicts(sections)
+        resolved_attrs = {}
+        if conflicts:
+            dlg = MergeSectionsDialog(sections[0], sections[-1], conflicts, self)
+            if dlg.exec() != QDialog.DialogCode.Accepted:
+                return
+            resolved_attrs = dlg.get_resolved_attrs()
+
+        old_road_data = road.to_dict()
+        result = self.project.merge_lane_sections(road_id, section_numbers, resolved_attrs)
+        if result:
+            new_road_data = result.to_dict()
+            cmd = MergeSectionsCommand(self, road_id, old_road_data, new_road_data)
+            self.undo_stack.push(cmd)
+
+            # Refresh lane graphics without touching the project model
+            # (remove_road would clear topology references on connecting roads)
+            self.image_view.remove_road_lanes(road_id)
+            scale_factors = self.get_current_scale()
+            self.image_view.add_road_lanes_graphics(result, scale_factors)
+            self.image_view.remove_section_boundaries(road_id)
+            self.image_view.draw_section_boundaries(result)
+            self._refresh_trees()
+            n = len(section_numbers)
+            self.statusBar().showMessage(
+                f"Merged {n} lane sections in '{road.name}'"
+            )
+        else:
+            show_warning(self, "Failed to merge lane sections.", "Merge Failed")
 
     def merge_selected_roads(self):
         """
@@ -3938,7 +4186,9 @@ class MainWindow(QMainWindow):
     # Utility methods
     def check_unsaved_changes(self) -> bool:
         """Check for unsaved changes and prompt user. Returns True if ok to continue."""
-        if self.modified:
+        # An unapplied adjustment also counts as unsaved state even if modified=False.
+        has_changes = self.modified or self._has_unapplied_adjustment()
+        if has_changes:
             reply = QMessageBox.question(
                 self,
                 "Unsaved Changes",
@@ -3949,9 +4199,14 @@ class MainWindow(QMainWindow):
             )
 
             if reply == QMessageBox.StandardButton.Save:
-                self.save_project()
-                return True
+                saved = self.save_project()
+                # If the user cancelled the save (e.g. cancelled adjustment prompt
+                # or file dialog), abort the whole close/new-project action too.
+                return saved
             elif reply == QMessageBox.StandardButton.Discard:
+                # If discarding, also clear any unapplied adjustment so it doesn't linger
+                if self._has_unapplied_adjustment():
+                    self.reset_adjustment()
                 return True
             else:
                 return False

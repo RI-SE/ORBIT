@@ -476,29 +476,15 @@ class TestExportGeoreferencing:
 # ==== Tests for adjustment data in georef export ====
 
 class TestGeorefExportAdjustment:
-    """Tests that adjustment data is included in georef export when active."""
+    """Adjustment fields must never appear in the georef export output.
 
-    def test_adjustment_included_when_active(self, mock_project, mock_affine_transformer):
-        """Adjustment section is exported when transformer has an adjustment."""
-        from orbit.utils.coordinate_transform import TransformAdjustment
+    Downstream tools (orbit-georef etc.) do not support the adjustment concept.
+    The export pipeline resolves any active adjustment before exporting, so the
+    exported matrices are always fully committed and no adjustment fields are written.
+    """
 
-        project = mock_project()
-        adj = TransformAdjustment(translation_x=10.0, translation_y=5.0, rotation=1.5)
-
-        mock_affine_transformer.has_adjustment = Mock(return_value=True)
-        mock_affine_transformer.adjustment = adj
-
-        data = build_georef_data(project, mock_affine_transformer, (1000, 1000))
-
-        assert "adjustment" in data
-        assert data["adjustment"]["translation_x"] == 10.0
-        assert data["adjustment"]["translation_y"] == 5.0
-        assert data["adjustment"]["rotation"] == 1.5
-        assert "adjustment_matrix" in data
-        assert len(data["adjustment_matrix"]) == 3  # 3x3 matrix
-
-    def test_no_adjustment_when_inactive(self, mock_project, mock_affine_transformer):
-        """No adjustment section when transformer has no adjustment."""
+    def test_no_adjustment_fields_when_adjustment_inactive(self, mock_project, mock_affine_transformer):
+        """No adjustment fields when transformer has no adjustment."""
         project = mock_project()
 
         mock_affine_transformer.has_adjustment = Mock(return_value=False)
@@ -509,26 +495,38 @@ class TestGeorefExportAdjustment:
         assert "adjustment" not in data
         assert "adjustment_matrix" not in data
 
-    def test_adjustment_exported_to_json(self, mock_project, mock_affine_transformer, tmp_path):
-        """Adjustment data is written to JSON file."""
+    def test_no_adjustment_fields_even_when_transformer_has_adjustment(self, mock_project, mock_affine_transformer):
+        """Adjustment fields are never written, even if transformer somehow has one.
+
+        In practice, _prompt_and_handle_unapplied_adjustment() ensures the adjustment
+        is resolved before a transformer is created for export. This test guards against
+        any future regression where that guarantee breaks.
+        """
         from orbit.utils.coordinate_transform import TransformAdjustment
 
         project = mock_project()
-        adj = TransformAdjustment(translation_x=3.0, translation_y=-2.0)
+        adj = TransformAdjustment(translation_x=10.0, translation_y=5.0, rotation=1.5)
 
+        # Even if the transformer has an adjustment set (should not happen in practice)
         mock_affine_transformer.has_adjustment = Mock(return_value=True)
         mock_affine_transformer.adjustment = adj
 
-        output_path = tmp_path / "georef.json"
-        result = export_georeferencing(project, output_path, mock_affine_transformer, (1000, 1000))
+        data = build_georef_data(project, mock_affine_transformer, (1000, 1000))
 
-        assert result is True
+        assert "adjustment" not in data
+        assert "adjustment_matrix" not in data
+
+    def test_no_adjustment_fields_in_json_file(self, mock_project, mock_affine_transformer, tmp_path):
+        """Written JSON file never contains adjustment or adjustment_matrix keys."""
+        project = mock_project()
+        output_path = tmp_path / "georef.json"
+        export_georeferencing(project, output_path, mock_affine_transformer, (1000, 1000))
 
         with open(output_path) as f:
             data = json.load(f)
 
-        assert "adjustment" in data
-        assert data["adjustment"]["translation_x"] == 3.0
+        assert "adjustment" not in data
+        assert "adjustment_matrix" not in data
 
 
 # ==== Tests for HybridTransformer detection ====

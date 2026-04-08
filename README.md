@@ -40,7 +40,7 @@ A visual tool for creating or editing ASAM OpenDRIVE 1.8 road networks from aeri
 ### Road Annotation
 - **Interactive polyline drawing** on aerial/satellite/drone images
 - **Centerline and lane boundary** distinction with road mark types (solid, broken, etc.)
-- **Lane sections** for roads where lane configuration changes
+- **Lane sections** for roads where lane configuration changes, with split and merge operations
 - **Road splitting and merging** for flexible network editing
 - **Data-driven road marks** from actual annotated line types
 - **OpenDRIVE 1.8 lane attributes** (direction, advisory)
@@ -53,7 +53,7 @@ A visual tool for creating or editing ASAM OpenDRIVE 1.8 road networks from aeri
 - **Automatic connection generation** from road geometry
 
 ### Import Capabilities
-- **OpenStreetMap import** via Overpass API (roads, signals, junctions, objects)
+- **OpenStreetMap import** via Overpass API (roads, signals, junctions, objects, land use areas)
 - **OpenDRIVE import** for editing existing .xodr files (round-trip support)
 
 ### Georeferencing
@@ -118,7 +118,7 @@ orbit --xodr_schema /path/to/OpenDRIVE_Core.xsd
 1. **Load image** — File → Load Image or pass path on command line
 2. **Add control points** — Tools → Georeferencing (minimum 4 points (oblique imagery) or 3 (nadir imagery))
 3. **Import or draw** — Either import an existing map from OpenStreetMap or OpenDRIVE, or draw roads directly in ORBIT.
-4. **Edit** — Edit roads. Add signs, parkings, and objects.
+4. **Edit** — Edit roads. Add signs, parking, land use areas, and objects.
 5. **Export** — File → Export → Export to OpenDrive
 
 ---
@@ -166,6 +166,7 @@ Projects save as `.orbit` JSON files containing:
 - Control points for georeferencing
 - Signals and roadside objects
 - Parking spaces
+- Land use areas (forest, farmland, water, etc.)
 
 ---
 

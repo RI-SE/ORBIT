@@ -11,6 +11,8 @@ from .import_report_dialog import ImportReportDialog, show_opendrive_import_repo
 from .junction_dialog import JunctionDialog
 from .junction_group_dialog import JunctionGroupDialog
 from .lane_properties_dialog import LanePropertiesDialog
+from .landuse_selection_dialog import LandUseSelectionDialog
+from .merge_sections_dialog import MergeSectionsDialog, detect_section_conflicts
 from .object_properties_dialog import ObjectPropertiesDialog
 from .object_selection_dialog import ObjectSelectionDialog
 from .opendrive_import_dialog import OpenDriveImportDialog
@@ -36,11 +38,14 @@ __all__ = [
     'PreferencesDialog',
     'PolylinePropertiesDialog',
     'LanePropertiesDialog',
+    'MergeSectionsDialog',
+    'detect_section_conflicts',
     'SectionPropertiesDialog',
     'SignalPropertiesDialog',
     'ObjectPropertiesDialog',
     'ConnectingRoadDialog',
     'SignalSelectionDialog',
+    'LandUseSelectionDialog',
     'ObjectSelectionDialog',
     'ParkingSelectionDialog',
     'ParkingPropertiesDialog',
