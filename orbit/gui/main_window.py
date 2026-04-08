@@ -923,7 +923,7 @@ class MainWindow(QMainWindow):
 
     def _ask_projection_type(self) -> Optional[str]:
         """Show projection selector dialog. Returns 'utm', 'tmerc', 'preserved', or None if cancelled."""
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QComboBox, QLabel, QDialogButtonBox
+        from PyQt6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QLabel, QVBoxLayout
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Select Projection")
