@@ -79,3 +79,8 @@ select = ["E", "F", "W", "I"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["orbit"]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+]

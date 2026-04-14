@@ -1,0 +1,16 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.5
+    hooks:
+      - id: ruff
+        args: ["orbit/", "tests/", "run_orbit.py"]
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: env QT_QPA_PLATFORM=offscreen uv run python -m pytest tests/ --tb=short -q
+        language: system
+        pass_filenames: false
+        always_run: true
