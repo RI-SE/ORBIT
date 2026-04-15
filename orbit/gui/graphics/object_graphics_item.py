@@ -155,7 +155,7 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         self._update_selection_highlight(path)
 
     def _draw_point_handles(self):
-        """Draw visible handles at guardrail points for editing (max one every 100px)."""
+        """Draw visible handles at all guardrail points."""
         # Use bright cyan color for point handles (contrasts well with dark blue guardrail)
         point_color = QColor(0, 255, 255)  # Cyan
         point_pen = QPen(QColor(255, 255, 255), 1)  # White outline
@@ -168,32 +168,9 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         point_brush = QBrush(point_color)
         radius = 3  # Smaller radius (6px diameter)
 
-        # Filter points to show handles at most every 100px
-        # Always show first and last point
-        last_handle_pos = None
-        min_distance = 100.0
-
         for i, (x, y) in enumerate(self.obj.points):
-            # Always show first and last point
-            show_handle = (i == 0 or i == len(self.obj.points) - 1)
-
-            # For middle points, only show if far enough from last handle
-            if not show_handle and last_handle_pos is not None:
-                dist = ((x - last_handle_pos[0]) ** 2 + (y - last_handle_pos[1]) ** 2) ** 0.5
-                show_handle = dist >= min_distance
-            elif not show_handle and last_handle_pos is None:
-                # First middle point after start
-                dist_from_start = ((x - self.obj.points[0][0]) ** 2 +
-                                  (y - self.obj.points[0][1]) ** 2) ** 0.5
-                show_handle = dist_from_start >= min_distance
-
-            if not show_handle:
-                continue
-
-            # Track this point index as having a visible handle
             self.visible_point_indices.append(i)
 
-            # Create point handle as ellipse
             point_item = QGraphicsPathItem()
             from PyQt6.QtGui import QPainterPath
             path = QPainterPath()
@@ -202,12 +179,8 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
             point_item.setPen(point_pen)
             point_item.setBrush(point_brush)
 
-            # Add to group and track
             self.addToGroup(point_item)
             self.point_items.append(point_item)
-
-            # Update last handle position
-            last_handle_pos = (x, y)
 
     def _draw_polygon_vertex_handles(self):
         """Draw draggable vertex handles at all polygon vertices (shown when selected)."""

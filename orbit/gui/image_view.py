@@ -14,6 +14,7 @@ from PyQt6.QtGui import QBrush, QColor, QFont, QImage, QKeyEvent, QMouseEvent, Q
 from PyQt6.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsItem,
+    QGraphicsLineItem,
     QGraphicsPathItem,
     QGraphicsPixmapItem,
     QGraphicsRectItem,
@@ -165,8 +166,10 @@ class ImageView(QGraphicsView):
         self.object_polygon_mode = False  # True for polygon drawing (land use objects)
         self.object_polygon_points: List[Tuple[float, float]] = []  # Points for current object polygon
         self.object_polygon_preview: Optional[QGraphicsPathItem] = None  # Preview item
-        self.drawing_guardrail = False  # True when dragging to create guardrail
+        self.drawing_guardrail = False  # True when click-placing guardrail points
         self.guardrail_points: List[Tuple[float, float]] = []  # Points for current guardrail
+        self.guardrail_preview: Optional[QGraphicsPathItem] = None  # Dashed preview path
+        self.guardrail_rubber_band: Optional[QGraphicsLineItem] = None  # Line to cursor
         self.pick_point_mode = False
         self.measure_mode = False
         self.selected_polyline_id: Optional[str] = None
@@ -675,6 +678,79 @@ class ImageView(QGraphicsView):
         if self.object_polygon_preview:
             self.safe_remove_item(self.object_polygon_preview)
             self.object_polygon_preview = None
+
+    # ------------------------------------------------------------------
+    # Guardrail click-to-place helpers
+    # ------------------------------------------------------------------
+
+    def _add_guardrail_point(self, x: float, y: float):
+        """Add a point to the guardrail being drawn and refresh the preview."""
+        self.guardrail_points.append((x, y))
+        self._update_guardrail_preview()
+
+    def _update_guardrail_preview(self, cursor_pos: Optional[QPointF] = None):
+        """Redraw the dashed preview path and rubber-band segment."""
+        from PyQt6.QtGui import QPainterPath
+
+        pts = self.guardrail_points
+
+        # Create preview path through all placed points
+        path = QPainterPath()
+        if pts:
+            path.moveTo(pts[0][0], pts[0][1])
+            for px, py in pts[1:]:
+                path.lineTo(px, py)
+
+        if self.guardrail_preview is None:
+            self.guardrail_preview = QGraphicsPathItem()
+            pen = QPen(QColor(255, 165, 0), 2, Qt.PenStyle.DashLine)
+            self.guardrail_preview.setPen(pen)
+            self.guardrail_preview.setZValue(100)
+            self.scene.addItem(self.guardrail_preview)
+        self.guardrail_preview.setPath(path)
+
+        # Rubber-band from last point to cursor
+        if cursor_pos is not None and pts:
+            lx, ly = pts[-1]
+            if self.guardrail_rubber_band is None:
+                self.guardrail_rubber_band = QGraphicsLineItem()
+                pen = QPen(QColor(255, 165, 0, 160), 1, Qt.PenStyle.DotLine)
+                self.guardrail_rubber_band.setPen(pen)
+                self.guardrail_rubber_band.setZValue(100)
+                self.scene.addItem(self.guardrail_rubber_band)
+            self.guardrail_rubber_band.setLine(lx, ly, cursor_pos.x(), cursor_pos.y())
+            self.guardrail_rubber_band.setVisible(True)
+        elif self.guardrail_rubber_band is not None:
+            self.guardrail_rubber_band.setVisible(False)
+
+    def _finish_guardrail(self):
+        """Commit the current guardrail if it has at least 2 points."""
+        if len(self.guardrail_points) >= 2:
+            obj = RoadObject(
+                object_id=self.project.next_id('object') if self.project else "",
+                position=self.guardrail_points[0],
+                object_type=ObjectType.GUARDRAIL,
+            )
+            obj.points = self.guardrail_points.copy()
+            total_length = sum(
+                ((self.guardrail_points[i + 1][0] - self.guardrail_points[i][0]) ** 2 +
+                 (self.guardrail_points[i + 1][1] - self.guardrail_points[i][1]) ** 2) ** 0.5
+                for i in range(len(self.guardrail_points) - 1)
+            )
+            obj.validity_length = total_length
+            self.object_added.emit(obj)
+        self._cancel_guardrail()
+
+    def _cancel_guardrail(self):
+        """Discard the current guardrail drawing."""
+        self.drawing_guardrail = False
+        self.guardrail_points.clear()
+        if self.guardrail_preview is not None:
+            self.safe_remove_item(self.guardrail_preview)
+            self.guardrail_preview = None
+        if self.guardrail_rubber_band is not None:
+            self.safe_remove_item(self.guardrail_rubber_band)
+            self.guardrail_rubber_band = None
 
     def _get_geo_transformer(self):
         """Get the cached geo transformer from the parent MainWindow, if available."""
@@ -1689,8 +1765,7 @@ class ImageView(QGraphicsView):
             self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
             # Clean up any partial guardrail
             if self.drawing_guardrail:
-                self.drawing_guardrail = False
-                self.guardrail_points.clear()
+                self._cancel_guardrail()
             # Clean up any partial object polygon
             self._cancel_object_polygon()
 
@@ -3582,6 +3657,7 @@ class ImageView(QGraphicsView):
             self.drawing_mode
             or (self.object_mode and self.object_polygon_mode)
             or (self.parking_mode and self.parking_polygon_mode)
+            or self.drawing_guardrail
         )
         if in_polygon_mode and (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
             self._shift_panning = True
@@ -3604,9 +3680,14 @@ class ImageView(QGraphicsView):
             return True
 
         elif self.object_mode:
+            if self.drawing_guardrail:
+                # Already drawing — add another point
+                self._add_guardrail_point(scene_pos.x(), scene_pos.y())
+                return True
             if self.object_type_to_place and self.object_type_to_place.get_shape_type() == "polyline":
                 self.drawing_guardrail = True
-                self.guardrail_points = [(scene_pos.x(), scene_pos.y())]
+                self.guardrail_points = []
+                self._add_guardrail_point(scene_pos.x(), scene_pos.y())
             elif self.object_polygon_mode:
                 self._add_object_polygon_point(scene_pos.x(), scene_pos.y())
             else:
@@ -3944,7 +4025,7 @@ class ImageView(QGraphicsView):
             self._display_scale_at_point(scene_pos)
 
         elif self.drawing_guardrail:
-            self.guardrail_points.append((scene_pos.x(), scene_pos.y()))
+            self._finish_guardrail()
 
         elif self.signal_mode:
             for signal_id, item in self.signal_items.items():
@@ -4021,12 +4102,9 @@ class ImageView(QGraphicsView):
                 self._area_select_rect_item.setRect(rect)
             return
 
-        if self.drawing_guardrail and event.buttons() & Qt.MouseButton.LeftButton:
-            # Dragging to create guardrail - add points continuously
-            if not self.guardrail_points or \
-               ((scene_pos.x() - self.guardrail_points[-1][0])**2 +
-                (scene_pos.y() - self.guardrail_points[-1][1])**2) > 100:  # Min 10px spacing
-                self.guardrail_points.append((scene_pos.x(), scene_pos.y()))
+        if self.drawing_guardrail and not self._shift_panning:
+            # Update rubber-band from last placed point to cursor
+            self._update_guardrail_preview(cursor_pos=scene_pos)
         elif self.dragging_guardrail_point and self.drag_object_id:
             # Dragging a guardrail/polygon vertex
             item = self.object_items[self.drag_object_id]
@@ -4110,29 +4188,7 @@ class ImageView(QGraphicsView):
                     self.area_delete_requested.emit(selected)
             return
 
-        if self.drawing_guardrail and event.button() == Qt.MouseButton.LeftButton:
-            # Finish guardrail drawing
-            if len(self.guardrail_points) >= 2:
-                # Create guardrail object with the points
-                obj = RoadObject(
-                    object_id=self.project.next_id('object') if self.project else "",
-                    position=self.guardrail_points[0],
-                    object_type=ObjectType.GUARDRAIL
-                )
-                obj.points = self.guardrail_points.copy()
-                # Calculate validity length
-                total_length = 0.0
-                for i in range(len(obj.points) - 1):
-                    x1, y1 = obj.points[i]
-                    x2, y2 = obj.points[i + 1]
-                    total_length += ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-                obj.validity_length = total_length
-                self.object_added.emit(obj)
-
-            # Reset guardrail drawing state
-            self.drawing_guardrail = False
-            self.guardrail_points.clear()
-        elif self.dragging_guardrail_point:
+        if self.dragging_guardrail_point:
             self.dragging_guardrail_point = False
             if self.drag_object_id:
                 item = self.object_items[self.drag_object_id]
@@ -4291,7 +4347,12 @@ class ImageView(QGraphicsView):
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         """Handle double-click to finish polyline/polygon, edit polyline, or edit junction."""
-        if self.drawing_mode and event.button() == Qt.MouseButton.LeftButton:
+        if self.drawing_guardrail and event.button() == Qt.MouseButton.LeftButton:
+            # Double-click finishes guardrail; the single-click press already added a point,
+            # so just commit what we have.
+            self._finish_guardrail()
+            return
+        elif self.drawing_mode and event.button() == Qt.MouseButton.LeftButton:
             self.finish_current_polyline()
         elif self.parking_mode and self.parking_polygon_mode and event.button() == Qt.MouseButton.LeftButton:
             # Finish parking polygon on double-click
@@ -4376,6 +4437,11 @@ class ImageView(QGraphicsView):
                 self._finish_object_polygon()
             elif event.key() == Qt.Key.Key_Escape:
                 self._cancel_object_polygon()
+        elif self.drawing_guardrail:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self._finish_guardrail()
+            elif event.key() == Qt.Key.Key_Escape:
+                self._cancel_guardrail()
         else:
             if event.key() == Qt.Key.Key_Delete:
                 # Delete selected polyline
