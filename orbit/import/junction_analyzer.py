@@ -325,8 +325,15 @@ def analyze_junction_geometry(junction: Junction,
             section = road.lane_sections[-1] if at_junction == "end" else road.lane_sections[0]
             left_count = len([lane for lane in section.lanes if lane.id > 0])
             right_count = len([lane for lane in section.lanes if lane.id < 0])
-            # Get lane width from first driving lane
-            lane_width = next((lane.width for lane in section.lanes if lane.id != 0), _DEFAULT_LANE_WIDTH)
+            # Get lane width from first driving lane, using the end width when
+            # the road meets the junction at its end (handles tapered lanes).
+            def _lane_w(lane, at_end: bool) -> float:
+                return lane.get_width_at_end() if at_end else lane.width
+
+            lane_width = next(
+                (_lane_w(lane, at_junction == "end") for lane in section.lanes if lane.id != 0),
+                _DEFAULT_LANE_WIDTH,
+            )
         else:
             # Fallback to lane_info if no sections
             if hasattr(road, 'lane_info') and road.lane_info:
@@ -953,7 +960,8 @@ def generate_junction_connections(junction: Junction,
                                  scale: float = 1.0,
                                  transformer: Optional['CoordinateTransformer'] = None,
                                  project: Optional[Project] = None,
-                                 bidirectional_turns: bool = True) -> None:
+                                 bidirectional_turns: bool = True,
+                                 skip_distance_check: bool = False) -> None:
     """
     Generate connecting roads and lane connections for a junction.
 
@@ -978,13 +986,19 @@ def generate_junction_connections(junction: Junction,
         scale: Meters per pixel scale factor (used for lane offset calculations)
         transformer: Optional CoordinateTransformer for geo-first path generation
         project: Project to add connecting Road objects to
+        skip_distance_check: When True, skip the endpoint-distance validation.
+            Use for manually-placed junctions where roads in connected_road_ids
+            are trusted but their endpoints may not be snapped to the junction center.
     """
     # Skip virtual junctions - these are path crossings, not real connections
     if junction.junction_type == "virtual":
         return
 
     # Step 1: Analyze junction geometry
-    geometry_info = analyze_junction_geometry(junction, roads_dict, polylines_dict)
+    geometry_info = analyze_junction_geometry(
+        junction, roads_dict, polylines_dict,
+        skip_distance_check=skip_distance_check,
+    )
 
     # Step 2: Detect connection patterns
     patterns = detect_connection_patterns(geometry_info)
@@ -1009,3 +1023,42 @@ def generate_junction_connections(junction: Junction,
     # In OpenDRIVE, roads connecting through a junction should link to the junction,
     # not directly to roads on the other side
     clear_cross_junction_links(junction, roads_dict)
+
+    # Step 8: Set predecessor_junction_id / successor_junction_id on connected roads
+    set_road_junction_links(junction, roads_dict, polylines_dict)
+
+
+def set_road_junction_links(
+    junction: Junction,
+    roads_dict: Dict[str, Road],
+    polylines_dict: Dict[str, Polyline],
+) -> None:
+    """Set predecessor_junction_id / successor_junction_id on every road in the junction.
+
+    Determines which end of each connected road is nearest the junction center and
+    sets the appropriate field. Roads already pointing to a *different* junction at
+    that end are left unchanged (the caller is responsible for consistency).
+
+    This must be called whenever connected_road_ids changes — both after
+    auto-generate and after manual edits in the Junction dialog.
+    """
+    center = junction.center_point
+    if not center:
+        return
+
+    for road_id in junction.connected_road_ids:
+        road = roads_dict.get(road_id)
+        if not road or not road.centerline_id:
+            continue
+        polyline = polylines_dict.get(road.centerline_id)
+        if not polyline or len(polyline.points) < 2:
+            continue
+
+        pts = polyline.points
+        start_dist = math.sqrt((pts[0][0] - center[0]) ** 2 + (pts[0][1] - center[1]) ** 2)
+        end_dist = math.sqrt((pts[-1][0] - center[0]) ** 2 + (pts[-1][1] - center[1]) ** 2)
+
+        if end_dist < start_dist:
+            road.successor_junction_id = junction.id
+        else:
+            road.predecessor_junction_id = junction.id

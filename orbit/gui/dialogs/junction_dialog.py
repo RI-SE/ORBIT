@@ -456,12 +456,15 @@ class JunctionDialog(BaseDialog):
             self.junction.connected_road_ids.append(road_id)
 
         # Clear any stale road-to-road predecessor/successor links between roads
-        # that now connect through this junction (OpenDRIVE compliance)
+        # that now connect through this junction (OpenDRIVE compliance), and
+        # set predecessor_junction_id / successor_junction_id on connected roads.
         if self.project:
             import importlib
             junction_analyzer = importlib.import_module('orbit.import.junction_analyzer')
             roads_dict = {road.id: road for road in self.project.roads}
+            polylines_dict = {p.id: p for p in self.project.polylines}
             junction_analyzer.clear_cross_junction_links(self.junction, roads_dict)
+            junction_analyzer.set_road_junction_links(self.junction, roads_dict, polylines_dict)
 
         # Save V1.8 data
         self.junction.boundary = self._get_boundary_from_table()
@@ -554,15 +557,51 @@ class JunctionDialog(BaseDialog):
                 # Use default scale if transformer fails
                 scale = 1.0
 
+        # Back up existing state before clearing so we can restore on failure
+        from orbit.models.road import Road as _Road
+        backup_cr_ids = list(self.junction.connecting_road_ids)
+        backup_cr_dicts = [
+            self.project.get_road(cr_id).to_dict()
+            for cr_id in backup_cr_ids
+            if self.project.get_road(cr_id)
+        ]
+        backup_lane_connections = [lc.to_dict() for lc in self.junction.lane_connections]
+
+        def _restore_backup():
+            for cr_dict in backup_cr_dicts:
+                self.project.add_road(_Road.from_dict(cr_dict))
+            self.junction.connecting_road_ids = backup_cr_ids
+            from orbit.models.lane_connection import LaneConnection as _LC
+            self.junction.lane_connections = [_LC.from_dict(d) for d in backup_lane_connections]
+
         # Clear existing connections
-        for cr_id in list(self.junction.connecting_road_ids):
+        for cr_id in backup_cr_ids:
             self.project.remove_road(cr_id)
         self.junction.connecting_road_ids.clear()
         self.junction.lane_connections.clear()
 
         # Generate connections
+        # skip_distance_check=True: roads are explicitly in connected_road_ids,
+        # so we trust the user's selection even when endpoints aren't snapped to
+        # the junction center (common for manually-placed junctions).
         try:
-            generate_junction_connections(self.junction, roads_dict, polylines_dict, scale, project=self.project)
+            generate_junction_connections(
+                self.junction, roads_dict, polylines_dict, scale, project=self.project,
+                skip_distance_check=True,
+            )
+
+            if not self.junction.connecting_road_ids and not self.junction.lane_connections:
+                _restore_backup()
+                self.update_connection_summary()
+                show_warning(
+                    self,
+                    "The junction analyzer could not generate any connections.\n\n"
+                    "This can happen when road endpoints are far from the junction center\n"
+                    "or the road geometry is ambiguous.\n\n"
+                    "Previous connections have been restored.",
+                    "No Connections Generated",
+                )
+                return
 
             # Update summary
             self.update_connection_summary()
@@ -582,9 +621,12 @@ class JunctionDialog(BaseDialog):
             )
 
         except Exception as e:
+            _restore_backup()
+            self.update_connection_summary()
             show_error(
                 self,
-                f"Failed to generate connections:\n\n{str(e)}",
+                f"Failed to generate connections:\n\n{str(e)}\n\n"
+                "Previous connections have been restored.",
                 "Generation Failed"
             )
             import traceback

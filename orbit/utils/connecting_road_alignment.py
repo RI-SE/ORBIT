@@ -40,6 +40,12 @@ def align_connecting_road_paths(
         if not cr or not cr.inline_path or len(cr.inline_path) < 2:
             continue
 
+        # Bidirectional CRs (left AND right lanes) are generated from CL-to-CL
+        # endpoints and carry equal traffic in both directions. Their reference
+        # line is already at the road centerline — no lateral shift is needed.
+        if cr.cr_lane_count_left > 0 and cr.cr_lane_count_right > 0:
+            continue
+
         # Find primary lane connection for this CR
         cr_conns = [
             c for c in junction.lane_connections if c.connecting_road_id == cr.id
