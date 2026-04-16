@@ -498,7 +498,10 @@ class LaneConnectionDialog(BaseDialog):
         self.junction.lane_connections.clear()
 
         try:
-            generate_junction_connections(self.junction, roads_dict, polylines_dict, scale, project=self.project)
+            generate_junction_connections(
+                self.junction, roads_dict, polylines_dict, scale, project=self.project,
+                skip_distance_check=True,
+            )
             # Copy new connections to our working list
             self.connections = [
                 LaneConnection.from_dict(lc.to_dict()) for lc in self.junction.lane_connections

@@ -159,5 +159,45 @@ def reproject_project_geometry(
         cp.pixel_y = py
         count += 1
 
+    # --- Parking Spaces ---
+    for parking in project.parking_spaces:
+        if parking.geo_points:
+            # Polygon parking — reproject all polygon vertices
+            new_pts = [new_transformer.geo_to_pixel(lon, lat) for lon, lat in parking.geo_points]
+            parking.points = new_pts
+            parking.position = (
+                sum(x for x, _ in new_pts) / len(new_pts),
+                sum(y for _, y in new_pts) / len(new_pts),
+            )
+            count += 1
+        elif parking.geo_position:
+            # Point parking
+            lon, lat = parking.geo_position
+            px, py = new_transformer.geo_to_pixel(lon, lat)
+            parking.position = (px, py)
+            count += 1
+        elif old_transformer:
+            if parking.points and len(parking.points) >= 3:
+                geo_pts = []
+                new_pts = []
+                for px, py in parking.points:
+                    lon, lat = old_transformer.pixel_to_geo(px, py)
+                    geo_pts.append((lon, lat))
+                    npx, npy = new_transformer.geo_to_pixel(lon, lat)
+                    new_pts.append((npx, npy))
+                parking.geo_points = geo_pts
+                parking.points = new_pts
+                parking.position = (
+                    sum(x for x, _ in new_pts) / len(new_pts),
+                    sum(y for _, y in new_pts) / len(new_pts),
+                )
+            else:
+                ox, oy = parking.position
+                lon, lat = old_transformer.pixel_to_geo(ox, oy)
+                parking.geo_position = (lon, lat)
+                px, py = new_transformer.geo_to_pixel(lon, lat)
+                parking.position = (px, py)
+            count += 1
+
     logger.info("Re-projected %d entities to new pixel space", count)
     return count
