@@ -281,13 +281,11 @@ class LaneBuilder:
         width_d = lane_obj.width_d
 
         # Override with linear transition if width_end is specified
-        if lane_obj.has_variable_width and section_length_m > 0:
+        if lane_obj.width_end is not None and section_length_m > 0:
             width_a = lane_obj.width
             width_b = (lane_obj.width_end - lane_obj.width) / section_length_m
-            # Keep c and d as 0 for linear transition (unless already set)
-            if width_c == 0.0 and width_d == 0.0:
-                width_c = 0.0
-                width_d = 0.0
+            width_c = 0.0
+            width_d = 0.0
 
         width_elem = etree.SubElement(lane, 'width')
         width_elem.set('sOffset', '0.0')

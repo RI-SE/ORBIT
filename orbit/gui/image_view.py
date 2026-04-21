@@ -3785,6 +3785,23 @@ class ImageView(QGraphicsView):
                 connecting_road = item.connecting_road
                 insert_index = segment_index + 1
                 connecting_road.inline_path.insert(insert_index, (scene_pos.x(), scene_pos.y()))
+                if connecting_road.inline_geo_path is not None:
+                    transformer = self._get_geo_transformer()
+                    if transformer:
+                        connecting_road.inline_geo_path = [
+                            transformer.pixel_to_geo(x, y) for x, y in connecting_road.inline_path
+                        ]
+                    else:
+                        # No transformer: interpolate a geo point to keep arrays in sync
+                        gp = connecting_road.inline_geo_path
+                        if 0 < insert_index < len(gp):
+                            prev, nxt = gp[insert_index - 1], gp[insert_index]
+                            new_geo = ((prev[0] + nxt[0]) / 2, (prev[1] + nxt[1]) / 2)
+                        elif gp:
+                            new_geo = gp[min(insert_index, len(gp) - 1)]
+                        else:
+                            new_geo = (0.0, 0.0)
+                        gp.insert(insert_index, new_geo)
                 item.update_graphics()
                 if conn_road_id in self.connecting_road_lanes_items:
                     self.connecting_road_lanes_items[conn_road_id].update_graphics()
@@ -4084,6 +4101,14 @@ class ImageView(QGraphicsView):
                 connecting_road = item.connecting_road
                 if len(connecting_road.inline_path) > 2:
                     connecting_road.inline_path.pop(point_index)
+                    if connecting_road.inline_geo_path is not None:
+                        transformer = self._get_geo_transformer()
+                        if transformer:
+                            connecting_road.inline_geo_path = [
+                                transformer.pixel_to_geo(x, y) for x, y in connecting_road.inline_path
+                            ]
+                        elif 0 <= point_index < len(connecting_road.inline_geo_path):
+                            connecting_road.inline_geo_path.pop(point_index)
                     item.update_graphics()
                     if conn_road_id in self.connecting_road_lanes_items:
                         self.connecting_road_lanes_items[conn_road_id].update_graphics()
