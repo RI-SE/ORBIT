@@ -156,11 +156,17 @@ graph LR
 1. **User Interaction**: `ImageView` handles mouse/keyboard events, creates/modifies graphics items
 2. **Data Storage**: `Project` holds all data (polylines, roads, junctions, control points, signals, objects, parking spaces, junction groups)
 3. **UI Updates**: Qt signals propagate changes to tree widgets and other UI components
-4. **Export**: `OpenDriveWriter` transforms pixel data to metric coordinates and generates XML
+4. **Export**: `OpenDriveWriter` converts geometry to metric coordinates and generates XML. For entities with geographic coordinates (`geo_points`/`geo_position`), conversion goes geo → metric directly. For pixel-only entities, it goes pixel → geo → metric.
 
-### Key Principle: Pixel-First
+### Key Principle: Geo-First with Pixel Fallback
 
-All geometric data is stored in **pixel coordinates**. Conversion to geographic or metric coordinates happens only at export time. This keeps the data model simple and allows working with non-georeferenced imagery.
+ORBIT uses a dual-coordinate model. Which coordinate type is primary depends on the data's origin:
+
+- **Imported data** (OSM, OpenDRIVE): `geo_points`/`geo_position` is stored and authoritative. Pixel coordinates are derived from geo via the active transformer.
+- **User-drawn data**: starts pixel-primary. Geographic coordinates are assigned lazily (when a transformer is available or at export). Once assigned, geo becomes the source of truth.
+- **Transformer updates**: pixel positions are recomputed from geo, not the other way around.
+
+This means the data model works without georeferencing (pixel-only), and becomes progressively geo-authoritative as control points are added.
 
 ---
 
@@ -189,18 +195,21 @@ class Project:
 
 ### Polyline
 
-A sequence of points drawn on the image.
+A sequence of points drawn on the image. Stores both pixel and geographic coordinates.
 
 ```python
 @dataclass
 class Polyline:
     id: str
-    points: List[Tuple[float, float]]  # Pixel coordinates
+    points: List[Tuple[float, float]]           # Pixel coordinates (display/editing)
+    geo_points: Optional[List[Tuple[float, float]]]  # (lon, lat) — source of truth for imported data
     line_type: LineType  # CENTERLINE or BOUNDARY
     road_mark_type: RoadMarkType  # SOLID, BROKEN, etc.
     color: str
     closed: bool
 ```
+
+When `geo_points` is set, pixel coordinates can be recomputed from it via `update_pixel_points_from_geo(transformer)`. For user-drawn polylines, `geo_points` starts as `None` and is populated lazily.
 
 **Important**: Every road needs exactly ONE polyline marked as `LineType.CENTERLINE`. This defines the road's reference line for OpenDRIVE.
 
@@ -398,6 +407,26 @@ class ParkingSpace:
 
 The `s_position` and `t_offset` fields are calculated relative to the assigned road's centerline for OpenDRIVE export positioning.
 
+### Signal
+
+A traffic signal placed on the map (`models/signal.py`). Follows the same dual-coordinate pattern as `Polyline`:
+
+```python
+@dataclass
+class Signal:
+    id: str
+    position: Tuple[float, float]                   # Pixel coordinates (display)
+    geo_position: Optional[Tuple[float, float]]     # (lon, lat) — source of truth for imports
+    signal_type: SignalType
+    value: Optional[int]           # e.g., speed limit value
+    road_id: Optional[str]
+    library_id: Optional[str]
+    sign_id: Optional[str]
+    s_position: Optional[float]    # Along road centerline (pixels)
+    validity_range: Optional[Tuple[float, float]]  # (s_start, s_end) in pixels
+    validity_lanes: Optional[List[int]]
+```
+
 ### SignLibrary & SignLibraryManager
 
 Country-specific traffic sign libraries (`models/sign_library.py`, `models/sign_library_manager.py`).
@@ -462,16 +491,16 @@ Understanding coordinate systems is crucial for working with ORBIT.
 
 ### Three Coordinate Spaces
 
-1. **Pixel Space** (internal)
+1. **Pixel Space**
    - Origin: top-left of image
    - Units: pixels
-   - Used for: all storage, drawing, editing
+   - Used for: display, user interaction; primary storage for user-drawn data
 
-2. **Geographic Space** (intermediate)
+2. **Geographic Space**
    - WGS84 latitude/longitude
-   - Used for: control points, OSM import
+   - Used for: control points; primary storage for imported data (OSM, OpenDRIVE); persistent alongside pixel coords
 
-3. **Metric Space** (export)
+3. **Metric Space** (export only)
    - Local Transverse Mercator projection
    - Origin: center of control points
    - Units: meters
@@ -487,22 +516,27 @@ from orbit.utils import create_transformer
 # Create from control points
 transformer = create_transformer(control_points)
 
-# Convert pixel to meters
+# Pixel ↔ geographic
+lon, lat = transformer.pixel_to_geo(pixel_x, pixel_y)
+px, py = transformer.geo_to_pixel(longitude, latitude)
+
+# Pixel → metric (goes via geo internally)
 x_m, y_m = transformer.pixel_to_meters(pixel_x, pixel_y)
 
-# Batch conversion
-points_m = transformer.pixels_to_meters_batch(pixel_points)
+# Batch conversions
+geo_pts = transformer.pixels_to_geo_batch(pixel_points)
+metric_pts = transformer.pixels_to_meters_batch(pixel_points)
 
-# Get scale factors
+# Scale factors
 scale_x, scale_y = transformer.get_scale_factors()  # meters per pixel
 ```
 
-### Why Pixel-First?
+### Why the Hybrid Model?
 
-- Works without georeferencing (for testing/prototyping)
-- Simpler data model (no projection complexity in storage)
-- Editing operations don't accumulate floating-point errors
-- Export can use different projections without re-annotating
+- **Pixel-only mode** works without georeferencing (testing, prototyping, non-geo imagery)
+- **Geo coords persist** alongside pixels, so transformer changes don't corrupt data
+- **Imported data** (OSM, OpenDRIVE) carries inherently geographic geometry; storing it as geo avoids round-trip error
+- **Export** uses geo → metric directly, which is more accurate than pixel → geo → metric for imported roads
 
 ---
 

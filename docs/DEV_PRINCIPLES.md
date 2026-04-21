@@ -3,29 +3,31 @@
 Core design principles for ORBIT development. Read this before making
 architecture-level changes.
 
-## Geo-First Coordinates
+## Coordinate Model: Geo-First with Pixel Fallback
 
-Geographic coordinates (WGS84 lat/lon) are the **source of truth** for all
-geometry. Pixel coordinates are display-only—derived from geo via the active
-coordinate transformer.
+ORBIT uses a dual-coordinate model. The rule for which coordinate type is primary
+depends on the data's origin:
 
-- **Imported data** (OSM, OpenDRIVE) arrives with geographic coords that are
-  authoritative. Pixel positions are computed from geo.
-- **User-drawn data** gets geo_points via `pixel_to_geo` at creation time.
-  Once a geo_point exists, it is the source of truth.
-- **Transformer changes** (new control points, adjustment) update pixel
-  positions from geo, not the other way around. The adjustment system
+- **Imported data** (OSM, OpenDRIVE) arrives with geographic coordinates that are
+  authoritative. `geo_points` / `geo_position` fields are set; pixel positions are
+  computed from geo via the active transformer.
+- **User-drawn data** starts pixel-primary. `geo_points` are assigned lazily — when
+  a transformer is available or at export time — via `pixel_to_geo`. Once assigned,
+  geo becomes the source of truth for that entity.
+- **Transformer changes** (new control points, adjustment) recompute pixel positions
+  from geo for all entities that have `geo_points`. The adjustment system
   (`update_all_from_geo_coords`) handles this.
-- **Export** uses geo_points → metric conversion directly. A consistency
-  check refreshes any geo_points that diverge from the current transformer
-  (catches historically stale data).
+- **Export** uses `geo_points → metric` conversion directly where available. A
+  consistency check refreshes any geo_points that diverge from the current
+  transformer (catches historically stale data). Entities without geo_points fall
+  back to `pixel → geo → metric`.
 
 ### Three Coordinate Spaces
 
 | Space | Origin | Used for |
 |-------|--------|----------|
-| **Pixel** | Image top-left | Display, user interaction |
-| **Geographic** | WGS84 lat/lon | Storage, source of truth |
+| **Pixel** | Image top-left | Display, user interaction; primary for user-drawn data |
+| **Geographic** | WGS84 lat/lon | Primary for imported data; persistent storage alongside pixels |
 | **Metric** | Local Transverse Mercator | OpenDRIVE export only |
 
 The `CoordinateTransformer` hierarchy handles all conversions:
