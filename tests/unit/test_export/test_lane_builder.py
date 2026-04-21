@@ -125,6 +125,7 @@ class TestCreateLanes:
         right_lane.predecessor_id = None
         right_lane.successor_id = None
         right_lane.width = 3.5
+        right_lane.width_end = None
         right_lane.width_b = 0.0
         right_lane.width_c = 0.0
         right_lane.width_d = 0.0
@@ -285,7 +286,7 @@ class TestCreateSectionBasedLanes:
         lane1 = Mock(id=2, lane_type=LaneType.DRIVING, level=False,
                      direction=None, advisory=None,
                      predecessor_id=None, successor_id=None,
-                     width=3.5, width_b=0.0, width_c=0.0, width_d=0.0,
+                     width=3.5, width_end=None, width_b=0.0, width_c=0.0, width_d=0.0,
                      has_variable_width=False,
                      road_mark_type=RoadMarkType.SOLID,
                      road_mark_weight='standard', road_mark_color='white',
@@ -294,7 +295,7 @@ class TestCreateSectionBasedLanes:
         lane2 = Mock(id=1, lane_type=LaneType.DRIVING, level=False,
                      direction=None, advisory=None,
                      predecessor_id=None, successor_id=None,
-                     width=3.5, width_b=0.0, width_c=0.0, width_d=0.0,
+                     width=3.5, width_end=None, width_b=0.0, width_c=0.0, width_d=0.0,
                      has_variable_width=False,
                      road_mark_type=RoadMarkType.SOLID,
                      road_mark_weight='standard', road_mark_color='white',
@@ -391,6 +392,7 @@ class TestCreateLane:
         lane.predecessor_id = None
         lane.successor_id = None
         lane.width = 3.5
+        lane.width_end = None
         lane.width_b = 0.0
         lane.width_c = 0.0
         lane.width_d = 0.0
