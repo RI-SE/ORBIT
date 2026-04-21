@@ -128,6 +128,7 @@ class TestCreateLanes:
         right_lane.width_b = 0.0
         right_lane.width_c = 0.0
         right_lane.width_d = 0.0
+        right_lane.width_end = None
         right_lane.has_variable_width = False
         right_lane.road_mark_type = RoadMarkType.BROKEN
         right_lane.road_mark_weight = 'standard'
@@ -290,7 +291,7 @@ class TestCreateSectionBasedLanes:
                      direction=None, advisory=None,
                      predecessor_id=None, successor_id=None,
                      width=3.5, width_b=0.0, width_c=0.0, width_d=0.0,
-                     has_variable_width=False,
+                     width_end=None, has_variable_width=False,
                      road_mark_type=RoadMarkType.SOLID,
                      road_mark_weight='standard', road_mark_color='white',
                      road_mark_width=0.12, speed_limit=None,
@@ -299,7 +300,7 @@ class TestCreateSectionBasedLanes:
                      direction=None, advisory=None,
                      predecessor_id=None, successor_id=None,
                      width=3.5, width_b=0.0, width_c=0.0, width_d=0.0,
-                     has_variable_width=False,
+                     width_end=None, has_variable_width=False,
                      road_mark_type=RoadMarkType.SOLID,
                      road_mark_weight='standard', road_mark_color='white',
                      road_mark_width=0.12, speed_limit=None,
@@ -396,6 +397,7 @@ class TestCreateLane:
         lane.predecessor_id = None
         lane.successor_id = None
         lane.width = 3.5
+        lane.width_end = None
         lane.width_b = 0.0
         lane.width_c = 0.0
         lane.width_d = 0.0
