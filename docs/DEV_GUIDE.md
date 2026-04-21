@@ -76,6 +76,28 @@ orbit --verbose
 uv run python -m pytest tests/ -v
 ```
 
+### Pre-commit Hooks
+
+The repo ships with a `.pre-commit-config.yaml` that runs the same checks as CI (ruff lint + full test suite) before every commit.
+
+Activate the hooks once after cloning:
+
+```bash
+uv run pre-commit install
+```
+
+Run manually against all files at any time:
+
+```bash
+uv run pre-commit run --all-files
+```
+
+To bypass the hooks for a single commit (e.g. a work-in-progress):
+
+```bash
+git commit --no-verify
+```
+
 ### Project Structure
 
 ```
