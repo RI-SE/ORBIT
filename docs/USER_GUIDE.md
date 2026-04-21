@@ -2,7 +2,7 @@
 
 Complete guide for creating OpenDRIVE road networks from aerial imagery using ORBIT.
 
-**Version**: 0.6.0 | **OpenDRIVE**: 1.8
+**Version**: 0.10.1 | **OpenDRIVE**: 1.8
 
 ---
 
