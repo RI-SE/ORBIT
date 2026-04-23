@@ -212,6 +212,8 @@ class RoadObject:
         # OpenDRIVE orientation angles for round-trip preservation
         self.pitch: float = 0.0  # Pitch angle in radians
         self.roll: float = 0.0  # Roll angle in radians
+        # OpenDRIVE directional orientation marker for round-trip ("+", "-", "none")
+        self.odr_orientation: str = "none"
         # Original OSM tags for round-trip export
         self.osm_tags: Optional[Dict[str, str]] = None
 
@@ -298,6 +300,8 @@ class RoadObject:
             data['pitch'] = self.pitch
         if self.roll != 0.0:
             data['roll'] = self.roll
+        if self.odr_orientation != "none":
+            data['odr_orientation'] = self.odr_orientation
         if self.osm_tags:
             data['osm_tags'] = self.osm_tags
         return data
@@ -339,6 +343,8 @@ class RoadObject:
         # OpenDRIVE orientation angles
         obj.pitch = data.get('pitch', 0.0)
         obj.roll = data.get('roll', 0.0)
+        # OpenDRIVE directional orientation marker
+        obj.odr_orientation = data.get('odr_orientation', 'none')
         # OSM tags
         obj.osm_tags = data.get('osm_tags')
 

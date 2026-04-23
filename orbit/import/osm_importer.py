@@ -1092,9 +1092,13 @@ class OSMImporter:
             if not road_ids:
                 continue
 
-            # Attach to the first road found (usually there's only one for traffic signals)
-            # If multiple roads share this node (junction), we pick the first one
-            road_id = road_ids[0]
+            # Attach to the road containing this node. If multiple roads share the node
+            # (e.g. at a junction), prefer regular roads over connecting roads.
+            candidate_ids = [
+                rid for rid in road_ids
+                if not (self.project.get_road(rid) or Road()).junction_id
+            ]
+            road_id = candidate_ids[0] if candidate_ids else road_ids[0]
             road = self.project.get_road(road_id)
             if not road or not road.centerline_id:
                 continue

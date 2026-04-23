@@ -301,6 +301,7 @@ class ODRObject:
     type: str = ""
     name: str = ""
     orientation: float = 0.0
+    orientation_str: str = "none"  # Raw OpenDRIVE orientation: "+", "-", "none", or numeric string
     length: float = 0.0
     width: float = 0.0
     height: float = 0.0
@@ -479,6 +480,13 @@ class OpenDriveData:
     roads: List[ODRRoad] = field(default_factory=list)
     junctions: List[ODRJunction] = field(default_factory=list)
     junction_groups: List[ODRJunctionGroup] = field(default_factory=list)
+
+
+def _parse_object_orientation(value: str) -> float:
+    """Parse object orientation, handling direction specifiers '+', '-', 'none'."""
+    if value in ('+', '-', 'none'):
+        return 0.0
+    return float(value)
 
 
 class OpenDriveParser:
@@ -933,7 +941,8 @@ class OpenDriveParser:
             z_offset=float(object_elem.get('zOffset', '0')),
             type=object_elem.get('type', ''),
             name=object_elem.get('name', ''),
-            orientation=float(object_elem.get('orientation', '0')),
+            orientation=_parse_object_orientation(object_elem.get('orientation', '0')),
+            orientation_str=object_elem.get('orientation', 'none'),
             length=float(object_elem.get('length', '0')),
             width=float(object_elem.get('width', '0')),
             height=float(object_elem.get('height', '0')),

@@ -2445,6 +2445,18 @@ class ImageView(QGraphicsView):
                 x, y = obj.position
                 self.centerOn(x, y)
 
+    def _adjacent_section_for_cr(self, cr, adjacent) -> int | None:
+        """Section number of `adjacent` road that touches `cr`, honoring contact point."""
+        if not adjacent.lane_sections:
+            return None
+        if cr.predecessor_id == adjacent.id:
+            section_idx = 0 if cr.predecessor_contact == "start" else -1
+        elif cr.successor_id == adjacent.id:
+            section_idx = 0 if cr.successor_contact == "start" else -1
+        else:
+            section_idx = 0
+        return adjacent.lane_sections[section_idx].section_number
+
     def _get_connecting_road_lane_id(self, junction, connecting_road_id: str, source_lane_id: int) -> int | None:
         """
         Determine which lane on a connecting road corresponds to a source lane.
@@ -2536,50 +2548,67 @@ class ImageView(QGraphicsView):
                 if road.successor_id and road.successor_id in connected_ids:
                     skip_successor = True
 
-        # 1. Check direct road predecessor/successor links (not through junctions)
-        # Skip if both roads are in the same junction - junction connections take precedence
-        if is_first_section and road.predecessor_id and not skip_predecessor:
-            pred_road = self.project.get_road(road.predecessor_id)
-            if pred_road and pred_road.lane_sections:
-                # Predecessor connects at its last section
-                pred_section = pred_road.lane_sections[-1].section_number
-                # Assume same lane exists in connected road (common case for continuous roads)
-                result['road_lanes'].append((road.predecessor_id, pred_section, lane_id))
+        # 1. Check direct road predecessor/successor links (not through junctions).
+        # Skip if both roads are in the same junction - junction connections take precedence.
+        # Also skip for connecting roads: their neighbor lane mapping requires sign flips at
+        # opposite-direction contacts, which are fully described by junction.lane_connections below.
+        if not road.is_connecting_road:
+            if is_first_section and road.predecessor_id and not skip_predecessor:
+                pred_road = self.project.get_road(road.predecessor_id)
+                if pred_road and pred_road.lane_sections:
+                    pred_section = pred_road.lane_sections[-1].section_number
+                    result['road_lanes'].append((road.predecessor_id, pred_section, lane_id))
 
-        if is_last_section and road.successor_id and not skip_successor:
-            succ_road = self.project.get_road(road.successor_id)
-            if succ_road and succ_road.lane_sections:
-                # Successor connects at its first section
-                succ_section = succ_road.lane_sections[0].section_number
-                # Assume same lane exists in connected road (common case for continuous roads)
-                result['road_lanes'].append((road.successor_id, succ_section, lane_id))
+            if is_last_section and road.successor_id and not skip_successor:
+                succ_road = self.project.get_road(road.successor_id)
+                if succ_road and succ_road.lane_sections:
+                    succ_section = succ_road.lane_sections[0].section_number
+                    result['road_lanes'].append((road.successor_id, succ_section, lane_id))
 
         # 2. Search all junctions for lane connections involving this lane
         for junction in self.project.junctions:
             for lane_conn in junction.lane_connections:
-                # Check if this lane is the source (find successor via junction)
-                if lane_conn.from_road_id == road_id and lane_conn.from_lane_id == lane_id:
-                    # Only consider if this is the last section (connects to junction)
-                    if is_last_section:
-                        # Only add connecting road lane - don't show destination road beyond junction
-                        if lane_conn.connecting_road_id:
-                            conn_lane_id = self._get_connecting_road_lane_id(
-                                junction, lane_conn.connecting_road_id, lane_id
-                            )
-                            if conn_lane_id is not None:
-                                result['connecting_road_lanes'].append((lane_conn.connecting_road_id, conn_lane_id))
+                # Case A: this road is the incoming source (find CR lane at junction).
+                if (lane_conn.from_road_id == road_id and lane_conn.from_lane_id == lane_id
+                        and is_last_section and lane_conn.connecting_road_id):
+                    conn_lane_id = lane_conn.connecting_lane_id
+                    if conn_lane_id is None:
+                        conn_lane_id = self._get_connecting_road_lane_id(
+                            junction, lane_conn.connecting_road_id, lane_id
+                        )
+                    if conn_lane_id is not None:
+                        result['connecting_road_lanes'].append((lane_conn.connecting_road_id, conn_lane_id))
 
-                # Check if this lane is the destination (find predecessor via junction)
-                if lane_conn.to_road_id == road_id and lane_conn.to_lane_id == lane_id:
-                    # Only consider if this is the first section (connects from junction)
-                    if is_first_section:
-                        # Only add connecting road lane - don't show source road beyond junction
-                        if lane_conn.connecting_road_id:
-                            conn_lane_id = self._get_connecting_road_lane_id(
-                                junction, lane_conn.connecting_road_id, lane_conn.from_lane_id
+                # Case B: this road is the outgoing destination (find CR lane at junction).
+                if (lane_conn.to_road_id == road_id and lane_conn.to_lane_id == lane_id
+                        and is_first_section and lane_conn.connecting_road_id):
+                    conn_lane_id = lane_conn.connecting_lane_id
+                    if conn_lane_id is None:
+                        conn_lane_id = self._get_connecting_road_lane_id(
+                            junction, lane_conn.connecting_road_id, lane_conn.from_lane_id
+                        )
+                    if conn_lane_id is not None:
+                        result['connecting_road_lanes'].append((lane_conn.connecting_road_id, conn_lane_id))
+
+                # Case C: this road IS the connecting road — highlight incoming/outgoing road lanes
+                # using the stored from/to lane IDs (which already encode direction-flip semantics).
+                if (lane_conn.connecting_road_id == road_id
+                        and lane_conn.connecting_lane_id is not None
+                        and lane_conn.connecting_lane_id == lane_id):
+                    from_road = self.project.get_road(lane_conn.from_road_id)
+                    if from_road and from_road.lane_sections:
+                        from_section = self._adjacent_section_for_cr(road, from_road)
+                        if from_section is not None:
+                            result['road_lanes'].append(
+                                (lane_conn.from_road_id, from_section, lane_conn.from_lane_id)
                             )
-                            if conn_lane_id is not None:
-                                result['connecting_road_lanes'].append((lane_conn.connecting_road_id, conn_lane_id))
+                    to_road = self.project.get_road(lane_conn.to_road_id)
+                    if to_road and to_road.lane_sections:
+                        to_section = self._adjacent_section_for_cr(road, to_road)
+                        if to_section is not None:
+                            result['road_lanes'].append(
+                                (lane_conn.to_road_id, to_section, lane_conn.to_lane_id)
+                            )
 
         return result
 
@@ -2873,18 +2902,24 @@ class ImageView(QGraphicsView):
                     if not conn_road or not conn_road.is_connecting_road:
                         continue
 
-                    # Check if this lane connection corresponds to the selected lane
-                    expected_lane = self._get_connecting_road_lane_id(
-                        junction, connecting_road_id, lane_conn.from_lane_id
-                    )
-                    if expected_lane != lane_id:
-                        continue
+                    # Check if this lane connection corresponds to the selected lane.
+                    # Prefer the stored connecting_lane_id (already encodes direction flips);
+                    # fall back to the ordinal helper only for legacy data without it.
+                    if lane_conn.connecting_lane_id is not None:
+                        if lane_conn.connecting_lane_id != lane_id:
+                            continue
+                    else:
+                        expected_lane = self._get_connecting_road_lane_id(
+                            junction, connecting_road_id, lane_conn.from_lane_id
+                        )
+                        if expected_lane != lane_id:
+                            continue
 
-                    # Highlight the from_road lane (last section)
+                    # Highlight the from_road lane at the section that touches the CR
                     from_road = self.project.get_road(lane_conn.from_road_id)
                     if from_road and from_road.lane_sections:
-                        from_section = from_road.lane_sections[-1].section_number
-                        if lane_conn.from_road_id in self.road_lanes_items:
+                        from_section = self._adjacent_section_for_cr(conn_road, from_road)
+                        if from_section is not None and lane_conn.from_road_id in self.road_lanes_items:
                             lanes_item = self.road_lanes_items[lane_conn.from_road_id]
                             for lane_polygon in lanes_item.lane_items:
                                 if (isinstance(lane_polygon, InteractiveLanePolygon) and
@@ -2894,11 +2929,11 @@ class ImageView(QGraphicsView):
                                     lane_polygon.set_linked(True)
                                     self.linked_lane_polygons.append(lane_polygon)
 
-                    # Highlight the to_road lane (first section)
+                    # Highlight the to_road lane at the section that touches the CR
                     to_road = self.project.get_road(lane_conn.to_road_id)
                     if to_road and to_road.lane_sections:
-                        to_section = to_road.lane_sections[0].section_number
-                        if lane_conn.to_road_id in self.road_lanes_items:
+                        to_section = self._adjacent_section_for_cr(conn_road, to_road)
+                        if to_section is not None and lane_conn.to_road_id in self.road_lanes_items:
                             lanes_item = self.road_lanes_items[lane_conn.to_road_id]
                             for lane_polygon in lanes_item.lane_items:
                                 if (isinstance(lane_polygon, InteractiveLanePolygon) and

@@ -345,6 +345,8 @@ class ObjectBuilder:
         elif obj.type == ObjectType.GUARDRAIL:
             object_elem.set('type', 'barrier')
             object_elem.set('subtype', 'guardrail')
+            object_elem.set('orientation', obj.odr_orientation if obj.odr_orientation else 'none')
+            object_elem.set('hdg', f'{np.radians(obj.orientation):.6f}')
             object_elem.set('height', f"{obj.dimensions.get('height', 0.81):.2f}")
             object_elem.set('width', f"{obj.dimensions.get('width', 0.3):.2f}")
             if obj.validity_length:

@@ -1140,7 +1140,17 @@ class OpenDriveWriter:
         elif self.carla_compat:
             road_elem.append(etree.Element('signals'))
 
-        if self.carla_compat:
+        # Objects on connecting road (e.g. lampposts placed on connecting roads)
+        export_objects = getattr(self, '_export_objects', None)
+        if export_objects is None:
+            export_objects = self._get_export_objects()
+        cr_objects = self.object_builder.create_objects(
+            connecting_road, export_objects, connecting_road.inline_path,
+            geometry_elements=geometry_elements, road_length=road_length,
+        )
+        if cr_objects is not None:
+            road_elem.append(cr_objects)
+        elif self.carla_compat:
             road_elem.append(etree.Element('objects'))
 
         return road_elem

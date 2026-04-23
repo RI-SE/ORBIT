@@ -699,7 +699,7 @@ class OpenDriveImporter:
         # Create LaneConnection objects from junction connection data
         self._import_cr_lane_connections(
             odr_road, junction_odr_id, junction, connecting_road.id,
-            successor_orbit_id, options
+            successor_orbit_id, predecessor_orbit_id, options
         )
 
         if options.verbose:
@@ -767,7 +767,8 @@ class OpenDriveImporter:
         return geom_kwargs, stored_start_heading, stored_end_heading
 
     def _import_cr_lane_connections(self, odr_road, junction_odr_id, junction,
-                                    connecting_road_id, successor_orbit_id, options):
+                                    connecting_road_id, successor_orbit_id,
+                                    predecessor_orbit_id, options):
         """Create LaneConnection objects from ODR junction connection data."""
         odr_junction = None
         for j in self.odr_data.junctions:
@@ -783,13 +784,20 @@ class OpenDriveImporter:
                 continue
 
             from_road_id = self.odr_road_to_orbit.get(odr_conn.incoming_road, "")
-            to_road_id = successor_orbit_id
+
+            # When contactPoint="start", traffic enters the CR at its start and exits at
+            # its end (successor road). When contactPoint="end", traffic enters at the end
+            # and exits at the start (predecessor road).
+            if odr_conn.contact_point == "start":
+                to_road_id = successor_orbit_id
+            else:
+                to_road_id = predecessor_orbit_id
 
             if not from_road_id or not to_road_id:
                 continue
 
             for lane_link in odr_conn.lane_links:
-                to_lane = lane_link.from_lane  # Fallback
+                to_lane = lane_link.to_lane  # Fallback: connecting lane ID
                 if odr_road.lane_sections:
                     section = odr_road.lane_sections[0]
                     for odr_lane in section.right_lanes + section.left_lanes:
@@ -1339,6 +1347,7 @@ class OpenDriveImporter:
         obj.name = odr_object.name
         obj.z_offset = odr_object.z_offset
         obj.orientation = math.degrees(odr_object.hdg)  # Convert radians to degrees
+        obj.odr_orientation = odr_object.orientation_str  # Preserve directional marker
 
         # Set dimensions
         if odr_object.radius > 0:

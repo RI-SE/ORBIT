@@ -482,7 +482,17 @@ class Project:
                 if lc.connecting_lane_id is None and lc.connecting_road_id:
                     cr = self.get_road(lc.connecting_road_id)
                     if cr and cr.is_connecting_road:
-                        if lc.from_lane_id < 0:
+                        if cr.cr_lane_count_left > 0 and cr.cr_lane_count_right > 0:
+                            # Bidirectional CR: use predecessor/successor orientation to
+                            # assign direction, not from_lane_id sign. Traffic flowing
+                            # pred→succ uses right lanes (-1); succ→pred uses left lanes (1).
+                            if lc.from_road_id == cr.predecessor_id:
+                                lc.connecting_lane_id = -1
+                            elif lc.from_road_id == cr.successor_id:
+                                lc.connecting_lane_id = 1
+                            else:
+                                lc.connecting_lane_id = -1 if lc.from_lane_id < 0 else 1
+                        elif lc.from_lane_id < 0:
                             lc.connecting_lane_id = -1 if cr.cr_lane_count_right > 0 else 1
                         else:
                             lc.connecting_lane_id = 1 if cr.cr_lane_count_left > 0 else -1
