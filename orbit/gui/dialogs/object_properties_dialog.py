@@ -104,7 +104,8 @@ class ObjectPropertiesDialog(BaseDialog):
         self.road_combo = QComboBox()
         self.road_combo.addItem("(None)", None)
         for road in self.project.roads:
-            self.road_combo.addItem(road.name or f"Road {road.id[:8]}", road.id)
+            label = f"Road {road.id}" + (f" – {road.name}" if road.name else "")
+            self.road_combo.addItem(label, road.id)
         self.road_combo.currentIndexChanged.connect(self.on_road_changed)
         road_layout.addRow("Assigned Road:", self.road_combo)
 
