@@ -14,11 +14,13 @@ from PyQt6.QtGui import QBrush, QColor, QFont, QImage, QKeyEvent, QMouseEvent, Q
 from PyQt6.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsItem,
+    QGraphicsItemGroup,
     QGraphicsLineItem,
     QGraphicsPathItem,
     QGraphicsPixmapItem,
     QGraphicsRectItem,
     QGraphicsScene,
+    QGraphicsTextItem,
     QGraphicsView,
     QInputDialog,
     QMenu,
@@ -40,6 +42,75 @@ from .graphics.object_graphics_item import ObjectGraphicsItem
 from .graphics.parking_item import ParkingGraphicsItem
 from .graphics.signal_graphics_item import SignalGraphicsItem
 from .utils.message_helpers import ask_yes_no, show_warning
+
+
+class ControlPointItem(QGraphicsItemGroup):
+    """Draggable crosshair marker for a georeferencing control point."""
+
+    ARM_LENGTH = 10
+    GAP = 3
+
+    def __init__(self, control_point, parent=None):
+        super().__init__(parent)
+        self.control_point = control_point
+        self.moved_callback = None  # Set to callable(ControlPoint) after creation
+
+        self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsMovable, True)
+        self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+        self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsSelectable, True)
+        self.setAcceptHoverEvents(True)
+
+        pen = QPen(QColor(0, 100, 255), 2)
+        dot_pen = QPen(QColor(0, 100, 255), 1)
+        dot_brush = QBrush(QColor(0, 100, 255))
+        a, g = self.ARM_LENGTH, self.GAP
+
+        for item in [
+            QGraphicsLineItem(-a, 0, -g, 0),
+            QGraphicsLineItem(g, 0, a, 0),
+            QGraphicsLineItem(0, -a, 0, -g),
+            QGraphicsLineItem(0, g, 0, a),
+        ]:
+            item.setPen(pen)
+            item.setZValue(10)
+            self.addToGroup(item)
+
+        dot = QGraphicsEllipseItem(-0.5, -0.5, 1, 1)
+        dot.setPen(dot_pen)
+        dot.setBrush(dot_brush)
+        dot.setZValue(10)
+        self.addToGroup(dot)
+
+        if control_point.name:
+            font = QFont()
+            font.setBold(True)
+            font.setPointSize(10)
+            label = QGraphicsTextItem(control_point.name)
+            label.setDefaultTextColor(QColor(0, 100, 255))
+            label.setFont(font)
+            label.setPos(15, -10)
+            label.setZValue(11)
+            self.addToGroup(label)
+
+        self.setPos(control_point.pixel_x, control_point.pixel_y)
+        self.setZValue(10)
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItemGroup.GraphicsItemChange.ItemPositionHasChanged:
+            pos = self.pos()
+            self.control_point.pixel_x = pos.x()
+            self.control_point.pixel_y = pos.y()
+            if self.moved_callback:
+                self.moved_callback(self.control_point)
+        return super().itemChange(change, value)
+
+    def hoverEnterEvent(self, event):
+        self.setCursor(Qt.CursorShape.SizeAllCursor)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self.unsetCursor()
+        super().hoverLeaveEvent(event)
 
 
 class ImageView(QGraphicsView):
@@ -91,6 +162,7 @@ class ImageView(QGraphicsView):
     # dragged_road_id, target_road_id, dragged_contact, target_contact
     road_link_requested = pyqtSignal(str, str, str, str)
     road_unlink_requested = pyqtSignal(str, str)  # road_id, linked_road_id (for disconnect)
+    control_point_moved = pyqtSignal(object)  # Emits ControlPoint when dragged
 
     def __init__(self, parent=None, verbose: bool = False):
         super().__init__(parent)
@@ -1032,49 +1104,11 @@ class ImageView(QGraphicsView):
             item.update_scale_factor(scale_factor)
 
     def add_control_point_graphics(self, control_point):
-        """Add a control point marker to the graphics scene as a crosshair."""
-
-        x, y = control_point.pixel_x, control_point.pixel_y
-
-        # Crosshair parameters
-        arm_length = 10  # Length of each arm from center
-        gap = 3  # Gap radius at center (so target pixel is visible)
-
-        # Main crosshair pen (bright blue)
-        pen = QPen(QColor(0, 100, 255), 2)
-
-        # Horizontal arms (left and right of center gap)
-        left_arm = self.scene.addLine(x - arm_length, y, x - gap, y, pen)
-        right_arm = self.scene.addLine(x + gap, y, x + arm_length, y, pen)
-
-        # Vertical arms (top and bottom of center gap)
-        top_arm = self.scene.addLine(x, y - arm_length, x, y - gap, pen)
-        bottom_arm = self.scene.addLine(x, y + gap, x, y + arm_length, pen)
-
-        # Tiny center dot for exact position reference
-        dot_pen = QPen(QColor(0, 100, 255), 1)
-        dot_brush = QBrush(QColor(0, 100, 255))
-        center_dot = self.scene.addEllipse(x - 0.5, y - 0.5, 1, 1, dot_pen, dot_brush)
-
-        # Set z-values and add to tracking list
-        for item in [left_arm, right_arm, top_arm, bottom_arm, center_dot]:
-            item.setZValue(10)
-            self.control_point_items.append(item)
-
-        # Add label with CP name
-        if control_point.name:
-            from PyQt6.QtGui import QFont
-            from PyQt6.QtWidgets import QGraphicsTextItem
-            text_item = QGraphicsTextItem(control_point.name)
-            text_item.setDefaultTextColor(QColor(0, 100, 255))  # Bright blue
-            font = QFont()
-            font.setBold(True)
-            font.setPointSize(10)
-            text_item.setFont(font)
-            text_item.setPos(x + 15, y - 10)
-            text_item.setZValue(11)
-            self.scene.addItem(text_item)
-            self.control_point_items.append(text_item)
+        """Add a draggable control point marker to the graphics scene."""
+        item = ControlPointItem(control_point)
+        item.moved_callback = lambda cp: self.control_point_moved.emit(cp)
+        self.scene.addItem(item)
+        self.control_point_items.append(item)
 
     def add_road_lanes_graphics(self, road: Road, scale_factors: tuple = None):
         """

@@ -1855,6 +1855,9 @@ class MainWindow(QMainWindow):
         # Connect control points changed signal for real-time visualization updates
         dialog.control_points_changed.connect(self.on_control_points_changed)
 
+        # Connect control point drag signal for live matrix updates without full refresh
+        self.image_view.control_point_moved.connect(self.on_control_point_dragged)
+
         # Connect dialog finished signal
         dialog.finished.connect(lambda result: self.on_georef_dialog_closed(result))
 
@@ -1881,8 +1884,23 @@ class MainWindow(QMainWindow):
             # Update lane graphics with new scale
             self.update_affected_road_lanes()
 
-        # Clean up reference
+        # Clean up reference and disconnect drag signal
         self.georef_dialog = None
+        try:
+            self.image_view.control_point_moved.disconnect(self.on_control_point_dragged)
+        except RuntimeError:
+            pass  # Already disconnected
+
+    def on_control_point_dragged(self, control_point):
+        """Handle a control point being dragged on the image canvas.
+
+        Updates the transformer and scale display without recreating graphics items.
+        """
+        self._invalidate_cached_transformer()
+        self.update_scale_display()
+        # Keep georef dialog validation display up to date if open
+        if self.georef_dialog and hasattr(self.georef_dialog, 'update_validation'):
+            self.georef_dialog.update_validation()
 
     def on_control_points_changed(self):
         """Handle control points being added/removed in georeferencing dialog."""

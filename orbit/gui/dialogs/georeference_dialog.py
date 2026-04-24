@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -126,6 +127,9 @@ class GeoreferenceDialog(BaseDialog):
         self.import_csv_btn = QPushButton("Import from CSV...")
         self.import_csv_btn.clicked.connect(self.import_from_csv)
         table_button_layout.addWidget(self.import_csv_btn)
+        self.import_georef_btn = QPushButton("Import from Georef...")
+        self.import_georef_btn.clicked.connect(self.import_from_georef)
+        table_button_layout.addWidget(self.import_georef_btn)
         table_button_layout.addStretch()
         points_layout.addLayout(table_button_layout)
 
@@ -670,6 +674,57 @@ class GeoreferenceDialog(BaseDialog):
         """Handle cancellation of CSV import dialog."""
         # Clear placer dialog reference when cancelled
         self.csv_placer_dialog = None
+
+    def import_from_georef(self):
+        """Import control points from a .georef file, replacing existing points."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Georef File",
+            "",
+            "Georef Files (*.georef);;All Files (*)",
+        )
+        if not path:
+            return
+
+        try:
+            import json
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            raw_points = data.get("control_points", [])
+        except Exception as e:
+            show_error(self, f"Failed to load georef file:\n{e}", "Import Error")
+            return
+
+        if not raw_points:
+            show_warning(self, "The georef file contains no control points.", "Import Warning")
+            return
+
+        new_points = [
+            ControlPoint(
+                pixel_x=cp["pixel_x"],
+                pixel_y=cp["pixel_y"],
+                longitude=cp["longitude"],
+                latitude=cp["latitude"],
+                name=cp.get("name", ""),
+                is_validation=cp.get("is_validation", False),
+            )
+            for cp in raw_points
+        ]
+
+        self.project.control_points.clear()
+        self.project.control_points.extend(new_points)
+
+        self.load_control_points()
+        self.update_status()
+        self.update_validation()
+        self.control_points_changed.emit()
+
+        show_info(
+            self,
+            f"Imported {len(new_points)} control point(s) from georef file.\n"
+            "Drag the markers on the image to adjust their pixel positions.",
+            "Import Complete",
+        )
 
     def update_uncertainty_statistics(self):
         """Display uncertainty statistics based on current control points."""
