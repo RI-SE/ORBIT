@@ -44,7 +44,7 @@ def _project_point_onto_polyline(px: float, py: float, pts: List[tuple]):
         if dist < min_dist:
             min_dist = dist
             best_s = cumulative_s + t * seg_len
-            cross = (px - x1) * dy - (py - y1) * dx
+            cross = dx * (py - y1) - dy * (px - x1)  # standard signed cross product
             best_t = (1.0 if cross >= 0 else -1.0) * dist
         cumulative_s += seg_len
 

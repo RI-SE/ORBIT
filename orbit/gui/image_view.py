@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsView,
+    QInputDialog,
     QMenu,
     QMessageBox,
 )
@@ -3339,6 +3340,14 @@ class ImageView(QGraphicsView):
                     disconnect_action = menu.addAction(f"Disconnect from '{linked_name}'")
                     linked_road_id = road.successor_id
 
+        # Smooth Curve option — always shown for road centerlines
+        menu.addSeparator()
+        smooth_action = menu.addAction("Smooth Road Curve")
+        smooth_action.setToolTip(
+            "Redistribute polyline points along a smooth Bezier curve, "
+            "keeping start/end positions and tangent directions."
+        )
+
         # Show menu and get selected action
         action = menu.exec(self.mapToGlobal(view_pos))
 
@@ -3346,6 +3355,13 @@ class ImageView(QGraphicsView):
             self._delete_point(polyline_id, point_index)
         elif disconnect_action and action == disconnect_action and road and linked_road_id:
             self.road_unlink_requested.emit(road.id, linked_road_id)
+        elif action == smooth_action:
+            n_pts, ok = QInputDialog.getInt(
+                self, "Smooth Road Curve", "Number of output points:",
+                value=50, min=5, max=500, step=5,
+            )
+            if ok:
+                self._smooth_road_polyline(polyline_id, n_pts)
         elif action == split_section_action and road:
             # Warn if creating a small section
             s_coords = road.calculate_centerline_s_coordinates(polyline.points)
@@ -3374,6 +3390,143 @@ class ImageView(QGraphicsView):
         elif action == split_road_action and road:
             # Emit signal for MainWindow to handle road splitting
             self.road_split_requested.emit(road.id, polyline_id, point_index)
+
+    def _smooth_road_polyline(self, polyline_id: str, num_points: int = 50) -> None:
+        """Smooth a regular road's centerline using adjacent road tangents."""
+        import math as _math
+
+        from orbit.gui.project_controller import get_contact_pos_heading
+        from orbit.gui.undo_commands import ModifyPolylineCommand
+        from orbit.utils.geometry import fit_smooth_curve_to_polyline
+
+        item = self.polyline_items.get(polyline_id)
+        if not item:
+            return
+        pts = list(item.polyline.points)
+        if len(pts) < 3:
+            return
+
+        # Default tangents from first/last segment
+        start_hdg = _math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0])
+        end_hdg = _math.atan2(pts[-1][1] - pts[-2][1], pts[-1][0] - pts[-2][0])
+
+        # Override with adjacent road tangents when available (more accurate)
+        road = self._find_road_by_centerline(polyline_id)
+        if road and self.project:
+            if road.predecessor_id:
+                pred_road = self.project.get_road(road.predecessor_id)
+                if pred_road:
+                    pred_pl = self.project.get_polyline(pred_road.centerline_id)
+                    if pred_pl:
+                        _, h = get_contact_pos_heading(pred_pl, road.predecessor_contact)
+                        if road.predecessor_contact == "start":
+                            h += _math.pi
+                        start_hdg = h
+            if road.successor_id:
+                succ_road = self.project.get_road(road.successor_id)
+                if succ_road:
+                    succ_pl = self.project.get_polyline(succ_road.centerline_id)
+                    if succ_pl:
+                        _, h = get_contact_pos_heading(succ_pl, road.successor_contact)
+                        if road.successor_contact == "end":
+                            h += _math.pi
+                        end_hdg = h
+
+        # Use num_points; ensure at least original count so we don't lose resolution
+        n_out = max(num_points, 2)
+        new_pts = fit_smooth_curve_to_polyline(pts, start_hdg, end_hdg, num_output_points=n_out)
+
+        old_geo = list(item.polyline.geo_points) if item.polyline.geo_points else None
+
+        # Apply first (convention: caller applies, then pushes undo command)
+        item.polyline.points = new_pts
+        item.polyline.geo_points = None  # pixel coords are now primary
+        item.update_graphics()
+
+        cmd = ModifyPolylineCommand(
+            self.parent(),
+            polyline_id,
+            old_points=pts,
+            new_points=new_pts,
+            old_geo_points=old_geo,
+            new_geo_points=None,
+            description="Smooth Road Curve",
+        )
+        if self.parent() and hasattr(self.parent(), 'undo_stack'):
+            self.parent().undo_stack.push(cmd)
+
+    def _show_cr_centerline_menu(self, view_pos, conn_road_id: str, point_index: int) -> None:
+        """Context menu for a connecting road centerline (right-click on point or segment)."""
+        from orbit.gui.undo_commands import SmoothCRCommand
+        from orbit.utils.geometry import fit_smooth_curve_to_polyline, get_smooth_cr_tangents
+
+        item = self.connecting_road_centerline_items.get(conn_road_id)
+        if not item:
+            return
+        cr = item.connecting_road
+
+        menu = QMenu()
+
+        # "Delete Point" only for polyline CRs with a clicked point
+        delete_action = None
+        if cr.geometry_type == "polyline" and point_index >= 0 and len(cr.inline_path) > 2:
+            delete_action = menu.addAction("Delete Point")
+            menu.addSeparator()
+
+        smooth_action = menu.addAction("Smooth Curve")
+        smooth_action.setToolTip(
+            "Redistribute the curve's points along a smooth Bezier using "
+            "adjacent road tangents. Works for all geometry types."
+        )
+
+        action = menu.exec(self.mapToGlobal(view_pos))
+
+        if delete_action and action == delete_action:
+            cr.inline_path.pop(point_index)
+            if cr.inline_geo_path is not None:
+                transformer = self._get_geo_transformer()
+                if transformer:
+                    cr.inline_geo_path = [
+                        transformer.pixel_to_geo(x, y) for x, y in cr.inline_path
+                    ]
+                elif 0 <= point_index < len(cr.inline_geo_path):
+                    cr.inline_geo_path.pop(point_index)
+            item.update_graphics()
+            if conn_road_id in self.connecting_road_lanes_items:
+                self.connecting_road_lanes_items[conn_road_id].update_graphics()
+
+        elif action == smooth_action:
+            path = cr.inline_path
+            if not path or len(path) < 2:
+                return
+            # Prefer stored headings (set by _regenerate_parampoly3_cr, authoritative)
+            if cr.stored_start_heading is not None and cr.stored_end_heading is not None:
+                start_hdg, end_hdg = cr.stored_start_heading, cr.stored_end_heading
+            else:
+                tangents = get_smooth_cr_tangents(cr, self.project)
+                if tangents is None:
+                    return
+                start_hdg, end_hdg = tangents
+
+            n_pts, ok = QInputDialog.getInt(
+                self, "Smooth Curve", "Number of output points:",
+                value=50, min=5, max=500, step=5,
+            )
+            if not ok:
+                return
+
+            old_path = list(path)
+            n_out = max(n_pts, 2)
+            new_path = fit_smooth_curve_to_polyline(path, start_hdg, end_hdg, num_output_points=n_out)
+
+            # Apply first, then push for undo
+            cr.inline_path = new_path
+            self.update_connecting_road_graphics(conn_road_id)
+
+            mw = self.parent()
+            if mw and hasattr(mw, 'undo_stack'):
+                cmd = SmoothCRCommand(self, cr, old_path, new_path)
+                mw.undo_stack.push(cmd)
 
     def _show_boundary_point_menu(self, view_pos, polyline_id: str, point_index: int):
         """
@@ -4127,26 +4280,13 @@ class ImageView(QGraphicsView):
                     self._show_boundary_point_menu(event.pos(), polyline_id, point_index)
                 return
 
-        # Connecting road point deletion (polyline geometry only)
+        # Connecting road right-click: point or segment
         for conn_road_id, item in self.connecting_road_centerline_items.items():
-            if item.connecting_road.geometry_type != "polyline":
-                continue
-            point_index = item.get_point_at(scene_pos)
-            if point_index >= 0:
-                connecting_road = item.connecting_road
-                if len(connecting_road.inline_path) > 2:
-                    connecting_road.inline_path.pop(point_index)
-                    if connecting_road.inline_geo_path is not None:
-                        transformer = self._get_geo_transformer()
-                        if transformer:
-                            connecting_road.inline_geo_path = [
-                                transformer.pixel_to_geo(x, y) for x, y in connecting_road.inline_path
-                            ]
-                        elif 0 <= point_index < len(connecting_road.inline_geo_path):
-                            connecting_road.inline_geo_path.pop(point_index)
-                    item.update_graphics()
-                    if conn_road_id in self.connecting_road_lanes_items:
-                        self.connecting_road_lanes_items[conn_road_id].update_graphics()
+            cr = item.connecting_road
+            point_index = item.get_point_at(scene_pos) if cr.geometry_type == "polyline" else -1
+            segment_index = item.get_segment_at(scene_pos) if point_index < 0 else -1
+            if point_index >= 0 or segment_index >= 0:
+                self._show_cr_centerline_menu(event.pos(), conn_road_id, point_index)
                 return
 
     def mouseMoveEvent(self, event: QMouseEvent):

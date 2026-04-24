@@ -203,6 +203,28 @@ class ConnectingRoadDialog(BaseDialog):
             convert_layout.addWidget(self.convert_to_polyline_btn)
             curve_layout.addRow("Convert:", convert_layout)
 
+        # Smooth Curve section — available for any geometry type
+        smooth_layout = self.add_form_group_with_info(
+            "Smooth Curve",
+            "Redistribute intermediate points along a smooth Bezier curve while "
+            "preserving the start/end positions and tangent angles."
+        )
+        self.smooth_curve_btn = QPushButton("Smooth Curve")
+        self.smooth_curve_btn.setToolTip(
+            "Redistribute the curve's control points so the path is smooth and "
+            "G1-continuous with adjacent roads."
+        )
+        self.smooth_curve_btn.clicked.connect(self.on_smooth_curve)
+        self.smooth_points_spin = QSpinBox()
+        self.smooth_points_spin.setRange(10, 500)
+        self.smooth_points_spin.setValue(50)
+        self.smooth_points_spin.setSuffix(" pts")
+        self.smooth_points_spin.setToolTip("Number of output points for the smoothed curve")
+        smooth_row = QHBoxLayout()
+        smooth_row.addWidget(self.smooth_points_spin)
+        smooth_row.addWidget(self.smooth_curve_btn)
+        smooth_layout.addRow("", smooth_row)
+
         # Create standard OK/Cancel buttons
         self.create_button_box()
 
@@ -458,6 +480,51 @@ class ConnectingRoadDialog(BaseDialog):
                 image_view.connecting_road_centerline_items[self.connecting_road.id].update_graphics()
             if self.connecting_road.id in image_view.connecting_road_lanes_items:
                 image_view.connecting_road_lanes_items[self.connecting_road.id].update_graphics()
+
+    def on_smooth_curve(self):
+        """Redistribute inline_path points along a smooth Bezier curve."""
+        from orbit.gui.undo_commands import SmoothCRCommand
+        from orbit.utils.geometry import fit_smooth_curve_to_polyline, get_smooth_cr_tangents
+
+        path = self.connecting_road.inline_path
+        if not path or len(path) < 2:
+            QMessageBox.warning(self, "Smooth Curve", "No curve points to smooth.")
+            return
+
+        cr = self.connecting_road
+        # Prefer stored headings (authoritative, set when CR was generated)
+        if cr.stored_start_heading is not None and cr.stored_end_heading is not None:
+            start_hdg, end_hdg = cr.stored_start_heading, cr.stored_end_heading
+        else:
+            tangents = get_smooth_cr_tangents(cr, self.project)
+            if tangents is None:
+                QMessageBox.warning(
+                    self, "Smooth Curve",
+                    "Could not determine tangent directions from adjacent roads."
+                )
+                return
+            start_hdg, end_hdg = tangents
+
+        old_path = list(path)
+        n_out = max(self.smooth_points_spin.value(), 2)
+        new_path = fit_smooth_curve_to_polyline(path, start_hdg, end_hdg, num_output_points=n_out)
+        cr.inline_path = new_path
+
+        # Push undo command if main window has a stack
+        main_win = self.parent()
+        if hasattr(main_win, 'undo_stack') and hasattr(main_win, 'image_view'):
+            cmd = SmoothCRCommand(
+                main_win.image_view,
+                cr,
+                old_path,
+                new_path,
+            )
+            main_win.undo_stack.push(cmd)
+
+        # Update graphics
+        if hasattr(main_win, 'image_view'):
+            image_view = main_win.image_view
+            image_view.update_connecting_road_graphics(cr.id)
 
     def accept(self):
         """Save changes and accept dialog."""
