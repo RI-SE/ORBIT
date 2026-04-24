@@ -411,13 +411,14 @@ class TestConvertSignalType:
         assert signal_type == SignalType.TRAFFIC_SIGNALS
 
     def test_unsupported_type(self, importer, mock_signal):
-        """Unsupported type returns None."""
+        """Unrecognized type falls back to CUSTOM for round-trip preservation."""
+        from orbit.models.signal import SignalType
         mock_signal.type = "unknown_sign_type"
         mock_signal.country = ""
 
         signal_type, value = importer._convert_signal_type(mock_signal)
 
-        assert signal_type is None
+        assert signal_type == SignalType.CUSTOM
         assert value is None
 
 

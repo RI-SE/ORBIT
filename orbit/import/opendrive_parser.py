@@ -280,6 +280,7 @@ class ODRObject:
         t: Lateral offset from reference line (meters)
         z_offset: Height above road surface (meters)
         type: Object type
+        subtype: Object subtype (e.g. 'guardrail', 'tree', 'forest')
         name: Object name
         orientation: Orientation angle (radians)
         length: Object length (meters)
@@ -290,6 +291,7 @@ class ODRObject:
         pitch: Pitch angle (radians)
         roll: Roll angle (radians)
         validity_length: Validity length along road (meters, for objects spanning distance)
+        corner_points: List of (u, v) cornerLocal coordinates from outline element
         is_parking: True if this object is a parking space
         parking_access: Parking access type (if is_parking is True)
         parking_restrictions: Parking restrictions text (if is_parking is True)
@@ -299,6 +301,7 @@ class ODRObject:
     t: float
     z_offset: float = 0.0
     type: str = ""
+    subtype: str = ""
     name: str = ""
     orientation: float = 0.0
     orientation_str: str = "none"  # Raw OpenDRIVE orientation: "+", "-", "none", or numeric string
@@ -310,6 +313,7 @@ class ODRObject:
     pitch: float = 0.0
     roll: float = 0.0
     validity_length: Optional[float] = None
+    corner_points: List[Tuple[float, float]] = field(default_factory=list)
     # Parking-specific attributes
     is_parking: bool = False
     parking_access: str = "standard"
@@ -934,12 +938,25 @@ class OpenDriveParser:
             parking_access = parking_space_elem.get('access', 'standard')
             parking_restrictions = parking_space_elem.get('restrictions', '')
 
+        # Parse outline/cornerLocal points
+        corner_points: List[Tuple[float, float]] = []
+        outline_elem = object_elem.find('outline')
+        if outline_elem is not None:
+            for corner in outline_elem.findall('cornerLocal'):
+                try:
+                    u = float(corner.get('u', '0'))
+                    v = float(corner.get('v', '0'))
+                    corner_points.append((u, v))
+                except (ValueError, TypeError):
+                    pass
+
         return ODRObject(
             id=object_id,
             s=float(object_elem.get('s', '0')),
             t=float(object_elem.get('t', '0')),
             z_offset=float(object_elem.get('zOffset', '0')),
             type=object_elem.get('type', ''),
+            subtype=object_elem.get('subtype', ''),
             name=object_elem.get('name', ''),
             orientation=_parse_object_orientation(object_elem.get('orientation', '0')),
             orientation_str=object_elem.get('orientation', 'none'),
@@ -951,6 +968,7 @@ class OpenDriveParser:
             pitch=float(object_elem.get('pitch', '0')),
             roll=float(object_elem.get('roll', '0')),
             validity_length=float(object_elem.get('validLength')) if object_elem.get('validLength') else None,
+            corner_points=corner_points,
             is_parking=is_parking,
             parking_access=parking_access,
             parking_restrictions=parking_restrictions
