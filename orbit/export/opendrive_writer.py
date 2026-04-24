@@ -979,14 +979,16 @@ class OpenDriveWriter:
             connecting_road, path_meters, is_start=False
         )
 
-        # Override with connected road headings for C1 continuity
+        # Override with connected road headings for C1 continuity.
+        # Departure from a road's start (or arrival at a road's end) means
+        # traveling opposite to the road's forward direction → flip by π.
         start_heading = self._override_with_road_heading(
             connecting_road.predecessor_id, connecting_road.predecessor_contact,
-            start_heading
+            start_heading, flip_at_start=True
         )
         end_heading = self._override_with_road_heading(
             connecting_road.successor_id, connecting_road.successor_contact,
-            end_heading
+            end_heading, flip_at_start=False
         )
 
         # Transform to local u/v frame (origin at start, u along heading)
@@ -1055,14 +1057,26 @@ class OpenDriveWriter:
         return 0.0
 
     def _override_with_road_heading(self, road_id, contact_point,
-                                     current_heading: float) -> float:
-        """Override heading with connected road's actual heading if available."""
+                                     current_heading: float,
+                                     flip_at_start: bool = True) -> float:
+        """Override heading with connected road's actual heading if available.
+
+        flip_at_start controls directional semantics:
+        - True (predecessor/departure): flip when contact_point=="start" because
+          a CR departing from a road's start travels opposite the road's +s direction.
+        - False (successor/arrival): flip when contact_point=="end" because a CR
+          arriving at a road's end also travels opposite the road's +s direction.
+        """
         road = self.road_map.get(road_id)
         if road and road.centerline_id:
             hdg = self._get_road_heading_at_contact_meters(
                 road.centerline_id, contact_point
             )
             if hdg is not None:
+                needs_flip = (flip_at_start and contact_point == "start") or \
+                             (not flip_at_start and contact_point == "end")
+                if needs_flip:
+                    hdg += math.pi
                 return hdg
         return current_heading
 

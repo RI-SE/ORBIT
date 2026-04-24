@@ -1407,6 +1407,7 @@ class MainWindow(QMainWindow):
         scale = dialog.get_scale()
         auto_georeference = dialog.get_auto_georeference()
         verbose = dialog.get_verbose()
+        import_signals, import_parking, import_object_types = dialog.get_import_filter()
 
         # Override transformer if forcing synthetic mode
         if force_synthetic:
@@ -1447,7 +1448,10 @@ class MainWindow(QMainWindow):
             import_mode=import_mode,
             scale_pixels_per_meter=scale,
             auto_create_control_points=auto_georeference,
-            verbose=verbose
+            verbose=verbose,
+            import_signals=import_signals,
+            import_parking=import_parking,
+            import_object_types=import_object_types,
         )
 
         # Show progress dialog

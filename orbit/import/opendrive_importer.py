@@ -38,6 +38,80 @@ logger = get_logger(__name__)
 _DEFAULT_LANE_WIDTH = 3.5  # Fallback when ODR has no lane width
 
 
+def classify_xodr_object_type(odr_type: str, odr_subtype: str = "") -> Optional[ObjectType]:
+    """Map an OpenDRIVE object type+subtype to an ORBIT ObjectType.
+
+    Module-level so it can be used both by the importer and the file scanner.
+    """
+    t = odr_type.lower()
+    s = odr_subtype.lower()
+
+    if 'lamp' in t or 'pole' in t:
+        return ObjectType.LAMPPOST
+    elif 'guard' in t or 'rail' in t or 'barrier' in t:
+        return ObjectType.GUARDRAIL
+    elif 'building' in t or 'house' in t:
+        return ObjectType.BUILDING
+    elif 'vegetation' in t or 'tree' in t or 'bush' in t or 'shrub' in t or 'forest' in t:
+        if 'forest' in s or 'forest' in t:
+            return ObjectType.LANDUSE_FOREST
+        elif 'meadow' in s:
+            return ObjectType.LANDUSE_MEADOW
+        elif 'scrub' in s:
+            return ObjectType.LANDUSE_SCRUB
+        elif 'conifer' in s or 'pine' in s or 'conifer' in t or 'pine' in t:
+            return ObjectType.TREE_CONIFER
+        elif 'tree' in s or 'tree' in t:
+            return ObjectType.TREE_BROADLEAF
+        elif 'bush' in s or 'shrub' in s or 'bush' in t or 'shrub' in t:
+            return ObjectType.BUSH
+        return ObjectType.TREE_BROADLEAF
+    elif 'land' in t:
+        if 'farmland' in s or 'farm' in s:
+            return ObjectType.LANDUSE_FARMLAND
+        elif 'meadow' in s:
+            return ObjectType.LANDUSE_MEADOW
+    elif 'water' in t:
+        if 'wetland' in s:
+            return ObjectType.NATURAL_WETLAND
+        return ObjectType.NATURAL_WATER
+
+    return None
+
+
+def scan_xodr_feature_categories(file_path: str) -> Dict[str, int]:
+    """Scan an xodr file and return counts of feature categories present.
+
+    Uses lxml iterparse for efficiency — does not build a full parse tree.
+
+    Returns a dict with keys:
+      "signals"  — count of <signal> elements
+      "parking"  — count of <object> elements with <parkingSpace> child
+      ObjectType — count per ORBIT ObjectType (for <object> elements)
+    """
+    from lxml import etree
+
+    counts: Dict[str, int] = {}
+    # We need to see children of <object> to detect parkingSpace, so collect
+    # objects at 'end' event when all children are parsed.
+    for _event, elem in etree.iterparse(file_path, events=('end',), recover=True):
+        tag = elem.tag
+        if tag == 'signal':
+            counts['signals'] = counts.get('signals', 0) + 1
+        elif tag == 'object':
+            if elem.find('parkingSpace') is not None:
+                counts['parking'] = counts.get('parking', 0) + 1
+            else:
+                obj_type = classify_xodr_object_type(
+                    elem.get('type', ''), elem.get('subtype', '')
+                )
+                if obj_type is not None:
+                    counts[obj_type] = counts.get(obj_type, 0) + 1
+        elem.clear()
+
+    return counts
+
+
 class ImportMode(Enum):
     """Import mode: add to existing or replace."""
     ADD = "add"
@@ -51,6 +125,10 @@ class ImportOptions:
     scale_pixels_per_meter: float = 10.0  # For synthetic mode
     auto_create_control_points: bool = False  # Auto-create georeferencing control points
     verbose: bool = False  # Print debug information
+    # Feature category filters (None = import all)
+    import_signals: bool = True
+    import_parking: bool = True
+    import_object_types: Optional[Set[ObjectType]] = None  # None = all object types
 
 
 @dataclass
@@ -304,20 +382,30 @@ class OpenDriveImporter:
             if not road_id:
                 continue
 
-            for odr_signal in odr_road.signals:
-                try:
-                    if self._import_signal(odr_signal, road_id, odr_road, options):
-                        result.signals_imported += 1
-                except Exception as e:
-                    result.warnings.append(f"Failed to import signal {odr_signal.id}: {e}")
+            if options.import_signals:
+                for odr_signal in odr_road.signals:
+                    try:
+                        if self._import_signal(odr_signal, road_id, odr_road, options):
+                            result.signals_imported += 1
+                    except Exception as e:
+                        result.warnings.append(f"Failed to import signal {odr_signal.id}: {e}")
 
             for odr_object in odr_road.objects:
                 try:
                     if odr_object.is_parking:
-                        if self._import_parking(odr_object, road_id, odr_road, options):
-                            result.parking_imported += 1
-                    elif self._import_object(odr_object, road_id, odr_road, options):
-                        result.objects_imported += 1
+                        if options.import_parking:
+                            if self._import_parking(odr_object, road_id, odr_road, options):
+                                result.parking_imported += 1
+                    else:
+                        # Check object type filter before importing
+                        if options.import_object_types is not None:
+                            obj_type = classify_xodr_object_type(
+                                odr_object.type, odr_object.subtype
+                            )
+                            if obj_type not in options.import_object_types:
+                                continue
+                        if self._import_object(odr_object, road_id, odr_road, options):
+                            result.objects_imported += 1
                 except Exception as e:
                     result.warnings.append(f"Failed to import object {odr_object.id}: {e}")
 
@@ -1668,47 +1756,7 @@ class OpenDriveImporter:
 
     def _convert_object_type(self, odr_object_type: str, odr_subtype: str = "") -> Optional[ObjectType]:
         """Convert OpenDrive object type+subtype to ORBIT ObjectType."""
-        type_lower = odr_object_type.lower()
-        sub_lower = odr_subtype.lower()
-
-        if 'lamp' in type_lower or ('pole' in type_lower and 'lamp' in sub_lower):
-            return ObjectType.LAMPPOST
-        elif 'pole' in type_lower:
-            return ObjectType.LAMPPOST
-        elif 'guard' in type_lower or 'rail' in type_lower or 'barrier' in type_lower:
-            return ObjectType.GUARDRAIL
-        elif 'building' in type_lower or 'house' in type_lower:
-            return ObjectType.BUILDING
-        elif (
-            'vegetation' in type_lower or 'tree' in type_lower
-            or 'bush' in type_lower or 'shrub' in type_lower or 'forest' in type_lower
-        ):
-            # Use subtype to narrow down
-            if 'forest' in sub_lower or 'forest' in type_lower:
-                return ObjectType.LANDUSE_FOREST
-            elif 'meadow' in sub_lower:
-                return ObjectType.LANDUSE_MEADOW
-            elif 'scrub' in sub_lower:
-                return ObjectType.LANDUSE_SCRUB
-            elif 'conifer' in sub_lower or 'pine' in sub_lower or 'conifer' in type_lower or 'pine' in type_lower:
-                return ObjectType.TREE_CONIFER
-            elif 'tree' in sub_lower or 'tree' in type_lower:
-                return ObjectType.TREE_BROADLEAF
-            elif 'bush' in sub_lower or 'shrub' in sub_lower or 'bush' in type_lower or 'shrub' in type_lower:
-                return ObjectType.BUSH
-            # Generic vegetation — treat as broadleaf tree
-            return ObjectType.TREE_BROADLEAF
-        elif 'land' in type_lower:
-            if 'farmland' in sub_lower or 'farm' in sub_lower:
-                return ObjectType.LANDUSE_FARMLAND
-            elif 'meadow' in sub_lower:
-                return ObjectType.LANDUSE_MEADOW
-        elif 'water' in type_lower:
-            if 'wetland' in sub_lower:
-                return ObjectType.NATURAL_WETLAND
-            return ObjectType.NATURAL_WATER
-
-        return None
+        return classify_xodr_object_type(odr_object_type, odr_subtype)
 
     def _track_unsupported_features(self, result: ImportResult):
         """Track unsupported OpenDrive features that were skipped."""
