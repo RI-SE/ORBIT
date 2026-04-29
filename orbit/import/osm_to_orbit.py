@@ -104,9 +104,11 @@ def calculate_bbox_from_image(image_width: int, image_height: int,
     """
     Calculate bounding box for OSM query from image dimensions.
 
-    Uses control points to define the area, with optional image corner inclusion
-    for better coverage. This prevents issues with homography extrapolation
-    far from control points.
+    Uses the geographic extent of the control points as a reliable anchor,
+    then extends it to cover the full image using the affine sub-transformer
+    (linear extrapolation) and a scale-based estimate.  The affine is used
+    because it extrapolates predictably outside the CP convex hull, unlike
+    homography which can be non-monotonic far from training data.
 
     Args:
         image_width: Width of image in pixels
@@ -117,51 +119,46 @@ def calculate_bbox_from_image(image_width: int, image_height: int,
     Returns:
         Tuple of (min_lat, min_lon, max_lat, max_lon)
     """
-    # Get control point locations (these are known to be accurate)
+    # Get control point locations (known to be accurate)
     control_points = transformer.all_control_points
     control_lons = [cp.longitude for cp in control_points]
     control_lats = [cp.latitude for cp in control_points]
 
-    # Start with control point bounds
+    # Start with control point geographic bounds
     min_lon, max_lon = min(control_lons), max(control_lons)
     min_lat, max_lat = min(control_lats), max(control_lats)
 
-    # Try to include image corners if they're reasonable
-    # (i.e., not too far from control point area due to extrapolation)
-    corners_pixel = [
-        (0, 0),
-        (image_width, 0),
-        (image_width, image_height),
-        (0, image_height)
+    # Use the affine sub-transformer for extrapolation so that homography's
+    # non-monotonic behaviour outside the CP convex hull does not produce
+    # unreliable corner coordinates.
+    extrap_transformer = getattr(transformer, '_affine', transformer)
+
+    # Sample corners and edge midpoints for better image boundary coverage
+    sample_pixels = [
+        (0, 0), (image_width, 0),
+        (image_width, image_height), (0, image_height),
+        (image_width // 2, 0), (image_width // 2, image_height),
+        (0, image_height // 2), (image_width, image_height // 2),
     ]
 
-    # Calculate control point extent in pixels
-    control_pixels = [(cp.pixel_x, cp.pixel_y) for cp in control_points]
-    cp_min_x = min(x for x, y in control_pixels)
-    cp_max_x = max(x for x, y in control_pixels)
-    cp_min_y = min(y for x, y in control_pixels)
-    cp_max_y = max(y for x, y in control_pixels)
-    cp_extent = max(cp_max_x - cp_min_x, cp_max_y - cp_min_y)
+    # Geographic centroid of CPs — used to reject wildly extrapolated values
+    cp_center_lon = sum(control_lons) / len(control_lons)
+    cp_center_lat = sum(control_lats) / len(control_lats)
+    cp_geo_span = max(max_lon - min_lon, max_lat - min_lat)
+    # Allow extrapolated points up to 5× the CP geographic span from the centroid
+    max_geo_dist = cp_geo_span * 5.0
 
-    # Only include corners that are within reasonable distance of control points
-    # (within 2x the control point extent to avoid bad extrapolation)
-    max_distance = cp_extent * 2.0
-    cp_center_x = (cp_min_x + cp_max_x) / 2
-    cp_center_y = (cp_min_y + cp_max_y) / 2
-
-    for corner_x, corner_y in corners_pixel:
-        distance = ((corner_x - cp_center_x)**2 + (corner_y - cp_center_y)**2)**0.5
-        if distance <= max_distance:
-            try:
-                lon, lat = transformer.pixel_to_geo(corner_x, corner_y)
-                # Expand bounds to include this corner
+    for px, py in sample_pixels:
+        try:
+            lon, lat = extrap_transformer.pixel_to_geo(px, py)
+            dist = math.sqrt((lon - cp_center_lon) ** 2 + (lat - cp_center_lat) ** 2)
+            if dist <= max_geo_dist:
                 min_lon = min(min_lon, lon)
                 max_lon = max(max_lon, lon)
                 min_lat = min(min_lat, lat)
                 max_lat = max(max_lat, lat)
-            except Exception:
-                # Skip corners that fail to transform
-                pass
+        except Exception:
+            pass
 
     # Add buffer
     lon_buffer = (max_lon - min_lon) * (buffer_percent / 100.0)

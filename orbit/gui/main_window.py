@@ -61,6 +61,7 @@ class MainWindow(QMainWindow):
         self._original_transformer = None  # Saved original transformer
         self._aerial_transformer = None  # Transformer for aerial tile image
         self._aerial_zoom = 18  # Default tile zoom level
+        self._original_cp_pixels: list = []  # Saved CP pixel positions for round-trip restore
 
         # Adjustment ghost overlay (shows unadjusted geometry positions)
         self._adjustment_ghost_overlay = None
@@ -1262,9 +1263,13 @@ class MainWindow(QMainWindow):
         # Check if custom radius was requested (georef mode only)
         custom_radius = dialog.get_custom_radius()
         if custom_radius is not None:
-            center_lon, center_lat = transformer.pixel_to_geo(
-                image_width / 2.0, image_height / 2.0
-            )
+            # Use the geographic centroid of the control points as the center.
+            # Using transformer.pixel_to_geo(image_width/2, image_height/2) is
+            # unreliable when control points only cover a small portion of the
+            # image — the transformer extrapolates badly far from its training data.
+            all_cps = transformer.all_control_points
+            center_lon = sum(cp.longitude for cp in all_cps) / len(all_cps)
+            center_lat = sum(cp.latitude for cp in all_cps) / len(all_cps)
             bbox = calculate_bbox_from_center(center_lat, center_lon, custom_radius)
 
         # Build ImportOptions
@@ -1321,6 +1326,7 @@ class MainWindow(QMainWindow):
                 show_error(self, "Failed to create coordinate transformer.\n"
                     "Please check your control points.", "Transformation Error")
                 return None
+            self._apply_active_adjustment(transformer)
             try:
                 bbox = calculate_bbox_from_image(image_width, image_height, transformer)
             except Exception as e:
@@ -2876,6 +2882,10 @@ class MainWindow(QMainWindow):
             return
         self._apply_active_adjustment(self._original_transformer)
         self._original_image_np = self.image_view.image_np.copy() if self.image_view.image_np is not None else None
+        # Save exact user-placed pixel positions so the round-trip can restore them
+        # precisely (geo_to_pixel on the least-squares transformer does not reproduce
+        # training point positions exactly when there are more than the minimum points).
+        self._original_cp_pixels = [(cp.pixel_x, cp.pixel_y) for cp in self.project.control_points]
 
         # Remove ghost overlay before switching (will be rebuilt on return)
         self._remove_adjustment_ghost()
@@ -2902,6 +2912,7 @@ class MainWindow(QMainWindow):
             self.toggle_aerial_action.setChecked(False)
             self._original_image_np = None
             self._original_transformer = None
+            self._original_cp_pixels = []
             return
 
         # Build initial affine transformer from raw tile image bounds
@@ -2915,6 +2926,7 @@ class MainWindow(QMainWindow):
             self.toggle_aerial_action.setChecked(False)
             self._original_image_np = None
             self._original_transformer = None
+            self._original_cp_pixels = []
             return
 
         # Resize aerial image so its pixels/meter matches the original image.
@@ -2938,6 +2950,7 @@ class MainWindow(QMainWindow):
             self.toggle_aerial_action.setChecked(False)
             self._original_image_np = None
             self._original_transformer = None
+            self._original_cp_pixels = []
             return
 
         # Re-project all geometry into the aerial pixel space
@@ -2981,6 +2994,14 @@ class MainWindow(QMainWindow):
             self.project, self._aerial_transformer, self._original_transformer,
         )
 
+        # Restore exact user-placed CP pixel positions.  reproject_project_geometry
+        # computes them via geo_to_pixel, which doesn't reproduce the original positions
+        # exactly when the least-squares transform has non-zero residuals (>min points).
+        if self._original_cp_pixels:
+            for cp, (px, py) in zip(self.project.control_points, self._original_cp_pixels):
+                cp.pixel_x = px
+                cp.pixel_y = py
+
         # Restore adjustment and reposition geo-derived entities
         if saved_adjustment is not None:
             self._original_transformer.set_adjustment(saved_adjustment)
@@ -2989,8 +3010,7 @@ class MainWindow(QMainWindow):
         self._cached_transformer = self._original_transformer
 
         # Recompute pixel positions from geo coords using the adjusted transformer
-        # so entities land in the correct adjusted positions.  Control points are
-        # NOT updated here — they keep their unadjusted positions from reprojection.
+        # so entities land in the correct adjusted positions.
         adj = self.image_view.current_adjustment
         if adj and not adj.is_identity():
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
@@ -3009,6 +3029,7 @@ class MainWindow(QMainWindow):
         self._original_image_np = None
         self._original_transformer = None
         self._aerial_transformer = None
+        self._original_cp_pixels = []
 
         self.toggle_aerial_action.setText("&Aerial Map View")
         self.toggle_aerial_action.setEnabled(True)
