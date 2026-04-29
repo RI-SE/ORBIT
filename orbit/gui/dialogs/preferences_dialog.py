@@ -6,9 +6,18 @@ traffic side, and country code.
 """
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QAbstractItemView, QComboBox, QDoubleSpinBox, QLineEdit, QListWidget, QListWidgetItem
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+)
 
 from orbit.models import Project, SignLibraryManager
+from orbit.utils.provenance import DEFAULT_TEMPLATE, is_dataprov_available
 
 from .base_dialog import BaseDialog, InfoIconLabel
 
@@ -20,6 +29,8 @@ class PreferencesDialog(BaseDialog):
         super().__init__("Project Preferences", parent, min_width=500)
 
         self.project = project
+        from PyQt6.QtCore import QSettings
+        self.app_settings = QSettings()
         self.setup_ui()
         self.load_properties()
 
@@ -157,6 +168,33 @@ class PreferencesDialog(BaseDialog):
         )
         sign_layout.addRow(library_label, self.library_list)
 
+        # Provenance tracking section
+        prov_layout = self.add_form_group("Data Provenance")
+
+        dataprov_available = is_dataprov_available()
+        hint = "" if dataprov_available else " (install dataprov to enable)"
+
+        self.provenance_checkbox = QCheckBox(f"Create provenance sidecar files{hint}")
+        self.provenance_checkbox.setEnabled(dataprov_available)
+        self.provenance_checkbox.setToolTip(
+            "When enabled, a .prov.json file is written alongside each saved project "
+            "and each exported file, recording the tools and inputs used to create it."
+        )
+        prov_layout.addRow("", self.provenance_checkbox)
+
+        self.provenance_template_edit = QLineEdit()
+        self.provenance_template_edit.setPlaceholderText(DEFAULT_TEMPLATE)
+        self.provenance_template_edit.setEnabled(dataprov_available)
+        template_label = InfoIconLabel(
+            "File name template:",
+            "Template for provenance sidecar file names.\n"
+            "Variables: {dir} parent directory, {stem} filename without extension, "
+            "{ext} extension (with dot), {name} full filename.\n"
+            f"Default: {DEFAULT_TEMPLATE}",
+            bold=False,
+        )
+        prov_layout.addRow(template_label, self.provenance_template_edit)
+
         # Create standard OK/Cancel buttons
         self.create_button_box()
 
@@ -195,6 +233,14 @@ class PreferencesDialog(BaseDialog):
             if lib_id in enabled_libs:
                 item.setSelected(True)
 
+        # Provenance settings (app-level, from QSettings)
+        self.provenance_checkbox.setChecked(
+            self.app_settings.value("provenance/enabled", False, type=bool)
+        )
+        self.provenance_template_edit.setText(
+            self.app_settings.value("provenance/name_template", DEFAULT_TEMPLATE, type=str)
+        )
+
     def accept(self):
         """Save preferences and close dialog."""
         # Save map name
@@ -226,5 +272,10 @@ class PreferencesDialog(BaseDialog):
         if not enabled_libs:
             enabled_libs = ['se']
         self.project.enabled_sign_libraries = enabled_libs
+
+        # Save provenance settings to app QSettings
+        self.app_settings.setValue("provenance/enabled", self.provenance_checkbox.isChecked())
+        template = self.provenance_template_edit.text().strip() or DEFAULT_TEMPLATE
+        self.app_settings.setValue("provenance/name_template", template)
 
         super().accept()

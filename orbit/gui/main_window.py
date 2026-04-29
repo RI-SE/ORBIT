@@ -24,6 +24,7 @@ from orbit.gui.graphics.adjustment_ghost_overlay import AdjustmentGhostOverlay
 from orbit.models import Project
 from orbit.utils.coordinate_transform import TransformAdjustment
 from orbit.utils.logging_config import get_logger
+from orbit.utils.provenance import is_dataprov_available, record_export, record_project_save
 
 from .image_view import ImageView
 from .project_controller import ProjectController
@@ -635,6 +636,32 @@ class MainWindow(QMainWindow):
         if file_path:
             self._last_file_directory = str(Path(file_path).parent)
 
+    def _provenance_enabled(self) -> bool:
+        """Return True if provenance tracking is enabled and dataprov is available."""
+        return (
+            is_dataprov_available()
+            and self.settings.value("provenance/enabled", False, type=bool)
+        )
+
+    def _provenance_template(self) -> str:
+        from orbit.utils.provenance import DEFAULT_TEMPLATE
+        return self.settings.value("provenance/name_template", DEFAULT_TEMPLATE, type=str)
+
+    def _record_project_provenance(self, orbit_path: Path, start_time) -> None:
+        """Record a provenance step for a project save, if enabled."""
+        if not self._provenance_enabled():
+            return
+        record_project_save(self.project, orbit_path, start_time, self._provenance_template())
+
+    def _record_export_provenance(self, output_path: Path, operation: str, output_format: str, start_time) -> None:
+        """Record a provenance step for an export, if enabled."""
+        if not self._provenance_enabled():
+            return
+        record_export(
+            output_path, self.current_project_file, operation, output_format,
+            start_time, self._provenance_template(),
+        )
+
     def open_project(self):
         """Open an existing project file."""
         if not self.check_unsaved_changes():
@@ -721,17 +748,20 @@ class MainWindow(QMainWindow):
 
     def save_project(self) -> bool:
         """Save the current project. Returns False if the user cancels."""
+        from datetime import datetime, timezone
         self._ensure_original_view_for_save()
         if not self._prompt_and_handle_unapplied_adjustment():
             return False
         self._sync_adjustment_to_project()
         if self.current_project_file:
             try:
+                start_time = datetime.now(timezone.utc)
                 self.project.save(self.current_project_file)
                 self.undo_stack.setClean()
                 self.modified = False
                 self.update_window_title()
                 self.statusBar().showMessage(f"Project saved: {self.current_project_file}")
+                self._record_project_provenance(self.current_project_file, start_time)
                 return True
             except Exception as e:
                 show_error(self, f"Failed to save project:\n{str(e)}", "Error")
@@ -741,6 +771,7 @@ class MainWindow(QMainWindow):
 
     def save_project_as(self) -> bool:
         """Save the project with a new name. Returns False if the user cancels."""
+        from datetime import datetime, timezone
         self._ensure_original_view_for_save()
         if not self._prompt_and_handle_unapplied_adjustment():
             return False
@@ -755,12 +786,14 @@ class MainWindow(QMainWindow):
         if file_path:
             self._remember_directory(file_path)
             try:
+                start_time = datetime.now(timezone.utc)
                 self.current_project_file = Path(file_path)
                 self.project.save(self.current_project_file)
                 self.undo_stack.setClean()
                 self.modified = False
                 self.update_window_title()
                 self.statusBar().showMessage(f"Project saved: {file_path}")
+                self._record_project_provenance(self.current_project_file, start_time)
                 return True
             except Exception as e:
                 show_error(self, f"Failed to save project:\n{str(e)}", "Error")
@@ -857,6 +890,8 @@ class MainWindow(QMainWindow):
 
         # Show export dialog with optional schema path for validation
         adjustment = self.image_view.current_adjustment if hasattr(self.image_view, 'current_adjustment') else None
+        from datetime import datetime, timezone
+        start_time = datetime.now(timezone.utc)
         dialog = ExportDialog(
             self.project, self,
             xodr_schema_path=self.xodr_schema_path,
@@ -864,6 +899,8 @@ class MainWindow(QMainWindow):
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.statusBar().showMessage("Export completed successfully")
+            if dialog.output_path:
+                self._record_export_provenance(dialog.output_path, "road network OpenDRIVE export", "XODR", start_time)
         else:
             self.statusBar().showMessage("Export cancelled")
 
@@ -905,6 +942,8 @@ class MainWindow(QMainWindow):
         self._remember_directory(file_path)
 
         try:
+            from datetime import datetime, timezone
+            start_time = datetime.now(timezone.utc)
             # Create transformer for pixel→geo conversion (needed for connecting
             # roads that only have pixel coordinates, e.g. roundabout entries/exits)
             transformer = self._create_transformer(use_validation=True)
@@ -916,6 +955,7 @@ class MainWindow(QMainWindow):
             if success:
                 show_info(self, message, "OSM Export")
                 self.statusBar().showMessage("OSM export completed")
+                self._record_export_provenance(_Path(file_path), "road network OSM export", "OSM", start_time)
             else:
                 show_warning(self, message, "OSM Export")
         except Exception as e:
@@ -1044,8 +1084,11 @@ class MainWindow(QMainWindow):
         self._remember_directory(file_path)
 
         # Export
+        from datetime import datetime, timezone
+        start_time = datetime.now(timezone.utc)
         if export_georeferencing(self.project, Path(file_path), transformer, image_size, self.current_project_file):
             self.statusBar().showMessage(f"Georeferencing exported to {file_path}")
+            self._record_export_provenance(Path(file_path), "georeferencing parameter export", "JSON", start_time)
         else:
             show_error(self, "Failed to export georeferencing parameters.", "Export Error")
 
@@ -1348,6 +1391,15 @@ class MainWindow(QMainWindow):
             show_info(self, msg, "Import Successful")
             self.project.openstreetmap_used = True
             self.modified = True
+            # Record import source for provenance tracking
+            from datetime import datetime, timezone
+            src_entry = {
+                "type": "osm_file" if source_type == "file" else "osm_api",
+                "path": str(file_path) if file_path else "https://overpass-api.de/api/interpreter",
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            }
+            if src_entry not in self.project.source_files:
+                self.project.source_files.append(src_entry)
             self.image_view.load_project(self.project)
             self.elements_tree.refresh_tree()
             self.road_tree.refresh_tree()
@@ -1483,6 +1535,16 @@ class MainWindow(QMainWindow):
             show_opendrive_import_report(result, self)
 
             if result.success:
+                # Record import source for provenance tracking
+                from datetime import datetime, timezone
+                src_entry = {
+                    "type": "xodr",
+                    "path": str(file_path),
+                    "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                }
+                if src_entry not in self.project.source_files:
+                    self.project.source_files.append(src_entry)
+
                 # Align connecting road paths to lane centers before rendering
                 scale_factors = self.get_current_scale()
                 self._align_all_junction_connecting_roads(scale_factors)

@@ -38,6 +38,9 @@ Issues = "https://github.com/RI-SE/ORBIT/issues"
 Changelog = "https://github.com/RI-SE/ORBIT/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
+provenance = [
+    "dataprov>=3.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",

@@ -135,6 +135,7 @@ class Project:
     synthetic_canvas_width: Optional[int] = None  # Synthetic canvas width in pixels (no real image)
     synthetic_canvas_height: Optional[int] = None  # Synthetic canvas height in pixels (no real image)
     transform_adjustment: Optional[Dict[str, float]] = None  # Persisted geo-alignment adjustment
+    source_files: List[Dict[str, str]] = field(default_factory=list)  # Imported input files for provenance tracking
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     # ID counters for sequential ID generation (one per entity type)
@@ -1646,6 +1647,7 @@ class Project:
             'synthetic_canvas_width': self.synthetic_canvas_width,
             'synthetic_canvas_height': self.synthetic_canvas_height,
             'transform_adjustment': self.transform_adjustment,
+            'source_files': self.source_files,
             'id_counters': {
                 'polyline': self._next_polyline_id,
                 'road': self._next_road_id,
@@ -1706,6 +1708,7 @@ class Project:
             synthetic_canvas_width=data.get('synthetic_canvas_width'),
             synthetic_canvas_height=data.get('synthetic_canvas_height'),
             transform_adjustment=data.get('transform_adjustment'),
+            source_files=data.get('source_files', []),
             metadata=data.get('metadata', {})
         )
 
@@ -1763,6 +1766,7 @@ class Project:
         self.parking_spaces.clear()
         self.control_points.clear()
         self.image_path = None
+        self.source_files = []
         self.metadata = {
             'version': _get_version(),
             'created': datetime.now().isoformat(),
