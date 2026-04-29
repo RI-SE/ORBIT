@@ -681,7 +681,7 @@ class GeoreferenceDialog(BaseDialog):
             self,
             "Import Georef File",
             "",
-            "Georef Files (*.georef);;All Files (*)",
+            "Georef Files (*_georef.json *.georef);;JSON Files (*.json);;All Files (*)",
         )
         if not path:
             return
