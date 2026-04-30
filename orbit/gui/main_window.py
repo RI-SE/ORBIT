@@ -2084,6 +2084,24 @@ class MainWindow(QMainWindow):
             return t
         return factory
 
+    def _compose_with_drone_base(
+        self, new_adj: 'TransformAdjustment'
+    ) -> 'TransformAdjustment':
+        """Compose new_adj on top of any existing stored drone adjustment.
+
+        For drone-assisted transformers the stored project adjustment is the
+        accumulated base; a new UI delta must be composed on top of it so that
+        successive adjustments build on each other rather than starting fresh.
+        Returns new_adj unchanged for non-drone or when no base is stored.
+        """
+        if (self.project.transform_method != 'drone_assisted'
+                or not self.project.transform_adjustment):
+            return new_adj
+        from orbit.utils.adjustment_fitter import decompose_to_adjustment
+        base = TransformAdjustment.from_dict(self.project.transform_adjustment)
+        M = new_adj.get_adjustment_matrix() @ base.get_adjustment_matrix()
+        return decompose_to_adjustment(M, new_adj.pivot_x, new_adj.pivot_y)
+
     def _apply_active_adjustment(self, transformer):
         """Apply the project's persisted adjustment to a transformer, if any.
 
@@ -2095,7 +2113,9 @@ class MainWindow(QMainWindow):
             return
         adj = self.image_view.current_adjustment
         if adj and not adj.is_identity():
-            transformer.set_adjustment(adj)
+            # For drone-assisted, compose the live UI delta on top of the stored
+            # base so that the transformer sees the total (accumulated) adjustment.
+            transformer.set_adjustment(self._compose_with_drone_base(adj))
             return
         # Drone-assisted: fall back to permanently stored project adjustment
         if (self.project.transform_method == 'drone_assisted'
@@ -2791,7 +2811,8 @@ class MainWindow(QMainWindow):
             ):
                 return
 
-            self.project.transform_adjustment = adjustment.to_dict()
+            self.project.transform_adjustment = self._compose_with_drone_base(
+                adjustment).to_dict()
             # Reset current_adjustment so the panel and save-prompt see no pending
             # adjustment (the stored project value is the authoritative source now).
             self.image_view.reset_adjustment()
