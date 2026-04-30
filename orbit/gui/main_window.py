@@ -3163,7 +3163,13 @@ class MainWindow(QMainWindow):
         # Recompute pixel positions from geo coords using the adjusted transformer
         # so entities land in the correct adjusted positions.
         adj = self._original_view_adjustment
-        if adj and not adj.is_identity():
+        drone_adj = (
+            self.project.transform_method == 'drone_assisted'
+            and self.project.transform_adjustment
+            and not TransformAdjustment.from_dict(
+                self.project.transform_adjustment).is_identity()
+        )
+        if (adj and not adj.is_identity()) or drone_adj:
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
 
         # Restore connecting road pixel paths AFTER update_all_from_geo_coords, because
@@ -3248,6 +3254,14 @@ class MainWindow(QMainWindow):
                 return
         except Exception:
             return
+
+        # For drone-assisted projects with a saved adjustment, apply it before
+        # syncing geo coords from pixel positions.  Saved pixel positions are in
+        # "adjusted" space (the user placed them while the adjustment was active),
+        # so pixel→geo conversion must use the same adjusted transformer that was
+        # active at save time.  Without this, _resync_junction_geo_coords produces
+        # wrong geo coords and _restore_adjustment_from_project double-shifts them.
+        self._apply_active_adjustment(transformer)
 
         # Initialize geo_path for connecting roads that don't have it (legacy support)
         for junction in self.project.junctions:
