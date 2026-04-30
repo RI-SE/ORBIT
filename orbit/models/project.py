@@ -78,6 +78,94 @@ class ControlPoint:
 
 
 @dataclass
+class DroneMetadata:
+    """Flight-log statistics for the video sequence used to create this project.
+
+    Extracted from a drone log by FieldDataLab's extract_flightlog_params tool.
+    All angular values in degrees; position in WGS84; altitude in metres AGL.
+    hfov_deg is the horizontal field of view at native sensor width; present only
+    when the drone/lens combination is known to the log-extraction tool.
+    """
+    latitude: float
+    longitude: float
+    alt_agl: float
+    gimbal_yaw: float    # world-frame compass bearing, 0=N, CW positive
+    gimbal_pitch: float  # below horizontal: 0=horizontal, -90=nadir
+    gimbal_roll: float = 0.0
+    drone_type: Optional[str] = None
+    lens_type: str = "standard"
+    hfov_deg: Optional[float] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        d: Dict[str, Any] = {
+            'latitude': self.latitude,
+            'longitude': self.longitude,
+            'alt_agl': self.alt_agl,
+            'gimbal_yaw': self.gimbal_yaw,
+            'gimbal_pitch': self.gimbal_pitch,
+            'gimbal_roll': self.gimbal_roll,
+            'drone_type': self.drone_type,
+            'lens_type': self.lens_type,
+        }
+        if self.hfov_deg is not None:
+            d['hfov_deg'] = self.hfov_deg
+        return d
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'DroneMetadata':
+        """Create from dictionary."""
+        return cls(
+            latitude=data['latitude'],
+            longitude=data['longitude'],
+            alt_agl=data['alt_agl'],
+            gimbal_yaw=data['gimbal_yaw'],
+            gimbal_pitch=data['gimbal_pitch'],
+            gimbal_roll=data.get('gimbal_roll', 0.0),
+            drone_type=data.get('drone_type'),
+            lens_type=data.get('lens_type', 'standard'),
+            hfov_deg=data.get('hfov_deg'),
+        )
+
+    @classmethod
+    def from_video_stats(cls, stats: Dict[str, Any], sequence_id: int = 0) -> 'DroneMetadata':
+        """Parse a video_stats.json dict (from extract_flightlog_params).
+
+        Uses mean values from the specified sequence. Raises ValueError if
+        the required OSD/gimbal fields are absent.
+        """
+        sequences = stats.get('sequences', [])
+        if not sequences:
+            raise ValueError("video_stats JSON contains no sequences")
+        seq = next((s for s in sequences if s['sequence_id'] == sequence_id), sequences[0])
+        osd = seq['stats']['osd']
+        gimbal = seq['stats']['gimbal']
+
+        def mean(section: Dict[str, Any], key: str) -> float:
+            try:
+                return float(section[key]['mean'])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"Missing field {key!r} in video_stats stats") from exc
+
+        hfov_deg: Optional[float] = None
+        camera = stats.get('camera')
+        if isinstance(camera, dict) and 'hfov_deg' in camera:
+            hfov_deg = float(camera['hfov_deg'])
+
+        return cls(
+            latitude=mean(osd, 'latitude'),
+            longitude=mean(osd, 'longitude'),
+            alt_agl=mean(osd, 'height_agl'),
+            gimbal_yaw=mean(gimbal, 'yaw'),
+            gimbal_pitch=mean(gimbal, 'pitch'),
+            gimbal_roll=mean(gimbal, 'roll'),
+            drone_type=stats.get('drone_type'),
+            lens_type=stats.get('lens_type', 'standard'),
+            hfov_deg=hfov_deg,
+        )
+
+
+@dataclass
 class Project:
     """
     Main project container for ORBIT.
@@ -108,7 +196,7 @@ class Project:
     parking_spaces: List[ParkingSpace] = field(default_factory=list)
     control_points: List[ControlPoint] = field(default_factory=list)
     right_hand_traffic: bool = True  # Default to right-hand traffic
-    transform_method: str = 'homography'  # Default to homography for drone images
+    transform_method: str = 'homography'  # 'affine', 'homography', or 'drone_assisted'
     country_code: str = 'se'  # Default to Sweden
     map_name: str = ''  # Name for OpenDrive export (defaults to image filename when loaded)
     openstreetmap_used: bool = False  # Flag for OpenStreetMap attribution
@@ -135,6 +223,7 @@ class Project:
     synthetic_canvas_width: Optional[int] = None  # Synthetic canvas width in pixels (no real image)
     synthetic_canvas_height: Optional[int] = None  # Synthetic canvas height in pixels (no real image)
     transform_adjustment: Optional[Dict[str, float]] = None  # Persisted geo-alignment adjustment
+    drone_metadata: Optional['DroneMetadata'] = None  # Flight log data for drone-assisted georef
     source_files: List[Dict[str, str]] = field(default_factory=list)  # Imported input files for provenance tracking
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -1647,6 +1736,7 @@ class Project:
             'synthetic_canvas_width': self.synthetic_canvas_width,
             'synthetic_canvas_height': self.synthetic_canvas_height,
             'transform_adjustment': self.transform_adjustment,
+            'drone_metadata': self.drone_metadata.to_dict() if self.drone_metadata else None,
             'source_files': self.source_files,
             'id_counters': {
                 'polyline': self._next_polyline_id,
@@ -1708,6 +1798,10 @@ class Project:
             synthetic_canvas_width=data.get('synthetic_canvas_width'),
             synthetic_canvas_height=data.get('synthetic_canvas_height'),
             transform_adjustment=data.get('transform_adjustment'),
+            drone_metadata=(
+                DroneMetadata.from_dict(data['drone_metadata'])
+                if data.get('drone_metadata') else None
+            ),
             source_files=data.get('source_files', []),
             metadata=data.get('metadata', {})
         )

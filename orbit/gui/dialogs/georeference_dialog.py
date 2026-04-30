@@ -49,6 +49,8 @@ class GeoreferenceDialog(BaseDialog):
     pick_point_requested = pyqtSignal()
     # Signal emitted when control points are modified (added/removed)
     control_points_changed = pyqtSignal()
+    # Signal emitted when drone metadata changes (load/clear)
+    drone_metadata_changed = pyqtSignal()
 
     def __init__(self, project: Project, parent=None, verbose: bool = False):
         super().__init__("Georeferencing", parent, min_width=900, min_height=700)
@@ -91,6 +93,7 @@ class GeoreferenceDialog(BaseDialog):
 
         self._create_control_points_section()
         self._create_add_point_section()
+        self._create_drone_log_section()
         self._create_status_section()
         self._create_uncertainty_section()
 
@@ -182,6 +185,123 @@ class GeoreferenceDialog(BaseDialog):
 
         add_group.setLayout(add_layout)
         self.get_main_layout().addWidget(add_group)
+
+    def _create_drone_log_section(self):
+        """Create the drone-assisted georeferencing section."""
+        drone_group = QGroupBox("Drone-Assisted Georeferencing (optional)")
+        drone_layout = QVBoxLayout()
+
+        self.drone_status_label = QLabel("Drone log: Not loaded")
+        drone_layout.addWidget(self.drone_status_label)
+
+        btn_row = QHBoxLayout()
+        self.load_drone_log_btn = QPushButton("Load Drone Log (video_stats.json)…")
+        self.load_drone_log_btn.clicked.connect(self._load_drone_log)
+        btn_row.addWidget(self.load_drone_log_btn)
+
+        self.clear_drone_log_btn = QPushButton("Clear")
+        self.clear_drone_log_btn.clicked.connect(self._clear_drone_log)
+        self.clear_drone_log_btn.setEnabled(self.project.drone_metadata is not None)
+        btn_row.addWidget(self.clear_drone_log_btn)
+        btn_row.addStretch()
+        drone_layout.addLayout(btn_row)
+
+        self.heading_validation_label = QLabel()
+        self.heading_validation_label.setVisible(False)
+        drone_layout.addWidget(self.heading_validation_label)
+
+        drone_group.setLayout(drone_layout)
+        self.get_main_layout().addWidget(drone_group)
+
+        self._refresh_drone_status()
+
+    def _refresh_drone_status(self):
+        """Update the drone log status label and heading validation line."""
+        md = self.project.drone_metadata
+        if md is None:
+            self.drone_status_label.setText("Drone log: Not loaded")
+            self.clear_drone_log_btn.setEnabled(False)
+            self.heading_validation_label.setVisible(False)
+            return
+
+        drone_str = md.drone_type or "Unknown drone"
+        hfov_str = f" | HFOV: {md.hfov_deg:.1f}°" if md.hfov_deg is not None else " | HFOV: from GCPs"
+        self.drone_status_label.setText(
+            f"Drone log: {drone_str} ({md.lens_type}) | "
+            f"Alt: {md.alt_agl:.1f} m | "
+            f"Heading: {md.gimbal_yaw:.1f}° | "
+            f"Pitch: {md.gimbal_pitch:.1f}°"
+            f"{hfov_str}"
+        )
+        self.clear_drone_log_btn.setEnabled(True)
+
+        # Always show heading info (declination always computable; GCP refinement shown when available)
+        self._update_heading_validation()
+
+    def _update_heading_validation(self):
+        """Run heading estimation from GCPs and display the result."""
+        try:
+            from orbit.utils.camera_model import DroneCameraModel
+
+            md = self.project.drone_metadata
+            if md is None:
+                return
+
+            if self.parent() and self.parent().image_view and self.parent().image_view.image_item:
+                px = self.parent().image_view.image_item.pixmap()
+                image_width, image_height = px.width(), px.height()
+            else:
+                self.heading_validation_label.setVisible(False)
+                return
+
+            training_points = [cp for cp in self.project.control_points if not cp.is_validation]
+            model = DroneCameraModel(
+                metadata=md,
+                image_width=image_width,
+                image_height=image_height,
+                control_points=training_points if len(training_points) >= 2 else None,
+            )
+            decl = model.declination_deg
+            refine = model.yaw_refinement_deg
+            effective = model.effective_yaw
+            ok = "✓" if abs(refine) < 5 else "⚠"
+            parts = [
+                f"Log heading: {md.gimbal_yaw:.1f}°",
+                f"Declination: {decl:+.1f}°",
+            ]
+            if len(training_points) >= 2:
+                parts.append(f"GCP refinement: {refine:+.1f}°")
+            parts.append(f"Effective: {effective:.1f}°")
+            self.heading_validation_label.setText(f"{ok} " + " | ".join(parts))
+            self.heading_validation_label.setVisible(True)
+        except Exception as e:
+            logger.debug(f"Heading validation failed: {e}")
+            self.heading_validation_label.setVisible(False)
+
+    def _load_drone_log(self):
+        """Load a video_stats.json file and store drone metadata in project."""
+        import json
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Drone Log", "", "Video Stats JSON (*.json);;All Files (*)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, encoding='utf-8') as f:
+                stats = json.load(f)
+            from orbit.models.project import DroneMetadata
+            self.project.drone_metadata = DroneMetadata.from_video_stats(stats)
+            self._refresh_drone_status()
+            self.drone_metadata_changed.emit()
+        except Exception as e:
+            show_error(self, f"Failed to load drone log:\n{e}", "Load Error")
+
+    def _clear_drone_log(self):
+        """Remove drone metadata from project."""
+        self.project.drone_metadata = None
+        self._refresh_drone_status()
+        self.drone_metadata_changed.emit()
 
     def _create_status_section(self):
         """Create the status and validation section."""
@@ -529,8 +649,17 @@ class GeoreferenceDialog(BaseDialog):
 
         # Determine minimum required
         min_required = 4 if self.project.transform_method == 'homography' else 3
+        if self.project.transform_method == 'drone_assisted':
+            min_required = 0  # drone-assisted works with 0 GCPs (but GCPs improve focal length)
 
-        if len(training_points) < min_required:
+        if self.project.transform_method == 'drone_assisted' and self.project.drone_metadata is None:
+            self.validation_text.setText(
+                "Drone-assisted mode requires a drone log. Load one in the Drone Log section above."
+            )
+            self.project.georef_validation = {}
+            return
+
+        if self.project.transform_method != 'drone_assisted' and len(training_points) < min_required:
             self.validation_text.setText("Insufficient training points for validation.")
             self.project.georef_validation = {}
             self.analyze_gcp_btn.setEnabled(False)
@@ -544,12 +673,17 @@ class GeoreferenceDialog(BaseDialog):
             self.project.control_points,
             self.project.transform_method,
             use_validation=True,
+            drone_metadata=self.project.drone_metadata,
         )
 
         if not transformer:
             self.validation_text.setText("Failed to create transformer.")
             self.project.georef_validation = {}
             return
+
+        # Update heading cross-check if drone mode
+        if self.project.drone_metadata is not None:
+            self._update_heading_validation()
 
         # Build validation report
         report = []

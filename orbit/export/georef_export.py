@@ -15,6 +15,7 @@ from orbit.models.project import Project
 from orbit.utils.coordinate_transform import (
     AffineTransformer,
     CoordinateTransformer,
+    DroneAssistedTransformer,
     HomographyTransformer,
     HybridTransformer,
 )
@@ -78,9 +79,7 @@ def build_georef_data(
         Dictionary with georeferencing data
     """
     # Determine transform method string
-    if isinstance(transformer, HybridTransformer):
-        method = "homography"
-    elif isinstance(transformer, HomographyTransformer):
+    if isinstance(transformer, (HybridTransformer, HomographyTransformer, DroneAssistedTransformer)):
         method = "homography"
     elif isinstance(transformer, AffineTransformer):
         method = "affine"

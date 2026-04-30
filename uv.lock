@@ -193,6 +193,12 @@ wheels = [
 ]
 
 [[package]]
+name = "geomag"
+version = "0.9.2015"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/1f/95b5d9db29b89735af88713e7fb49b20052d1ce5a05e8e4ea0f2f96da4b3/geomag-0.9.2015.zip", hash = "sha256:fa3f7544beca2dd706c3078d9d58cb35734d00de2591270a335216bb8ba310d5", size = 8071, upload-time = "2014-12-18T01:15:53.201Z" }
+
+[[package]]
 name = "identify"
 version = "2.6.18"
 source = { registry = "https://pypi.org/simple" }
@@ -521,6 +527,7 @@ name = "orbit"
 version = "0.10.1"
 source = { editable = "." }
 dependencies = [
+    { name = "geomag" },
     { name = "lxml" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -553,6 +560,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dataprov", marker = "extra == 'provenance'", specifier = ">=3.0" },
+    { name = "geomag", specifier = ">=0.9.2015" },
     { name = "lxml", specifier = ">=4.9.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "opencv-python", specifier = ">=4.8.0" },

@@ -58,11 +58,15 @@ class PreferencesDialog(BaseDialog):
         self.transform_method_combo = QComboBox()
         self.transform_method_combo.addItem("Affine (for orthophotos, satellite imagery)", "affine")
         self.transform_method_combo.addItem("Homography (for oblique drone imagery)", "homography")
+        self.transform_method_combo.addItem("Drone-assisted (requires drone log)", "drone_assisted")
 
         transform_label = InfoIconLabel(
             "Transformation Method:",
             "Affine: Best for nadir (straight down) aerial/satellite images. Requires 3+ control points.\n"
-            "Homography: Best for tilted camera drone images with perspective. Requires 4+ control points.",
+            "Homography: Best for tilted camera drone images with perspective. Requires 4+ control points.\n"
+            "Drone-assisted: Uses drone flight log (position, altitude, gimbal) for a physically-derived\n"
+            "  homography. Requires drone log loaded in the Georeferencing dialog. Works even when\n"
+            "  GCPs are nearly collinear (e.g., all along one road).",
             bold=False
         )
         georef_layout.addRow(transform_label, self.transform_method_combo)
@@ -206,8 +210,18 @@ class PreferencesDialog(BaseDialog):
         # Transformation method
         if self.project.transform_method == 'homography':
             self.transform_method_combo.setCurrentIndex(1)
+        elif self.project.transform_method == 'drone_assisted':
+            self.transform_method_combo.setCurrentIndex(2)
         else:
             self.transform_method_combo.setCurrentIndex(0)
+
+        # Disable drone-assisted if no drone log is loaded
+        model = self.transform_method_combo.model()
+        drone_item = model.item(2)
+        if self.project.drone_metadata is None:
+            from PyQt6.QtGui import QColor
+            drone_item.setEnabled(False)
+            drone_item.setForeground(QColor('gray'))
 
         # Traffic side
         if self.project.right_hand_traffic:

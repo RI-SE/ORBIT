@@ -1927,6 +1927,9 @@ class MainWindow(QMainWindow):
         # Connect control points changed signal for real-time visualization updates
         dialog.control_points_changed.connect(self.on_control_points_changed)
 
+        # Connect drone metadata changed signal
+        dialog.drone_metadata_changed.connect(self.on_control_points_changed)
+
         # Connect control point drag signal for live matrix updates without full refresh
         self.image_view.control_point_moved.connect(self.on_control_point_dragged)
 
@@ -2053,6 +2056,7 @@ class MainWindow(QMainWindow):
             self.project.transform_method,
             image_width=image_width,
             image_height=image_height,
+            drone_metadata=self.project.drone_metadata,
             **kwargs,
         )
 
