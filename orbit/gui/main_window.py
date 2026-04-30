@@ -62,6 +62,9 @@ class MainWindow(QMainWindow):
         self._aerial_transformer = None  # Transformer for aerial tile image
         self._aerial_zoom = 18  # Default tile zoom level
         self._original_cp_pixels: list = []  # Saved CP pixel positions for round-trip restore
+        self._original_cr_paths: dict = {}  # Saved connecting road inline_paths for round-trip restore
+        self._original_junction_centers: dict = {}  # Saved junction center_point pixel coords for round-trip restore
+        self._original_view_adjustment = None  # Saved current_adjustment before aerial switch
 
         # Adjustment ghost overlay (shows unadjusted geometry positions)
         self._adjustment_ghost_overlay = None
@@ -2884,12 +2887,33 @@ class MainWindow(QMainWindow):
             show_warning(self, "Cannot create coordinate transformer.")
             self.toggle_aerial_action.setChecked(False)
             return
+        # Save the current_adjustment so we can restore it precisely on return.
+        # Without this, current_adjustment keeps the aerial value and causes
+        # _apply_active_adjustment to corrupt the original transformer on the
+        # next aerial switch.
+        self._original_view_adjustment = self.image_view.current_adjustment
         self._apply_active_adjustment(self._original_transformer)
         self._original_image_np = self.image_view.image_np.copy() if self.image_view.image_np is not None else None
         # Save exact user-placed pixel positions so the round-trip can restore them
         # precisely (geo_to_pixel on the least-squares transformer does not reproduce
         # training point positions exactly when there are more than the minimum points).
         self._original_cp_pixels = [(cp.pixel_x, cp.pixel_y) for cp in self.project.control_points]
+
+        # Save connecting road pixel paths so geo_to_pixel round-trip errors can't corrupt them.
+        # geo_to_pixel may return out-of-bounds coords for physics-based transformers when a
+        # road is outside the camera's field of view.
+        self._original_cr_paths = {}
+        self._original_junction_centers = {}
+        for junction in self.project.junctions:
+            if junction.center_point:
+                self._original_junction_centers[junction.id] = {
+                    'center': junction.center_point,
+                    'roundabout': junction.roundabout_center,
+                }
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if cr and cr.inline_path:
+                    self._original_cr_paths[cr_id] = list(cr.inline_path)
 
         # Remove ghost overlay before switching (will be rebuilt on return)
         self._remove_adjustment_ghost()
@@ -2917,6 +2941,9 @@ class MainWindow(QMainWindow):
             self._original_image_np = None
             self._original_transformer = None
             self._original_cp_pixels = []
+            self._original_cr_paths = {}
+            self._original_view_adjustment = None
+            self._original_junction_centers = {}
             return
 
         # Build initial affine transformer from raw tile image bounds
@@ -2931,6 +2958,9 @@ class MainWindow(QMainWindow):
             self._original_image_np = None
             self._original_transformer = None
             self._original_cp_pixels = []
+            self._original_cr_paths = {}
+            self._original_view_adjustment = None
+            self._original_junction_centers = {}
             return
 
         # Resize aerial image so its pixels/meter matches the original image.
@@ -2955,7 +2985,16 @@ class MainWindow(QMainWindow):
             self._original_image_np = None
             self._original_transformer = None
             self._original_cp_pixels = []
+            self._original_cr_paths = {}
+            self._original_view_adjustment = None
+            self._original_junction_centers = {}
             return
+
+        # Ensure CR/junction geo coords are consistent with the original
+        # transformer before reprojecting.  Stale geo_coords (from a previous
+        # transformer or from the junction analyzer's endpoint snapping) would
+        # cause reproject_project_geometry to place CRs at wrong aerial pixels.
+        self._resync_junction_geo_coords(self._original_transformer)
 
         # Re-project all geometry into the aerial pixel space
         count = reproject_project_geometry(
@@ -3013,11 +3052,47 @@ class MainWindow(QMainWindow):
         self.image_view.swap_background(self._original_image_np)
         self._cached_transformer = self._original_transformer
 
+        # Restore the original view's adjustment into current_adjustment.
+        # While in aerial view, current_adjustment held the aerial adjustment; leaving
+        # it there would cause _apply_active_adjustment to corrupt the original transformer
+        # on the next aerial switch, and incorrectly trigger update_all_from_geo_coords
+        # with the wrong (aerial) adjustment value.
+        self.image_view.current_adjustment = self._original_view_adjustment
+
         # Recompute pixel positions from geo coords using the adjusted transformer
         # so entities land in the correct adjusted positions.
-        adj = self.image_view.current_adjustment
+        adj = self._original_view_adjustment
         if adj and not adj.is_identity():
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
+
+        # Restore connecting road pixel paths AFTER update_all_from_geo_coords, because
+        # that call re-runs geo_to_pixel via the drone transformer which returns large
+        # out-of-bounds coordinates for CRs whose geo positions are outside the camera's
+        # field of view, undoing the reproject_project_geometry result.  We restore the
+        # exact pre-aerial pixel positions as the authoritative source for all CRs
+        # (in-FOV and out-of-FOV alike) so that subsequent load_project picks them up.
+        if self._original_cr_paths:
+            for junction in self.project.junctions:
+                for cr_id in junction.connecting_road_ids:
+                    if cr_id in self._original_cr_paths:
+                        cr = self.project.get_road(cr_id)
+                        if cr:
+                            cr.inline_path = list(self._original_cr_paths[cr_id])
+
+        # Restore junction center_point pixel positions for the same reason: the drone
+        # camera model's geo_to_pixel gives out-of-bounds values for junctions that are
+        # outside its field of view.
+        if self._original_junction_centers:
+            for junction in self.project.junctions:
+                saved = self._original_junction_centers.get(junction.id)
+                if saved:
+                    junction.center_point = saved['center']
+                    junction.roundabout_center = saved['roundabout']
+
+        # Resync geo coords to match the restored pixel positions so the
+        # next reproject (or save) sees consistent geo_coords.
+        self._resync_junction_geo_coords(self._original_transformer)
+
         self._aerial_view_active = False
 
         # Refresh scene
@@ -3034,6 +3109,9 @@ class MainWindow(QMainWindow):
         self._original_transformer = None
         self._aerial_transformer = None
         self._original_cp_pixels = []
+        self._original_cr_paths = {}
+        self._original_junction_centers = {}
+        self._original_view_adjustment = None
 
         self.toggle_aerial_action.setText("&Aerial Map View")
         self.toggle_aerial_action.setEnabled(True)
@@ -3073,9 +3151,46 @@ class MainWindow(QMainWindow):
         # (only for CRs without lane connections; lane-aligned CRs are skipped)
         self._snap_connecting_road_endpoints()
 
+        # Resync CR/junction geo coords from pixel positions to ensure
+        # consistency with the active transformer.  Without this, a transformer
+        # change (e.g. switching to drone_assisted) leaves stale geo_coords
+        # that cause reproject_project_geometry to produce wrong pixel positions.
+        self._resync_junction_geo_coords(transformer)
+
     def _snap_connecting_road_endpoints(self):
         """Snap CR pixel endpoints to match connected road endpoints."""
         self.controller.snap_connecting_road_endpoints()
+
+    def _resync_junction_geo_coords(self, transformer):
+        """Recompute CR and junction geo coords from pixel positions.
+
+        Connecting road pixel paths are authoritative (generated by curve
+        fitting); their inline_geo_path may become stale when the transformer
+        changes (e.g. switching to drone_assisted).  Resyncing ensures
+        geo_to_pixel(geo) == pixel for every CR, which is required for
+        reproject_project_geometry to produce correct results.
+        """
+        if transformer is None:
+            return
+        for junction in self.project.junctions:
+            if junction.center_point:
+                lon, lat = transformer.pixel_to_geo(
+                    junction.center_point[0], junction.center_point[1],
+                )
+                junction.geo_center_point = (lon, lat)
+                if junction.roundabout_center:
+                    rlon, rlat = transformer.pixel_to_geo(
+                        junction.roundabout_center[0],
+                        junction.roundabout_center[1],
+                    )
+                    junction.geo_roundabout_center = (rlon, rlat)
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if cr and cr.inline_path:
+                    cr.inline_geo_path = [
+                        transformer.pixel_to_geo(x, y)
+                        for x, y in cr.inline_path
+                    ]
 
     def update_affected_road_lanes(self):
         """Update lane graphics for all roads with centerlines."""
