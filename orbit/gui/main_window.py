@@ -3089,6 +3089,14 @@ class MainWindow(QMainWindow):
                     junction.center_point = saved['center']
                     junction.roundabout_center = saved['roundabout']
 
+        # Regenerate CR paths from current road positions.  After restoring
+        # _original_cr_paths the saved positions may no longer match roads that
+        # were moved in aerial view, leaving gaps at junction endpoints.
+        # Parampoly3 CRs need a full spline rebuild; lane-aligned CRs need
+        # their lane-offset endpoints recomputed; non-aligned polyline CRs are
+        # handled by the endpoint snap inside _resync_junction_geo_coords.
+        self._regenerate_all_junction_crs()
+
         # Resync geo coords to match the restored pixel positions so the
         # next reproject (or save) sees consistent geo_coords.
         self._resync_junction_geo_coords(self._original_transformer)
@@ -3169,6 +3177,9 @@ class MainWindow(QMainWindow):
         changes (e.g. switching to drone_assisted).  Resyncing ensures
         geo_to_pixel(geo) == pixel for every CR, which is required for
         reproject_project_geometry to produce correct results.
+
+        After resyncing, CR endpoints are snapped to the connected polyline
+        endpoints (both pixel and geo) so that no gap appears after reprojection.
         """
         if transformer is None:
             return
@@ -3184,13 +3195,88 @@ class MainWindow(QMainWindow):
                         junction.roundabout_center[1],
                     )
                     junction.geo_roundabout_center = (rlon, rlat)
+
+            # Build set of CRs with lane connections (those are lane-aligned)
+            aligned_cr_ids = {
+                c.connecting_road_id
+                for c in (junction.lane_connections or [])
+                if c.connecting_road_id
+            }
+
             for cr_id in junction.connecting_road_ids:
                 cr = self.project.get_road(cr_id)
-                if cr and cr.inline_path:
-                    cr.inline_geo_path = [
-                        transformer.pixel_to_geo(x, y)
-                        for x, y in cr.inline_path
-                    ]
+                if not cr or not cr.inline_path:
+                    continue
+
+                # Snap pixel endpoints to connected polyline endpoints
+                if cr_id not in aligned_cr_ids:
+                    self._snap_cr_endpoints_pixel(cr)
+
+                # Recompute full geo path from (snapped) pixel
+                cr.inline_geo_path = [
+                    transformer.pixel_to_geo(x, y)
+                    for x, y in cr.inline_path
+                ]
+
+                # Snap geo endpoints to connected polyline geo endpoints
+                # so that reproject produces identical pixel positions for
+                # the CR endpoint and its connecting polyline endpoint.
+                if cr_id not in aligned_cr_ids:
+                    self._snap_cr_endpoints_geo(cr)
+
+    def _snap_cr_endpoints_pixel(self, cr):
+        """Snap a CR's pixel endpoints to the connected polyline endpoints."""
+        pred = self.project.get_road(cr.predecessor_id)
+        succ = self.project.get_road(cr.successor_id)
+        pred_pl = self.project.get_polyline(pred.centerline_id) if pred else None
+        succ_pl = self.project.get_polyline(succ.centerline_id) if succ else None
+        if pred_pl and pred_pl.points:
+            cr.inline_path[0] = (
+                pred_pl.points[-1] if cr.predecessor_contact == 'end'
+                else pred_pl.points[0]
+            )
+        if succ_pl and succ_pl.points:
+            cr.inline_path[-1] = (
+                succ_pl.points[-1] if cr.successor_contact == 'end'
+                else succ_pl.points[0]
+            )
+
+    def _snap_cr_endpoints_geo(self, cr):
+        """Snap a CR's geo endpoints to the connected polyline geo endpoints."""
+        if not cr.inline_geo_path:
+            return
+        pred = self.project.get_road(cr.predecessor_id)
+        succ = self.project.get_road(cr.successor_id)
+        pred_pl = self.project.get_polyline(pred.centerline_id) if pred else None
+        succ_pl = self.project.get_polyline(succ.centerline_id) if succ else None
+        if pred_pl and pred_pl.geo_points:
+            cr.inline_geo_path[0] = (
+                pred_pl.geo_points[-1] if cr.predecessor_contact == 'end'
+                else pred_pl.geo_points[0]
+            )
+        if succ_pl and succ_pl.geo_points:
+            cr.inline_geo_path[-1] = (
+                succ_pl.geo_points[-1] if cr.successor_contact == 'end'
+                else succ_pl.geo_points[0]
+            )
+
+    def _regenerate_all_junction_crs(self):
+        """Regenerate all CR paths from current road positions after a view switch.
+
+        Called after _original_cr_paths is restored so that CRs which connect
+        to roads that were moved in aerial view are rebuilt from the new road
+        positions rather than the stale saved positions.
+        """
+        # Rebuild parampoly3 CRs from connected road endpoints
+        for junction in self.project.junctions:
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if cr and cr.geometry_type == "parampoly3":
+                    self.controller._regenerate_parampoly3_cr(cr)
+
+        # Re-apply lane-alignment offsets for all junctions that have them
+        scale_factors = self.get_current_scale()
+        self.controller.align_all_junction_crs(scale_factors)
 
     def update_affected_road_lanes(self):
         """Update lane graphics for all roads with centerlines."""
