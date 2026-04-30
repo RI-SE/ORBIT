@@ -1023,6 +1023,8 @@ class MainWindow(QMainWindow):
 
         # Resolve any unapplied adjustment before exporting — downstream tools do not
         # support the adjustment field, so the exported matrices must be fully committed.
+        # (For drone-assisted mode _has_unapplied_adjustment always returns False;
+        # the adjustment is stored in project.transform_adjustment instead.)
         if not self._prompt_and_handle_unapplied_adjustment():
             return
 
@@ -1043,10 +1045,9 @@ class MainWindow(QMainWindow):
         else:
             proj_string = base_transformer.get_utm_projection_string()
 
-        from orbit.utils.coordinate_transform import create_transformer as _create_transformer
-        transformer = _create_transformer(
-            self.project.control_points,
-            self.project.transform_method,
+        # Use self._create_transformer so drone_metadata and image dimensions
+        # are included (the module-level create_transformer lacks those kwargs).
+        transformer = self._create_transformer(
             use_validation=True,
             export_proj_string=proj_string,
         )
@@ -1054,6 +1055,9 @@ class MainWindow(QMainWindow):
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
             return
+
+        # Apply any stored adjustment so the exported matrices are fully baked.
+        self._apply_active_adjustment(transformer)
 
         # Get image size
         if self.image_view.image_item:
@@ -2068,26 +2072,68 @@ class MainWindow(QMainWindow):
         self._cached_transformer = None
 
     def _apply_active_adjustment(self, transformer):
-        """Apply the project's persisted adjustment to a transformer, if any."""
+        """Apply the project's persisted adjustment to a transformer, if any.
+
+        For drone-assisted transformers the 'applied' adjustment is stored in
+        project.transform_adjustment rather than current_adjustment (which is
+        kept at identity after baking).  Both sources are checked.
+        """
         if transformer is None:
             return
         adj = self.image_view.current_adjustment
         if adj and not adj.is_identity():
             transformer.set_adjustment(adj)
+            return
+        # Drone-assisted: fall back to permanently stored project adjustment
+        if (self.project.transform_method == 'drone_assisted'
+                and self.project.transform_adjustment):
+            stored = TransformAdjustment.from_dict(self.project.transform_adjustment)
+            if not stored.is_identity():
+                transformer.set_adjustment(stored)
 
     def _sync_adjustment_to_project(self):
-        """Clear any stored adjustment from the project (adjustments are resolved before save)."""
+        """Clear or preserve adjustment for saving.
+
+        For homography/affine: clear (already baked into CP positions).
+        For drone-assisted: keep project.transform_adjustment as-is; it IS
+        the permanent correction for the physics-based transformer.
+        """
+        if self.project.transform_method == 'drone_assisted':
+            return
         self.project.transform_adjustment = None
 
     def _has_unapplied_adjustment(self) -> bool:
-        """Return True if there is an active non-identity adjustment that has not been baked."""
+        """Return True if there is an active non-identity adjustment that has not been baked.
+
+        For drone-assisted transformers the adjustment cannot be baked into CP
+        positions; it is instead stored in project.transform_adjustment.  When
+        using drone-assisted mode the adjustment is always considered 'applied'
+        (either it's stored in the project or hasn't been computed yet) so we
+        never block saves with a "unapplied adjustment" prompt.
+        """
+        if self.project.transform_method == 'drone_assisted':
+            return False
         adj = self.image_view.current_adjustment
         return adj is not None and not adj.is_identity()
 
     def _bake_adjustment_into_control_points(self):
-        """Bake the current adjustment into CP pixel positions and clear it (no dialog)."""
+        """Bake the current adjustment into CP pixel positions and clear it (no dialog).
+
+        For drone-assisted transformers the adjustment is stored in the project
+        instead of CP pixels (see apply_adjustment_to_control_points).
+        """
         adj = self.image_view.current_adjustment
         if adj is None or adj.is_identity():
+            return
+        if self.project.transform_method == 'drone_assisted':
+            # Can't bake into CPs — persist in project and re-apply to transformer
+            self.project.transform_adjustment = adj.to_dict()
+            self.image_view.reset_adjustment()
+            self._remove_adjustment_ghost()
+            self._invalidate_cached_transformer()
+            self._cached_transformer = self._create_transformer(use_validation=True)
+            self._apply_active_adjustment(self._cached_transformer)
+            self.refresh_imported_geometry()
             return
         for cp in self.project.control_points:
             cp.pixel_x, cp.pixel_y = adj.apply_to_point(cp.pixel_x, cp.pixel_y)
@@ -2698,8 +2744,13 @@ class MainWindow(QMainWindow):
         """
         Apply current adjustment to control points.
 
-        This "bakes" the adjustment into the control point positions,
-        then recomputes the transformation with the new positions.
+        For homography/affine transformers this "bakes" the adjustment into
+        the control point pixel positions and recomputes the transformation.
+
+        For drone-assisted transformers the core physics matrix is independent
+        of CP pixel positions, so baking into CPs has no effect.  Instead the
+        adjustment is stored permanently in the project and kept active on the
+        transformer so it persists across saves/reloads.
         """
         adjustment = self.image_view.get_adjustment()
         if adjustment is None or adjustment.is_identity():
@@ -2710,7 +2761,44 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("No control points to adjust")
             return
 
-        # Confirm with user
+        is_drone = self.project.transform_method == 'drone_assisted'
+
+        if is_drone:
+            # For drone-assisted: can't bake into CPs because the physics matrix
+            # ignores CP pixel positions.  Persist the adjustment in the project so
+            # it survives save/reload, and keep it applied to the transformer.
+            if not ask_yes_no(
+                self,
+                "The drone-assisted transformer is physics-based and cannot absorb "
+                "the adjustment via control point positions.\n\n"
+                "The adjustment will be stored permanently with the project and "
+                "re-applied automatically on every reload.\n\n"
+                "Continue?",
+                "Apply Adjustment"
+            ):
+                return
+
+            self.project.transform_adjustment = adjustment.to_dict()
+            # Reset current_adjustment so the panel and save-prompt see no pending
+            # adjustment (the stored project value is the authoritative source now).
+            self.image_view.reset_adjustment()
+            self._remove_adjustment_ghost()
+
+            # Rebuild transformer; _apply_active_adjustment will re-apply the
+            # stored project adjustment via the drone-assisted fallback path.
+            self._invalidate_cached_transformer()
+            self._cached_transformer = self._create_transformer(use_validation=True)
+            self._apply_active_adjustment(self._cached_transformer)
+
+            self.refresh_imported_geometry()
+            self.modified = True
+            self.update_window_title()
+            self.statusBar().showMessage(
+                "Adjustment stored permanently for drone-assisted transformer"
+            )
+            return
+
+        # --- homography / affine: bake adjustment into CP pixel positions ---
         if not ask_yes_no(
             self,
             "This will modify the pixel positions of all control points "
