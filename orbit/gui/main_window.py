@@ -893,13 +893,12 @@ class MainWindow(QMainWindow):
             return
 
         # Show export dialog with optional schema path for validation
-        adjustment = self.image_view.current_adjustment if hasattr(self.image_view, 'current_adjustment') else None
         from datetime import datetime, timezone
         start_time = datetime.now(timezone.utc)
         dialog = ExportDialog(
             self.project, self,
             xodr_schema_path=self.xodr_schema_path,
-            adjustment=adjustment,
+            transformer_factory=self._make_transformer_factory(),
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.statusBar().showMessage("Export completed successfully")
@@ -2070,6 +2069,20 @@ class MainWindow(QMainWindow):
     def _invalidate_cached_transformer(self):
         """Invalidate the cached transformer while preserving the active adjustment."""
         self._cached_transformer = None
+
+    def _make_transformer_factory(self):
+        """Return a factory callable for creating correctly configured export transformers.
+
+        The returned callable accepts the same kwargs as ``create_transformer``
+        (e.g. ``use_validation``, ``export_proj_string``) and automatically
+        includes drone metadata, image dimensions, and any active adjustment.
+        """
+        def factory(**kwargs):
+            t = self._create_transformer(**kwargs)
+            if t:
+                self._apply_active_adjustment(t)
+            return t
+        return factory
 
     def _apply_active_adjustment(self, transformer):
         """Apply the project's persisted adjustment to a transformer, if any.

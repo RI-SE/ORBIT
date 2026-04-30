@@ -40,14 +40,16 @@ class ExportDialog(BaseDialog):
     """Dialog for OpenDrive export with preview."""
 
     def __init__(self, project: Project, parent=None, xodr_schema_path: Optional[str] = None,
-                 adjustment=None):
+                 transformer_factory=None, adjustment=None):
         super().__init__("Export to OpenDrive", parent, min_width=700, min_height=600)
 
         self.project = project
         self.transformer: Optional[CoordinateTransformer] = None
         self.output_path: Optional[Path] = None
-        self.xodr_schema_path = xodr_schema_path  # Path to XSD schema for validation (optional)
-        self._adjustment = adjustment  # TransformAdjustment from interactive fine-tuning
+        self.xodr_schema_path = xodr_schema_path
+        self._transformer_factory = transformer_factory
+        # Legacy: adjustment kept for callers that don't provide a factory
+        self._adjustment = adjustment
 
         self.setup_ui()
         self.load_properties()
@@ -252,14 +254,16 @@ class ExportDialog(BaseDialog):
         # Check georeferencing
         if self.project.has_georeferencing():
             # Create transformer using project's method
-            self.transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-            )
-
-            if self.transformer and self._adjustment and not self._adjustment.is_identity():
-                self.transformer.set_adjustment(self._adjustment)
+            if self._transformer_factory:
+                self.transformer = self._transformer_factory(use_validation=True)
+            else:
+                self.transformer = create_transformer(
+                    self.project.control_points,
+                    self.project.transform_method,
+                    use_validation=True,
+                )
+                if self.transformer and self._adjustment and not self._adjustment.is_identity():
+                    self.transformer.set_adjustment(self._adjustment)
 
             if self.transformer:
                 method = self.project.transform_method.upper()
@@ -453,21 +457,26 @@ class ExportDialog(BaseDialog):
             # Create a fresh transformer that uses pyproj for the export
             # projection. This ensures the homography/affine matrix is
             # computed in the same coordinate system written to the file.
-            export_transformer = create_transformer(
-                self.project.control_points,
-                self.project.transform_method,
-                use_validation=True,
-                export_proj_string=proj_string
-            )
+            if self._transformer_factory:
+                export_transformer = self._transformer_factory(
+                    use_validation=True,
+                    export_proj_string=proj_string,
+                )
+            else:
+                export_transformer = create_transformer(
+                    self.project.control_points,
+                    self.project.transform_method,
+                    use_validation=True,
+                    export_proj_string=proj_string
+                )
+                # Apply manual alignment adjustment if one is active
+                if self._adjustment and not self._adjustment.is_identity():
+                    export_transformer.set_adjustment(self._adjustment)
             if not export_transformer:
                 show_error(self, "Failed to create export transformer.", "Export Error")
                 self.export_btn.setEnabled(True)
                 self.status_label.setText("<b>Export failed.</b>")
                 return
-
-            # Apply manual alignment adjustment if one is active
-            if self._adjustment and not self._adjustment.is_identity():
-                export_transformer.set_adjustment(self._adjustment)
 
             # Compute origin offset: project the selected origin lat/lon
             # to get the offset that will be subtracted from all coordinates.
