@@ -640,12 +640,26 @@ class MainWindow(QMainWindow):
         if file_path:
             self._last_file_directory = str(Path(file_path).parent)
 
+    def _provenance_setting_enabled(self) -> bool:
+        """Return True if provenance tracking is requested via settings."""
+        return self.settings.value("provenance/enabled", False, type=bool)
+
     def _provenance_enabled(self) -> bool:
         """Return True if provenance tracking is enabled and dataprov is available."""
-        return (
-            is_dataprov_available()
-            and self.settings.value("provenance/enabled", False, type=bool)
-        )
+        return is_dataprov_available() and self._provenance_setting_enabled()
+
+    def _check_provenance_ready(self) -> bool:
+        """Return False (and show an error) if provenance is enabled but dataprov is missing."""
+        if self._provenance_setting_enabled() and not is_dataprov_available():
+            show_error(
+                self,
+                "Provenance tracking is enabled in Preferences, but the dataprov "
+                "package is not installed.\n\n"
+                "Install dataprov or disable provenance tracking in Preferences.",
+                "Provenance Unavailable",
+            )
+            return False
+        return True
 
     def _provenance_template(self) -> str:
         from orbit.utils.provenance import DEFAULT_TEMPLATE
@@ -886,6 +900,9 @@ class MainWindow(QMainWindow):
         if not self._prompt_and_handle_unapplied_adjustment():
             return
 
+        if not self._check_provenance_ready():
+            return
+
         # Check if we have any roads
         if not self.project.roads:
             show_warning(self, "Cannot export: No roads defined in the project.\n"
@@ -914,6 +931,9 @@ class MainWindow(QMainWindow):
         from orbit.export.osm_writer import export_to_osm
 
         if not self._prompt_and_handle_unapplied_adjustment():
+            return
+
+        if not self._check_provenance_ready():
             return
 
         # Check if any element has geo coordinates
@@ -995,6 +1015,9 @@ class MainWindow(QMainWindow):
     def export_georeferencing(self):
         """Export georeferencing parameters to JSON file."""
         from orbit.export import export_georeferencing
+
+        if not self._check_provenance_ready():
+            return
 
         # Check if we have enough control points
         if len(self.project.control_points) < 3:
