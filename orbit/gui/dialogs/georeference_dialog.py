@@ -1271,11 +1271,21 @@ class GeoreferenceDialog(BaseDialog):
             show_warning(self, "Need at least 4 training points for GCP analysis.", "Insufficient Points")
             return
 
+        # Get image dimensions (needed for drone-assisted mode)
+        image_width = image_height = 0
+        parent_window = self.parent()
+        if hasattr(parent_window, 'image_view') and parent_window.image_view.image_item:
+            pixmap = parent_window.image_view.image_item.pixmap()
+            image_width, image_height = pixmap.width(), pixmap.height()
+
         # Create transformer
         transformer = create_transformer(
             self.project.control_points,
             self.project.transform_method,
             use_validation=True,
+            drone_metadata=self.project.drone_metadata,
+            image_width=image_width,
+            image_height=image_height,
         )
 
         if not transformer:
