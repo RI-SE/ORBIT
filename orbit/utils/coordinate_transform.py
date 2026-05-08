@@ -1026,6 +1026,8 @@ class HybridTransformer(CoordinateTransformer):
         self.all_control_points = control_points
         self._export_proj_string = export_proj_string
         self._export_proj = None
+        if export_proj_string:
+            self._export_proj = Proj(export_proj_string)
 
         # Create both sub-transformers from the same control points
         self._homography = HomographyTransformer(
