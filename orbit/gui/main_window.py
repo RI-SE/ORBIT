@@ -794,10 +794,15 @@ class MainWindow(QMainWindow):
         if not self._prompt_and_handle_unapplied_adjustment():
             return False
         self._sync_adjustment_to_project()
+        suggested = self._last_file_directory
+        if (not self.current_project_file
+                and self.project.image_path
+                and Path(self.project.image_path).stem):
+            suggested = str(Path(self._last_file_directory) / (Path(self.project.image_path).stem + ".orbit"))
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Project As",
-            self._last_file_directory,
+            suggested,
             "ORBIT Projects (*.orbit);;JSON Files (*.json);;All Files (*)"
         )
 

@@ -355,9 +355,9 @@ class ImageView(QGraphicsView):
         pixmap = QPixmap(width, height)
         pixmap.fill(color)
 
-        # Clear scene and add synthetic pixmap
+        # Clear scene and all item tracking dicts
         self.scene.clear()
-        self.polyline_items.clear()
+        self._clear_item_dicts()
         self.image_item = self.scene.addPixmap(pixmap)
         self.image_item.setZValue(0)
         self.image_np = None
@@ -390,9 +390,9 @@ class ImageView(QGraphicsView):
         )
         pixmap = QPixmap.fromImage(q_image)
 
-        # Clear scene and add image
+        # Clear scene and all item tracking dicts
         self.scene.clear()
-        self.polyline_items.clear()
+        self._clear_item_dicts()
         self.image_item = self.scene.addPixmap(pixmap)
         self.image_item.setZValue(0)
 
@@ -1686,6 +1686,20 @@ class ImageView(QGraphicsView):
             if self.soffsets_visible:
                 self._update_soffset_labels(polyline_id)
 
+    def _clear_item_dicts(self):
+        """Clear all item tracking dicts after scene.clear() has been called."""
+        self.polyline_items.clear()
+        self.junction_items.clear()
+        self.signal_items.clear()
+        self.object_items.clear()
+        self.parking_items.clear()
+        self.control_point_items.clear()
+        self.road_lanes_items.clear()
+        self.connecting_road_centerline_items.clear()
+        self.connecting_road_lanes_items.clear()
+        self.soffset_labels.clear()
+        self.junction_debug_items.clear()
+
     def safe_remove_item(self, item: QGraphicsItem) -> bool:
         """
         Safely remove a graphics item from the scene.
@@ -1721,11 +1735,7 @@ class ImageView(QGraphicsView):
     def clear(self):
         """Clear the view."""
         self.scene.clear()
-        self.polyline_items.clear()
-        self.junction_items.clear()
-        self.control_point_items.clear()
-        self.road_lanes_items.clear()
-        self.soffset_labels.clear()  # Clear s-offset labels
+        self._clear_item_dicts()
         self.project = None
         self.image_item = None
         self.image_np = None

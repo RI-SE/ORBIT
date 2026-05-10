@@ -372,13 +372,11 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         return -1
 
     def set_selected(self, selected: bool):
-        """
-        Set selection state of the object.
-
-        Args:
-            selected: True to select, False to deselect
-        """
+        """Set selection state of the object."""
         self._is_selected = selected
-        self.selection_item.setVisible(selected)
+        try:
+            self.selection_item.setVisible(selected)
+        except RuntimeError:
+            return
         if self._is_polygon_with_points():
             self.update_graphics()  # Refresh vertex handles
