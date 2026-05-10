@@ -3,6 +3,7 @@
 from .coordinate_transform import (
     AffineTransformer,
     CoordinateTransformer,
+    DroneAssistedTransformer,
     HomographyTransformer,
     HybridTransformer,
     TransformMethod,
@@ -21,6 +22,7 @@ from .validators import ValidationResult, has_minimum_points, is_valid_id, valid
 __all__ = [
     'CoordinateTransformer',
     'AffineTransformer',
+    'DroneAssistedTransformer',
     'HomographyTransformer',
     'HybridTransformer',
     'TransformMethod',

@@ -38,6 +38,80 @@ logger = get_logger(__name__)
 _DEFAULT_LANE_WIDTH = 3.5  # Fallback when ODR has no lane width
 
 
+def classify_xodr_object_type(odr_type: str, odr_subtype: str = "") -> Optional[ObjectType]:
+    """Map an OpenDRIVE object type+subtype to an ORBIT ObjectType.
+
+    Module-level so it can be used both by the importer and the file scanner.
+    """
+    t = odr_type.lower()
+    s = odr_subtype.lower()
+
+    if 'lamp' in t or 'pole' in t:
+        return ObjectType.LAMPPOST
+    elif 'guard' in t or 'rail' in t or 'barrier' in t:
+        return ObjectType.GUARDRAIL
+    elif 'building' in t or 'house' in t:
+        return ObjectType.BUILDING
+    elif 'vegetation' in t or 'tree' in t or 'bush' in t or 'shrub' in t or 'forest' in t:
+        if 'forest' in s or 'forest' in t:
+            return ObjectType.LANDUSE_FOREST
+        elif 'meadow' in s:
+            return ObjectType.LANDUSE_MEADOW
+        elif 'scrub' in s:
+            return ObjectType.LANDUSE_SCRUB
+        elif 'conifer' in s or 'pine' in s or 'conifer' in t or 'pine' in t:
+            return ObjectType.TREE_CONIFER
+        elif 'tree' in s or 'tree' in t:
+            return ObjectType.TREE_BROADLEAF
+        elif 'bush' in s or 'shrub' in s or 'bush' in t or 'shrub' in t:
+            return ObjectType.BUSH
+        return ObjectType.TREE_BROADLEAF
+    elif 'land' in t:
+        if 'farmland' in s or 'farm' in s:
+            return ObjectType.LANDUSE_FARMLAND
+        elif 'meadow' in s:
+            return ObjectType.LANDUSE_MEADOW
+    elif 'water' in t:
+        if 'wetland' in s:
+            return ObjectType.NATURAL_WETLAND
+        return ObjectType.NATURAL_WATER
+
+    return None
+
+
+def scan_xodr_feature_categories(file_path: str) -> Dict[str, int]:
+    """Scan an xodr file and return counts of feature categories present.
+
+    Uses lxml iterparse for efficiency — does not build a full parse tree.
+
+    Returns a dict with keys:
+      "signals"  — count of <signal> elements
+      "parking"  — count of <object> elements with <parkingSpace> child
+      ObjectType — count per ORBIT ObjectType (for <object> elements)
+    """
+    from lxml import etree
+
+    counts: Dict[str, int] = {}
+    # We need to see children of <object> to detect parkingSpace, so collect
+    # objects at 'end' event when all children are parsed.
+    for _event, elem in etree.iterparse(file_path, events=('end',), recover=True):
+        tag = elem.tag
+        if tag == 'signal':
+            counts['signals'] = counts.get('signals', 0) + 1
+        elif tag == 'object':
+            if elem.find('parkingSpace') is not None:
+                counts['parking'] = counts.get('parking', 0) + 1
+            else:
+                obj_type = classify_xodr_object_type(
+                    elem.get('type', ''), elem.get('subtype', '')
+                )
+                if obj_type is not None:
+                    counts[obj_type] = counts.get(obj_type, 0) + 1
+        elem.clear()
+
+    return counts
+
+
 class ImportMode(Enum):
     """Import mode: add to existing or replace."""
     ADD = "add"
@@ -51,6 +125,10 @@ class ImportOptions:
     scale_pixels_per_meter: float = 10.0  # For synthetic mode
     auto_create_control_points: bool = False  # Auto-create georeferencing control points
     verbose: bool = False  # Print debug information
+    # Feature category filters (None = import all)
+    import_signals: bool = True
+    import_parking: bool = True
+    import_object_types: Optional[Set[ObjectType]] = None  # None = all object types
 
 
 @dataclass
@@ -304,20 +382,30 @@ class OpenDriveImporter:
             if not road_id:
                 continue
 
-            for odr_signal in odr_road.signals:
-                try:
-                    if self._import_signal(odr_signal, road_id, odr_road, options):
-                        result.signals_imported += 1
-                except Exception as e:
-                    result.warnings.append(f"Failed to import signal {odr_signal.id}: {e}")
+            if options.import_signals:
+                for odr_signal in odr_road.signals:
+                    try:
+                        if self._import_signal(odr_signal, road_id, odr_road, options):
+                            result.signals_imported += 1
+                    except Exception as e:
+                        result.warnings.append(f"Failed to import signal {odr_signal.id}: {e}")
 
             for odr_object in odr_road.objects:
                 try:
                     if odr_object.is_parking:
-                        if self._import_parking(odr_object, road_id, odr_road, options):
-                            result.parking_imported += 1
-                    elif self._import_object(odr_object, road_id, odr_road, options):
-                        result.objects_imported += 1
+                        if options.import_parking:
+                            if self._import_parking(odr_object, road_id, odr_road, options):
+                                result.parking_imported += 1
+                    else:
+                        # Check object type filter before importing
+                        if options.import_object_types is not None:
+                            obj_type = classify_xodr_object_type(
+                                odr_object.type, odr_object.subtype
+                            )
+                            if obj_type not in options.import_object_types:
+                                continue
+                        if self._import_object(odr_object, road_id, odr_road, options):
+                            result.objects_imported += 1
                 except Exception as e:
                     result.warnings.append(f"Failed to import object {odr_object.id}: {e}")
 
@@ -689,6 +777,7 @@ class OpenDriveImporter:
         # Add to project and junction
         self.project.add_road(connecting_road)
         junction.add_connecting_road(connecting_road.id)
+        self.odr_road_to_orbit[odr_road.id] = connecting_road.id
 
         # Add predecessor/successor roads to junction's connected_road_ids
         if predecessor_orbit_id and predecessor_orbit_id not in junction.connected_road_ids:
@@ -699,7 +788,7 @@ class OpenDriveImporter:
         # Create LaneConnection objects from junction connection data
         self._import_cr_lane_connections(
             odr_road, junction_odr_id, junction, connecting_road.id,
-            successor_orbit_id, options
+            successor_orbit_id, predecessor_orbit_id, options
         )
 
         if options.verbose:
@@ -767,7 +856,8 @@ class OpenDriveImporter:
         return geom_kwargs, stored_start_heading, stored_end_heading
 
     def _import_cr_lane_connections(self, odr_road, junction_odr_id, junction,
-                                    connecting_road_id, successor_orbit_id, options):
+                                    connecting_road_id, successor_orbit_id,
+                                    predecessor_orbit_id, options):
         """Create LaneConnection objects from ODR junction connection data."""
         odr_junction = None
         for j in self.odr_data.junctions:
@@ -783,13 +873,20 @@ class OpenDriveImporter:
                 continue
 
             from_road_id = self.odr_road_to_orbit.get(odr_conn.incoming_road, "")
-            to_road_id = successor_orbit_id
+
+            # When contactPoint="start", traffic enters the CR at its start and exits at
+            # its end (successor road). When contactPoint="end", traffic enters at the end
+            # and exits at the start (predecessor road).
+            if odr_conn.contact_point == "start":
+                to_road_id = successor_orbit_id
+            else:
+                to_road_id = predecessor_orbit_id
 
             if not from_road_id or not to_road_id:
                 continue
 
             for lane_link in odr_conn.lane_links:
-                to_lane = lane_link.from_lane  # Fallback
+                to_lane = lane_link.to_lane  # Fallback: connecting lane ID
                 if odr_road.lane_sections:
                     section = odr_road.lane_sections[0]
                     for odr_lane in section.right_lanes + section.left_lanes:
@@ -1259,9 +1356,6 @@ class OpenDriveImporter:
         # Convert signal type
         signal_type, value = self._convert_signal_type(odr_signal)
 
-        if signal_type is None:
-            return False  # Unsupported signal type
-
         # Calculate pixel position from s,t coordinates
         position_pixel = self._calculate_position_from_st(
             odr_signal.s,
@@ -1299,6 +1393,10 @@ class OpenDriveImporter:
         signal.country = odr_signal.country
         # Lane validity (which lanes this signal applies to)
         signal.validity_lanes = odr_signal.validity_lanes
+        # Preserve custom type/subtype for CUSTOM signals (enables round-trip)
+        if signal_type == SignalType.CUSTOM:
+            signal.custom_type = odr_signal.type
+            signal.custom_subtype = odr_signal.subtype
 
         self.project.add_signal(signal)
         return True
@@ -1306,20 +1404,20 @@ class OpenDriveImporter:
     def _import_object(self, odr_object: ODRObject, road_id: str, odr_road: ODRRoad, options: ImportOptions) -> bool:
         """Import object from OpenDrive."""
         # Convert object type
-        object_type = self._convert_object_type(odr_object.type)
+        object_type = self._convert_object_type(odr_object.type, odr_object.subtype)
 
         if object_type is None:
             return False  # Unsupported object type
 
-        # Calculate pixel position from s,t coordinates
-        position_pixel = self._calculate_position_from_st(
-            odr_object.s,
-            odr_object.t,
-            odr_road
+        # Get metric anchor position and road heading at s,t
+        metric_result = self._get_metric_position_and_heading(
+            odr_object.s, odr_object.t, odr_road
         )
-
-        if not position_pixel:
+        if not metric_result:
             return False
+        anchor_x, anchor_y, road_hdg = metric_result
+
+        position_pixel = self.coord_transform.metric_to_pixel(anchor_x, anchor_y)
 
         # Convert pixel position to geo coords for storage as source of truth
         geo_position = None
@@ -1339,6 +1437,7 @@ class OpenDriveImporter:
         obj.name = odr_object.name
         obj.z_offset = odr_object.z_offset
         obj.orientation = math.degrees(odr_object.hdg)  # Convert radians to degrees
+        obj.odr_orientation = odr_object.orientation_str  # Preserve directional marker
 
         # Set dimensions
         if odr_object.radius > 0:
@@ -1354,20 +1453,29 @@ class OpenDriveImporter:
         obj.pitch = odr_object.pitch
         obj.roll = odr_object.roll
 
+        # Reconstruct polyline/polygon points from cornerLocal outline
+        if odr_object.corner_points:
+            pixel_pts, geo_pts = self._corners_to_pixel_points(
+                odr_object.corner_points, anchor_x, anchor_y, road_hdg
+            )
+            if pixel_pts:
+                obj.points = pixel_pts
+                obj.geo_points = geo_pts
+
         self.project.add_object(obj)
         return True
 
     def _import_parking(self, odr_object: ODRObject, road_id: str, odr_road: ODRRoad, options: ImportOptions) -> bool:
         """Import parking space from OpenDrive object with parkingSpace child."""
-        # Calculate pixel position from s,t coordinates
-        position_pixel = self._calculate_position_from_st(
-            odr_object.s,
-            odr_object.t,
-            odr_road
+        # Get metric anchor position and road heading at s,t
+        metric_result = self._get_metric_position_and_heading(
+            odr_object.s, odr_object.t, odr_road
         )
-
-        if not position_pixel:
+        if not metric_result:
             return False
+        anchor_x, anchor_y, road_hdg = metric_result
+
+        position_pixel = self.coord_transform.metric_to_pixel(anchor_x, anchor_y)
 
         # Convert pixel position to geo coords for storage as source of truth
         geo_position = None
@@ -1411,6 +1519,15 @@ class OpenDriveImporter:
         if odr_object.length > 0:
             parking.length = odr_object.length
 
+        # Reconstruct polygon points from cornerLocal outline
+        if odr_object.corner_points:
+            pixel_pts, geo_pts = self._corners_to_pixel_points(
+                odr_object.corner_points, anchor_x, anchor_y, road_hdg
+            )
+            if pixel_pts:
+                parking.points = pixel_pts
+                parking.geo_points = geo_pts
+
         self.project.add_parking(parking)
         return True
 
@@ -1431,7 +1548,24 @@ class OpenDriveImporter:
         Returns:
             Tuple of (pixel_x, pixel_y) or None if calculation fails
         """
-        # Find geometry element containing s
+        result = self._get_metric_position_and_heading(s, t, odr_road)
+        if result is None:
+            return None
+        x_metric, y_metric, _ = result
+        return self.coord_transform.metric_to_pixel(x_metric, y_metric)
+
+    def _get_metric_position_and_heading(
+        self,
+        s: float,
+        t: float,
+        odr_road: ODRRoad
+    ) -> Optional[Tuple[float, float, float]]:
+        """
+        Calculate metric position and road heading at s,t on the road.
+
+        Returns:
+            (x_metric, y_metric, road_hdg) or None if calculation fails
+        """
         geom_element = None
         for geom in odr_road.geometry:
             if s >= geom.s and s < geom.s + geom.length:
@@ -1439,30 +1573,59 @@ class OpenDriveImporter:
                 break
 
         if not geom_element:
-            # Use last geometry element if s is beyond end
             if odr_road.geometry:
                 geom_element = odr_road.geometry[-1]
             else:
                 return None
 
-        # Calculate position along this geometry segment
         ds = s - geom_element.s
-
-        # Get position and heading at ds
-        # For simplicity, use linear interpolation along segment
-        # TODO: Use proper geometry evaluation for arcs/spirals
         cos_hdg = math.cos(geom_element.hdg)
         sin_hdg = math.sin(geom_element.hdg)
 
         x_center = geom_element.x + ds * cos_hdg
         y_center = geom_element.y + ds * sin_hdg
-
-        # Apply lateral offset (perpendicular to heading)
         x_metric = x_center - t * sin_hdg
         y_metric = y_center + t * cos_hdg
 
-        # Transform to pixels
-        return self.coord_transform.metric_to_pixel(x_metric, y_metric)
+        return x_metric, y_metric, geom_element.hdg
+
+    def _corners_to_pixel_points(
+        self,
+        corner_points: List[Tuple[float, float]],
+        anchor_x: float,
+        anchor_y: float,
+        road_hdg: float,
+    ) -> Tuple[List[Tuple[float, float]], Optional[List[Tuple[float, float]]]]:
+        """
+        Convert cornerLocal (u,v) points to pixel and geo coordinates.
+
+        cornerLocal u,v are in road-local frame (u=s-direction, v=t-direction)
+        relative to the object anchor. The inverse rotation by road_hdg gives
+        metric offsets.
+
+        Returns:
+            (pixel_points, geo_points) where geo_points may be None if no
+            transformer is available for geo conversion.
+        """
+        cos_h = math.cos(road_hdg)
+        sin_h = math.sin(road_hdg)
+        pixel_pts: List[Tuple[float, float]] = []
+        geo_pts: List[Tuple[float, float]] = []
+        has_geo = self.orbit_transformer is not None
+
+        for u, v in corner_points:
+            # Inverse rotation: local (u,v) → global metric (dx,dy)
+            dx = cos_h * u - sin_h * v
+            dy = sin_h * u + cos_h * v
+            x_m = anchor_x + dx
+            y_m = anchor_y + dy
+            px, py = self.coord_transform.metric_to_pixel(x_m, y_m)
+            pixel_pts.append((px, py))
+            if has_geo:
+                lon, lat = self.orbit_transformer.pixel_to_geo(px, py)
+                geo_pts.append((lon, lat))
+
+        return pixel_pts, (geo_pts if has_geo else None)
 
     def _convert_road_type(self, odr_road_type: str) -> RoadType:
         """Convert OpenDrive road type to ORBIT RoadType."""
@@ -1589,27 +1752,11 @@ class OpenDriveImporter:
         if 'priority' in type_lower:
             return (SignalType.PRIORITY_ROAD, None)
 
-        return (None, None)
+        return (SignalType.CUSTOM, None)
 
-    def _convert_object_type(self, odr_object_type: str) -> Optional[ObjectType]:
-        """Convert OpenDrive object type to ORBIT ObjectType."""
-        type_lower = odr_object_type.lower()
-
-        if 'lamp' in type_lower or 'pole' in type_lower:
-            return ObjectType.LAMPPOST
-        elif 'guard' in type_lower or 'rail' in type_lower or 'barrier' in type_lower:
-            return ObjectType.GUARDRAIL
-        elif 'building' in type_lower or 'house' in type_lower:
-            return ObjectType.BUILDING
-        elif 'tree' in type_lower:
-            if 'conifer' in type_lower or 'pine' in type_lower:
-                return ObjectType.TREE_CONIFER
-            else:
-                return ObjectType.TREE_BROADLEAF
-        elif 'bush' in type_lower or 'shrub' in type_lower:
-            return ObjectType.BUSH
-
-        return None
+    def _convert_object_type(self, odr_object_type: str, odr_subtype: str = "") -> Optional[ObjectType]:
+        """Convert OpenDrive object type+subtype to ORBIT ObjectType."""
+        return classify_xodr_object_type(odr_object_type, odr_subtype)
 
     def _track_unsupported_features(self, result: ImportResult):
         """Track unsupported OpenDrive features that were skipped."""

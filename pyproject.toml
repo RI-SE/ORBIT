@@ -1,6 +1,6 @@
 [project]
 name = "orbit"
-version = "0.10.1"
+version = "0.11.0"
 description = "OpenDrive Road Builder from Imagery Tool"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,6 +28,7 @@ dependencies = [
     "lxml>=4.9.0",
     "pyproj>=3.6.0",
     "xmlschema>=4.2.0",
+    "geomag>=0.9.2015",
 ]
 
 [project.urls]
@@ -38,6 +39,9 @@ Issues = "https://github.com/RI-SE/ORBIT/issues"
 Changelog = "https://github.com/RI-SE/ORBIT/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
+provenance = [
+    "dataprov>=3.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",

@@ -14,12 +14,15 @@ from PyQt6.QtGui import QBrush, QColor, QFont, QImage, QKeyEvent, QMouseEvent, Q
 from PyQt6.QtWidgets import (
     QGraphicsEllipseItem,
     QGraphicsItem,
+    QGraphicsItemGroup,
     QGraphicsLineItem,
     QGraphicsPathItem,
     QGraphicsPixmapItem,
     QGraphicsRectItem,
     QGraphicsScene,
+    QGraphicsTextItem,
     QGraphicsView,
+    QInputDialog,
     QMenu,
     QMessageBox,
 )
@@ -39,6 +42,75 @@ from .graphics.object_graphics_item import ObjectGraphicsItem
 from .graphics.parking_item import ParkingGraphicsItem
 from .graphics.signal_graphics_item import SignalGraphicsItem
 from .utils.message_helpers import ask_yes_no, show_warning
+
+
+class ControlPointItem(QGraphicsItemGroup):
+    """Draggable crosshair marker for a georeferencing control point."""
+
+    ARM_LENGTH = 10
+    GAP = 3
+
+    def __init__(self, control_point, parent=None):
+        super().__init__(parent)
+        self.control_point = control_point
+        self.moved_callback = None  # Set to callable(ControlPoint) after creation
+
+        self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsMovable, True)
+        self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+        self.setFlag(QGraphicsItemGroup.GraphicsItemFlag.ItemIsSelectable, True)
+        self.setAcceptHoverEvents(True)
+
+        pen = QPen(QColor(0, 100, 255), 2)
+        dot_pen = QPen(QColor(0, 100, 255), 1)
+        dot_brush = QBrush(QColor(0, 100, 255))
+        a, g = self.ARM_LENGTH, self.GAP
+
+        for item in [
+            QGraphicsLineItem(-a, 0, -g, 0),
+            QGraphicsLineItem(g, 0, a, 0),
+            QGraphicsLineItem(0, -a, 0, -g),
+            QGraphicsLineItem(0, g, 0, a),
+        ]:
+            item.setPen(pen)
+            item.setZValue(10)
+            self.addToGroup(item)
+
+        dot = QGraphicsEllipseItem(-0.5, -0.5, 1, 1)
+        dot.setPen(dot_pen)
+        dot.setBrush(dot_brush)
+        dot.setZValue(10)
+        self.addToGroup(dot)
+
+        if control_point.name:
+            font = QFont()
+            font.setBold(True)
+            font.setPointSize(10)
+            label = QGraphicsTextItem(control_point.name)
+            label.setDefaultTextColor(QColor(0, 100, 255))
+            label.setFont(font)
+            label.setPos(15, -10)
+            label.setZValue(11)
+            self.addToGroup(label)
+
+        self.setPos(control_point.pixel_x, control_point.pixel_y)
+        self.setZValue(10)
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItemGroup.GraphicsItemChange.ItemPositionHasChanged:
+            pos = self.pos()
+            self.control_point.pixel_x = pos.x()
+            self.control_point.pixel_y = pos.y()
+            if self.moved_callback:
+                self.moved_callback(self.control_point)
+        return super().itemChange(change, value)
+
+    def hoverEnterEvent(self, event):
+        self.setCursor(Qt.CursorShape.SizeAllCursor)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self.unsetCursor()
+        super().hoverLeaveEvent(event)
 
 
 class ImageView(QGraphicsView):
@@ -90,6 +162,7 @@ class ImageView(QGraphicsView):
     # dragged_road_id, target_road_id, dragged_contact, target_contact
     road_link_requested = pyqtSignal(str, str, str, str)
     road_unlink_requested = pyqtSignal(str, str)  # road_id, linked_road_id (for disconnect)
+    control_point_moved = pyqtSignal(object)  # Emits ControlPoint when dragged
 
     def __init__(self, parent=None, verbose: bool = False):
         super().__init__(parent)
@@ -282,9 +355,9 @@ class ImageView(QGraphicsView):
         pixmap = QPixmap(width, height)
         pixmap.fill(color)
 
-        # Clear scene and add synthetic pixmap
+        # Clear scene and all item tracking dicts
         self.scene.clear()
-        self.polyline_items.clear()
+        self._clear_item_dicts()
         self.image_item = self.scene.addPixmap(pixmap)
         self.image_item.setZValue(0)
         self.image_np = None
@@ -317,9 +390,9 @@ class ImageView(QGraphicsView):
         )
         pixmap = QPixmap.fromImage(q_image)
 
-        # Clear scene and add image
+        # Clear scene and all item tracking dicts
         self.scene.clear()
-        self.polyline_items.clear()
+        self._clear_item_dicts()
         self.image_item = self.scene.addPixmap(pixmap)
         self.image_item.setZValue(0)
 
@@ -1031,49 +1104,11 @@ class ImageView(QGraphicsView):
             item.update_scale_factor(scale_factor)
 
     def add_control_point_graphics(self, control_point):
-        """Add a control point marker to the graphics scene as a crosshair."""
-
-        x, y = control_point.pixel_x, control_point.pixel_y
-
-        # Crosshair parameters
-        arm_length = 10  # Length of each arm from center
-        gap = 3  # Gap radius at center (so target pixel is visible)
-
-        # Main crosshair pen (bright blue)
-        pen = QPen(QColor(0, 100, 255), 2)
-
-        # Horizontal arms (left and right of center gap)
-        left_arm = self.scene.addLine(x - arm_length, y, x - gap, y, pen)
-        right_arm = self.scene.addLine(x + gap, y, x + arm_length, y, pen)
-
-        # Vertical arms (top and bottom of center gap)
-        top_arm = self.scene.addLine(x, y - arm_length, x, y - gap, pen)
-        bottom_arm = self.scene.addLine(x, y + gap, x, y + arm_length, pen)
-
-        # Tiny center dot for exact position reference
-        dot_pen = QPen(QColor(0, 100, 255), 1)
-        dot_brush = QBrush(QColor(0, 100, 255))
-        center_dot = self.scene.addEllipse(x - 0.5, y - 0.5, 1, 1, dot_pen, dot_brush)
-
-        # Set z-values and add to tracking list
-        for item in [left_arm, right_arm, top_arm, bottom_arm, center_dot]:
-            item.setZValue(10)
-            self.control_point_items.append(item)
-
-        # Add label with CP name
-        if control_point.name:
-            from PyQt6.QtGui import QFont
-            from PyQt6.QtWidgets import QGraphicsTextItem
-            text_item = QGraphicsTextItem(control_point.name)
-            text_item.setDefaultTextColor(QColor(0, 100, 255))  # Bright blue
-            font = QFont()
-            font.setBold(True)
-            font.setPointSize(10)
-            text_item.setFont(font)
-            text_item.setPos(x + 15, y - 10)
-            text_item.setZValue(11)
-            self.scene.addItem(text_item)
-            self.control_point_items.append(text_item)
+        """Add a draggable control point marker to the graphics scene."""
+        item = ControlPointItem(control_point)
+        item.moved_callback = lambda cp: self.control_point_moved.emit(cp)
+        self.scene.addItem(item)
+        self.control_point_items.append(item)
 
     def add_road_lanes_graphics(self, road: Road, scale_factors: tuple = None):
         """
@@ -1651,6 +1686,20 @@ class ImageView(QGraphicsView):
             if self.soffsets_visible:
                 self._update_soffset_labels(polyline_id)
 
+    def _clear_item_dicts(self):
+        """Clear all item tracking dicts after scene.clear() has been called."""
+        self.polyline_items.clear()
+        self.junction_items.clear()
+        self.signal_items.clear()
+        self.object_items.clear()
+        self.parking_items.clear()
+        self.control_point_items.clear()
+        self.road_lanes_items.clear()
+        self.connecting_road_centerline_items.clear()
+        self.connecting_road_lanes_items.clear()
+        self.soffset_labels.clear()
+        self.junction_debug_items.clear()
+
     def safe_remove_item(self, item: QGraphicsItem) -> bool:
         """
         Safely remove a graphics item from the scene.
@@ -1686,11 +1735,7 @@ class ImageView(QGraphicsView):
     def clear(self):
         """Clear the view."""
         self.scene.clear()
-        self.polyline_items.clear()
-        self.junction_items.clear()
-        self.control_point_items.clear()
-        self.road_lanes_items.clear()
-        self.soffset_labels.clear()  # Clear s-offset labels
+        self._clear_item_dicts()
         self.project = None
         self.image_item = None
         self.image_np = None
@@ -2445,6 +2490,18 @@ class ImageView(QGraphicsView):
                 x, y = obj.position
                 self.centerOn(x, y)
 
+    def _adjacent_section_for_cr(self, cr, adjacent) -> int | None:
+        """Section number of `adjacent` road that touches `cr`, honoring contact point."""
+        if not adjacent.lane_sections:
+            return None
+        if cr.predecessor_id == adjacent.id:
+            section_idx = 0 if cr.predecessor_contact == "start" else -1
+        elif cr.successor_id == adjacent.id:
+            section_idx = 0 if cr.successor_contact == "start" else -1
+        else:
+            section_idx = 0
+        return adjacent.lane_sections[section_idx].section_number
+
     def _get_connecting_road_lane_id(self, junction, connecting_road_id: str, source_lane_id: int) -> int | None:
         """
         Determine which lane on a connecting road corresponds to a source lane.
@@ -2536,50 +2593,67 @@ class ImageView(QGraphicsView):
                 if road.successor_id and road.successor_id in connected_ids:
                     skip_successor = True
 
-        # 1. Check direct road predecessor/successor links (not through junctions)
-        # Skip if both roads are in the same junction - junction connections take precedence
-        if is_first_section and road.predecessor_id and not skip_predecessor:
-            pred_road = self.project.get_road(road.predecessor_id)
-            if pred_road and pred_road.lane_sections:
-                # Predecessor connects at its last section
-                pred_section = pred_road.lane_sections[-1].section_number
-                # Assume same lane exists in connected road (common case for continuous roads)
-                result['road_lanes'].append((road.predecessor_id, pred_section, lane_id))
+        # 1. Check direct road predecessor/successor links (not through junctions).
+        # Skip if both roads are in the same junction - junction connections take precedence.
+        # Also skip for connecting roads: their neighbor lane mapping requires sign flips at
+        # opposite-direction contacts, which are fully described by junction.lane_connections below.
+        if not road.is_connecting_road:
+            if is_first_section and road.predecessor_id and not skip_predecessor:
+                pred_road = self.project.get_road(road.predecessor_id)
+                if pred_road and pred_road.lane_sections:
+                    pred_section = pred_road.lane_sections[-1].section_number
+                    result['road_lanes'].append((road.predecessor_id, pred_section, lane_id))
 
-        if is_last_section and road.successor_id and not skip_successor:
-            succ_road = self.project.get_road(road.successor_id)
-            if succ_road and succ_road.lane_sections:
-                # Successor connects at its first section
-                succ_section = succ_road.lane_sections[0].section_number
-                # Assume same lane exists in connected road (common case for continuous roads)
-                result['road_lanes'].append((road.successor_id, succ_section, lane_id))
+            if is_last_section and road.successor_id and not skip_successor:
+                succ_road = self.project.get_road(road.successor_id)
+                if succ_road and succ_road.lane_sections:
+                    succ_section = succ_road.lane_sections[0].section_number
+                    result['road_lanes'].append((road.successor_id, succ_section, lane_id))
 
         # 2. Search all junctions for lane connections involving this lane
         for junction in self.project.junctions:
             for lane_conn in junction.lane_connections:
-                # Check if this lane is the source (find successor via junction)
-                if lane_conn.from_road_id == road_id and lane_conn.from_lane_id == lane_id:
-                    # Only consider if this is the last section (connects to junction)
-                    if is_last_section:
-                        # Only add connecting road lane - don't show destination road beyond junction
-                        if lane_conn.connecting_road_id:
-                            conn_lane_id = self._get_connecting_road_lane_id(
-                                junction, lane_conn.connecting_road_id, lane_id
-                            )
-                            if conn_lane_id is not None:
-                                result['connecting_road_lanes'].append((lane_conn.connecting_road_id, conn_lane_id))
+                # Case A: this road is the incoming source (find CR lane at junction).
+                if (lane_conn.from_road_id == road_id and lane_conn.from_lane_id == lane_id
+                        and is_last_section and lane_conn.connecting_road_id):
+                    conn_lane_id = lane_conn.connecting_lane_id
+                    if conn_lane_id is None:
+                        conn_lane_id = self._get_connecting_road_lane_id(
+                            junction, lane_conn.connecting_road_id, lane_id
+                        )
+                    if conn_lane_id is not None:
+                        result['connecting_road_lanes'].append((lane_conn.connecting_road_id, conn_lane_id))
 
-                # Check if this lane is the destination (find predecessor via junction)
-                if lane_conn.to_road_id == road_id and lane_conn.to_lane_id == lane_id:
-                    # Only consider if this is the first section (connects from junction)
-                    if is_first_section:
-                        # Only add connecting road lane - don't show source road beyond junction
-                        if lane_conn.connecting_road_id:
-                            conn_lane_id = self._get_connecting_road_lane_id(
-                                junction, lane_conn.connecting_road_id, lane_conn.from_lane_id
+                # Case B: this road is the outgoing destination (find CR lane at junction).
+                if (lane_conn.to_road_id == road_id and lane_conn.to_lane_id == lane_id
+                        and is_first_section and lane_conn.connecting_road_id):
+                    conn_lane_id = lane_conn.connecting_lane_id
+                    if conn_lane_id is None:
+                        conn_lane_id = self._get_connecting_road_lane_id(
+                            junction, lane_conn.connecting_road_id, lane_conn.from_lane_id
+                        )
+                    if conn_lane_id is not None:
+                        result['connecting_road_lanes'].append((lane_conn.connecting_road_id, conn_lane_id))
+
+                # Case C: this road IS the connecting road — highlight incoming/outgoing road lanes
+                # using the stored from/to lane IDs (which already encode direction-flip semantics).
+                if (lane_conn.connecting_road_id == road_id
+                        and lane_conn.connecting_lane_id is not None
+                        and lane_conn.connecting_lane_id == lane_id):
+                    from_road = self.project.get_road(lane_conn.from_road_id)
+                    if from_road and from_road.lane_sections:
+                        from_section = self._adjacent_section_for_cr(road, from_road)
+                        if from_section is not None:
+                            result['road_lanes'].append(
+                                (lane_conn.from_road_id, from_section, lane_conn.from_lane_id)
                             )
-                            if conn_lane_id is not None:
-                                result['connecting_road_lanes'].append((lane_conn.connecting_road_id, conn_lane_id))
+                    to_road = self.project.get_road(lane_conn.to_road_id)
+                    if to_road and to_road.lane_sections:
+                        to_section = self._adjacent_section_for_cr(road, to_road)
+                        if to_section is not None:
+                            result['road_lanes'].append(
+                                (lane_conn.to_road_id, to_section, lane_conn.to_lane_id)
+                            )
 
         return result
 
@@ -2873,18 +2947,24 @@ class ImageView(QGraphicsView):
                     if not conn_road or not conn_road.is_connecting_road:
                         continue
 
-                    # Check if this lane connection corresponds to the selected lane
-                    expected_lane = self._get_connecting_road_lane_id(
-                        junction, connecting_road_id, lane_conn.from_lane_id
-                    )
-                    if expected_lane != lane_id:
-                        continue
+                    # Check if this lane connection corresponds to the selected lane.
+                    # Prefer the stored connecting_lane_id (already encodes direction flips);
+                    # fall back to the ordinal helper only for legacy data without it.
+                    if lane_conn.connecting_lane_id is not None:
+                        if lane_conn.connecting_lane_id != lane_id:
+                            continue
+                    else:
+                        expected_lane = self._get_connecting_road_lane_id(
+                            junction, connecting_road_id, lane_conn.from_lane_id
+                        )
+                        if expected_lane != lane_id:
+                            continue
 
-                    # Highlight the from_road lane (last section)
+                    # Highlight the from_road lane at the section that touches the CR
                     from_road = self.project.get_road(lane_conn.from_road_id)
                     if from_road and from_road.lane_sections:
-                        from_section = from_road.lane_sections[-1].section_number
-                        if lane_conn.from_road_id in self.road_lanes_items:
+                        from_section = self._adjacent_section_for_cr(conn_road, from_road)
+                        if from_section is not None and lane_conn.from_road_id in self.road_lanes_items:
                             lanes_item = self.road_lanes_items[lane_conn.from_road_id]
                             for lane_polygon in lanes_item.lane_items:
                                 if (isinstance(lane_polygon, InteractiveLanePolygon) and
@@ -2894,11 +2974,11 @@ class ImageView(QGraphicsView):
                                     lane_polygon.set_linked(True)
                                     self.linked_lane_polygons.append(lane_polygon)
 
-                    # Highlight the to_road lane (first section)
+                    # Highlight the to_road lane at the section that touches the CR
                     to_road = self.project.get_road(lane_conn.to_road_id)
                     if to_road and to_road.lane_sections:
-                        to_section = to_road.lane_sections[0].section_number
-                        if lane_conn.to_road_id in self.road_lanes_items:
+                        to_section = self._adjacent_section_for_cr(conn_road, to_road)
+                        if to_section is not None and lane_conn.to_road_id in self.road_lanes_items:
                             lanes_item = self.road_lanes_items[lane_conn.to_road_id]
                             for lane_polygon in lanes_item.lane_items:
                                 if (isinstance(lane_polygon, InteractiveLanePolygon) and
@@ -3304,6 +3384,14 @@ class ImageView(QGraphicsView):
                     disconnect_action = menu.addAction(f"Disconnect from '{linked_name}'")
                     linked_road_id = road.successor_id
 
+        # Smooth Curve option — always shown for road centerlines
+        menu.addSeparator()
+        smooth_action = menu.addAction("Smooth Road Curve")
+        smooth_action.setToolTip(
+            "Redistribute polyline points along a smooth Bezier curve, "
+            "keeping start/end positions and tangent directions."
+        )
+
         # Show menu and get selected action
         action = menu.exec(self.mapToGlobal(view_pos))
 
@@ -3311,6 +3399,13 @@ class ImageView(QGraphicsView):
             self._delete_point(polyline_id, point_index)
         elif disconnect_action and action == disconnect_action and road and linked_road_id:
             self.road_unlink_requested.emit(road.id, linked_road_id)
+        elif action == smooth_action:
+            n_pts, ok = QInputDialog.getInt(
+                self, "Smooth Road Curve", "Number of output points:",
+                value=50, min=5, max=500, step=5,
+            )
+            if ok:
+                self._smooth_road_polyline(polyline_id, n_pts)
         elif action == split_section_action and road:
             # Warn if creating a small section
             s_coords = road.calculate_centerline_s_coordinates(polyline.points)
@@ -3339,6 +3434,143 @@ class ImageView(QGraphicsView):
         elif action == split_road_action and road:
             # Emit signal for MainWindow to handle road splitting
             self.road_split_requested.emit(road.id, polyline_id, point_index)
+
+    def _smooth_road_polyline(self, polyline_id: str, num_points: int = 50) -> None:
+        """Smooth a regular road's centerline using adjacent road tangents."""
+        import math as _math
+
+        from orbit.gui.project_controller import get_contact_pos_heading
+        from orbit.gui.undo_commands import ModifyPolylineCommand
+        from orbit.utils.geometry import fit_smooth_curve_to_polyline
+
+        item = self.polyline_items.get(polyline_id)
+        if not item:
+            return
+        pts = list(item.polyline.points)
+        if len(pts) < 3:
+            return
+
+        # Default tangents from first/last segment
+        start_hdg = _math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0])
+        end_hdg = _math.atan2(pts[-1][1] - pts[-2][1], pts[-1][0] - pts[-2][0])
+
+        # Override with adjacent road tangents when available (more accurate)
+        road = self._find_road_by_centerline(polyline_id)
+        if road and self.project:
+            if road.predecessor_id:
+                pred_road = self.project.get_road(road.predecessor_id)
+                if pred_road:
+                    pred_pl = self.project.get_polyline(pred_road.centerline_id)
+                    if pred_pl:
+                        _, h = get_contact_pos_heading(pred_pl, road.predecessor_contact)
+                        if road.predecessor_contact == "start":
+                            h += _math.pi
+                        start_hdg = h
+            if road.successor_id:
+                succ_road = self.project.get_road(road.successor_id)
+                if succ_road:
+                    succ_pl = self.project.get_polyline(succ_road.centerline_id)
+                    if succ_pl:
+                        _, h = get_contact_pos_heading(succ_pl, road.successor_contact)
+                        if road.successor_contact == "end":
+                            h += _math.pi
+                        end_hdg = h
+
+        # Use num_points; ensure at least original count so we don't lose resolution
+        n_out = max(num_points, 2)
+        new_pts = fit_smooth_curve_to_polyline(pts, start_hdg, end_hdg, num_output_points=n_out)
+
+        old_geo = list(item.polyline.geo_points) if item.polyline.geo_points else None
+
+        # Apply first (convention: caller applies, then pushes undo command)
+        item.polyline.points = new_pts
+        item.polyline.geo_points = None  # pixel coords are now primary
+        item.update_graphics()
+
+        cmd = ModifyPolylineCommand(
+            self.parent(),
+            polyline_id,
+            old_points=pts,
+            new_points=new_pts,
+            old_geo_points=old_geo,
+            new_geo_points=None,
+            description="Smooth Road Curve",
+        )
+        if self.parent() and hasattr(self.parent(), 'undo_stack'):
+            self.parent().undo_stack.push(cmd)
+
+    def _show_cr_centerline_menu(self, view_pos, conn_road_id: str, point_index: int) -> None:
+        """Context menu for a connecting road centerline (right-click on point or segment)."""
+        from orbit.gui.undo_commands import SmoothCRCommand
+        from orbit.utils.geometry import fit_smooth_curve_to_polyline, get_smooth_cr_tangents
+
+        item = self.connecting_road_centerline_items.get(conn_road_id)
+        if not item:
+            return
+        cr = item.connecting_road
+
+        menu = QMenu()
+
+        # "Delete Point" only for polyline CRs with a clicked point
+        delete_action = None
+        if cr.geometry_type == "polyline" and point_index >= 0 and len(cr.inline_path) > 2:
+            delete_action = menu.addAction("Delete Point")
+            menu.addSeparator()
+
+        smooth_action = menu.addAction("Smooth Curve")
+        smooth_action.setToolTip(
+            "Redistribute the curve's points along a smooth Bezier using "
+            "adjacent road tangents. Works for all geometry types."
+        )
+
+        action = menu.exec(self.mapToGlobal(view_pos))
+
+        if delete_action and action == delete_action:
+            cr.inline_path.pop(point_index)
+            if cr.inline_geo_path is not None:
+                transformer = self._get_geo_transformer()
+                if transformer:
+                    cr.inline_geo_path = [
+                        transformer.pixel_to_geo(x, y) for x, y in cr.inline_path
+                    ]
+                elif 0 <= point_index < len(cr.inline_geo_path):
+                    cr.inline_geo_path.pop(point_index)
+            item.update_graphics()
+            if conn_road_id in self.connecting_road_lanes_items:
+                self.connecting_road_lanes_items[conn_road_id].update_graphics()
+
+        elif action == smooth_action:
+            path = cr.inline_path
+            if not path or len(path) < 2:
+                return
+            # Prefer stored headings (set by _regenerate_parampoly3_cr, authoritative)
+            if cr.stored_start_heading is not None and cr.stored_end_heading is not None:
+                start_hdg, end_hdg = cr.stored_start_heading, cr.stored_end_heading
+            else:
+                tangents = get_smooth_cr_tangents(cr, self.project)
+                if tangents is None:
+                    return
+                start_hdg, end_hdg = tangents
+
+            n_pts, ok = QInputDialog.getInt(
+                self, "Smooth Curve", "Number of output points:",
+                value=50, min=5, max=500, step=5,
+            )
+            if not ok:
+                return
+
+            old_path = list(path)
+            n_out = max(n_pts, 2)
+            new_path = fit_smooth_curve_to_polyline(path, start_hdg, end_hdg, num_output_points=n_out)
+
+            # Apply first, then push for undo
+            cr.inline_path = new_path
+            self.update_connecting_road_graphics(conn_road_id)
+
+            mw = self.parent()
+            if mw and hasattr(mw, 'undo_stack'):
+                cmd = SmoothCRCommand(self, cr, old_path, new_path)
+                mw.undo_stack.push(cmd)
 
     def _show_boundary_point_menu(self, view_pos, polyline_id: str, point_index: int):
         """
@@ -4092,26 +4324,13 @@ class ImageView(QGraphicsView):
                     self._show_boundary_point_menu(event.pos(), polyline_id, point_index)
                 return
 
-        # Connecting road point deletion (polyline geometry only)
+        # Connecting road right-click: point or segment
         for conn_road_id, item in self.connecting_road_centerline_items.items():
-            if item.connecting_road.geometry_type != "polyline":
-                continue
-            point_index = item.get_point_at(scene_pos)
-            if point_index >= 0:
-                connecting_road = item.connecting_road
-                if len(connecting_road.inline_path) > 2:
-                    connecting_road.inline_path.pop(point_index)
-                    if connecting_road.inline_geo_path is not None:
-                        transformer = self._get_geo_transformer()
-                        if transformer:
-                            connecting_road.inline_geo_path = [
-                                transformer.pixel_to_geo(x, y) for x, y in connecting_road.inline_path
-                            ]
-                        elif 0 <= point_index < len(connecting_road.inline_geo_path):
-                            connecting_road.inline_geo_path.pop(point_index)
-                    item.update_graphics()
-                    if conn_road_id in self.connecting_road_lanes_items:
-                        self.connecting_road_lanes_items[conn_road_id].update_graphics()
+            cr = item.connecting_road
+            point_index = item.get_point_at(scene_pos) if cr.geometry_type == "polyline" else -1
+            segment_index = item.get_segment_at(scene_pos) if point_index < 0 else -1
+            if point_index >= 0 or segment_index >= 0:
+                self._show_cr_centerline_menu(event.pos(), conn_road_id, point_index)
                 return
 
     def mouseMoveEvent(self, event: QMouseEvent):

@@ -28,7 +28,7 @@ from pyproj import Proj
 from .logging_config import get_logger
 
 if TYPE_CHECKING:
-    from orbit.models.project import ControlPoint
+    from orbit.models.project import ControlPoint, DroneMetadata
 
 logger = get_logger(__name__)
 
@@ -37,6 +37,7 @@ class TransformMethod(Enum):
     """Transformation method for georeferencing."""
     AFFINE = auto()
     HOMOGRAPHY = auto()
+    DRONE_ASSISTED = auto()
 
 
 @dataclass
@@ -1025,6 +1026,8 @@ class HybridTransformer(CoordinateTransformer):
         self.all_control_points = control_points
         self._export_proj_string = export_proj_string
         self._export_proj = None
+        if export_proj_string:
+            self._export_proj = Proj(export_proj_string)
 
         # Create both sub-transformers from the same control points
         self._homography = HomographyTransformer(
@@ -1224,6 +1227,107 @@ class HybridTransformer(CoordinateTransformer):
         self.adjustment = adjustment
 
 
+class DroneAssistedTransformer(CoordinateTransformer):
+    """Physically-derived homography from drone flight parameters + optional GCP refinement.
+
+    Uses a pinhole camera model (position, altitude, gimbal angles, focal length)
+    to compute a homography for the ground plane. GCPs refine focal length when
+    hfov_deg is not available from the drone log.
+
+    Reference origin is the drone's ground nadir (lat_drone, lon_drone).
+    The transform_matrix maps pixel [u,v,1] → local ENU [E,N,w] in metres.
+    """
+
+    def __init__(
+        self,
+        metadata: 'DroneMetadata',
+        control_points: List['ControlPoint'],
+        image_width: int,
+        image_height: int,
+        use_validation: bool = True,
+        export_proj_string: Optional[str] = None,
+    ):
+        from .camera_model import DroneCameraModel
+
+        super().__init__(control_points, use_validation, export_proj_string=export_proj_string)
+
+        # Override reference point to drone nadir
+        self.reference_lat = metadata.latitude
+        self.reference_lon = metadata.longitude
+
+        self._model = DroneCameraModel(
+            metadata=metadata,
+            image_width=image_width,
+            image_height=image_height,
+            control_points=self.training_points if self.training_points else None,
+        )
+
+        # transform_matrix: pixel → ENU (local metres relative to drone nadir)
+        # inverse_matrix: ENU → pixel
+        self.transform_matrix = self._model.transform_matrix
+        self.inverse_matrix = self._model.projection_matrix
+
+        self.compute_reprojection_error()
+        if self.validation_points:
+            self.compute_validation_error()
+
+    def compute_transformation(self):
+        """Delegated to DroneCameraModel in __init__."""
+
+    def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
+        """Convert pixel to geographic coordinates (longitude, latitude)."""
+        if self.transform_matrix is None:
+            raise RuntimeError("Transformation not initialized")
+
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_inverse_to_point(pixel_x, pixel_y)
+
+        p = np.array([pixel_x, pixel_y, 1.0])
+        g = self.transform_matrix @ p
+        east = g[0] / g[2]
+        north = g[1] / g[2]
+        lat, lon = self.meters_to_latlon(east, north)
+        return lon, lat
+
+    def geo_to_pixel(self, longitude: float, latitude: float) -> Tuple[float, float]:
+        """Convert geographic coordinates to pixel coordinates."""
+        if self.inverse_matrix is None:
+            raise RuntimeError("Transformation not initialized")
+
+        east, north = self.latlon_to_meters(latitude, longitude)
+        g = np.array([east, north, 1.0])
+        p = self.inverse_matrix @ g
+        pixel_x = p[0] / p[2]
+        pixel_y = p[1] / p[2]
+
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_to_point(pixel_x, pixel_y)
+
+        return pixel_x, pixel_y
+
+    def geo_to_pixel_unadjusted(self, longitude: float, latitude: float) -> Tuple[float, float]:
+        """Convert geographic coordinates to pixel coordinates without adjustment."""
+        east, north = self.latlon_to_meters(latitude, longitude)
+        g = np.array([east, north, 1.0])
+        p = self.inverse_matrix @ g
+        return p[0] / p[2], p[1] / p[2]
+
+    def get_scale_factor(self) -> Tuple[float, float]:
+        """Approximate metres-per-pixel scale at image centre."""
+        cx, cy = self._model.cx, self._model.cy
+        offset = 10.0
+        mx1, my1 = self._model.pixel_to_enu(cx - offset, cy)
+        mx2, my2 = self._model.pixel_to_enu(cx + offset, cy)
+        scale_x = math.sqrt((mx2 - mx1) ** 2 + (my2 - my1) ** 2) / (2 * offset)
+        mx1, my1 = self._model.pixel_to_enu(cx, cy - offset)
+        mx2, my2 = self._model.pixel_to_enu(cx, cy + offset)
+        scale_y = math.sqrt((mx2 - mx1) ** 2 + (my2 - my1) ** 2) / (2 * offset)
+        return scale_x, scale_y
+
+    def _set_reference_point(self):
+        """Overridden: reference point is drone nadir, set in __init__."""
+
+
 def create_transformer(
     control_points: List['ControlPoint'],
     method: Union[str, TransformMethod] = TransformMethod.HOMOGRAPHY,
@@ -1231,6 +1335,7 @@ def create_transformer(
     export_proj_string: Optional[str] = None,
     image_width: int = 0,
     image_height: int = 0,
+    drone_metadata: Optional['DroneMetadata'] = None,
 ) -> Optional[CoordinateTransformer]:
     """
     Create a coordinate transformer from control points.
@@ -1238,20 +1343,46 @@ def create_transformer(
     Args:
         control_points: List of control points
         method: Transformation method - either TransformMethod enum or string
-                ('affine' or 'homography')
+                ('affine', 'homography', or 'drone_assisted')
         use_validation: If True, separate validation points from training
         export_proj_string: If set, latlon_to_meters/meters_to_latlon use this
             pyproj projection instead of equirectangular approximation.
+        drone_metadata: Required when method is 'drone_assisted'.
 
     Returns:
         CoordinateTransformer if successful, None if insufficient points
     """
-    if not control_points:
-        return None
-
     # Convert string to enum if needed
     if isinstance(method, str):
-        method = TransformMethod.HOMOGRAPHY if method == 'homography' else TransformMethod.AFFINE
+        if method == 'drone_assisted':
+            method = TransformMethod.DRONE_ASSISTED
+        elif method == 'homography':
+            method = TransformMethod.HOMOGRAPHY
+        else:
+            method = TransformMethod.AFFINE
+
+    if method == TransformMethod.DRONE_ASSISTED:
+        if drone_metadata is None:
+            logger.error("drone_assisted method requires drone_metadata")
+            return None
+        if image_width <= 0 or image_height <= 0:
+            logger.error("drone_assisted method requires image_width and image_height")
+            return None
+        try:
+            return DroneAssistedTransformer(
+                metadata=drone_metadata,
+                control_points=control_points,
+                image_width=image_width,
+                image_height=image_height,
+                use_validation=use_validation,
+                export_proj_string=export_proj_string,
+            )
+        except (ValueError, np.linalg.LinAlgError) as e:
+            logger.error(f"Error creating DroneAssistedTransformer: {e}")
+            return None
+
+    if not control_points:
+        return None
 
     # Separate training and validation points
     if use_validation:

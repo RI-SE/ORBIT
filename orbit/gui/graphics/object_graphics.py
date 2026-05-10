@@ -18,7 +18,7 @@ COLORS = {
     ObjectType.TREE_CONIFER: QColor(34, 139, 34, 77),     # Forest green
     ObjectType.BUSH: QColor(34, 139, 34, 77),             # Forest green
     ObjectType.GUARDRAIL: QColor(25, 25, 112, 77),        # Dark blue
-    ObjectType.LAMPPOST: QColor(255, 255, 255, 77),       # White
+    ObjectType.LAMPPOST: QColor(255, 200, 0, 220),        # Amber/yellow
     # Land use areas
     ObjectType.LANDUSE_FOREST: QColor(0, 100, 0, 77),       # Dark green
     ObjectType.LANDUSE_FARMLAND: QColor(210, 180, 100, 77), # Wheat/tan
@@ -47,11 +47,11 @@ def create_lamppost_path(scale: float = 1.0) -> QPainterPath:
     path = QPainterPath()
 
     # Small circle for pole base
-    radius = 3.0 * scale
+    radius = 5.0 * scale
     path.addEllipse(-radius, -radius, radius * 2, radius * 2)
 
     # Orientation line (pointing direction)
-    line_length = 10.0 * scale
+    line_length = 14.0 * scale
     path.moveTo(0, 0)
     path.lineTo(line_length, 0)
 

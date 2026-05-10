@@ -2,8 +2,10 @@
 
 import pytest
 
+from orbit.models.junction import Junction
 from orbit.models.polyline import LineType, Polyline, RoadMarkType
 from orbit.models.project import ControlPoint, Project
+from orbit.models.road import Road
 from orbit.utils.coordinate_transform import (
     HybridTransformer,
     TransformAdjustment,
@@ -336,3 +338,92 @@ class TestBakeAdjustmentIntoControlPoints:
         # Verify it's serialized as None
         data = project.to_dict()
         assert data.get('transform_adjustment') is None
+
+
+class TestCRGeoResyncRoundTrip:
+    """CR geo_coords must be consistent with the active transformer.
+
+    When CR inline_geo_path is stale (e.g. computed with a different
+    transformer), reproject_project_geometry uses geo_to_pixel on those
+    stale values and produces wrong pixel positions.  Resyncing geo from
+    pixel before the reproject eliminates this.
+    """
+
+    @staticmethod
+    def _make_project_with_inconsistent_cr():
+        """Create a project where CR geo_coords are intentionally inconsistent."""
+        cps = [
+            ControlPoint(pixel_x=100, pixel_y=100,
+                         longitude=12.940, latitude=57.720, name="A"),
+            ControlPoint(pixel_x=500, pixel_y=100,
+                         longitude=12.945, latitude=57.720, name="B"),
+            ControlPoint(pixel_x=300, pixel_y=400,
+                         longitude=12.9425, latitude=57.718, name="C"),
+            ControlPoint(pixel_x=500, pixel_y=400,
+                         longitude=12.945, latitude=57.718, name="D"),
+        ]
+        t = create_transformer(cps, "affine")
+
+        project = Project(control_points=cps)
+
+        # Two polylines meeting at a junction
+        pl1 = Polyline(id="pl1", line_type=LineType.CENTERLINE)
+        pl1.points = [(200, 200), (300, 300)]
+        pl1.geo_points = [t.pixel_to_geo(x, y) for x, y in pl1.points]
+        pl2 = Polyline(id="pl2", line_type=LineType.CENTERLINE)
+        pl2.points = [(300, 300), (400, 200)]
+        pl2.geo_points = [t.pixel_to_geo(x, y) for x, y in pl2.points]
+        project.polylines.extend([pl1, pl2])
+
+        # A connecting road between them (pixel path is correct)
+        cr = Road(name="CR1", junction_id="j1",
+                  inline_path=[(300, 300), (320, 280), (340, 260)])
+        # Set WRONG geo_coords (simulating stale data from a different transformer)
+        cr.inline_geo_path = [(12.940, 57.718), (12.941, 57.719), (12.942, 57.720)]
+        project.add_road(cr)
+
+        j = Junction(center_point=(300, 300))
+        j.geo_center_point = t.pixel_to_geo(300, 300)
+        j.add_connecting_road(cr.id)
+        project.junctions.append(j)
+
+        return project, t, cr
+
+    def test_stale_geo_causes_wrong_reproject(self):
+        """Without resync, stale CR geo_coords produce wrong pixel positions."""
+        project, orig_t, cr = self._make_project_with_inconsistent_cr()
+        original_px = list(cr.inline_path)
+
+        aerial_t = create_transformer_from_bounds(
+            800, 600, 12.939, 57.717, 12.946, 57.721)
+
+        reproject_project_geometry(project, orig_t, aerial_t)
+        # Store aerial positions
+        reproject_project_geometry(project, aerial_t, orig_t)
+
+        # Without resync, pixel positions should NOT match original
+        # because the stale geo_coords map to different pixel positions
+        for i, (ox, oy) in enumerate(original_px):
+            ax, ay = cr.inline_path[i]
+            if abs(ax - ox) > 1.0 or abs(ay - oy) > 1.0:
+                return  # Found expected mismatch — test passes
+        pytest.fail("Expected mismatched positions but got near-identical ones")
+
+    def test_resync_then_reproject_preserves_positions(self):
+        """After resyncing geo from pixel, round-trip preserves positions exactly."""
+        project, orig_t, cr = self._make_project_with_inconsistent_cr()
+        original_px = list(cr.inline_path)
+
+        # Resync geo from pixel
+        cr.inline_geo_path = [orig_t.pixel_to_geo(x, y) for x, y in cr.inline_path]
+
+        aerial_t = create_transformer_from_bounds(
+            800, 600, 12.939, 57.717, 12.946, 57.721)
+
+        reproject_project_geometry(project, orig_t, aerial_t)
+        reproject_project_geometry(project, aerial_t, orig_t)
+
+        for i, (ox, oy) in enumerate(original_px):
+            ax, ay = cr.inline_path[i]
+            assert abs(ax - ox) < 0.1, f"Point {i} x: {ax} != {ox}"
+            assert abs(ay - oy) < 0.1, f"Point {i} y: {ay} != {oy}"

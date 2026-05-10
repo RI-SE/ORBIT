@@ -293,10 +293,10 @@ class ObjectBuilder:
                 min_dist = dist
                 best_s = cumul_s + t_param * seg_len
                 seg_hdg = np.arctan2(dy, dx)
-                # t-offset: positive = left of road direction (OpenDRIVE convention)
-                # In meter space (y-up), cross = direction × offset gives correct sign
-                cross = dx * (py - proj_y) - dy * (px - proj_x)
-                best_t = dist if cross >= 0 else -dist
+                # Signed perpendicular distance from the segment direction (positive = left).
+                # Using the cross product formula directly (not dist to clamped endpoint)
+                # ensures correct t even when the anchor is outside the road's s-range.
+                best_t = (dx * (py - y1) - dy * (px - x1)) / seg_len
                 best_hdg = seg_hdg
 
             cumul_s += seg_len
@@ -345,6 +345,8 @@ class ObjectBuilder:
         elif obj.type == ObjectType.GUARDRAIL:
             object_elem.set('type', 'barrier')
             object_elem.set('subtype', 'guardrail')
+            object_elem.set('orientation', obj.odr_orientation if obj.odr_orientation else 'none')
+            object_elem.set('hdg', f'{np.radians(obj.orientation):.6f}')
             object_elem.set('height', f"{obj.dimensions.get('height', 0.81):.2f}")
             object_elem.set('width', f"{obj.dimensions.get('width', 0.3):.2f}")
             if obj.validity_length:
@@ -432,7 +434,7 @@ class ObjectBuilder:
             self._create_circular_outline(outline, obj, 12)
 
         elif obj.type == ObjectType.GUARDRAIL:
-            self._create_polyline_outline(outline, obj)
+            self._create_polyline_outline(outline, obj, road_hdg)
 
         elif obj.type in (ObjectType.TREE_BROADLEAF, ObjectType.BUSH):
             self._create_circular_outline(outline, obj, 8)
@@ -474,19 +476,28 @@ class ObjectBuilder:
             corner.set('z', '0.0')
             corner.set('height', f'{height:.2f}')
 
-    def _create_polyline_outline(self, outline: etree.Element, obj: RoadObject) -> None:
-        """Create polyline outline for guardrails."""
+    def _create_polyline_outline(self, outline: etree.Element, obj: RoadObject,
+                                 road_hdg: float = 0.0) -> None:
+        """Create polyline outline for guardrails.
+
+        Rotates metric offsets into road-local (u=s-direction, v=t-direction)
+        coordinates by applying -road_hdg rotation.
+        """
         if not obj.points or len(obj.points) < 2:
             return
 
         height = obj.dimensions.get('height', 0.81)
+        cos_h = np.cos(-road_hdg)
+        sin_h = np.sin(-road_hdg)
 
         if self.transformer:
             pts_m = [self.transformer.pixel_to_meters(px, py) for px, py in obj.points]
             ref_mx, ref_my = pts_m[0]
             for pt_m in pts_m:
-                u = pt_m[0] - ref_mx
-                v = pt_m[1] - ref_my
+                dx = pt_m[0] - ref_mx
+                dy = pt_m[1] - ref_my
+                u = cos_h * dx - sin_h * dy
+                v = sin_h * dx + cos_h * dy
                 corner = etree.SubElement(outline, 'cornerLocal')
                 corner.set('u', f'{u:.4f}')
                 corner.set('v', f'{v:.4f}')
@@ -495,8 +506,10 @@ class ObjectBuilder:
         else:
             ref_x, ref_y = obj.points[0]
             for px, py in obj.points:
-                u = (px - ref_x) * self.scale_x
-                v = (py - ref_y) * self.scale_x
+                dx = (px - ref_x) * self.scale_x
+                dy = (py - ref_y) * self.scale_x
+                u = cos_h * dx - sin_h * dy
+                v = sin_h * dx + cos_h * dy
                 corner = etree.SubElement(outline, 'cornerLocal')
                 corner.set('u', f'{u:.4f}')
                 corner.set('v', f'{v:.4f}')

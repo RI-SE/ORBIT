@@ -24,6 +24,7 @@ from orbit.gui.graphics.adjustment_ghost_overlay import AdjustmentGhostOverlay
 from orbit.models import Project
 from orbit.utils.coordinate_transform import TransformAdjustment
 from orbit.utils.logging_config import get_logger
+from orbit.utils.provenance import is_dataprov_available, record_export, record_project_save
 
 from .image_view import ImageView
 from .project_controller import ProjectController
@@ -60,6 +61,10 @@ class MainWindow(QMainWindow):
         self._original_transformer = None  # Saved original transformer
         self._aerial_transformer = None  # Transformer for aerial tile image
         self._aerial_zoom = 18  # Default tile zoom level
+        self._original_cp_pixels: list = []  # Saved CP pixel positions for round-trip restore
+        self._original_cr_paths: dict = {}  # Saved connecting road inline_paths for round-trip restore
+        self._original_junction_centers: dict = {}  # Saved junction center_point pixel coords for round-trip restore
+        self._original_view_adjustment = None  # Saved current_adjustment before aerial switch
 
         # Adjustment ghost overlay (shows unadjusted geometry positions)
         self._adjustment_ghost_overlay = None
@@ -635,6 +640,46 @@ class MainWindow(QMainWindow):
         if file_path:
             self._last_file_directory = str(Path(file_path).parent)
 
+    def _provenance_setting_enabled(self) -> bool:
+        """Return True if provenance tracking is requested via settings."""
+        return self.settings.value("provenance/enabled", False, type=bool)
+
+    def _provenance_enabled(self) -> bool:
+        """Return True if provenance tracking is enabled and dataprov is available."""
+        return is_dataprov_available() and self._provenance_setting_enabled()
+
+    def _check_provenance_ready(self) -> bool:
+        """Return False (and show an error) if provenance is enabled but dataprov is missing."""
+        if self._provenance_setting_enabled() and not is_dataprov_available():
+            show_error(
+                self,
+                "Provenance tracking is enabled in Preferences, but the dataprov "
+                "package is not installed.\n\n"
+                "Install dataprov or disable provenance tracking in Preferences.",
+                "Provenance Unavailable",
+            )
+            return False
+        return True
+
+    def _provenance_template(self) -> str:
+        from orbit.utils.provenance import DEFAULT_TEMPLATE
+        return self.settings.value("provenance/name_template", DEFAULT_TEMPLATE, type=str)
+
+    def _record_project_provenance(self, orbit_path: Path, start_time) -> None:
+        """Record a provenance step for a project save, if enabled."""
+        if not self._provenance_enabled():
+            return
+        record_project_save(self.project, orbit_path, start_time, self._provenance_template())
+
+    def _record_export_provenance(self, output_path: Path, operation: str, output_format: str, start_time) -> None:
+        """Record a provenance step for an export, if enabled."""
+        if not self._provenance_enabled():
+            return
+        record_export(
+            output_path, self.current_project_file, operation, output_format,
+            start_time, self._provenance_template(),
+        )
+
     def open_project(self):
         """Open an existing project file."""
         if not self.check_unsaved_changes():
@@ -721,17 +766,20 @@ class MainWindow(QMainWindow):
 
     def save_project(self) -> bool:
         """Save the current project. Returns False if the user cancels."""
+        from datetime import datetime, timezone
         self._ensure_original_view_for_save()
         if not self._prompt_and_handle_unapplied_adjustment():
             return False
         self._sync_adjustment_to_project()
         if self.current_project_file:
             try:
+                start_time = datetime.now(timezone.utc)
                 self.project.save(self.current_project_file)
                 self.undo_stack.setClean()
                 self.modified = False
                 self.update_window_title()
                 self.statusBar().showMessage(f"Project saved: {self.current_project_file}")
+                self._record_project_provenance(self.current_project_file, start_time)
                 return True
             except Exception as e:
                 show_error(self, f"Failed to save project:\n{str(e)}", "Error")
@@ -741,26 +789,34 @@ class MainWindow(QMainWindow):
 
     def save_project_as(self) -> bool:
         """Save the project with a new name. Returns False if the user cancels."""
+        from datetime import datetime, timezone
         self._ensure_original_view_for_save()
         if not self._prompt_and_handle_unapplied_adjustment():
             return False
         self._sync_adjustment_to_project()
+        suggested = self._last_file_directory
+        if (not self.current_project_file
+                and self.project.image_path
+                and Path(self.project.image_path).stem):
+            suggested = str(Path(self._last_file_directory) / (Path(self.project.image_path).stem + ".orbit"))
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Project As",
-            self._last_file_directory,
+            suggested,
             "ORBIT Projects (*.orbit);;JSON Files (*.json);;All Files (*)"
         )
 
         if file_path:
             self._remember_directory(file_path)
             try:
+                start_time = datetime.now(timezone.utc)
                 self.current_project_file = Path(file_path)
                 self.project.save(self.current_project_file)
                 self.undo_stack.setClean()
                 self.modified = False
                 self.update_window_title()
                 self.statusBar().showMessage(f"Project saved: {file_path}")
+                self._record_project_provenance(self.current_project_file, start_time)
                 return True
             except Exception as e:
                 show_error(self, f"Failed to save project:\n{str(e)}", "Error")
@@ -849,6 +905,9 @@ class MainWindow(QMainWindow):
         if not self._prompt_and_handle_unapplied_adjustment():
             return
 
+        if not self._check_provenance_ready():
+            return
+
         # Check if we have any roads
         if not self.project.roads:
             show_warning(self, "Cannot export: No roads defined in the project.\n"
@@ -856,14 +915,17 @@ class MainWindow(QMainWindow):
             return
 
         # Show export dialog with optional schema path for validation
-        adjustment = self.image_view.current_adjustment if hasattr(self.image_view, 'current_adjustment') else None
+        from datetime import datetime, timezone
+        start_time = datetime.now(timezone.utc)
         dialog = ExportDialog(
             self.project, self,
             xodr_schema_path=self.xodr_schema_path,
-            adjustment=adjustment,
+            transformer_factory=self._make_transformer_factory(),
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.statusBar().showMessage("Export completed successfully")
+            if dialog.output_path:
+                self._record_export_provenance(dialog.output_path, "road network OpenDRIVE export", "XODR", start_time)
         else:
             self.statusBar().showMessage("Export cancelled")
 
@@ -874,6 +936,9 @@ class MainWindow(QMainWindow):
         from orbit.export.osm_writer import export_to_osm
 
         if not self._prompt_and_handle_unapplied_adjustment():
+            return
+
+        if not self._check_provenance_ready():
             return
 
         # Check if any element has geo coordinates
@@ -905,6 +970,8 @@ class MainWindow(QMainWindow):
         self._remember_directory(file_path)
 
         try:
+            from datetime import datetime, timezone
+            start_time = datetime.now(timezone.utc)
             # Create transformer for pixel→geo conversion (needed for connecting
             # roads that only have pixel coordinates, e.g. roundabout entries/exits)
             transformer = self._create_transformer(use_validation=True)
@@ -916,6 +983,7 @@ class MainWindow(QMainWindow):
             if success:
                 show_info(self, message, "OSM Export")
                 self.statusBar().showMessage("OSM export completed")
+                self._record_export_provenance(_Path(file_path), "road network OSM export", "OSM", start_time)
             else:
                 show_warning(self, message, "OSM Export")
         except Exception as e:
@@ -953,6 +1021,9 @@ class MainWindow(QMainWindow):
         """Export georeferencing parameters to JSON file."""
         from orbit.export import export_georeferencing
 
+        if not self._check_provenance_ready():
+            return
+
         # Check if we have enough control points
         if len(self.project.control_points) < 3:
             show_warning(
@@ -979,6 +1050,8 @@ class MainWindow(QMainWindow):
 
         # Resolve any unapplied adjustment before exporting — downstream tools do not
         # support the adjustment field, so the exported matrices must be fully committed.
+        # (For drone-assisted mode _has_unapplied_adjustment always returns False;
+        # the adjustment is stored in project.transform_adjustment instead.)
         if not self._prompt_and_handle_unapplied_adjustment():
             return
 
@@ -999,10 +1072,9 @@ class MainWindow(QMainWindow):
         else:
             proj_string = base_transformer.get_utm_projection_string()
 
-        from orbit.utils.coordinate_transform import create_transformer as _create_transformer
-        transformer = _create_transformer(
-            self.project.control_points,
-            self.project.transform_method,
+        # Use self._create_transformer so drone_metadata and image dimensions
+        # are included (the module-level create_transformer lacks those kwargs).
+        transformer = self._create_transformer(
             use_validation=True,
             export_proj_string=proj_string,
         )
@@ -1010,6 +1082,9 @@ class MainWindow(QMainWindow):
             show_error(self, "Failed to create coordinate transformer.\n"
                 "Please check your control points.", "Transformation Error")
             return
+
+        # Apply any stored adjustment so the exported matrices are fully baked.
+        self._apply_active_adjustment(transformer)
 
         # Get image size
         if self.image_view.image_item:
@@ -1044,8 +1119,11 @@ class MainWindow(QMainWindow):
         self._remember_directory(file_path)
 
         # Export
+        from datetime import datetime, timezone
+        start_time = datetime.now(timezone.utc)
         if export_georeferencing(self.project, Path(file_path), transformer, image_size, self.current_project_file):
             self.statusBar().showMessage(f"Georeferencing exported to {file_path}")
+            self._record_export_provenance(Path(file_path), "georeferencing parameter export", "JSON", start_time)
         else:
             show_error(self, "Failed to export georeferencing parameters.", "Export Error")
 
@@ -1219,9 +1297,13 @@ class MainWindow(QMainWindow):
         # Check if custom radius was requested (georef mode only)
         custom_radius = dialog.get_custom_radius()
         if custom_radius is not None:
-            center_lon, center_lat = transformer.pixel_to_geo(
-                image_width / 2.0, image_height / 2.0
-            )
+            # Use the geographic centroid of the control points as the center.
+            # Using transformer.pixel_to_geo(image_width/2, image_height/2) is
+            # unreliable when control points only cover a small portion of the
+            # image — the transformer extrapolates badly far from its training data.
+            all_cps = transformer.all_control_points
+            center_lon = sum(cp.longitude for cp in all_cps) / len(all_cps)
+            center_lat = sum(cp.latitude for cp in all_cps) / len(all_cps)
             bbox = calculate_bbox_from_center(center_lat, center_lon, custom_radius)
 
         # Build ImportOptions
@@ -1278,6 +1360,7 @@ class MainWindow(QMainWindow):
                 show_error(self, "Failed to create coordinate transformer.\n"
                     "Please check your control points.", "Transformation Error")
                 return None
+            self._apply_active_adjustment(transformer)
             try:
                 bbox = calculate_bbox_from_image(image_width, image_height, transformer)
             except Exception as e:
@@ -1348,6 +1431,15 @@ class MainWindow(QMainWindow):
             show_info(self, msg, "Import Successful")
             self.project.openstreetmap_used = True
             self.modified = True
+            # Record import source for provenance tracking
+            from datetime import datetime, timezone
+            src_entry = {
+                "type": "osm_file" if source_type == "file" else "osm_api",
+                "path": str(file_path) if file_path else "https://overpass-api.de/api/interpreter",
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            }
+            if src_entry not in self.project.source_files:
+                self.project.source_files.append(src_entry)
             self.image_view.load_project(self.project)
             self.elements_tree.refresh_tree()
             self.road_tree.refresh_tree()
@@ -1407,6 +1499,7 @@ class MainWindow(QMainWindow):
         scale = dialog.get_scale()
         auto_georeference = dialog.get_auto_georeference()
         verbose = dialog.get_verbose()
+        import_signals, import_parking, import_object_types = dialog.get_import_filter()
 
         # Override transformer if forcing synthetic mode
         if force_synthetic:
@@ -1447,7 +1540,10 @@ class MainWindow(QMainWindow):
             import_mode=import_mode,
             scale_pixels_per_meter=scale,
             auto_create_control_points=auto_georeference,
-            verbose=verbose
+            verbose=verbose,
+            import_signals=import_signals,
+            import_parking=import_parking,
+            import_object_types=import_object_types,
         )
 
         # Show progress dialog
@@ -1479,6 +1575,16 @@ class MainWindow(QMainWindow):
             show_opendrive_import_report(result, self)
 
             if result.success:
+                # Record import source for provenance tracking
+                from datetime import datetime, timezone
+                src_entry = {
+                    "type": "xodr",
+                    "path": str(file_path),
+                    "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                }
+                if src_entry not in self.project.source_files:
+                    self.project.source_files.append(src_entry)
+
                 # Align connecting road paths to lane centers before rendering
                 scale_factors = self.get_current_scale()
                 self._align_all_junction_connecting_roads(scale_factors)
@@ -1855,6 +1961,12 @@ class MainWindow(QMainWindow):
         # Connect control points changed signal for real-time visualization updates
         dialog.control_points_changed.connect(self.on_control_points_changed)
 
+        # Connect drone metadata changed signal
+        dialog.drone_metadata_changed.connect(self.on_control_points_changed)
+
+        # Connect control point drag signal for live matrix updates without full refresh
+        self.image_view.control_point_moved.connect(self.on_control_point_dragged)
+
         # Connect dialog finished signal
         dialog.finished.connect(lambda result: self.on_georef_dialog_closed(result))
 
@@ -1881,8 +1993,23 @@ class MainWindow(QMainWindow):
             # Update lane graphics with new scale
             self.update_affected_road_lanes()
 
-        # Clean up reference
+        # Clean up reference and disconnect drag signal
         self.georef_dialog = None
+        try:
+            self.image_view.control_point_moved.disconnect(self.on_control_point_dragged)
+        except RuntimeError:
+            pass  # Already disconnected
+
+    def on_control_point_dragged(self, control_point):
+        """Handle a control point being dragged on the image canvas.
+
+        Updates the transformer and scale display without recreating graphics items.
+        """
+        self._invalidate_cached_transformer()
+        self.update_scale_display()
+        # Keep georef dialog validation display up to date if open
+        if self.georef_dialog and hasattr(self.georef_dialog, 'update_validation'):
+            self.georef_dialog.update_validation()
 
     def on_control_points_changed(self):
         """Handle control points being added/removed in georeferencing dialog."""
@@ -1963,6 +2090,7 @@ class MainWindow(QMainWindow):
             self.project.transform_method,
             image_width=image_width,
             image_height=image_height,
+            drone_metadata=self.project.drone_metadata,
             **kwargs,
         )
 
@@ -1970,27 +2098,103 @@ class MainWindow(QMainWindow):
         """Invalidate the cached transformer while preserving the active adjustment."""
         self._cached_transformer = None
 
+    def _make_transformer_factory(self):
+        """Return a factory callable for creating correctly configured export transformers.
+
+        The returned callable accepts the same kwargs as ``create_transformer``
+        (e.g. ``use_validation``, ``export_proj_string``) and automatically
+        includes drone metadata, image dimensions, and any active adjustment.
+        """
+        def factory(**kwargs):
+            t = self._create_transformer(**kwargs)
+            if t:
+                self._apply_active_adjustment(t)
+            return t
+        return factory
+
+    def _compose_with_drone_base(
+        self, new_adj: 'TransformAdjustment'
+    ) -> 'TransformAdjustment':
+        """Compose new_adj on top of any existing stored drone adjustment.
+
+        For drone-assisted transformers the stored project adjustment is the
+        accumulated base; a new UI delta must be composed on top of it so that
+        successive adjustments build on each other rather than starting fresh.
+        Returns new_adj unchanged for non-drone or when no base is stored.
+        """
+        if (self.project.transform_method != 'drone_assisted'
+                or not self.project.transform_adjustment):
+            return new_adj
+        from orbit.utils.adjustment_fitter import decompose_to_adjustment
+        base = TransformAdjustment.from_dict(self.project.transform_adjustment)
+        M = new_adj.get_adjustment_matrix() @ base.get_adjustment_matrix()
+        return decompose_to_adjustment(M, new_adj.pivot_x, new_adj.pivot_y)
+
     def _apply_active_adjustment(self, transformer):
-        """Apply the project's persisted adjustment to a transformer, if any."""
+        """Apply the project's persisted adjustment to a transformer, if any.
+
+        For drone-assisted transformers the 'applied' adjustment is stored in
+        project.transform_adjustment rather than current_adjustment (which is
+        kept at identity after baking).  Both sources are checked.
+        """
         if transformer is None:
             return
         adj = self.image_view.current_adjustment
         if adj and not adj.is_identity():
-            transformer.set_adjustment(adj)
+            # For drone-assisted, compose the live UI delta on top of the stored
+            # base so that the transformer sees the total (accumulated) adjustment.
+            transformer.set_adjustment(self._compose_with_drone_base(adj))
+            return
+        # Drone-assisted: fall back to permanently stored project adjustment
+        if (self.project.transform_method == 'drone_assisted'
+                and self.project.transform_adjustment):
+            stored = TransformAdjustment.from_dict(self.project.transform_adjustment)
+            if not stored.is_identity():
+                transformer.set_adjustment(stored)
 
     def _sync_adjustment_to_project(self):
-        """Clear any stored adjustment from the project (adjustments are resolved before save)."""
+        """Clear or preserve adjustment for saving.
+
+        For homography/affine: clear (already baked into CP positions).
+        For drone-assisted: keep project.transform_adjustment as-is; it IS
+        the permanent correction for the physics-based transformer.
+        """
+        if self.project.transform_method == 'drone_assisted':
+            return
         self.project.transform_adjustment = None
 
     def _has_unapplied_adjustment(self) -> bool:
-        """Return True if there is an active non-identity adjustment that has not been baked."""
+        """Return True if there is an active non-identity adjustment that has not been baked.
+
+        For drone-assisted transformers the adjustment cannot be baked into CP
+        positions; it is instead stored in project.transform_adjustment.  When
+        using drone-assisted mode the adjustment is always considered 'applied'
+        (either it's stored in the project or hasn't been computed yet) so we
+        never block saves with a "unapplied adjustment" prompt.
+        """
+        if self.project.transform_method == 'drone_assisted':
+            return False
         adj = self.image_view.current_adjustment
         return adj is not None and not adj.is_identity()
 
     def _bake_adjustment_into_control_points(self):
-        """Bake the current adjustment into CP pixel positions and clear it (no dialog)."""
+        """Bake the current adjustment into CP pixel positions and clear it (no dialog).
+
+        For drone-assisted transformers the adjustment is stored in the project
+        instead of CP pixels (see apply_adjustment_to_control_points).
+        """
         adj = self.image_view.current_adjustment
         if adj is None or adj.is_identity():
+            return
+        if self.project.transform_method == 'drone_assisted':
+            # Can't bake into CPs — persist in project and re-apply to transformer
+            self.project.transform_adjustment = adj.to_dict()
+            self.image_view.reset_adjustment()
+            self._remove_adjustment_ghost()
+            self._invalidate_cached_transformer()
+            self._cached_transformer = self._create_transformer(use_validation=True)
+            self._apply_active_adjustment(self._cached_transformer)
+            self.refresh_imported_geometry()
             return
         for cp in self.project.control_points:
             cp.pixel_x, cp.pixel_y = adj.apply_to_point(cp.pixel_x, cp.pixel_y)
@@ -2601,8 +2805,13 @@ class MainWindow(QMainWindow):
         """
         Apply current adjustment to control points.
 
-        This "bakes" the adjustment into the control point positions,
-        then recomputes the transformation with the new positions.
+        For homography/affine transformers this "bakes" the adjustment into
+        the control point pixel positions and recomputes the transformation.
+
+        For drone-assisted transformers the core physics matrix is independent
+        of CP pixel positions, so baking into CPs has no effect.  Instead the
+        adjustment is stored permanently in the project and kept active on the
+        transformer so it persists across saves/reloads.
         """
         adjustment = self.image_view.get_adjustment()
         if adjustment is None or adjustment.is_identity():
@@ -2613,7 +2822,45 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("No control points to adjust")
             return
 
-        # Confirm with user
+        is_drone = self.project.transform_method == 'drone_assisted'
+
+        if is_drone:
+            # For drone-assisted: can't bake into CPs because the physics matrix
+            # ignores CP pixel positions.  Persist the adjustment in the project so
+            # it survives save/reload, and keep it applied to the transformer.
+            if not ask_yes_no(
+                self,
+                "The drone-assisted transformer is physics-based and cannot absorb "
+                "the adjustment via control point positions.\n\n"
+                "The adjustment will be stored permanently with the project and "
+                "re-applied automatically on every reload.\n\n"
+                "Continue?",
+                "Apply Adjustment"
+            ):
+                return
+
+            self.project.transform_adjustment = self._compose_with_drone_base(
+                adjustment).to_dict()
+            # Reset current_adjustment so the panel and save-prompt see no pending
+            # adjustment (the stored project value is the authoritative source now).
+            self.image_view.reset_adjustment()
+            self._remove_adjustment_ghost()
+
+            # Rebuild transformer; _apply_active_adjustment will re-apply the
+            # stored project adjustment via the drone-assisted fallback path.
+            self._invalidate_cached_transformer()
+            self._cached_transformer = self._create_transformer(use_validation=True)
+            self._apply_active_adjustment(self._cached_transformer)
+
+            self.refresh_imported_geometry()
+            self.modified = True
+            self.update_window_title()
+            self.statusBar().showMessage(
+                "Adjustment stored permanently for drone-assisted transformer"
+            )
+            return
+
+        # --- homography / affine: bake adjustment into CP pixel positions ---
         if not ask_yes_no(
             self,
             "This will modify the pixel positions of all control points "
@@ -2790,8 +3037,33 @@ class MainWindow(QMainWindow):
             show_warning(self, "Cannot create coordinate transformer.")
             self.toggle_aerial_action.setChecked(False)
             return
+        # Save the current_adjustment so we can restore it precisely on return.
+        # Without this, current_adjustment keeps the aerial value and causes
+        # _apply_active_adjustment to corrupt the original transformer on the
+        # next aerial switch.
+        self._original_view_adjustment = self.image_view.current_adjustment
         self._apply_active_adjustment(self._original_transformer)
         self._original_image_np = self.image_view.image_np.copy() if self.image_view.image_np is not None else None
+        # Save exact user-placed pixel positions so the round-trip can restore them
+        # precisely (geo_to_pixel on the least-squares transformer does not reproduce
+        # training point positions exactly when there are more than the minimum points).
+        self._original_cp_pixels = [(cp.pixel_x, cp.pixel_y) for cp in self.project.control_points]
+
+        # Save connecting road pixel paths so geo_to_pixel round-trip errors can't corrupt them.
+        # geo_to_pixel may return out-of-bounds coords for physics-based transformers when a
+        # road is outside the camera's field of view.
+        self._original_cr_paths = {}
+        self._original_junction_centers = {}
+        for junction in self.project.junctions:
+            if junction.center_point:
+                self._original_junction_centers[junction.id] = {
+                    'center': junction.center_point,
+                    'roundabout': junction.roundabout_center,
+                }
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if cr and cr.inline_path:
+                    self._original_cr_paths[cr_id] = list(cr.inline_path)
 
         # Remove ghost overlay before switching (will be rebuilt on return)
         self._remove_adjustment_ghost()
@@ -2818,6 +3090,10 @@ class MainWindow(QMainWindow):
             self.toggle_aerial_action.setChecked(False)
             self._original_image_np = None
             self._original_transformer = None
+            self._original_cp_pixels = []
+            self._original_cr_paths = {}
+            self._original_view_adjustment = None
+            self._original_junction_centers = {}
             return
 
         # Build initial affine transformer from raw tile image bounds
@@ -2831,6 +3107,10 @@ class MainWindow(QMainWindow):
             self.toggle_aerial_action.setChecked(False)
             self._original_image_np = None
             self._original_transformer = None
+            self._original_cp_pixels = []
+            self._original_cr_paths = {}
+            self._original_view_adjustment = None
+            self._original_junction_centers = {}
             return
 
         # Resize aerial image so its pixels/meter matches the original image.
@@ -2854,7 +3134,17 @@ class MainWindow(QMainWindow):
             self.toggle_aerial_action.setChecked(False)
             self._original_image_np = None
             self._original_transformer = None
+            self._original_cp_pixels = []
+            self._original_cr_paths = {}
+            self._original_view_adjustment = None
+            self._original_junction_centers = {}
             return
+
+        # Ensure CR/junction geo coords are consistent with the original
+        # transformer before reprojecting.  Stale geo_coords (from a previous
+        # transformer or from the junction analyzer's endpoint snapping) would
+        # cause reproject_project_geometry to place CRs at wrong aerial pixels.
+        self._resync_junction_geo_coords(self._original_transformer)
 
         # Re-project all geometry into the aerial pixel space
         count = reproject_project_geometry(
@@ -2897,6 +3187,14 @@ class MainWindow(QMainWindow):
             self.project, self._aerial_transformer, self._original_transformer,
         )
 
+        # Restore exact user-placed CP pixel positions.  reproject_project_geometry
+        # computes them via geo_to_pixel, which doesn't reproduce the original positions
+        # exactly when the least-squares transform has non-zero residuals (>min points).
+        if self._original_cp_pixels:
+            for cp, (px, py) in zip(self.project.control_points, self._original_cp_pixels):
+                cp.pixel_x = px
+                cp.pixel_y = py
+
         # Restore adjustment and reposition geo-derived entities
         if saved_adjustment is not None:
             self._original_transformer.set_adjustment(saved_adjustment)
@@ -2904,12 +3202,61 @@ class MainWindow(QMainWindow):
         self.image_view.swap_background(self._original_image_np)
         self._cached_transformer = self._original_transformer
 
+        # Restore the original view's adjustment into current_adjustment.
+        # While in aerial view, current_adjustment held the aerial adjustment; leaving
+        # it there would cause _apply_active_adjustment to corrupt the original transformer
+        # on the next aerial switch, and incorrectly trigger update_all_from_geo_coords
+        # with the wrong (aerial) adjustment value.
+        self.image_view.current_adjustment = self._original_view_adjustment
+
         # Recompute pixel positions from geo coords using the adjusted transformer
-        # so entities land in the correct adjusted positions.  Control points are
-        # NOT updated here — they keep their unadjusted positions from reprojection.
-        adj = self.image_view.current_adjustment
-        if adj and not adj.is_identity():
+        # so entities land in the correct adjusted positions.
+        adj = self._original_view_adjustment
+        drone_adj = (
+            self.project.transform_method == 'drone_assisted'
+            and self.project.transform_adjustment
+            and not TransformAdjustment.from_dict(
+                self.project.transform_adjustment).is_identity()
+        )
+        if (adj and not adj.is_identity()) or drone_adj:
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
+
+        # Restore connecting road pixel paths AFTER update_all_from_geo_coords, because
+        # that call re-runs geo_to_pixel via the drone transformer which returns large
+        # out-of-bounds coordinates for CRs whose geo positions are outside the camera's
+        # field of view, undoing the reproject_project_geometry result.  We restore the
+        # exact pre-aerial pixel positions as the authoritative source for all CRs
+        # (in-FOV and out-of-FOV alike) so that subsequent load_project picks them up.
+        if self._original_cr_paths:
+            for junction in self.project.junctions:
+                for cr_id in junction.connecting_road_ids:
+                    if cr_id in self._original_cr_paths:
+                        cr = self.project.get_road(cr_id)
+                        if cr:
+                            cr.inline_path = list(self._original_cr_paths[cr_id])
+
+        # Restore junction center_point pixel positions for the same reason: the drone
+        # camera model's geo_to_pixel gives out-of-bounds values for junctions that are
+        # outside its field of view.
+        if self._original_junction_centers:
+            for junction in self.project.junctions:
+                saved = self._original_junction_centers.get(junction.id)
+                if saved:
+                    junction.center_point = saved['center']
+                    junction.roundabout_center = saved['roundabout']
+
+        # Regenerate CR paths from current road positions.  After restoring
+        # _original_cr_paths the saved positions may no longer match roads that
+        # were moved in aerial view, leaving gaps at junction endpoints.
+        # Parampoly3 CRs need a full spline rebuild; lane-aligned CRs need
+        # their lane-offset endpoints recomputed; non-aligned polyline CRs are
+        # handled by the endpoint snap inside _resync_junction_geo_coords.
+        self._regenerate_all_junction_crs()
+
+        # Resync geo coords to match the restored pixel positions so the
+        # next reproject (or save) sees consistent geo_coords.
+        self._resync_junction_geo_coords(self._original_transformer)
+
         self._aerial_view_active = False
 
         # Refresh scene
@@ -2925,6 +3272,10 @@ class MainWindow(QMainWindow):
         self._original_image_np = None
         self._original_transformer = None
         self._aerial_transformer = None
+        self._original_cp_pixels = []
+        self._original_cr_paths = {}
+        self._original_junction_centers = {}
+        self._original_view_adjustment = None
 
         self.toggle_aerial_action.setText("&Aerial Map View")
         self.toggle_aerial_action.setEnabled(True)
@@ -2953,6 +3304,14 @@ class MainWindow(QMainWindow):
         except Exception:
             return
 
+        # For drone-assisted projects with a saved adjustment, apply it before
+        # syncing geo coords from pixel positions.  Saved pixel positions are in
+        # "adjusted" space (the user placed them while the adjustment was active),
+        # so pixel→geo conversion must use the same adjusted transformer that was
+        # active at save time.  Without this, _resync_junction_geo_coords produces
+        # wrong geo coords and _restore_adjustment_from_project double-shifts them.
+        self._apply_active_adjustment(transformer)
+
         # Initialize geo_path for connecting roads that don't have it (legacy support)
         for junction in self.project.junctions:
             for cr_id in junction.connecting_road_ids:
@@ -2964,9 +3323,124 @@ class MainWindow(QMainWindow):
         # (only for CRs without lane connections; lane-aligned CRs are skipped)
         self._snap_connecting_road_endpoints()
 
+        # Resync CR/junction geo coords from pixel positions to ensure
+        # consistency with the active transformer.  Without this, a transformer
+        # change (e.g. switching to drone_assisted) leaves stale geo_coords
+        # that cause reproject_project_geometry to produce wrong pixel positions.
+        self._resync_junction_geo_coords(transformer)
+
     def _snap_connecting_road_endpoints(self):
         """Snap CR pixel endpoints to match connected road endpoints."""
         self.controller.snap_connecting_road_endpoints()
+
+    def _resync_junction_geo_coords(self, transformer):
+        """Recompute CR and junction geo coords from pixel positions.
+
+        Connecting road pixel paths are authoritative (generated by curve
+        fitting); their inline_geo_path may become stale when the transformer
+        changes (e.g. switching to drone_assisted).  Resyncing ensures
+        geo_to_pixel(geo) == pixel for every CR, which is required for
+        reproject_project_geometry to produce correct results.
+
+        After resyncing, CR endpoints are snapped to the connected polyline
+        endpoints (both pixel and geo) so that no gap appears after reprojection.
+        """
+        if transformer is None:
+            return
+        for junction in self.project.junctions:
+            if junction.center_point:
+                lon, lat = transformer.pixel_to_geo(
+                    junction.center_point[0], junction.center_point[1],
+                )
+                junction.geo_center_point = (lon, lat)
+                if junction.roundabout_center:
+                    rlon, rlat = transformer.pixel_to_geo(
+                        junction.roundabout_center[0],
+                        junction.roundabout_center[1],
+                    )
+                    junction.geo_roundabout_center = (rlon, rlat)
+
+            # Build set of CRs with lane connections (those are lane-aligned)
+            aligned_cr_ids = {
+                c.connecting_road_id
+                for c in (junction.lane_connections or [])
+                if c.connecting_road_id
+            }
+
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if not cr or not cr.inline_path:
+                    continue
+
+                # Snap pixel endpoints to connected polyline endpoints
+                if cr_id not in aligned_cr_ids:
+                    self._snap_cr_endpoints_pixel(cr)
+
+                # Recompute full geo path from (snapped) pixel
+                cr.inline_geo_path = [
+                    transformer.pixel_to_geo(x, y)
+                    for x, y in cr.inline_path
+                ]
+
+                # Snap geo endpoints to connected polyline geo endpoints
+                # so that reproject produces identical pixel positions for
+                # the CR endpoint and its connecting polyline endpoint.
+                if cr_id not in aligned_cr_ids:
+                    self._snap_cr_endpoints_geo(cr)
+
+    def _snap_cr_endpoints_pixel(self, cr):
+        """Snap a CR's pixel endpoints to the connected polyline endpoints."""
+        pred = self.project.get_road(cr.predecessor_id)
+        succ = self.project.get_road(cr.successor_id)
+        pred_pl = self.project.get_polyline(pred.centerline_id) if pred else None
+        succ_pl = self.project.get_polyline(succ.centerline_id) if succ else None
+        if pred_pl and pred_pl.points:
+            cr.inline_path[0] = (
+                pred_pl.points[-1] if cr.predecessor_contact == 'end'
+                else pred_pl.points[0]
+            )
+        if succ_pl and succ_pl.points:
+            cr.inline_path[-1] = (
+                succ_pl.points[-1] if cr.successor_contact == 'end'
+                else succ_pl.points[0]
+            )
+
+    def _snap_cr_endpoints_geo(self, cr):
+        """Snap a CR's geo endpoints to the connected polyline geo endpoints."""
+        if not cr.inline_geo_path:
+            return
+        pred = self.project.get_road(cr.predecessor_id)
+        succ = self.project.get_road(cr.successor_id)
+        pred_pl = self.project.get_polyline(pred.centerline_id) if pred else None
+        succ_pl = self.project.get_polyline(succ.centerline_id) if succ else None
+        if pred_pl and pred_pl.geo_points:
+            cr.inline_geo_path[0] = (
+                pred_pl.geo_points[-1] if cr.predecessor_contact == 'end'
+                else pred_pl.geo_points[0]
+            )
+        if succ_pl and succ_pl.geo_points:
+            cr.inline_geo_path[-1] = (
+                succ_pl.geo_points[-1] if cr.successor_contact == 'end'
+                else succ_pl.geo_points[0]
+            )
+
+    def _regenerate_all_junction_crs(self):
+        """Regenerate all CR paths from current road positions after a view switch.
+
+        Called after _original_cr_paths is restored so that CRs which connect
+        to roads that were moved in aerial view are rebuilt from the new road
+        positions rather than the stale saved positions.
+        """
+        # Rebuild parampoly3 CRs from connected road endpoints
+        for junction in self.project.junctions:
+            for cr_id in junction.connecting_road_ids:
+                cr = self.project.get_road(cr_id)
+                if cr and cr.geometry_type == "parampoly3":
+                    self.controller._regenerate_parampoly3_cr(cr)
+
+        # Re-apply lane-alignment offsets for all junctions that have them
+        scale_factors = self.get_current_scale()
+        self.controller.align_all_junction_crs(scale_factors)
 
     def update_affected_road_lanes(self):
         """Update lane graphics for all roads with centerlines."""

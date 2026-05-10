@@ -9,6 +9,8 @@ import math
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 if TYPE_CHECKING:
+    from orbit.models.project import Project
+    from orbit.models.road import Road
     from orbit.utils.coordinate_transform import CoordinateTransformer
 
 
@@ -2120,3 +2122,136 @@ def shorten_geo_points(
             result = result[:-(segment_idx + 1)] + [new_end]
 
     return result
+
+
+def fit_smooth_curve_to_polyline(
+    points: List[Tuple[float, float]],
+    start_tangent_rad: float,
+    end_tangent_rad: float,
+    tangent_scale: float = 1.0,
+    num_output_points: Optional[int] = None,
+) -> List[Tuple[float, float]]:
+    """Redistribute polyline points along a smooth cubic Bezier curve.
+
+    Fixes first and last points; replaces all intermediate points with
+    arc-length-uniform samples so the curve is G1-continuous at both ends.
+
+    Args:
+        points: Current pixel-space polyline (≥ 2 points).
+        start_tangent_rad: Desired heading at the start (radians, screen coords).
+        end_tangent_rad: Desired heading at the end (radians, screen coords).
+        tangent_scale: Controls how strongly the tangents pull. 1.0 = chord/3.
+        num_output_points: Number of output points. Defaults to len(points).
+            Use a larger value to reduce miter spike artifacts in offset polylines.
+
+    Returns:
+        New list of num_output_points (x, y) tuples.
+    """
+    if len(points) < 2:
+        return list(points)
+    if len(points) == 2:
+        return [points[0], points[-1]]
+
+    p0 = points[0]
+    p3 = points[-1]
+    n = num_output_points if num_output_points is not None else len(points)
+
+    # Bezier handle length ≈ 1/3 of the chord, scaled by tangent_scale
+    chord = math.sqrt((p3[0] - p0[0]) ** 2 + (p3[1] - p0[1]) ** 2)
+    handle = chord / 3.0 * tangent_scale
+
+    p1 = (
+        p0[0] + math.cos(start_tangent_rad) * handle,
+        p0[1] + math.sin(start_tangent_rad) * handle,
+    )
+    p2 = (
+        p3[0] - math.cos(end_tangent_rad) * handle,
+        p3[1] - math.sin(end_tangent_rad) * handle,
+    )
+    ctrl = [p0, p1, p2, p3]
+
+    # Over-sample the Bezier then re-parameterize by arc length
+    oversample = max(200, n * 20)
+    dense = sample_bezier(ctrl, oversample)
+
+    # Build cumulative arc-length table
+    arc = [0.0]
+    for i in range(1, len(dense)):
+        dx = dense[i][0] - dense[i - 1][0]
+        dy = dense[i][1] - dense[i - 1][1]
+        arc.append(arc[-1] + math.sqrt(dx * dx + dy * dy))
+    total = arc[-1]
+    if total < 1e-9:
+        return list(points)
+
+    # Sample at n arc-length-uniform positions
+    result = [p0]
+    for k in range(1, n - 1):
+        target = total * k / (n - 1)
+        # Binary search for the right dense-sample interval
+        lo, hi = 0, len(arc) - 1
+        while lo < hi - 1:
+            mid = (lo + hi) // 2
+            if arc[mid] < target:
+                lo = mid
+            else:
+                hi = mid
+        t = (target - arc[lo]) / (arc[hi] - arc[lo]) if arc[hi] > arc[lo] else 0.0
+        x = dense[lo][0] + t * (dense[hi][0] - dense[lo][0])
+        y = dense[lo][1] + t * (dense[hi][1] - dense[lo][1])
+        result.append((x, y))
+    result.append(p3)
+
+    # Snap pts[1] and pts[-2] to exact tangent direction so that
+    # calculate_offset_polyline sees the correct perpendicular at both ends.
+    # Distance from the endpoint is preserved; only direction is corrected.
+    if n >= 3:
+        d1 = math.sqrt((result[1][0] - p0[0]) ** 2 + (result[1][1] - p0[1]) ** 2)
+        if d1 > 1e-9:
+            result[1] = (
+                p0[0] + math.cos(start_tangent_rad) * d1,
+                p0[1] + math.sin(start_tangent_rad) * d1,
+            )
+        d2 = math.sqrt((result[-2][0] - p3[0]) ** 2 + (result[-2][1] - p3[1]) ** 2)
+        if d2 > 1e-9:
+            result[-2] = (
+                p3[0] - math.cos(end_tangent_rad) * d2,
+                p3[1] - math.sin(end_tangent_rad) * d2,
+            )
+
+    return result
+
+
+def get_smooth_cr_tangents(
+    cr_road: 'Road',
+    project: 'Project',
+) -> Optional[Tuple[float, float]]:
+    """Derive (start_heading, end_heading) for a connecting road from its neighbours.
+
+    Uses the same logic as ProjectController._regenerate_parampoly3_cr.
+
+    Returns:
+        (start_heading_rad, end_heading_rad) in screen/pixel space, or None if
+        the adjacent roads or polylines cannot be found.
+    """
+    from orbit.gui.project_controller import get_contact_pos_heading
+
+    pred_road = project.get_road(cr_road.predecessor_id)
+    succ_road = project.get_road(cr_road.successor_id)
+    if not pred_road or not succ_road:
+        return None
+
+    pred_pl = project.get_polyline(pred_road.centerline_id)
+    succ_pl = project.get_polyline(succ_road.centerline_id)
+    if not pred_pl or not succ_pl:
+        return None
+
+    _, start_hdg = get_contact_pos_heading(pred_pl, cr_road.predecessor_contact)
+    if cr_road.predecessor_contact == "start":
+        start_hdg += math.pi
+
+    _, end_hdg = get_contact_pos_heading(succ_pl, cr_road.successor_contact)
+    if cr_road.successor_contact == "end":
+        end_hdg += math.pi
+
+    return start_hdg, end_hdg

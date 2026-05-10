@@ -13,6 +13,7 @@ from PyQt6.QtGui import QUndoCommand
 from orbit.models import Junction, LaneConnection, ParkingSpace, Polyline, Road, RoadObject, Signal
 
 if TYPE_CHECKING:
+    from .image_view import ImageView
     from .main_window import MainWindow
 
 
@@ -1349,3 +1350,35 @@ class ModifyParkingCommand(QUndoCommand):
         scale_factor = self.main_window.get_current_scale()
         self.main_window.image_view.add_parking_graphics(parking, scale_factor)
         self.main_window._refresh_trees()
+
+
+class SmoothCRCommand(QUndoCommand):
+    """Command for smoothing a connecting road's inline_path."""
+
+    def __init__(
+        self,
+        image_view: 'ImageView',
+        cr_road: 'Road',
+        old_inline_path: list,
+        new_inline_path: list,
+        description: str = "Smooth Connecting Road Curve",
+    ):
+        super().__init__(description)
+        self.image_view = image_view
+        self.cr_road = cr_road
+        self.old_inline_path = [tuple(p) for p in old_inline_path]
+        self.new_inline_path = [tuple(p) for p in new_inline_path]
+        self._first_redo = True
+
+    def redo(self):
+        if self._first_redo:
+            self._first_redo = False
+            return
+        self._apply(self.new_inline_path)
+
+    def undo(self):
+        self._apply(self.old_inline_path)
+
+    def _apply(self, path: list):
+        self.cr_road.inline_path = list(path)
+        self.image_view.update_connecting_road_graphics(self.cr_road.id)

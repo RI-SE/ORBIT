@@ -356,14 +356,14 @@ class ElementsTreeWidget(QWidget):
         if obj.road_id and self.project:
             road = self.project.get_road(obj.road_id)
             if road:
-                road_name = road.name or f"Road {road.id[:8]}"
+                road_name = f"Road {road.id}" + (f" – {road.name}" if road.name else "")
                 road_info = f" → {road_name}"
             else:
                 cr = self.project.get_road(obj.road_id)
                 if cr and cr.is_connecting_road:
                     road_info = f" → CR {cr.id[:8]}"
 
-        text = f"{display_name} ({category}){road_info}"
+        text = f"#{obj.id} {display_name} ({category}){road_info}"
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "object", "id": obj.id})

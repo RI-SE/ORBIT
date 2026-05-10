@@ -11,10 +11,13 @@ from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
+
 from orbit.models.project import Project
 from orbit.utils.coordinate_transform import (
     AffineTransformer,
     CoordinateTransformer,
+    DroneAssistedTransformer,
     HomographyTransformer,
     HybridTransformer,
 )
@@ -78,9 +81,7 @@ def build_georef_data(
         Dictionary with georeferencing data
     """
     # Determine transform method string
-    if isinstance(transformer, HybridTransformer):
-        method = "homography"
-    elif isinstance(transformer, HomographyTransformer):
+    if isinstance(transformer, (HybridTransformer, HomographyTransformer, DroneAssistedTransformer)):
         method = "homography"
     elif isinstance(transformer, AffineTransformer):
         method = "affine"
@@ -112,6 +113,20 @@ def build_georef_data(
     except Exception:
         orbit_version = "unknown"
 
+    # If the transformer has an active adjustment, bake it into the exported
+    # matrices so downstream consumers get the fully-adjusted transform.
+    # For pixel→ENU (transform_matrix):  effective = transform_matrix @ A_inv
+    # For ENU→pixel  (inverse_matrix):   effective = A @ inverse_matrix
+    transform_matrix = transformer.transform_matrix
+    inverse_matrix = transformer.inverse_matrix
+    if transformer.adjustment is not None and not transformer.adjustment.is_identity():
+        A = transformer.adjustment.get_adjustment_matrix()
+        A_inv = np.linalg.inv(A)
+        if transform_matrix is not None:
+            transform_matrix = transform_matrix @ A_inv
+        if inverse_matrix is not None:
+            inverse_matrix = A @ inverse_matrix
+
     # Build output structure
     data = {
         "format": "ORBIT Georeferencing Data",
@@ -131,8 +146,8 @@ def build_georef_data(
             "longitude": transformer.reference_lon,
             "latitude": transformer.reference_lat,
         },
-        "transformation_matrix": _matrix_to_list(transformer.transform_matrix),
-        "inverse_matrix": _matrix_to_list(transformer.inverse_matrix),
+        "transformation_matrix": _matrix_to_list(transform_matrix),
+        "inverse_matrix": _matrix_to_list(inverse_matrix),
         "scale_factors": {
             "x_meters_per_pixel": scale_x,
             "y_meters_per_pixel": scale_y,

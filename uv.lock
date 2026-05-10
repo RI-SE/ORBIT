@@ -145,6 +145,15 @@ toml = [
 ]
 
 [[package]]
+name = "dataprov"
+version = "3.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/a5/a873ee8fa3ca9f3ae02bc1584119e4515cf656e203152796d564ad67d9eb/dataprov-3.2.0.tar.gz", hash = "sha256:e2c76cc3198c671e5953d20e2c39a0264ef4c91f1e04e9ff28343386995d9b93", size = 86968, upload-time = "2026-04-14T12:22:18.831Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/00/c5/520700bad30e9428bea54d54925656a001a99977ae54a79bae1bb7c0f8f9/dataprov-3.2.0-py3-none-any.whl", hash = "sha256:098891f4496e25d18185d53644b6724f7863181ae83b74ef5cbce83083513ac3", size = 48009, upload-time = "2026-04-14T12:22:17.642Z" },
+]
+
+[[package]]
 name = "distlib"
 version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -182,6 +191,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/94/b8/00651a0f559862f3b
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a4/a5/842ae8f0c08b61d6484b52f99a03510a3a72d23141942d216ebe81fefbce/filelock-3.25.2-py3-none-any.whl", hash = "sha256:ca8afb0da15f229774c9ad1b455ed96e85a81373065fb10446672f64444ddf70", size = 26759, upload-time = "2026-03-11T20:45:37.437Z" },
 ]
+
+[[package]]
+name = "geomag"
+version = "0.9.2015"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/1f/95b5d9db29b89735af88713e7fb49b20052d1ce5a05e8e4ea0f2f96da4b3/geomag-0.9.2015.zip", hash = "sha256:fa3f7544beca2dd706c3078d9d58cb35734d00de2591270a335216bb8ba310d5", size = 8071, upload-time = "2014-12-18T01:15:53.201Z" }
 
 [[package]]
 name = "identify"
@@ -512,6 +527,7 @@ name = "orbit"
 version = "0.10.1"
 source = { editable = "." }
 dependencies = [
+    { name = "geomag" },
     { name = "lxml" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -532,6 +548,9 @@ dev = [
     { name = "pytest-mock" },
     { name = "ruff" },
 ]
+provenance = [
+    { name = "dataprov" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -540,6 +559,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "dataprov", marker = "extra == 'provenance'", specifier = ">=3.0" },
+    { name = "geomag", specifier = ">=0.9.2015" },
     { name = "lxml", specifier = ">=4.9.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "opencv-python", specifier = ">=4.8.0" },
@@ -553,7 +574,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.11.0" },
     { name = "xmlschema", specifier = ">=4.2.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["provenance", "dev"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pre-commit", specifier = ">=4.5.1" }]

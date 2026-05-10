@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
     QFileDialog,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -15,6 +16,9 @@ from PyQt6.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
 )
+
+from orbit.models.object import ObjectType
+from orbit.utils.enum_formatting import format_enum_name
 
 from ..utils.message_helpers import show_warning
 from .base_dialog import BaseDialog
@@ -37,6 +41,8 @@ class OpenDriveImportDialog(BaseDialog):
 
         self.has_georeferencing = has_georeferencing
         self.verbose = verbose
+        self._feature_checkboxes: dict = {}  # key → QCheckBox
+        self._feature_group: QGroupBox | None = None
 
         self.setup_ui()
         self.load_properties()
@@ -143,8 +149,9 @@ class OpenDriveImportDialog(BaseDialog):
 
         self.get_main_layout().addLayout(button_layout)
 
-        # Update button state
+        # Update button state and scan file on path change
         self.file_path_edit.textChanged.connect(self._update_button_state)
+        self.file_path_edit.textChanged.connect(self._on_file_path_changed)
 
     def load_properties(self):
         """Load initial property values."""
@@ -186,6 +193,72 @@ class OpenDriveImportDialog(BaseDialog):
         has_file = bool(self.file_path_edit.text().strip())
         self.import_btn.setEnabled(has_file)
 
+    def _on_file_path_changed(self, path: str):
+        """Scan file and update feature category checkboxes when file is selected."""
+        from pathlib import Path
+        p = path.strip()
+        self._rebuild_feature_group(None)  # Remove old group
+        if not p or not Path(p).is_file():
+            return
+        try:
+            import importlib
+            mod = importlib.import_module('orbit.import.opendrive_importer')
+            counts = mod.scan_xodr_feature_categories(p)
+        except Exception:
+            return
+        if counts:
+            self._rebuild_feature_group(counts)
+
+    def _rebuild_feature_group(self, counts: dict | None):
+        """Remove existing feature group and rebuild from counts (or hide if None)."""
+        layout = self.get_main_layout()
+
+        # Remove old group if present
+        if self._feature_group is not None:
+            layout.removeWidget(self._feature_group)
+            self._feature_group.deleteLater()
+            self._feature_group = None
+        self._feature_checkboxes.clear()
+
+        if not counts:
+            return
+
+        feature_group = QGroupBox("Feature Categories")
+        feature_layout = QGridLayout()
+        row, col = 0, 0
+
+        # Signals and parking first
+        for key, label in [('signals', 'Signals'), ('parking', 'Parking')]:
+            count = counts.get(key, 0)
+            if count:
+                cb = QCheckBox(f"{label} ({count})")
+                cb.setChecked(True)
+                self._feature_checkboxes[key] = cb
+                feature_layout.addWidget(cb, row, col)
+                col += 1
+                if col >= 3:
+                    col = 0
+                    row += 1
+
+        # Per-ObjectType
+        for obj_type in ObjectType:
+            count = counts.get(obj_type, 0)
+            if not count:
+                continue
+            cb = QCheckBox(f"{format_enum_name(obj_type)} ({count})")
+            cb.setChecked(True)
+            self._feature_checkboxes[obj_type] = cb
+            feature_layout.addWidget(cb, row, col)
+            col += 1
+            if col >= 3:
+                col = 0
+                row += 1
+
+        feature_group.setLayout(feature_layout)
+        # Insert before the button row (last item)
+        layout.insertWidget(layout.count() - 1, feature_group)
+        self._feature_group = feature_group
+
     def _update_info_text(self):
         """Update info text."""
         html = """
@@ -207,7 +280,7 @@ class OpenDriveImportDialog(BaseDialog):
 <li><b>Lanes:</b> Width (constant), type, road marks</li>
 <li><b>Elevation:</b> Stored and displayed in polyline properties</li>
 <li><b>Signals:</b> Speed limits, traffic lights, stop signs, give way, etc.</li>
-<li><b>Objects:</b> Lampposts, guardrails, buildings, trees, bushes</li>
+<li><b>Objects:</b> Lampposts, guardrails, buildings, trees, bushes, land use</li>
 </ul>
 
 <b>Note:</b> Lateral profiles (superelevation, crossfall) are not supported (2D only).
@@ -239,6 +312,31 @@ Polynomial lane widths are imported as constant widths.
     def get_verbose(self) -> bool:
         """Get verbose output setting (from --verbose flag)."""
         return self.verbose
+
+    def get_import_filter(self) -> tuple:
+        """Return (import_signals, import_parking, import_object_types).
+
+        import_object_types is None if all types are selected (or no filter shown).
+        """
+        if not self._feature_checkboxes:
+            return True, True, None
+
+        import_signals = self._feature_checkboxes.get('signals', None)
+        import_signals = import_signals.isChecked() if import_signals else True
+
+        import_parking = self._feature_checkboxes.get('parking', None)
+        import_parking = import_parking.isChecked() if import_parking else True
+
+        obj_type_boxes = {k: v for k, v in self._feature_checkboxes.items()
+                         if isinstance(k, ObjectType)}
+        if not obj_type_boxes:
+            import_object_types = None
+        elif all(cb.isChecked() for cb in obj_type_boxes.values()):
+            import_object_types = None  # All checked → no filter
+        else:
+            import_object_types = {ot for ot, cb in obj_type_boxes.items() if cb.isChecked()}
+
+        return import_signals, import_parking, import_object_types
 
     def accept(self):
         """Handle accept (validate before closing)."""
