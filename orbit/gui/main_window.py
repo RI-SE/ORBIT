@@ -902,6 +902,8 @@ class MainWindow(QMainWindow):
         """Export project to OpenDrive format."""
         from .dialogs.export_dialog import ExportDialog
 
+        self._ensure_original_view_for_save()
+
         if not self._prompt_and_handle_unapplied_adjustment():
             return
 
@@ -934,6 +936,8 @@ class MainWindow(QMainWindow):
         from pathlib import Path as _Path
 
         from orbit.export.osm_writer import export_to_osm
+
+        self._ensure_original_view_for_save()
 
         if not self._prompt_and_handle_unapplied_adjustment():
             return
@@ -1020,6 +1024,8 @@ class MainWindow(QMainWindow):
     def export_georeferencing(self):
         """Export georeferencing parameters to JSON file."""
         from orbit.export import export_georeferencing
+
+        self._ensure_original_view_for_save()
 
         if not self._check_provenance_ready():
             return
@@ -1129,6 +1135,8 @@ class MainWindow(QMainWindow):
 
     def export_layout_mask(self):
         """Export lane segmentation mask and metadata JSON."""
+        self._ensure_original_view_for_save()
+
         # Validate prerequisites
         if not self.image_view.image_item:
             show_warning(self, "Cannot export: No image loaded.", "No Image")
