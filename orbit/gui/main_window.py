@@ -3122,12 +3122,20 @@ class MainWindow(QMainWindow):
             return
 
         # Resize aerial image so its pixels/meter matches the original image.
+        # Geometric mean of x/y scales: oblique source imagery has
+        # anisotropic scale, so neither axis alone is representative.
+        import math as _math
+
         import cv2 as _cv2
         orig_scale_x, orig_scale_y = self._original_transformer.get_scale_factor()
         aerial_scale_x, aerial_scale_y = aerial_transformer_raw.get_scale_factor()
         aerial_image = result.image
-        if orig_scale_x > 0 and aerial_scale_x > 0:
-            resize_ratio = aerial_scale_x / orig_scale_x
+        orig_scale = (_math.sqrt(orig_scale_x * orig_scale_y)
+                      if orig_scale_x > 0 and orig_scale_y > 0 else 0.0)
+        aerial_scale = (_math.sqrt(aerial_scale_x * aerial_scale_y)
+                        if aerial_scale_x > 0 and aerial_scale_y > 0 else 0.0)
+        if orig_scale > 0 and aerial_scale > 0:
+            resize_ratio = aerial_scale / orig_scale
             if abs(resize_ratio - 1.0) > 0.01:
                 new_w = max(1, round(w * resize_ratio))
                 new_h = max(1, round(h * resize_ratio))

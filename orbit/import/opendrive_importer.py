@@ -290,6 +290,10 @@ class OpenDriveImporter:
         transform_result = self.coord_transform.setup_transform(sample_points)
         result.transform_mode = transform_result.mode
         result.scale_used = transform_result.scale_pixels_per_meter
+        # Persist the synthetic pixel scale so it survives save/load
+        if transform_result.scale_pixels_per_meter is not None:
+            self.project.import_scale_pixels_per_meter = (
+                transform_result.scale_pixels_per_meter)
 
         if not transform_result.success:
             if transform_result.mode == TransformMode.AUTO_GEOREFERENCE:

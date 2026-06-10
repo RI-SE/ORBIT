@@ -12,6 +12,8 @@ import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from orbit.utils.geo_constants import METERS_PER_DEGREE
+
 
 @dataclass
 class TransformMode:
@@ -278,10 +280,9 @@ class OpenDriveCoordinateTransform:
             origin_lat, origin_lon = self._extract_origin_from_proj4()
 
             if origin_lat and origin_lon:
-                # Simple approximation: meters to degrees
-                # At mid-latitudes: ~111000 m per degree latitude, ~111000*cos(lat) m per degree longitude
-                meters_per_degree_lat = 111000.0
-                meters_per_degree_lon = 111000.0 * math.cos(math.radians(origin_lat))
+                # Simple equirectangular approximation: meters to degrees
+                meters_per_degree_lat = METERS_PER_DEGREE
+                meters_per_degree_lon = METERS_PER_DEGREE * math.cos(math.radians(origin_lat))
 
                 lat = origin_lat + (y_absolute / meters_per_degree_lat)
                 lon = origin_lon + (x_absolute / meters_per_degree_lon)

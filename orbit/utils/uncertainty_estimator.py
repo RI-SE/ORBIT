@@ -13,6 +13,7 @@ import numpy as np
 from scipy.spatial import ConvexHull, distance
 
 from .coordinate_transform import CoordinateTransformer
+from .geo_constants import METERS_PER_DEGREE
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -641,8 +642,8 @@ class UncertaintyEstimator:
         ref_lon = np.mean(ref_lons)
 
         # Simple equirectangular approximation
-        lat_m_per_deg = 111000.0
-        lon_m_per_deg = 111000.0 * math.cos(math.radians(ref_lat))
+        lat_m_per_deg = METERS_PER_DEGREE
+        lon_m_per_deg = METERS_PER_DEGREE * math.cos(math.radians(ref_lat))
 
         mx = (lon - ref_lon) * lon_m_per_deg
         my = (lat - ref_lat) * lat_m_per_deg
