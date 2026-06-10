@@ -1509,7 +1509,7 @@ class Project:
                                   else pred_cl.points[0])
                     # This road's start connects to predecessor
                     if centerline.points[0] != pred_point:
-                        centerline.points[0] = pred_point
+                        centerline.update_point(0, pred_point[0], pred_point[1])
                         changed = True
 
         # Enforce successor link
@@ -1524,7 +1524,9 @@ class Project:
                                   else succ_cl.points[-1])
                     # This road's end connects to successor
                     if centerline.points[-1] != succ_point:
-                        centerline.points[-1] = succ_point
+                        centerline.update_point(
+                            len(centerline.points) - 1,
+                            succ_point[0], succ_point[1])
                         changed = True
 
         return changed

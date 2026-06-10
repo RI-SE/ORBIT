@@ -13,7 +13,10 @@ Four coordinate frames: **image pixels** (y-down, origin top-left) ↔ **geo lon
 
 **Fix:** make the aerial transformer mercator-aware — convert pixel_y↔lat through the mercator formula (tile y is exactly linear in mercator-y), or synthesize a grid of control points (not just corners) so the affine/homography fit averages the error down, or define the aerial transformer analytically from tile (zoom, x, y) instead of corner bounds.
 
-### H2. View switching trusts `geo_points` unconditionally — unsynced pixel edits silently reverted
+### H2. View switching trusts `geo_points` unconditionally — unsynced pixel edits silently reverted — ✅ IMPLEMENTED (2026-06-09)
+**Change:** new shared module `orbit/utils/geo_sync.py` + a `Polyline.geo_stale` dirty flag (set automatically by `add_point`/`insert_point`/`remove_point`/`update_point`, serialized in .orbit files, default False so imported polylines keep their geo precision). `reproject_project_geometry()` now calls `refresh_stale_geo_points(project, old_transformer, edited_only=True)` before reprojecting, so pixel edits whose geo sync was skipped are reconciled instead of reverted. **Design decision:** the view-switch refresh is `edited_only` — it reconciles only flagged (edited) polylines and length mismatches; *unflagged* drift keeps geo authoritative, because such drift can also come from adjustment/transformer changes where the pixels are the stale side (this matches the documented adjustment round-trip behavior and its tests). `Project` endpoint snapping (`enforce_road_links`) was also routed through `update_point` so it sets the flag. Covered by `tests/unit/test_utils/test_geo_sync.py` incl. an end-to-end "unsynced edit survives reprojection" test.
+
+Original finding:
 `reproject_project_geometry()` (`orbit/utils/reproject.py:44-51` and same pattern for junctions/signals/objects/parking): if an entity has geo coords, pixel positions are recomputed **purely from geo** — pixel edits whose geo update was skipped are discarded on aerial switch. Export protects against exactly this with `_validate_and_refresh_geo_points()` (`orbit/export/opendrive_writer.py:159-229`), but the aerial switch only resyncs junction/CR geo (`main_window.py:3147`), not polylines. Geo updates can be skipped because:
 
 - `on_polyline_modified` (`main_window.py:2415-2430`) only rebuilds geo when geo is *absent*, and only if `_cached_transformer` is non-None — it is frequently invalidated (`_invalidate_cached_transformer`, 8+ call sites) and only lazily recreated.
@@ -29,7 +32,10 @@ Original finding:
 
 **Fix:** call `_ensure_original_view_for_save()` at the top of each export (cheap, matches the save behaviour).
 
-### H4. Export uses `geo_points` without length check; refresh skips mismatched lengths
+### H4. Export uses `geo_points` without length check; refresh skips mismatched lengths — ✅ IMPLEMENTED (2026-06-09)
+**Change:** length mismatches are now *rebuilt* from pixels (with warning log) instead of skipped, in the shared `refresh_stale_geo_points()` (used by both writer init and reproject). New helper `polyline_to_metric_points(polyline, transformer)` encodes the rule "geo only when lengths match, else pixels (warn)" and replaced the hand-rolled geo/pixel selection in `opendrive_writer._calculate_bounds`/`_create_road`, `object_builder._get_road_metrics`, and `parking_builder._get_road_metrics`. The two single-point sites (`_get_contact_heading`, `_get_road_endpoint_meters` in opendrive_writer) got explicit length-match guards. The writer's old `_validate_and_refresh_geo_points` method was deleted in favor of the shared function.
+
+Original finding:
 `_create_road` (`opendrive_writer.py:693-699`) uses `geo_points` whenever non-empty; `_validate_and_refresh_geo_points` deliberately **skips** polylines where `len(geo_points) != len(points)` (`opendrive_writer.py:178`). A mismatched polyline is exported from possibly-stale geo, and `cumulative_metric_s` (`opendrive_writer.py:720-724`) is indexed by geo-point count while lane-section boundaries index pixel points — silent section misalignment. Same unchecked pattern at `opendrive_writer.py:656, 1344, 1381`, `object_builder.py:110, 568` (568 does check), `parking_builder.py:141`, `osm_writer.py` callers.
 
 **Fix:** one helper that resolves a polyline's metric points with an explicit rule: lengths match → geo; mismatch → pixels (and log). Use it everywhere.
@@ -45,6 +51,8 @@ Original finding:
 ### M2. `header_offset_hdg` parsed but never applied — ✅ IMPLEMENTED (2026-06-09)
 **Change:** `_metric_to_latlon` now rotates (x, y) by `header_offset_hdg` before adding the x/y offsets (rigid transform, rotate-first convention: `absolute = R(hdg)·p + T`; documented as an assumption in the docstring). All geo-point storage and suggested control points get the rotation automatically since they go through `_metric_to_latlon`. The synthetic (non-georeferenced) path is unaffected — a global rotation has no absolute frame to be wrong against there.
 
+**Caveat (untested convention):** the ASAM spec wording is ambiguous about operation order. We assume rotate-then-translate. If a test file with nonzero header `hdg` imports with geometry rotated about the wrong pivot, the spec intends translate-first — swap to `absolute = R(hdg)·(p + T)`, i.e. in `_metric_to_latlon` move the `x_absolute/y_absolute` offset addition *before* the rotation block and rotate the summed coordinates instead. Two-line change in `orbit/import/opendrive_coordinate_transform.py::_metric_to_latlon`.
+
 Original finding:
 `opendrive_coordinate_transform.py:72` stores it; `_metric_to_latlon` (`:247-249`) applies only x/y offsets. A .xodr with a heading offset in `<header><offset hdg=…>` imports rotated wrongly. Fix: rotate (x,y) by hdg before translating (per spec the offset is applied as rotation+translation), or explicitly warn "unsupported".
 
@@ -54,7 +62,10 @@ Original finding:
 ### M4. Inconsistent meters-per-degree constants
 `111000` m/deg in `get_scale_factor` (`coordinate_transform.py:810-811`), `uncertainty_estimator.py:644-645`, `osm_to_orbit.py:95-96`, import fallback (`opendrive_coordinate_transform.py:273-274`) vs R·π/180 ≈ **111195** in `latlon_to_meters`. ~0.18% systematic error in m/px scale → lane-width rendering, the aerial resize ratio (`main_window.py:3118-3127`), and uncertainty radii are all slightly off. Fix: one shared constant derived from R.
 
-### M5. Export staleness threshold leaves ≤2 px edits unexported
+### M5. Export staleness threshold leaves ≤2 px edits unexported — ✅ IMPLEMENTED (2026-06-09)
+**Change:** per-polyline dirty tracking via `Polyline.geo_stale` (see H2). The refresh in `geo_sync.py` uses a tight 0.1 px round-trip tolerance (`EDIT_EPSILON_PX`) for flagged polylines — sub-2px edits now reach exported geometry — while keeping the loose 2.0 px threshold (`TRANSFORM_DRIFT_THRESHOLD_PX`) for unflagged polylines so imported geo precision isn't degraded by transformer noise. Note: connecting-road `inline_path` has no dirty flag yet (Road model); CRs keep threshold-based reconciliation at export and rely on the GUI's edit-time geo sync + `_resync_junction_geo_coords`.
+
+Original finding:
 `PIXEL_THRESHOLD = 2.0` (`opendrive_writer.py:172`): pixel nudges smaller than 2 px (≈0.1–0.3 m typically) never reach the exported geometry when geo_points exist, because geo wins below the threshold. With sub-meter accuracy goals this is in the noise-vs-signal gray zone. Better contract: mark geo stale per-point at edit time (dirty flag) instead of distance-detection at export.
 
 ### M6. Hybrid transformer: blend factor evaluated in different frames forward vs inverse
@@ -70,13 +81,13 @@ Entities that enter aerial view *without* geo coords get geo assigned via the **
 - **L3. No-pyproj import fallback** returns meters **as degrees** as "last resort" (`opendrive_coordinate_transform.py:282`) — should raise instead of importing garbage. — ✅ IMPLEMENTED (2026-06-09): the last-resort branch now raises `ValueError` ("pyproj not installed and geoReference has no +lat_0/+lon_0 origin"). pyproj is a hard dependency in pyproject.toml, so this path only fires in broken environments — failing loudly beats importing garbage coordinates.
 - **L4. Aerial resize uses scale_x only** (`main_window.py:3121-3127`): assumes the original image has square effective pixels; for oblique homography/drone images scale varies across the image, so the "match pixels/meter" resize is approximate (display-only effect).
 - **L5. Synthetic import scale not persisted**: `scale_pixels_per_meter` lives in `ImportResult` (`opendrive_importer.py:292`) but not in the Project — a synthetic (non-georeferenced) import has no recorded pixel↔meter scale for later export; round-trip relies on georeferencing being added.
-- **L6. Insert-point geo fallback copies the neighbour's geo** (`image_view.py:4074-4080`) when no transformer and interpolation fails — produces a duplicate geo vertex; would be caught by the H2/M5 staleness contract.
+- **L6. Insert-point geo fallback copies the neighbour's geo** (`image_view.py:4074-4080`) when no transformer and interpolation fails — produces a duplicate geo vertex; would be caught by the H2/M5 staleness contract. — ✅ IMPLEMENTED (2026-06-09): `insert_point` now sets `geo_stale`, so the duplicate placeholder is recomputed from the inserted pixel at the next refresh (view switch or export). No change to the fallback itself.
 - **L7. `_export_proj` init duplicated** in `HybridTransformer.__init__` (`:1028-1030`) vs base `_set_reference_point` (`:304-305`) — the a13a6d7 bug class; consider having Hybrid call a shared init helper so the next subclass can't repeat it.
 
 ## Suggested fix order
 
 1. ~~H3 (one-line guard per export) and M1, M2, L3~~ — ✅ done 2026-06-09.
-2. H2 + H4 + M5 + L6 together — define the single geo/pixel sync contract (geo authoritative for output, pixels editable, per-point dirty tracking; shared resolve helper) since they are one design issue.
+2. ~~H2 + H4 + M5 + L6 together — single geo/pixel sync contract~~ — ✅ done 2026-06-09 (`orbit/utils/geo_sync.py`, `Polyline.geo_stale`, shared by writer + reproject; 2531 tests pass).
 3. H1 — mercator-aware aerial transformer (directly improves aerial-edit accuracy).
 4. M3 + M4 — metric-frame and constant unification.
 5. M6, M7, L-items — opportunistic, with an aerial-edit→export integration test added first.

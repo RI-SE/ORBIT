@@ -12,6 +12,7 @@ from lxml import etree
 
 from orbit.models import Road
 from orbit.models.parking import ParkingSpace
+from orbit.utils.geo_sync import polyline_to_metric_points
 
 
 def _project_point_onto_polyline(px: float, py: float, pts: List[tuple]):
@@ -137,14 +138,8 @@ class ParkingBuilder:
         if not centerline:
             return 0.0, [], []
 
-        # Use geo coords directly if available (more precise)
-        if centerline.geo_points:
-            all_points_meters = [
-                self.transformer.latlon_to_meters(lat, lon)
-                for lon, lat in centerline.geo_points
-            ]
-        else:
-            all_points_meters = self.transformer.pixels_to_meters_batch(centerline.points)
+        # Uses geo coords when consistent with pixels (more precise)
+        all_points_meters = polyline_to_metric_points(centerline, self.transformer)
         geometry_elements = self.curve_fitter.fit_polyline(all_points_meters)
         return sum(elem.length for elem in geometry_elements), all_points_meters, geometry_elements
 

@@ -14,6 +14,7 @@ from lxml import etree
 
 from orbit.models import Junction, Project, Road
 from orbit.utils import CoordinateTransformer
+from orbit.utils.geo_sync import polyline_to_metric_points, refresh_stale_geo_points
 from orbit.utils.logging_config import get_logger
 
 from .curve_fitting import CurveFitter, GeometryElement, GeometryType
@@ -150,83 +151,7 @@ class OpenDriveWriter:
         self.reference_warnings: List[str] = []
 
         # Ensure geo_points are consistent with the current transformer
-        self._validate_and_refresh_geo_points()
-
-    # ------------------------------------------------------------------
-    # Geo-point consistency
-    # ------------------------------------------------------------------
-
-    def _validate_and_refresh_geo_points(self):
-        """Refresh stale geo_points so the export uses accurate geo coords.
-
-        Checks each polyline's geo_points against the current transformer
-        by comparing ``geo_to_pixel(geo_point)`` with the stored pixel
-        position. Points that diverge beyond a threshold are recomputed
-        from pixels via ``pixel_to_geo``.
-
-        Also validates ``inline_geo_path`` on connecting roads.
-        """
-        if self.transformer is None:
-            return
-
-        PIXEL_THRESHOLD = 2.0  # px — flags even ~0.2 m drift at typical resolution
-
-        refreshed_polylines = 0
-        refreshed_points = 0
-
-        for polyline in self.project.polylines:
-            if not polyline.geo_points or len(polyline.geo_points) != len(polyline.points):
-                continue
-
-            stale_indices = []
-            for i, (px, py) in enumerate(polyline.points):
-                lon, lat = polyline.geo_points[i]
-                try:
-                    rpx, rpy = self.transformer.geo_to_pixel(lon, lat)
-                except Exception:
-                    stale_indices.append(i)
-                    continue
-                if abs(rpx - px) > PIXEL_THRESHOLD or abs(rpy - py) > PIXEL_THRESHOLD:
-                    stale_indices.append(i)
-
-            if stale_indices:
-                refreshed_polylines += 1
-                refreshed_points += len(stale_indices)
-                for i in stale_indices:
-                    px, py = polyline.points[i]
-                    new_lon, new_lat = self.transformer.pixel_to_geo(px, py)
-                    polyline.geo_points[i] = (new_lon, new_lat)
-
-        # Validate inline_geo_path on connecting roads
-        for road in self.project.roads:
-            if not road.inline_geo_path or not road.inline_path:
-                continue
-            if len(road.inline_geo_path) != len(road.inline_path):
-                continue
-
-            stale_indices = []
-            for i, (px, py) in enumerate(road.inline_path):
-                lon, lat = road.inline_geo_path[i]
-                try:
-                    rpx, rpy = self.transformer.geo_to_pixel(lon, lat)
-                except Exception:
-                    stale_indices.append(i)
-                    continue
-                if abs(rpx - px) > PIXEL_THRESHOLD or abs(rpy - py) > PIXEL_THRESHOLD:
-                    stale_indices.append(i)
-
-            if stale_indices:
-                refreshed_points += len(stale_indices)
-                for i in stale_indices:
-                    px, py = road.inline_path[i]
-                    new_lon, new_lat = self.transformer.pixel_to_geo(px, py)
-                    road.inline_geo_path[i] = (new_lon, new_lat)
-
-        if refreshed_points > 0:
-            logger.info(
-                "Refreshed %d stale geo_points across %d polyline(s)",
-                refreshed_points, refreshed_polylines,
-            )
+        refresh_stale_geo_points(self.project, self.transformer)
 
     def write(self, output_path: str) -> bool:
         """
@@ -652,14 +577,8 @@ class OpenDriveWriter:
 
         # Collect all polyline points and convert to meters
         for polyline in self.project.polylines:
-            # Use geo coords directly if available (more precise)
-            if polyline.geo_points:
-                for lon, lat in polyline.geo_points:
-                    x_m, y_m = self.transformer.latlon_to_meters(lat, lon)
-                    all_points_meters.append((x_m, y_m))
-            else:
-                points_meters = self.transformer.pixels_to_meters_batch(polyline.points)
-                all_points_meters.extend(points_meters)
+            all_points_meters.extend(
+                polyline_to_metric_points(polyline, self.transformer))
 
         if not all_points_meters:
             return {'north': 0.0, 'south': 0.0, 'east': 0.0, 'west': 0.0}
@@ -689,14 +608,8 @@ class OpenDriveWriter:
         centerline_points_pixel = centerline.points
 
         # Transform centerline points to metric coordinates (meters)
-        # Use geo coords directly if available (more precise, avoids double conversion)
-        if centerline.geo_points:
-            all_points_meters = [
-                self.transformer.latlon_to_meters(lat, lon)
-                for lon, lat in centerline.geo_points
-            ]
-        else:
-            all_points_meters = self.transformer.pixels_to_meters_batch(centerline_points_pixel)
+        # Uses geo coords when consistent with pixels (more precise)
+        all_points_meters = polyline_to_metric_points(centerline, self.transformer)
 
         # Fit curves to metric coordinates
         geometry_elements = self.curve_fitter.fit_polyline(all_points_meters)
@@ -1341,7 +1254,7 @@ class OpenDriveWriter:
 
         use_end = (contact_point == "end")
 
-        if polyline.geo_points:
+        if polyline.geo_points and len(polyline.geo_points) == len(polyline.points):
             idx0 = -2 if use_end else 0
             idx1 = -1 if use_end else 1
             lon0, lat0 = polyline.geo_points[idx0]
@@ -1378,7 +1291,7 @@ class OpenDriveWriter:
 
         use_end = (contact_point == "end")
 
-        if polyline.geo_points:
+        if polyline.geo_points and len(polyline.geo_points) == len(polyline.points):
             idx = -1 if use_end else 0
             lon, lat = polyline.geo_points[idx]
             return self.transformer.latlon_to_meters(lat, lon)

@@ -11,6 +11,7 @@ from lxml import etree
 
 from orbit.models import Road
 from orbit.models.object import ObjectType, RoadObject
+from orbit.utils.geo_sync import polyline_to_metric_points
 
 
 class ObjectBuilder:
@@ -106,14 +107,8 @@ class ObjectBuilder:
         if not centerline:
             return [], 0.0
 
-        # Use geo coords directly if available (more precise)
-        if centerline.geo_points:
-            all_points_meters = [
-                self.transformer.latlon_to_meters(lat, lon)
-                for lon, lat in centerline.geo_points
-            ]
-        else:
-            all_points_meters = self.transformer.pixels_to_meters_batch(centerline.points)
+        # Uses geo coords when consistent with pixels (more precise)
+        all_points_meters = polyline_to_metric_points(centerline, self.transformer)
         geometry_elements = self.curve_fitter.fit_polyline(all_points_meters)
         road_length = sum(elem.length for elem in geometry_elements)
         return all_points_meters, road_length
