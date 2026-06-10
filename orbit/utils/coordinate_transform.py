@@ -1412,6 +1412,92 @@ def create_transformer(
         return None
 
 
+class WebMercatorTransformer(CoordinateTransformer):
+    """Exact pixel<->geo mapping for imagery on a Web-Mercator pixel grid.
+
+    Assumes pixel_x is linear in longitude and pixel_y is linear in
+    spherical-Mercator y = ln(tan(pi/4 + lat/2)), which holds exactly for
+    stitched slippy-map tiles (EPSG:3857). A latitude-linear affine fit on
+    the same corner bounds misplaces mid-image latitudes by
+    ~R*tan(lat)*dlat^2/8 (meters), growing quadratically with bbox height.
+    """
+
+    def __init__(self, image_width: int, image_height: int,
+                 min_lon: float, min_lat: float,
+                 max_lon: float, max_lat: float,
+                 export_proj_string: Optional[str] = None):
+        if image_width <= 0 or image_height <= 0:
+            raise ValueError("Image dimensions must be positive")
+        if not (max_lon > min_lon and max_lat > min_lat):
+            raise ValueError("Bounds must satisfy max > min")
+        if not (-90.0 < min_lat and max_lat < 90.0):
+            raise ValueError("Latitudes must be strictly within (-90, 90)")
+
+        from orbit.models.project import ControlPoint
+        corners = [
+            ControlPoint(pixel_x=0.0, pixel_y=0.0,
+                         longitude=min_lon, latitude=max_lat, name="NW"),
+            ControlPoint(pixel_x=float(image_width), pixel_y=0.0,
+                         longitude=max_lon, latitude=max_lat, name="NE"),
+            ControlPoint(pixel_x=float(image_width), pixel_y=float(image_height),
+                         longitude=max_lon, latitude=min_lat, name="SE"),
+            ControlPoint(pixel_x=0.0, pixel_y=float(image_height),
+                         longitude=min_lon, latitude=min_lat, name="SW"),
+        ]
+        super().__init__(corners, use_validation=False,
+                         export_proj_string=export_proj_string)
+
+        self.image_width = float(image_width)
+        self.image_height = float(image_height)
+        self.min_lon = min_lon
+        self.max_lon = max_lon
+        self._merc_top = self._lat_to_merc(max_lat)
+        self._merc_bottom = self._lat_to_merc(min_lat)
+
+        self._set_reference_point()
+        self.compute_reprojection_error()
+
+    @staticmethod
+    def _lat_to_merc(lat: float) -> float:
+        return math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
+
+    @staticmethod
+    def _merc_to_lat(merc: float) -> float:
+        return math.degrees(2 * math.atan(math.exp(merc)) - math.pi / 2)
+
+    def compute_transformation(self):
+        """Analytic transform — nothing to fit."""
+
+    def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_inverse_to_point(pixel_x, pixel_y)
+        lon = self.min_lon + (pixel_x / self.image_width) * (self.max_lon - self.min_lon)
+        merc = self._merc_top - (pixel_y / self.image_height) * (self._merc_top - self._merc_bottom)
+        return lon, self._merc_to_lat(merc)
+
+    def geo_to_pixel_unadjusted(self, longitude: float, latitude: float) -> Tuple[float, float]:
+        pixel_x = (longitude - self.min_lon) / (self.max_lon - self.min_lon) * self.image_width
+        merc = self._lat_to_merc(latitude)
+        pixel_y = (self._merc_top - merc) / (self._merc_top - self._merc_bottom) * self.image_height
+        return pixel_x, pixel_y
+
+    def geo_to_pixel(self, longitude: float, latitude: float) -> Tuple[float, float]:
+        pixel_x, pixel_y = self.geo_to_pixel_unadjusted(longitude, latitude)
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_to_point(pixel_x, pixel_y)
+        return pixel_x, pixel_y
+
+    def get_scale_factor(self) -> Tuple[float, float]:
+        """Meters per pixel at the reference (center) latitude."""
+        R = 6371000.0
+        cos_ref = math.cos(math.radians(self.reference_lat))
+        lon_span_rad = math.radians(self.max_lon - self.min_lon)
+        scale_x = R * cos_ref * lon_span_rad / self.image_width
+        # dNorth = R*cos(lat)*dMerc for spherical Mercator
+        scale_y = R * cos_ref * (self._merc_top - self._merc_bottom) / self.image_height
+        return scale_x, scale_y
+
+
 def create_transformer_from_bounds(
     image_width: int,
     image_height: int,
@@ -1420,13 +1506,12 @@ def create_transformer_from_bounds(
     max_lon: float,
     max_lat: float,
     export_proj_string: Optional[str] = None,
-) -> Optional[AffineTransformer]:
+) -> Optional[WebMercatorTransformer]:
     """
-    Create an AffineTransformer from image dimensions and geographic bounds.
+    Create a WebMercatorTransformer from image dimensions and geographic bounds.
 
-    Synthesizes corner control points mapping image corners to geographic
-    coordinates. Ideal for nadir (orthophoto/satellite) imagery where the
-    relationship between pixels and geography is a simple affine transform.
+    Intended for stitched web-map tile imagery (aerial view), where pixel
+    rows are spaced linearly in Web-Mercator y rather than in latitude.
 
     Image layout convention: pixel (0,0) = top-left = (min_lon, max_lat),
     pixel (W,H) = bottom-right = (max_lon, min_lat).
@@ -1438,27 +1523,15 @@ def create_transformer_from_bounds(
         export_proj_string: Optional pyproj string for metric conversions.
 
     Returns:
-        AffineTransformer if successful, None on error.
+        WebMercatorTransformer if successful, None on error.
     """
-    from orbit.models.project import ControlPoint
-
-    corners = [
-        ControlPoint(pixel_x=0.0, pixel_y=0.0,
-                     longitude=min_lon, latitude=max_lat, name="NW"),
-        ControlPoint(pixel_x=float(image_width), pixel_y=0.0,
-                     longitude=max_lon, latitude=max_lat, name="NE"),
-        ControlPoint(pixel_x=float(image_width), pixel_y=float(image_height),
-                     longitude=max_lon, latitude=min_lat, name="SE"),
-        ControlPoint(pixel_x=0.0, pixel_y=float(image_height),
-                     longitude=min_lon, latitude=min_lat, name="SW"),
-    ]
-
     try:
-        return AffineTransformer(
-            corners, use_validation=False,
+        return WebMercatorTransformer(
+            image_width, image_height,
+            min_lon, min_lat, max_lon, max_lat,
             export_proj_string=export_proj_string,
         )
-    except (ValueError, np.linalg.LinAlgError) as e:
+    except (ValueError, OverflowError) as e:
         logger.error(f"Error creating bounds transformer: {e}")
         return None
 

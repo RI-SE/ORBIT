@@ -8,7 +8,10 @@ Four coordinate frames: **image pixels** (y-down, origin top-left) ↔ **geo lon
 
 ## HIGH priority
 
-### H1. Aerial-view transformer ignores Web-Mercator nonlinearity
+### H1. Aerial-view transformer ignores Web-Mercator nonlinearity — ✅ IMPLEMENTED (2026-06-10)
+**Change:** new `WebMercatorTransformer` (`orbit/utils/coordinate_transform.py`, subclass of `CoordinateTransformer`) maps pixel_x linearly in longitude and pixel_y linearly in spherical-Mercator y = ln(tan(π/4+φ/2)) — exact for stitched slippy-map tiles, no fitting involved. `create_transformer_from_bounds()` now returns it instead of a corner-fitted `AffineTransformer` (the aerial view switch was its only production caller, both call sites). Supports adjustments, `geo_to_pixel_unadjusted`, and `get_scale_factor` (meters/px at center latitude; x and y scales agree for square-Mercator tile grids). Earth radius cancels in the pixel↔geo mapping, so no datum constant enters it. Invalid bounds (non-positive dims, inverted bounds, |lat| ≥ 90) make the factory return None as before. Tests updated: the old assertions baked in the linear-latitude assumption (image center == latitude midpoint) — replaced with Mercator-midpoint assertions and resolution-proportionality checks, plus new tests for isotropic scale and invalid bounds (`tests/unit/test_utils/test_transformer_from_bounds.py`). Effect: editing in aerial view no longer bakes the mid-image N/S offset (~0.05–0.2 m at 57°N for 1–2 km extents, quadratically worse for larger areas) into geo coordinates.
+
+Original finding:
 `create_transformer_from_bounds()` (`orbit/utils/coordinate_transform.py:1415-1463`) fits an affine transform **linear in latitude** from the 4 tile-image corners. ESRI tiles are EPSG:3857: pixel_y is linear in mercator-y = ln(tan(π/4+φ/2)), not in φ. Corners are exact; mid-image geometry is shifted north/south by ≈ R·tan(φ)·Δφ²/8 — at 57°N: ~0.05 m for 1 km extent, ~0.2 m at 2 km, ~1.2 m at 5 km. **Because editing happens in aerial view, this error is baked into geo_points** via `pixel_to_geo` on the aerial transformer and survives the switch back. For survey-grade GCP work (<0.2 m), this alone can consume the error budget.
 
 **Fix:** make the aerial transformer mercator-aware — convert pixel_y↔lat through the mercator formula (tile y is exactly linear in mercator-y), or synthesize a grid of control points (not just corners) so the affine/homography fit averages the error down, or define the aerial transformer analytically from tile (zoom, x, y) instead of corner bounds.
@@ -88,6 +91,6 @@ Entities that enter aerial view *without* geo coords get geo assigned via the **
 
 1. ~~H3 (one-line guard per export) and M1, M2, L3~~ — ✅ done 2026-06-09.
 2. ~~H2 + H4 + M5 + L6 together — single geo/pixel sync contract~~ — ✅ done 2026-06-09 (`orbit/utils/geo_sync.py`, `Polyline.geo_stale`, shared by writer + reproject; 2531 tests pass).
-3. H1 — mercator-aware aerial transformer (directly improves aerial-edit accuracy).
+3. ~~H1 — mercator-aware aerial transformer~~ — ✅ done 2026-06-10 (`WebMercatorTransformer`; 2533 tests pass).
 4. M3 + M4 — metric-frame and constant unification.
 5. M6, M7, L-items — opportunistic, with an aerial-edit→export integration test added first.
