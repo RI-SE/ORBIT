@@ -4372,8 +4372,10 @@ class ImageView(QGraphicsView):
             item = self.polyline_items[self.drag_polyline_id]
             drag_x, drag_y = scene_pos.x(), scene_pos.y()
 
-            # Endpoint snap detection
-            if self._dragging_endpoint and self.project:
+            # Endpoint snap detection. Holding Shift bypasses snapping so a point
+            # coincident with another road's endpoint can be pulled apart.
+            snap_bypassed = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+            if self._dragging_endpoint and self.project and not snap_bypassed:
                 road = self._find_road_by_centerline(self.drag_polyline_id)
                 exclude_id = road.id if road else None
                 nearby = self.project.find_nearby_road_endpoints(
@@ -4387,6 +4389,9 @@ class ImageView(QGraphicsView):
                 else:
                     self._snap_target = None
                     self._remove_snap_indicator()
+            elif self._dragging_endpoint:
+                self._snap_target = None
+                self._remove_snap_indicator()
 
             item.polyline.update_point(self.drag_point_index, drag_x, drag_y)
             item.update_graphics()

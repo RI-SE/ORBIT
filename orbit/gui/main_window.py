@@ -3307,6 +3307,11 @@ class MainWindow(QMainWindow):
 
     def get_current_scale(self):
         """Get current scale (m/px) from georeferencing, or None."""
+        # In aerial view the active transformer is the aerial tile transformer,
+        # which has a different m/px than the original image. Edit-triggered
+        # redraws must use it so lane widths match the initial aerial render.
+        if self._aerial_view_active and self._aerial_transformer is not None:
+            return self._aerial_transformer.get_scale_factor()
         return self.controller.get_current_scale()
 
     def _initialize_and_refresh_geo_coords(self):
