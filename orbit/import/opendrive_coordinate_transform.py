@@ -12,6 +12,8 @@ import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from orbit.utils.geo_constants import METERS_PER_DEGREE
+
 
 @dataclass
 class TransformMode:
@@ -237,6 +239,9 @@ class OpenDriveCoordinateTransform:
         Applies header offset before conversion - OpenDRIVE coordinates are
         relative to the offset specified in the header.
 
+        Assumes the offset is a rigid transform applied rotate-first:
+        absolute = R(hdg) * (x, y) + (offset_x, offset_y).
+
         Args:
             x_meters: X coordinate in meters (relative to header offset)
             y_meters: Y coordinate in meters (relative to header offset)
@@ -245,6 +250,13 @@ class OpenDriveCoordinateTransform:
             Tuple of (longitude, latitude) in decimal degrees
         """
         # Apply header offset - coordinates in file are relative to this offset
+        if self.header_offset_hdg:
+            cos_h = math.cos(self.header_offset_hdg)
+            sin_h = math.sin(self.header_offset_hdg)
+            x_meters, y_meters = (
+                x_meters * cos_h - y_meters * sin_h,
+                x_meters * sin_h + y_meters * cos_h,
+            )
         x_absolute = x_meters + self.header_offset_x
         y_absolute = y_meters + self.header_offset_y
 
@@ -268,18 +280,19 @@ class OpenDriveCoordinateTransform:
             origin_lat, origin_lon = self._extract_origin_from_proj4()
 
             if origin_lat and origin_lon:
-                # Simple approximation: meters to degrees
-                # At mid-latitudes: ~111000 m per degree latitude, ~111000*cos(lat) m per degree longitude
-                meters_per_degree_lat = 111000.0
-                meters_per_degree_lon = 111000.0 * math.cos(math.radians(origin_lat))
+                # Simple equirectangular approximation: meters to degrees
+                meters_per_degree_lat = METERS_PER_DEGREE
+                meters_per_degree_lon = METERS_PER_DEGREE * math.cos(math.radians(origin_lat))
 
                 lat = origin_lat + (y_absolute / meters_per_degree_lat)
                 lon = origin_lon + (x_absolute / meters_per_degree_lon)
 
                 return (lon, lat)
 
-            # Last resort: return metric coords as if they were degrees (will be wrong)
-            return (x_absolute, y_absolute)
+            raise ValueError(
+                "Cannot convert OpenDRIVE coordinates to lat/lon: pyproj is not "
+                "installed and the geoReference string has no +lat_0/+lon_0 origin."
+            )
 
     def _extract_origin_from_proj4(self) -> Tuple[Optional[float], Optional[float]]:
         """
@@ -319,7 +332,8 @@ class OpenDriveCoordinateTransform:
         Returns:
             List of (pixel_x, pixel_y, lon, lat) tuples
         """
-        if not self.data_min_x or not self.data_max_x:
+        if (self.data_min_x is None or self.data_max_x is None
+                or self.data_min_y is None or self.data_max_y is None):
             return []
 
         # Create 4 control points at corners of data bounds

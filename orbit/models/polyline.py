@@ -131,24 +131,29 @@ class Polyline:
     s_offsets: Optional[List[float]] = None  # S-coordinate for each point (if available)
     osm_node_ids: Optional[List[Optional[int]]] = None  # OSM node IDs for each point (from OSM import)
     geometry_segments: Optional[List[GeometrySegment]] = None  # Preserved geometry from OpenDRIVE import
+    geo_stale: bool = False  # Pixel points edited since geo_points last synced
 
     def add_point(self, x: float, y: float) -> None:
         """Add a point to the end of the polyline."""
         self.points.append((x, y))
+        self.geo_stale = True
 
     def insert_point(self, index: int, x: float, y: float) -> None:
         """Insert a point at the specified index."""
         self.points.insert(index, (x, y))
+        self.geo_stale = True
 
     def remove_point(self, index: int) -> None:
         """Remove a point at the specified index."""
         if 0 <= index < len(self.points):
             self.points.pop(index)
+            self.geo_stale = True
 
     def update_point(self, index: int, x: float, y: float) -> None:
         """Update the coordinates of a point at the specified index."""
         if 0 <= index < len(self.points):
             self.points[index] = (x, y)
+            self.geo_stale = True
 
     def get_point(self, index: int) -> Tuple[float, float]:
         """Get the coordinates of a point at the specified index."""
@@ -230,6 +235,8 @@ class Polyline:
             data['osm_node_ids'] = self.osm_node_ids
         if self.geometry_segments is not None:
             data['geometry_segments'] = [seg.to_dict() for seg in self.geometry_segments]
+        if self.geo_stale:
+            data['geo_stale'] = True
         return data
 
     @classmethod
@@ -270,7 +277,8 @@ class Polyline:
             elevations=data.get('elevations'),
             s_offsets=data.get('s_offsets'),
             osm_node_ids=data.get('osm_node_ids'),
-            geometry_segments=geometry_segments
+            geometry_segments=geometry_segments,
+            geo_stale=data.get('geo_stale', False)
         )
 
     def __repr__(self) -> str:

@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 import numpy as np
 from pyproj import Proj
 
+from .geo_constants import EARTH_RADIUS_M, METERS_PER_DEGREE
 from .logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -245,8 +246,7 @@ class CoordinateTransformer:
         self.use_validation = use_validation
 
         # Export projection (pyproj-based conversion instead of equirectangular)
-        self._export_proj_string: Optional[str] = export_proj_string
-        self._export_proj: Optional[Proj] = None
+        self._init_export_proj(export_proj_string)
 
         # Separate training (GCP) and validation (GVP) points
         if use_validation:
@@ -291,25 +291,29 @@ class CoordinateTransformer:
         """Check if an adjustment is currently applied."""
         return self.adjustment is not None and not self.adjustment.is_identity()
 
-    def _set_reference_point(self):
-        """Set reference point as mean of all control points.
+    def _init_export_proj(self, export_proj_string: Optional[str]):
+        """Initialize the export projection (single place — see a13a6d7 bug class)."""
+        self._export_proj_string: Optional[str] = export_proj_string
+        self._export_proj: Optional[Proj] = (
+            Proj(export_proj_string) if export_proj_string else None)
 
-        Also initializes the pyproj Proj if export_proj_string was provided.
-        """
+    def _set_reference_point(self):
+        """Set reference point as mean of all control points."""
         if not self.all_control_points:
             return
         self.reference_lat = np.mean([cp.latitude for cp in self.all_control_points])
         self.reference_lon = np.mean([cp.longitude for cp in self.all_control_points])
 
-        if self._export_proj_string:
-            self._export_proj = Proj(self._export_proj_string)
-
     def latlon_to_meters(self, lat: float, lon: float) -> Tuple[float, float]:
         """
         Convert lat/lon to metric coordinates.
 
-        When export_proj_string is set, uses pyproj for accurate projection.
-        Otherwise uses equirectangular approximation (suitable for areas <100km).
+        FRAME DEPENDS ON MODE: with export_proj_string set this returns
+        absolute projected coordinates (e.g. UTM eastings/northings) via
+        pyproj; otherwise local meters relative to the control-point mean
+        (equirectangular, suitable for areas <100 km). Use
+        latlon_to_local_meters / latlon_to_projected when a specific
+        frame is required.
 
         Args:
             lat: Latitude in decimal degrees
@@ -319,29 +323,15 @@ class CoordinateTransformer:
             Tuple of (east, north) in meters
         """
         if self._export_proj is not None:
-            return self._export_proj(lon, lat)
-
-        if self.reference_lat is None or self.reference_lon is None:
-            raise ValueError("Reference point not set. Call compute transformation first.")
-
-        R = 6371000.0  # Earth radius in meters
-
-        lat_rad = math.radians(lat)
-        lon_rad = math.radians(lon)
-        ref_lat_rad = math.radians(self.reference_lat)
-        ref_lon_rad = math.radians(self.reference_lon)
-
-        east = R * (lon_rad - ref_lon_rad) * math.cos(ref_lat_rad)
-        north = R * (lat_rad - ref_lat_rad)
-
-        return east, north
+            return self.latlon_to_projected(lat, lon)
+        return self.latlon_to_local_meters(lat, lon)
 
     def meters_to_latlon(self, east: float, north: float) -> Tuple[float, float]:
         """
         Convert metric coordinates back to lat/lon.
 
-        When export_proj_string is set, uses pyproj inverse projection.
-        Otherwise uses equirectangular approximation.
+        FRAME DEPENDS ON MODE — exact inverse of latlon_to_meters
+        (projected when export_proj_string is set, local otherwise).
 
         Args:
             east: East coordinate in meters
@@ -351,20 +341,64 @@ class CoordinateTransformer:
             Tuple of (latitude, longitude) in decimal degrees
         """
         if self._export_proj is not None:
-            lon, lat = self._export_proj(east, north, inverse=True)
-            return lat, lon
+            return self.projected_to_latlon(east, north)
+        return self.local_meters_to_latlon(east, north)
 
+    def latlon_to_projected(self, lat: float, lon: float) -> Tuple[float, float]:
+        """Convert lat/lon to absolute projected coords via the export projection."""
+        if self._export_proj is None:
+            raise ValueError("No export projection set (export_proj_string).")
+        return self._export_proj(lon, lat)
+
+    def projected_to_latlon(self, east: float, north: float) -> Tuple[float, float]:
+        """Convert absolute projected coords back to (lat, lon)."""
+        if self._export_proj is None:
+            raise ValueError("No export projection set (export_proj_string).")
+        lon, lat = self._export_proj(east, north, inverse=True)
+        return lat, lon
+
+    def latlon_to_local_meters(self, lat: float, lon: float) -> Tuple[float, float]:
+        """Convert lat/lon to local meters around the control-point mean.
+
+        Equirectangular approximation; longitude difference is wrapped so
+        areas near the antimeridian convert correctly.
+        """
         if self.reference_lat is None or self.reference_lon is None:
             raise ValueError("Reference point not set. Call compute transformation first.")
 
-        R = 6371000.0
+        R = EARTH_RADIUS_M
+
+        lat_rad = math.radians(lat)
+        lon_rad = math.radians(lon)
         ref_lat_rad = math.radians(self.reference_lat)
         ref_lon_rad = math.radians(self.reference_lon)
 
-        lat_rad = ref_lat_rad + (north / R)
-        lon_rad = ref_lon_rad + (east / (R * math.cos(ref_lat_rad)))
+        dlon_rad = (lon_rad - ref_lon_rad + math.pi) % (2 * math.pi) - math.pi
+        east = R * dlon_rad * math.cos(ref_lat_rad)
+        north = R * (lat_rad - ref_lat_rad)
 
-        return math.degrees(lat_rad), math.degrees(lon_rad)
+        return east, north
+
+    def local_meters_to_latlon(self, east: float, north: float) -> Tuple[float, float]:
+        """Convert local meters back to (lat, lon)."""
+        if self.reference_lat is None or self.reference_lon is None:
+            raise ValueError("Reference point not set. Call compute transformation first.")
+
+        R = EARTH_RADIUS_M
+        ref_lat_rad = math.radians(self.reference_lat)
+        ref_lon_rad = math.radians(self.reference_lon)
+
+        cos_ref = math.cos(ref_lat_rad)
+        if abs(cos_ref) < 1e-9:
+            raise ValueError(
+                "Reference latitude too close to a pole for equirectangular conversion")
+
+        lat_rad = ref_lat_rad + (north / R)
+        lon_rad = ref_lon_rad + (east / (R * cos_ref))
+        lon = math.degrees(lon_rad)
+        lon = (lon + 180.0) % 360.0 - 180.0
+
+        return math.degrees(lat_rad), lon
 
     def compute_transformation(self):
         """Compute transformation matrix. Must be implemented by subclass."""
@@ -398,16 +432,18 @@ class CoordinateTransformer:
 
     def pixel_to_meters(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
         """
-        Convert pixel coordinates to local metric coordinates (meters).
+        Convert pixel coordinates to metric coordinates (meters).
 
-        Uses the center of the control points as the local origin (0, 0).
+        Frame follows latlon_to_meters: absolute projected coords when an
+        export projection is set, otherwise local meters around the
+        control-point mean.
 
         Args:
             pixel_x: X coordinate in pixels
             pixel_y: Y coordinate in pixels
 
         Returns:
-            Tuple of (x_meters, y_meters) in local metric coordinate system
+            Tuple of (x_meters, y_meters)
         """
         # First convert to geographic coordinates
         lon, lat = self.pixel_to_geo(pixel_x, pixel_y)
@@ -419,7 +455,10 @@ class CoordinateTransformer:
 
     def meters_to_pixel(self, x_meters: float, y_meters: float) -> Tuple[float, float]:
         """
-        Convert local metric coordinates (meters) to pixel coordinates.
+        Convert metric coordinates (meters) to pixel coordinates.
+
+        Frame follows meters_to_latlon (projected or local, see
+        latlon_to_meters).
 
         Args:
             x_meters: X coordinate in meters (east)
@@ -626,8 +665,7 @@ class CoordinateTransformer:
         Returns:
             PROJ4 UTM projection string (e.g., "+proj=utm +zone=33 ...")
         """
-        # Calculate UTM zone from longitude
-        zone = int((self.reference_lon + 180) / 6) + 1
+        zone = self.get_utm_zone()
 
         # Determine hemisphere
         hemisphere = "+north" if self.reference_lat >= 0 else "+south"
@@ -650,7 +688,9 @@ class CoordinateTransformer:
         Returns:
             UTM zone number (1-60)
         """
-        return int((self.reference_lon + 180) / 6) + 1
+        # Clamp: lon == 180 would yield zone 61, lon == -180 belongs to zone 1
+        zone = int((self.reference_lon + 180) / 6) + 1
+        return min(max(zone, 1), 60)
 
     def get_transformation_info(self) -> Dict:
         """
@@ -807,8 +847,8 @@ class AffineTransformer(CoordinateTransformer):
         a3, a4 = self.transform_matrix[1, 0], self.transform_matrix[1, 1]
 
         # Convert degrees per pixel to meters per pixel
-        meters_per_degree_lat = 111000
-        meters_per_degree_lon = 111000 * math.cos(math.radians(self.reference_lat))
+        meters_per_degree_lat = METERS_PER_DEGREE
+        meters_per_degree_lon = METERS_PER_DEGREE * math.cos(math.radians(self.reference_lat))
 
         # Scale in x direction
         scale_x = math.sqrt((a0 * meters_per_degree_lon)**2 + (a3 * meters_per_degree_lat)**2)
@@ -1024,10 +1064,7 @@ class HybridTransformer(CoordinateTransformer):
                  image_width: int = 0, image_height: int = 0):
         # Don't call super().__init__ — we delegate to sub-transformers
         self.all_control_points = control_points
-        self._export_proj_string = export_proj_string
-        self._export_proj = None
-        if export_proj_string:
-            self._export_proj = Proj(export_proj_string)
+        self._init_export_proj(export_proj_string)
 
         # Create both sub-transformers from the same control points
         self._homography = HomographyTransformer(
@@ -1100,7 +1137,7 @@ class HybridTransformer(CoordinateTransformer):
         w = pixel_homo[2]
 
         if abs(w) < 1e-10:
-            px, py = self._affine.geo_to_pixel(longitude, latitude)
+            px, py = self._affine.geo_to_pixel_unadjusted(longitude, latitude)
         else:
             hpx, hpy = pixel_homo[0] / w, pixel_homo[1] / w
             t = self._blend_factor(hpx, hpy, w)
@@ -1108,7 +1145,7 @@ class HybridTransformer(CoordinateTransformer):
             if t >= 1.0:
                 px, py = hpx, hpy
             else:
-                apx, apy = self._affine.geo_to_pixel(longitude, latitude)
+                apx, apy = self._affine.geo_to_pixel_unadjusted(longitude, latitude)
                 if t <= 0.0:
                     px, py = apx, apy
                 else:
@@ -1412,6 +1449,92 @@ def create_transformer(
         return None
 
 
+class WebMercatorTransformer(CoordinateTransformer):
+    """Exact pixel<->geo mapping for imagery on a Web-Mercator pixel grid.
+
+    Assumes pixel_x is linear in longitude and pixel_y is linear in
+    spherical-Mercator y = ln(tan(pi/4 + lat/2)), which holds exactly for
+    stitched slippy-map tiles (EPSG:3857). A latitude-linear affine fit on
+    the same corner bounds misplaces mid-image latitudes by
+    ~R*tan(lat)*dlat^2/8 (meters), growing quadratically with bbox height.
+    """
+
+    def __init__(self, image_width: int, image_height: int,
+                 min_lon: float, min_lat: float,
+                 max_lon: float, max_lat: float,
+                 export_proj_string: Optional[str] = None):
+        if image_width <= 0 or image_height <= 0:
+            raise ValueError("Image dimensions must be positive")
+        if not (max_lon > min_lon and max_lat > min_lat):
+            raise ValueError("Bounds must satisfy max > min")
+        if not (-90.0 < min_lat and max_lat < 90.0):
+            raise ValueError("Latitudes must be strictly within (-90, 90)")
+
+        from orbit.models.project import ControlPoint
+        corners = [
+            ControlPoint(pixel_x=0.0, pixel_y=0.0,
+                         longitude=min_lon, latitude=max_lat, name="NW"),
+            ControlPoint(pixel_x=float(image_width), pixel_y=0.0,
+                         longitude=max_lon, latitude=max_lat, name="NE"),
+            ControlPoint(pixel_x=float(image_width), pixel_y=float(image_height),
+                         longitude=max_lon, latitude=min_lat, name="SE"),
+            ControlPoint(pixel_x=0.0, pixel_y=float(image_height),
+                         longitude=min_lon, latitude=min_lat, name="SW"),
+        ]
+        super().__init__(corners, use_validation=False,
+                         export_proj_string=export_proj_string)
+
+        self.image_width = float(image_width)
+        self.image_height = float(image_height)
+        self.min_lon = min_lon
+        self.max_lon = max_lon
+        self._merc_top = self._lat_to_merc(max_lat)
+        self._merc_bottom = self._lat_to_merc(min_lat)
+
+        self._set_reference_point()
+        self.compute_reprojection_error()
+
+    @staticmethod
+    def _lat_to_merc(lat: float) -> float:
+        return math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
+
+    @staticmethod
+    def _merc_to_lat(merc: float) -> float:
+        return math.degrees(2 * math.atan(math.exp(merc)) - math.pi / 2)
+
+    def compute_transformation(self):
+        """Analytic transform — nothing to fit."""
+
+    def pixel_to_geo(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_inverse_to_point(pixel_x, pixel_y)
+        lon = self.min_lon + (pixel_x / self.image_width) * (self.max_lon - self.min_lon)
+        merc = self._merc_top - (pixel_y / self.image_height) * (self._merc_top - self._merc_bottom)
+        return lon, self._merc_to_lat(merc)
+
+    def geo_to_pixel_unadjusted(self, longitude: float, latitude: float) -> Tuple[float, float]:
+        pixel_x = (longitude - self.min_lon) / (self.max_lon - self.min_lon) * self.image_width
+        merc = self._lat_to_merc(latitude)
+        pixel_y = (self._merc_top - merc) / (self._merc_top - self._merc_bottom) * self.image_height
+        return pixel_x, pixel_y
+
+    def geo_to_pixel(self, longitude: float, latitude: float) -> Tuple[float, float]:
+        pixel_x, pixel_y = self.geo_to_pixel_unadjusted(longitude, latitude)
+        if self.adjustment is not None:
+            pixel_x, pixel_y = self.adjustment.apply_to_point(pixel_x, pixel_y)
+        return pixel_x, pixel_y
+
+    def get_scale_factor(self) -> Tuple[float, float]:
+        """Meters per pixel at the reference (center) latitude."""
+        R = EARTH_RADIUS_M
+        cos_ref = math.cos(math.radians(self.reference_lat))
+        lon_span_rad = math.radians(self.max_lon - self.min_lon)
+        scale_x = R * cos_ref * lon_span_rad / self.image_width
+        # dNorth = R*cos(lat)*dMerc for spherical Mercator
+        scale_y = R * cos_ref * (self._merc_top - self._merc_bottom) / self.image_height
+        return scale_x, scale_y
+
+
 def create_transformer_from_bounds(
     image_width: int,
     image_height: int,
@@ -1420,13 +1543,12 @@ def create_transformer_from_bounds(
     max_lon: float,
     max_lat: float,
     export_proj_string: Optional[str] = None,
-) -> Optional[AffineTransformer]:
+) -> Optional[WebMercatorTransformer]:
     """
-    Create an AffineTransformer from image dimensions and geographic bounds.
+    Create a WebMercatorTransformer from image dimensions and geographic bounds.
 
-    Synthesizes corner control points mapping image corners to geographic
-    coordinates. Ideal for nadir (orthophoto/satellite) imagery where the
-    relationship between pixels and geography is a simple affine transform.
+    Intended for stitched web-map tile imagery (aerial view), where pixel
+    rows are spaced linearly in Web-Mercator y rather than in latitude.
 
     Image layout convention: pixel (0,0) = top-left = (min_lon, max_lat),
     pixel (W,H) = bottom-right = (max_lon, min_lat).
@@ -1438,27 +1560,15 @@ def create_transformer_from_bounds(
         export_proj_string: Optional pyproj string for metric conversions.
 
     Returns:
-        AffineTransformer if successful, None on error.
+        WebMercatorTransformer if successful, None on error.
     """
-    from orbit.models.project import ControlPoint
-
-    corners = [
-        ControlPoint(pixel_x=0.0, pixel_y=0.0,
-                     longitude=min_lon, latitude=max_lat, name="NW"),
-        ControlPoint(pixel_x=float(image_width), pixel_y=0.0,
-                     longitude=max_lon, latitude=max_lat, name="NE"),
-        ControlPoint(pixel_x=float(image_width), pixel_y=float(image_height),
-                     longitude=max_lon, latitude=min_lat, name="SE"),
-        ControlPoint(pixel_x=0.0, pixel_y=float(image_height),
-                     longitude=min_lon, latitude=min_lat, name="SW"),
-    ]
-
     try:
-        return AffineTransformer(
-            corners, use_validation=False,
+        return WebMercatorTransformer(
+            image_width, image_height,
+            min_lon, min_lat, max_lon, max_lat,
             export_proj_string=export_proj_string,
         )
-    except (ValueError, np.linalg.LinAlgError) as e:
+    except (ValueError, OverflowError) as e:
         logger.error(f"Error creating bounds transformer: {e}")
         return None
 

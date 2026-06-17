@@ -18,6 +18,7 @@ from orbit.models.road import RoadType
 from orbit.models.signal import SignalType
 from orbit.utils import CoordinateTransformer
 from orbit.utils.enum_formatting import format_enum_name
+from orbit.utils.geo_constants import METERS_PER_DEGREE
 from orbit.utils.geometry import calculate_path_length, find_point_at_distance_along_path, shorten_geo_points
 from orbit.utils.logging_config import get_logger
 
@@ -92,8 +93,8 @@ def calculate_bbox_from_center(center_lat: float, center_lon: float,
     Returns:
         Tuple of (min_lat, min_lon, max_lat, max_lon)
     """
-    dlat = radius_m / 111_000
-    dlon = radius_m / (111_000 * math.cos(math.radians(center_lat)))
+    dlat = radius_m / METERS_PER_DEGREE
+    dlon = radius_m / (METERS_PER_DEGREE * math.cos(math.radians(center_lat)))
     return (center_lat - dlat, center_lon - dlon,
             center_lat + dlat, center_lon + dlon)
 

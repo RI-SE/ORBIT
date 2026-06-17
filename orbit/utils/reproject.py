@@ -10,6 +10,7 @@ from typing import Optional
 
 from orbit.models.project import Project
 from orbit.utils.coordinate_transform import CoordinateTransformer
+from orbit.utils.geo_sync import refresh_stale_geo_points
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,15 @@ def reproject_project_geometry(
     Returns:
         Number of entities re-projected.
     """
+    # Bring geo coords in sync with any pixel edits made in the current
+    # pixel space before geo_to_pixel overwrites the pixel positions —
+    # otherwise unsynced pixel edits would be silently reverted.
+    # edited_only: unflagged drift may come from adjustment/transformer
+    # changes where geo is the authority, so only explicit edits and
+    # length mismatches are reconciled here.
+    if old_transformer is not None:
+        refresh_stale_geo_points(project, old_transformer, edited_only=True)
+
     count = 0
 
     # --- Polylines ---

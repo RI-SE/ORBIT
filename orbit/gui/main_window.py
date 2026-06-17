@@ -902,6 +902,8 @@ class MainWindow(QMainWindow):
         """Export project to OpenDrive format."""
         from .dialogs.export_dialog import ExportDialog
 
+        self._ensure_original_view_for_save()
+
         if not self._prompt_and_handle_unapplied_adjustment():
             return
 
@@ -934,6 +936,8 @@ class MainWindow(QMainWindow):
         from pathlib import Path as _Path
 
         from orbit.export.osm_writer import export_to_osm
+
+        self._ensure_original_view_for_save()
 
         if not self._prompt_and_handle_unapplied_adjustment():
             return
@@ -1020,6 +1024,8 @@ class MainWindow(QMainWindow):
     def export_georeferencing(self):
         """Export georeferencing parameters to JSON file."""
         from orbit.export import export_georeferencing
+
+        self._ensure_original_view_for_save()
 
         if not self._check_provenance_ready():
             return
@@ -1129,6 +1135,8 @@ class MainWindow(QMainWindow):
 
     def export_layout_mask(self):
         """Export lane segmentation mask and metadata JSON."""
+        self._ensure_original_view_for_save()
+
         # Validate prerequisites
         if not self.image_view.image_item:
             show_warning(self, "Cannot export: No image loaded.", "No Image")
@@ -3114,12 +3122,20 @@ class MainWindow(QMainWindow):
             return
 
         # Resize aerial image so its pixels/meter matches the original image.
+        # Geometric mean of x/y scales: oblique source imagery has
+        # anisotropic scale, so neither axis alone is representative.
+        import math as _math
+
         import cv2 as _cv2
         orig_scale_x, orig_scale_y = self._original_transformer.get_scale_factor()
         aerial_scale_x, aerial_scale_y = aerial_transformer_raw.get_scale_factor()
         aerial_image = result.image
-        if orig_scale_x > 0 and aerial_scale_x > 0:
-            resize_ratio = aerial_scale_x / orig_scale_x
+        orig_scale = (_math.sqrt(orig_scale_x * orig_scale_y)
+                      if orig_scale_x > 0 and orig_scale_y > 0 else 0.0)
+        aerial_scale = (_math.sqrt(aerial_scale_x * aerial_scale_y)
+                        if aerial_scale_x > 0 and aerial_scale_y > 0 else 0.0)
+        if orig_scale > 0 and aerial_scale > 0:
+            resize_ratio = aerial_scale / orig_scale
             if abs(resize_ratio - 1.0) > 0.01:
                 new_w = max(1, round(w * resize_ratio))
                 new_h = max(1, round(h * resize_ratio))
