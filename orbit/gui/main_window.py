@@ -2737,6 +2737,11 @@ class MainWindow(QMainWindow):
         self.image_view.reset_adjustment()
         if self._cached_transformer is not None:
             self._cached_transformer.clear_adjustment()
+            # Drone-assisted: the applied correction lives in
+            # project.transform_adjustment, not in control points. Re-apply it so
+            # resetting the live delta only discards the in-progress adjustment and
+            # keeps the already-applied correction visible. No-op for other methods.
+            self._apply_active_adjustment(self._cached_transformer)
             self.refresh_imported_geometry()
         self._remove_adjustment_ghost()
         self.statusBar().showMessage("Adjustment reset")
@@ -2752,8 +2757,11 @@ class MainWindow(QMainWindow):
     def _remove_adjustment_ghost(self):
         """Remove the ghost overlay from the scene."""
         if self._adjustment_ghost_overlay is not None:
-            if self._adjustment_ghost_overlay.scene():
-                self.image_view.scene.removeItem(self._adjustment_ghost_overlay)
+            try:
+                if self._adjustment_ghost_overlay.scene():
+                    self.image_view.scene.removeItem(self._adjustment_ghost_overlay)
+            except RuntimeError:
+                pass  # Underlying C++ item already deleted by scene.clear()
             self._adjustment_ghost_overlay = None
 
     def _on_autofit_toggled(self, enabled: bool):
