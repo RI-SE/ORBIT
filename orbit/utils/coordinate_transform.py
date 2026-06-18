@@ -1323,7 +1323,10 @@ class DroneAssistedTransformer(CoordinateTransformer):
         g = self.transform_matrix @ p
         east = g[0] / g[2]
         north = g[1] / g[2]
-        lat, lon = self.meters_to_latlon(east, north)
+        # transform_matrix yields local ENU metres around the nadir, so the
+        # inverse must use the local conversion regardless of any export
+        # projection (which only governs geo->projected metres for writing).
+        lat, lon = self.local_meters_to_latlon(east, north)
         return lon, lat
 
     def geo_to_pixel(self, longitude: float, latitude: float) -> Tuple[float, float]:
@@ -1331,7 +1334,7 @@ class DroneAssistedTransformer(CoordinateTransformer):
         if self.inverse_matrix is None:
             raise RuntimeError("Transformation not initialized")
 
-        east, north = self.latlon_to_meters(latitude, longitude)
+        east, north = self.latlon_to_local_meters(latitude, longitude)
         g = np.array([east, north, 1.0])
         p = self.inverse_matrix @ g
         pixel_x = p[0] / p[2]
@@ -1344,7 +1347,7 @@ class DroneAssistedTransformer(CoordinateTransformer):
 
     def geo_to_pixel_unadjusted(self, longitude: float, latitude: float) -> Tuple[float, float]:
         """Convert geographic coordinates to pixel coordinates without adjustment."""
-        east, north = self.latlon_to_meters(latitude, longitude)
+        east, north = self.latlon_to_local_meters(latitude, longitude)
         g = np.array([east, north, 1.0])
         p = self.inverse_matrix @ g
         return p[0] / p[2], p[1] / p[2]

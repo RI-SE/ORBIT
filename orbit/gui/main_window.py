@@ -2251,7 +2251,14 @@ class MainWindow(QMainWindow):
         adj = TransformAdjustment.from_dict(self.project.transform_adjustment)
         if adj.is_identity():
             return
-        self.image_view.current_adjustment = adj
+        # For drone-assisted the stored adjustment is the permanent base, applied
+        # directly to the transformer below. current_adjustment is the LIVE delta
+        # and must stay identity, otherwise _apply_active_adjustment would later
+        # compose the base on top of itself (double transform — visible when
+        # returning from aerial view). For homography/affine the stored value IS
+        # an unbaked live adjustment, so it is restored into current_adjustment.
+        if self.project.transform_method != 'drone_assisted':
+            self.image_view.current_adjustment = adj
         if self._cached_transformer is None:
             self._cached_transformer = self._create_transformer(use_validation=True)
         if self._cached_transformer is not None:
