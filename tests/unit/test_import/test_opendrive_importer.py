@@ -899,6 +899,64 @@ class TestImportLaneSections:
         assert len(sections) == 1
         assert len(sections[0].lanes) == 2  # left + right (no center)
 
+    @staticmethod
+    def _tapering_lane(lane_id):
+        width = Mock()
+        width.a, width.b, width.c, width.d = 3.0, 0.01, 0.0, 0.0
+        lane = Mock()
+        lane.id = lane_id
+        lane.type = "driving"
+        lane.widths = [width]
+        lane.road_marks = []
+        lane.speed_limits = []
+        lane.materials = []
+        lane.heights = []
+        lane.link = None
+        lane.direction = "forward"
+        lane.advisory = None
+        lane.level = False
+        return lane
+
+    def test_single_section_linear_taper_sets_width_end(self, importer):
+        """A linear width polynomial becomes an editable width_end on a single-section road."""
+        mock_section = Mock()
+        mock_section.s = 0.0
+        mock_section.single_side = None
+        mock_section.left_lanes = []
+        mock_section.right_lanes = [self._tapering_lane(-1)]
+
+        sections = importer._import_lane_sections(
+            [mock_section], 100.0, [(0, 0), (100, 0)]
+        )
+
+        lane = sections[0].lanes[0]
+        # width_end = a + b*length = 3.0 + 0.01*100 = 4.0; polynomial cleared.
+        assert lane.width == pytest.approx(3.0)
+        assert lane.width_end == pytest.approx(4.0)
+        assert lane.width_b == 0.0
+        assert lane.has_variable_width
+
+    def test_multi_section_keeps_polynomial(self, importer):
+        """Multi-section roads keep the polynomial (render length differs from section)."""
+        s1 = Mock()
+        s1.s = 0.0
+        s1.single_side = None
+        s1.left_lanes = []
+        s1.right_lanes = [self._tapering_lane(-1)]
+        s2 = Mock()
+        s2.s = 50.0
+        s2.single_side = None
+        s2.left_lanes = []
+        s2.right_lanes = [self._tapering_lane(-1)]
+
+        sections = importer._import_lane_sections(
+            [s1, s2], 100.0, [(0, 0), (50, 0), (100, 0)]
+        )
+
+        lane = sections[0].lanes[0]
+        assert lane.width_b == pytest.approx(0.01)
+        assert lane.width_end is None
+
 
 class TestImportResultWarnings:
     """Tests for ImportResult warnings handling."""

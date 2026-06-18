@@ -2736,7 +2736,11 @@ class MainWindow(QMainWindow):
         self.adjustment_panel.update_display(adjustment)
 
         if self._cached_transformer is not None:
-            self._cached_transformer.set_adjustment(adjustment)
+            # Compose the live delta onto any stored drone base so interactive
+            # edits build on the applied correction instead of replacing it
+            # (otherwise the first keypress drops the base — a large jump).
+            # For non-drone methods this applies the adjustment unchanged.
+            self._apply_active_adjustment(self._cached_transformer)
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
 
     def reset_adjustment(self):
