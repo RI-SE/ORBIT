@@ -34,6 +34,10 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         self.obj = obj
         self.scale_factor = scale_factor  # Meters per pixel
         self.object_changed = None  # Callback function for changes
+        # True while repositioning programmatically (e.g. from geo coords after
+        # an adjustment) so itemChange does not treat it as a user drag and clear
+        # geo_position.
+        self._programmatic_move = False
 
         # Main shape item
         self.shape_item = QGraphicsPathItem()
@@ -68,7 +72,9 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         # Set position and update graphics
         # Don't use setPos for polylines or polygon objects - they're in scene coordinates
         if obj.type.get_shape_type() != "polyline" and not is_polygon_building and not is_polygon:
+            self._programmatic_move = True
             self.setPos(obj.position[0], obj.position[1])
+            self._programmatic_move = False
 
         self.update_graphics()
 
@@ -87,6 +93,16 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
         """Update visual representation based on object properties."""
         shape_type = self.obj.type.get_shape_type()
         color = get_object_color(self.obj.type)
+
+        # Point objects are positioned via setPos (path is centred at origin), so
+        # rebuilding the path alone won't move them. Re-sync scene position from
+        # the (possibly adjustment-updated) model position. Polyline/polygon
+        # objects carry their geometry in obj.points and are excluded.
+        if (shape_type != "polyline" and not self._is_polygon_with_points()
+                and self.pos() != QPointF(*self.obj.position)):
+            self._programmatic_move = True
+            self.setPos(self.obj.position[0], self.obj.position[1])
+            self._programmatic_move = False
 
         # Clear old point handles
         for point_item in self.point_items:
@@ -218,6 +234,11 @@ class ObjectGraphicsItem(QGraphicsItemGroup):
     def itemChange(self, change, value):
         """Handle item changes (position, selection)."""
         if change == QGraphicsItemGroup.GraphicsItemChange.ItemPositionHasChanged:
+            # Programmatic moves (e.g. re-projection from geo coords after an
+            # adjustment) must not be treated as user edits.
+            if self._programmatic_move:
+                return super().itemChange(change, value)
+
             # Update object position (for point objects only)
             if self.obj.type.get_shape_type() != "polyline":
                 pos = self.pos()
