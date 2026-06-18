@@ -335,8 +335,10 @@ class ConnectingRoadLanesGraphicsItem:
                          self.connecting_road.cr_lane_count_right,
                          self.connecting_road.cr_lane_count_left)
 
-        # Get lane polygons
-        lane_polygons = self.connecting_road.get_cr_lane_polygons(scale)
+        # Get lane polygons (pass anisotropic scales for correct metric width)
+        sx, sy = (self.scale_factors if self.scale_factors
+                  else (self.DEFAULT_SCALE, self.DEFAULT_SCALE))
+        lane_polygons = self.connecting_road.get_cr_lane_polygons(scale, sx, sy)
 
         # Create interactive polygon for each lane
         for lane_id, polygon_points in lane_polygons.items():
