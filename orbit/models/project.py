@@ -630,6 +630,18 @@ class Project:
             if road.predecessor_id == road_id:
                 road.predecessor_id = None
 
+        # Unattach objects/signals/parking that were anchored to this road,
+        # so they don't leave dangling road_id references on export.
+        for obj in self.objects:
+            if obj.road_id == road_id:
+                obj.road_id = None
+        for signal in self.signals:
+            if signal.road_id == road_id:
+                signal.road_id = None
+        for parking in self.parking_spaces:
+            if parking.road_id == road_id:
+                parking.road_id = None
+
         # Remove from junctions (connected_road_ids, connecting_road_ids,
         # lane_connections, entry/exit_roads)
         for junction in self.junctions:
@@ -1353,6 +1365,7 @@ class Project:
                 references on roads that point to this junction. Set to False
                 when the junction is being re-added immediately (e.g. modify).
         """
+        connecting_road_ids: List[str] = []
         if cleanup_road_refs:
             junction = self.get_junction(junction_id)
             if junction:
@@ -1361,8 +1374,14 @@ class Project:
                         road.predecessor_junction_id = None
                     if road.successor_junction_id == junction_id:
                         road.successor_junction_id = None
+                # Connecting roads exist only within their junction; remove them
+                # so they don't leave dangling junction_id references on export.
+                connecting_road_ids = list(junction.connecting_road_ids)
 
         self.junctions = [j for j in self.junctions if j.id != junction_id]
+
+        for cr_id in connecting_road_ids:
+            self.remove_road(cr_id)
 
     def get_junction(self, junction_id: str) -> Optional[Junction]:
         """Get a junction by ID."""
@@ -1852,6 +1871,7 @@ class Project:
         project.cleanup_junction_connected_road_ids()
         project.cleanup_empty_junctions()
         project.clear_cross_junction_road_links()
+        project.prune_dangling_references()
         return project
 
     def clear(self) -> None:
@@ -1934,6 +1954,39 @@ class Project:
         if to_remove:
             logger.info(f"Removed {len(to_remove)} empty junction(s): {to_remove}")
         return len(to_remove)
+
+    def prune_dangling_references(self) -> int:
+        """
+        Remove/clear references left dangling by older deletions.
+
+        Drops connecting roads whose junction no longer exists, and clears
+        road_id on objects/signals/parking that point to a deleted road.
+        Repairs files saved before deletion cleanup was complete.
+
+        Returns:
+            Number of dangling references repaired
+        """
+        repaired = 0
+        junction_ids = {j.id for j in self.junctions}
+
+        orphan_crs = [
+            r.id for r in self.roads
+            if r.is_connecting_road and r.junction_id not in junction_ids
+        ]
+        for cr_id in orphan_crs:
+            self.remove_road(cr_id)
+            repaired += 1
+
+        road_ids = {r.id for r in self.roads}
+        for entities in (self.objects, self.signals, self.parking_spaces):
+            for entity in entities:
+                if entity.road_id and entity.road_id not in road_ids:
+                    entity.road_id = None
+                    repaired += 1
+
+        if repaired > 0:
+            logger.info(f"Pruned {repaired} dangling reference(s) from deleted entities")
+        return repaired
 
     def clear_cross_junction_road_links(self) -> int:
         """

@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import QGraphicsScene
 from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
 from orbit.models import BoundaryMode, Polyline, Road
 from orbit.utils.geometry import (
+    build_lane_polygon_metric,
     calculate_directional_scale,
     calculate_offset_polyline,
     create_lane_polygon,
@@ -143,6 +144,12 @@ class RoadLanesGraphicsItem:
             default_scale=self.DEFAULT_SCALE
         )
 
+    def _scale_xy(self) -> Tuple[float, float]:
+        """Anisotropic (scale_x, scale_y) in m/px for metric-space width building."""
+        if self.scale_factors:
+            return self.scale_factors[0], self.scale_factors[1]
+        return self.DEFAULT_SCALE, self.DEFAULT_SCALE
+
     def update_graphics(self) -> None:
         """Update all lane graphics based on current road configuration."""
         # Remove existing lanes
@@ -241,12 +248,12 @@ class RoadLanesGraphicsItem:
             return other_id > 0 and other_id < lane_id
         return other_id < 0 and abs(other_id) < abs(lane_id)
 
-    def _cumulative_inner_offset(self, lane, sorted_lanes, scale):
-        """Calculate cumulative pixel offset of all lanes inner to this one."""
+    def _cumulative_inner_offset(self, lane, sorted_lanes):
+        """Cumulative width (metres) of all lanes inner to this one."""
         total = 0.0
         for inner_lane in sorted_lanes:
             if self._is_inner_lane(lane.id, inner_lane.id):
-                total += inner_lane.width / scale
+                total += inner_lane.width
         return total
 
     def _compute_lane_polygon(
@@ -282,11 +289,12 @@ class RoadLanesGraphicsItem:
         if not outer_polyline or len(outer_polyline.points) < 2:
             return None
 
-        inner_offset_px = self._cumulative_inner_offset(lane, sorted_lanes, scale)
-        inner_boundary = calculate_offset_polyline(
-            section_centerline,
-            inner_offset_px if lane.id > 0 else -inner_offset_px,
-            closed=False
+        inner_offset_m = self._cumulative_inner_offset(lane, sorted_lanes)
+        signed_offset = inner_offset_m if lane.id > 0 else -inner_offset_m
+        sx, sy = self._scale_xy()
+        inner_boundary = build_lane_polygon_metric(
+            section_centerline, sx, sy,
+            lambda cl: calculate_offset_polyline(cl, signed_offset, closed=False)
         )
         if self.verbose:
             logger.debug("      Lane %d: Using explicit outer boundary", lane.id)
@@ -331,23 +339,30 @@ class RoadLanesGraphicsItem:
         section_length_m, scale
     ):
         """Create polygon using polynomial width evaluation at each point."""
+        # Widths returned in METRES; geometry is built in metric space below so
+        # the perpendicular offset is correct under anisotropic pixel scales.
+        # s is a length along the road, so s_px -> s_m keeps the directional scale.
         def inner_width_func(s_px):
             s_m = s_px * scale
             total = 0.0
             for inner_lane in sorted_lanes:
                 if self._is_inner_lane(lane.id, inner_lane.id):
-                    total += inner_lane.get_width_at_s(s_m, section_length_m) / scale
+                    total += inner_lane.get_width_at_s(s_m, section_length_m)
             return total
 
         def lane_width_func(s_px):
             s_m = s_px * scale
-            return lane.get_width_at_s(s_m, section_length_m) / scale
+            return lane.get_width_at_s(s_m, section_length_m)
 
         if self.verbose:
             logger.debug("      Lane %d: Using polynomial width", lane.id)
-        return create_polynomial_width_lane_polygon(
-            section_centerline, lane.id, inner_width_func,
-            lane_width_func, section_s_values, is_left_lane=(lane.id > 0)
+        sx, sy = self._scale_xy()
+        return build_lane_polygon_metric(
+            section_centerline, sx, sy,
+            lambda cl: create_polynomial_width_lane_polygon(
+                cl, lane.id, inner_width_func,
+                lane_width_func, section_s_values, is_left_lane=(lane.id > 0)
+            )
         )
 
     def _compute_variable_width_polygon(
@@ -358,11 +373,11 @@ class RoadLanesGraphicsItem:
         inner_offset_end = 0.0
         for inner_lane in sorted_lanes:
             if self._is_inner_lane(lane.id, inner_lane.id):
-                inner_offset_start += inner_lane.width / scale
-                inner_offset_end += inner_lane.get_width_at_end() / scale
+                inner_offset_start += inner_lane.width
+                inner_offset_end += inner_lane.get_width_at_end()
 
-        outer_offset_start = inner_offset_start + lane.width / scale
-        outer_offset_end = inner_offset_end + lane.get_width_at_end() / scale
+        outer_offset_start = inner_offset_start + lane.width
+        outer_offset_end = inner_offset_end + lane.get_width_at_end()
 
         if lane.id > 0:
             inner_offset_start = -inner_offset_start
@@ -370,24 +385,32 @@ class RoadLanesGraphicsItem:
             inner_offset_end = -inner_offset_end
             outer_offset_end = -outer_offset_end
 
-        return create_variable_width_lane_polygon(
-            section_centerline, inner_offset_start, outer_offset_start,
-            inner_offset_end, outer_offset_end
+        sx, sy = self._scale_xy()
+        return build_lane_polygon_metric(
+            section_centerline, sx, sy,
+            lambda cl: create_variable_width_lane_polygon(
+                cl, inner_offset_start, outer_offset_start,
+                inner_offset_end, outer_offset_end
+            )
         )
 
     def _compute_constant_width_polygon(
         self, lane, sorted_lanes, section_centerline, scale
     ):
         """Create polygon using constant lane width offset."""
-        inner_offset = self._cumulative_inner_offset(lane, sorted_lanes, scale)
-        outer_offset = inner_offset + lane.width / scale
+        inner_offset = self._cumulative_inner_offset(lane, sorted_lanes)
+        outer_offset = inner_offset + lane.width
 
         if lane.id > 0:
             inner_offset = -inner_offset
             outer_offset = -outer_offset
 
-        return create_lane_polygon(
-            section_centerline, inner_offset, outer_offset, closed=False
+        sx, sy = self._scale_xy()
+        return build_lane_polygon_metric(
+            section_centerline, sx, sy,
+            lambda cl: create_lane_polygon(
+                cl, inner_offset, outer_offset, closed=False
+            )
         )
 
     def _add_lane_scene_item(self, lane_id, section_number, polygon_points):
@@ -413,8 +436,10 @@ class RoadLanesGraphicsItem:
         right_count = self.road.lane_info.right_count
         lane_width_m = self.road.lane_info.lane_width
 
-        # Convert lane width to pixels
-        lane_width_px = lane_width_m / scale
+        # Lane widths stay in metres; polygons are built in metric space so the
+        # perpendicular offset is anisotropy-correct (see build_lane_polygon_metric).
+        sx, sy = self._scale_xy()
+        lane_width_px = lane_width_m / scale  # for verbose logging only
 
         # Verbose output for debugging
         if self.verbose:
@@ -437,14 +462,14 @@ class RoadLanesGraphicsItem:
         # Create right-hand lanes (negative IDs in OpenDRIVE: -1, -2, -3, ...)
         # Use POSITIVE offsets to place on right side (in screen coords: positive = right)
         for lane_num in range(1, right_count + 1):
-            inner_offset = (lane_num - 1) * lane_width_px
-            outer_offset = lane_num * lane_width_px
+            inner_offset = (lane_num - 1) * lane_width_m
+            outer_offset = lane_num * lane_width_m
 
-            polygon_points = create_lane_polygon(
-                centerline_points,
-                inner_offset,
-                outer_offset,
-                closed=self.centerline.closed
+            polygon_points = build_lane_polygon_metric(
+                centerline_points, sx, sy,
+                lambda cl, io=inner_offset, oo=outer_offset: create_lane_polygon(
+                    cl, io, oo, closed=self.centerline.closed
+                )
             )
 
             if polygon_points:
@@ -454,14 +479,14 @@ class RoadLanesGraphicsItem:
         # Create left-hand lanes (positive IDs in OpenDRIVE: 1, 2, 3, ...)
         # Use NEGATIVE offsets to place on left side (in screen coords: negative = left)
         for lane_num in range(1, left_count + 1):
-            inner_offset = -(lane_num - 1) * lane_width_px
-            outer_offset = -lane_num * lane_width_px
+            inner_offset = -(lane_num - 1) * lane_width_m
+            outer_offset = -lane_num * lane_width_m
 
-            polygon_points = create_lane_polygon(
-                centerline_points,
-                inner_offset,
-                outer_offset,
-                closed=self.centerline.closed
+            polygon_points = build_lane_polygon_metric(
+                centerline_points, sx, sy,
+                lambda cl, io=inner_offset, oo=outer_offset: create_lane_polygon(
+                    cl, io, oo, closed=self.centerline.closed
+                )
             )
 
             if polygon_points:

@@ -63,6 +63,31 @@ def offset_point(point: Tuple[float, float], perpendicular: Tuple[float, float],
     )
 
 
+def build_lane_polygon_metric(
+    centerline_px: List[Tuple[float, float]],
+    scale_x: float,
+    scale_y: float,
+    build_fn,
+) -> List[Tuple[float, float]]:
+    """Run a perpendicular-offset polygon builder in metric space.
+
+    Lane width is a real-world (perpendicular) distance, so under anisotropic
+    pixel scales (scale_x != scale_y) it cannot be reproduced by a single pixel
+    offset. This scales the centerline into metres, lets ``build_fn`` offset by
+    metres along the (now metric) perpendicular, then scales the polygon back to
+    pixels — exact for any road direction, including curves and roundabouts.
+
+    ``build_fn`` receives the metric centerline and must return a metric polygon;
+    every offset/width it uses must be in metres. With no/zero scale the builder
+    is called directly on the pixel centerline (offsets treated as pixels).
+    """
+    if not scale_x or not scale_y:
+        return build_fn(centerline_px)
+    metric_cl = [(x * scale_x, y * scale_y) for x, y in centerline_px]
+    metric_poly = build_fn(metric_cl)
+    return [(x / scale_x, y / scale_y) for x, y in metric_poly]
+
+
 def calculate_offset_polyline(points: List[Tuple[float, float]],
                                offset_distance: float,
                                closed: bool = False) -> List[Tuple[float, float]]:
@@ -1211,16 +1236,20 @@ def calculate_directional_scale(
     points: List[Tuple[float, float]],
     scale_x: float,
     scale_y: float,
-    default_scale: Optional[float] = None
+    default_scale: Optional[float] = None,
+    perpendicular: bool = False,
 ) -> float:
     """
     Calculate appropriate scale factor based on polyline direction.
 
-    For roads/polylines running primarily horizontal (east-west), weight scale_x more.
-    For roads/polylines running primarily vertical (north-south), weight scale_y more.
-    For diagonal roads, interpolate between scale_x and scale_y.
+    Default (``perpendicular=False``) gives the scale *along* the polyline,
+    used for length/s conversions: a horizontal road weights scale_x.
 
-    This accounts for non-uniform pixel scales in images where scale_x != scale_y.
+    With ``perpendicular=True`` it gives the scale across the polyline (i.e. for
+    lane width / lateral offset): a horizontal road's width is vertical, so it
+    weights scale_y. Note this is a single per-polyline scalar — exact only for
+    straight roads; build width in metric space (build_lane_polygon_metric) for
+    curves/roundabouts.
 
     Args:
         points: List of (x, y) points defining the polyline.
@@ -1228,12 +1257,14 @@ def calculate_directional_scale(
         scale_y: Scale factor for vertical direction (m/px).
         default_scale: Value to return if scale cannot be calculated.
                       Defaults to average of scale_x and scale_y.
+        perpendicular: If True, return the across-polyline (width) scale.
 
     Returns:
         Scale factor in meters per pixel appropriate for this polyline's direction.
 
     Example:
-        scale = calculate_directional_scale(centerline.points, scale_x, scale_y)
+        # lateral width conversion (perpendicular):
+        scale = calculate_directional_scale(centerline.points, sx, sy, perpendicular=True)
         width_m = width_px * scale
     """
     if len(points) < 2:
@@ -1264,7 +1295,10 @@ def calculate_directional_scale(
     weight_x = total_dx / total_dist
     weight_y = total_dy / total_dist
 
-    # Interpolate between scale_x and scale_y based on direction
+    # Interpolate between scale_x and scale_y based on direction. For width
+    # (perpendicular) the axes swap: a horizontal road's width runs vertical.
+    if perpendicular:
+        return weight_x * scale_y + weight_y * scale_x
     return weight_x * scale_x + weight_y * scale_y
 
 

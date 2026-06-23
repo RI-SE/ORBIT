@@ -395,9 +395,11 @@ class LaneAnalyzer:
             return 1.0
 
         scale_x, scale_y = self.scale_factors
+        # Lateral offsets are perpendicular to the road, so use the across-road
+        # (perpendicular) scale to convert pixel widths to metres.
         return calculate_directional_scale(
             centerline.points, scale_x, scale_y,
-            default_scale=(scale_x + scale_y) / 2
+            default_scale=(scale_x + scale_y) / 2, perpendicular=True
         )
 
     def suggest_lane_widths(self, road: Road, verbose: bool = False) -> Optional[Dict[str, float]]:

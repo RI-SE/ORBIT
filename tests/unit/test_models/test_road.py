@@ -1018,6 +1018,15 @@ class TestCRLaneWidths:
         # Polygon should exist and have a reasonable number of points
         assert len(polygons[-1]) >= 6
 
+    def test_anisotropic_horizontal_cr_width_uses_scale_y(self):
+        """A horizontal CR's width runs in Y, so it must convert with scale_y."""
+        cr = self._make_cr(lane_width_start=3.5, lane_width_end=3.5)
+        sx, sy = 0.05, 0.10  # anisotropic
+        polygons = cr.get_cr_lane_polygons((sx + sy) / 2, sx, sy)
+        half_width_px = max(abs(y) for _, y in polygons[-1])
+        # Correct = 3.5/scale_y = 35 px; the old single-scalar bug gave ~3.5/0.075 = 47.
+        assert half_width_px == pytest.approx(3.5 / sy, abs=1.0)
+
     def test_per_lane_variable_width_different_polygons(self):
         """Left and right lanes with different widths produce different polygons."""
         cr = self._make_cr(lane_width_start=3.0, lane_width_end=3.0)

@@ -1075,6 +1075,19 @@ class OpenDriveImporter:
                 orbit_lane = self._convert_lane(odr_lane, side='left')
                 section.lanes.append(orbit_lane)
 
+            # For single-section roads, express a purely-linear width taper using
+            # the native width_end field so the lane editor shows an editable
+            # "Width at End". Restricted to single-section roads so road_length
+            # is both the section length and the render length, keeping the linear
+            # interpolation exactly equivalent to the original polynomial. Higher
+            # order polynomials are left intact (editable via advanced controls).
+            if len(odr_sections) == 1 and road_length_meters > 0:
+                for lane in section.lanes:
+                    if (lane.width_b != 0.0 and lane.width_c == 0.0
+                            and lane.width_d == 0.0):
+                        lane.width_end = lane.width + lane.width_b * road_length_meters
+                        lane.width_b = 0.0
+
             # If no lanes were created, add default
             if not section.lanes:
                 section.lanes = [

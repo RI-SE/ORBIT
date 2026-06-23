@@ -2251,7 +2251,14 @@ class MainWindow(QMainWindow):
         adj = TransformAdjustment.from_dict(self.project.transform_adjustment)
         if adj.is_identity():
             return
-        self.image_view.current_adjustment = adj
+        # For drone-assisted the stored adjustment is the permanent base, applied
+        # directly to the transformer below. current_adjustment is the LIVE delta
+        # and must stay identity, otherwise _apply_active_adjustment would later
+        # compose the base on top of itself (double transform — visible when
+        # returning from aerial view). For homography/affine the stored value IS
+        # an unbaked live adjustment, so it is restored into current_adjustment.
+        if self.project.transform_method != 'drone_assisted':
+            self.image_view.current_adjustment = adj
         if self._cached_transformer is None:
             self._cached_transformer = self._create_transformer(use_validation=True)
         if self._cached_transformer is not None:
@@ -2729,7 +2736,11 @@ class MainWindow(QMainWindow):
         self.adjustment_panel.update_display(adjustment)
 
         if self._cached_transformer is not None:
-            self._cached_transformer.set_adjustment(adjustment)
+            # Compose the live delta onto any stored drone base so interactive
+            # edits build on the applied correction instead of replacing it
+            # (otherwise the first keypress drops the base — a large jump).
+            # For non-drone methods this applies the adjustment unchanged.
+            self._apply_active_adjustment(self._cached_transformer)
             self.image_view.update_all_from_geo_coords(self._cached_transformer)
 
     def reset_adjustment(self):
@@ -2737,6 +2748,11 @@ class MainWindow(QMainWindow):
         self.image_view.reset_adjustment()
         if self._cached_transformer is not None:
             self._cached_transformer.clear_adjustment()
+            # Drone-assisted: the applied correction lives in
+            # project.transform_adjustment, not in control points. Re-apply it so
+            # resetting the live delta only discards the in-progress adjustment and
+            # keeps the already-applied correction visible. No-op for other methods.
+            self._apply_active_adjustment(self._cached_transformer)
             self.refresh_imported_geometry()
         self._remove_adjustment_ghost()
         self.statusBar().showMessage("Adjustment reset")
@@ -2752,8 +2768,11 @@ class MainWindow(QMainWindow):
     def _remove_adjustment_ghost(self):
         """Remove the ghost overlay from the scene."""
         if self._adjustment_ghost_overlay is not None:
-            if self._adjustment_ghost_overlay.scene():
-                self.image_view.scene.removeItem(self._adjustment_ghost_overlay)
+            try:
+                if self._adjustment_ghost_overlay.scene():
+                    self.image_view.scene.removeItem(self._adjustment_ghost_overlay)
+            except RuntimeError:
+                pass  # Underlying C++ item already deleted by scene.clear()
             self._adjustment_ghost_overlay = None
 
     def _on_autofit_toggled(self, enabled: bool):
@@ -3299,6 +3318,11 @@ class MainWindow(QMainWindow):
 
     def get_current_scale(self):
         """Get current scale (m/px) from georeferencing, or None."""
+        # In aerial view the active transformer is the aerial tile transformer,
+        # which has a different m/px than the original image. Edit-triggered
+        # redraws must use it so lane widths match the initial aerial render.
+        if self._aerial_view_active and self._aerial_transformer is not None:
+            return self._aerial_transformer.get_scale_factor()
         return self.controller.get_current_scale()
 
     def _initialize_and_refresh_geo_coords(self):

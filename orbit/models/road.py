@@ -322,14 +322,21 @@ class Road:
                     return lane
         return None
 
-    def get_cr_lane_polygons(self, scale: float) -> Dict[int, List[Tuple[float, float]]]:
+    def get_cr_lane_polygons(
+        self, scale: float,
+        scale_x: Optional[float] = None,
+        scale_y: Optional[float] = None,
+    ) -> Dict[int, List[Tuple[float, float]]]:
         """
         Generate lane boundary polygons for connecting road visualization.
 
         Only applicable to connecting roads (roads with inline_path set).
 
         Args:
-            scale: Meters per pixel scale factor
+            scale: Meters per pixel along the path (for length/s conversion).
+            scale_x, scale_y: Anisotropic m/px used to build lane width in metric
+                space so the perpendicular width is correct for any direction
+                (curves, roundabouts). Defaults to isotropic ``scale``.
 
         Returns:
             Dictionary mapping lane IDs to polygon point lists
@@ -339,6 +346,9 @@ class Road:
             create_polynomial_width_lane_polygon,
             create_variable_width_lane_polygon,
         )
+
+        sx = scale_x if scale_x else scale
+        sy = scale_y if scale_y else scale
 
         path = self.inline_path
         if not path or len(path) < 2:
@@ -359,6 +369,14 @@ class Road:
             dx = path[i][0] - path[i - 1][0]
             dy = path[i][1] - path[i - 1][1]
             s_values.append(s_values[-1] + math.sqrt(dx * dx + dy * dy))
+
+        # Build lane widths in metric space so the perpendicular offset is correct
+        # for any direction under anisotropic scales. Offsets below are in metres;
+        # polygons are converted back to pixels via _to_px.
+        metric_path = [(x * sx, y * sy) for x, y in path]
+
+        def _to_px(poly):
+            return [(x / sx, y / sy) for x, y in poly]
 
         polygons: Dict[int, List[Tuple[float, float]]] = {}
 
@@ -381,27 +399,28 @@ class Road:
             if uses_distance_based_width and path_length_m > 0:
                 def inner_width_func(s_px, _il=inner_lanes):
                     s_m = s_px * scale
-                    return sum(il.get_width_at_s(s_m, path_length_m) / scale for il in _il)
+                    return sum(il.get_width_at_s(s_m, path_length_m) for il in _il)
 
                 def lane_width_func(s_px, _l=lane):
                     s_m = s_px * scale
-                    return _l.get_width_at_s(s_m, path_length_m) / scale
+                    return _l.get_width_at_s(s_m, path_length_m)
 
                 polygon_points = create_polynomial_width_lane_polygon(
-                    path, lane_id, inner_width_func, lane_width_func, s_values, is_left_lane=False)
+                    metric_path, lane_id, inner_width_func, lane_width_func,
+                    s_values, is_left_lane=False)
             elif lane.has_variable_width or any(il.has_variable_width for il in inner_lanes):
-                inner_offset_start = sum(il.width / scale for il in inner_lanes)
-                inner_offset_end = sum(il.get_width_at_end() / scale for il in inner_lanes)
+                inner_offset_start = sum(il.width for il in inner_lanes)
+                inner_offset_end = sum(il.get_width_at_end() for il in inner_lanes)
                 polygon_points = create_variable_width_lane_polygon(
-                    path, inner_offset_start, inner_offset_start + lane.width / scale,
-                    inner_offset_end, inner_offset_end + lane.get_width_at_end() / scale)
+                    metric_path, inner_offset_start, inner_offset_start + lane.width,
+                    inner_offset_end, inner_offset_end + lane.get_width_at_end())
             else:
-                inner_offset = sum(il.width / scale for il in inner_lanes)
+                inner_offset = sum(il.width for il in inner_lanes)
                 polygon_points = create_lane_polygon(
-                    path, inner_offset, inner_offset + lane.width / scale, closed=False)
+                    metric_path, inner_offset, inner_offset + lane.width, closed=False)
 
             if polygon_points and len(polygon_points) >= 3:
-                polygons[lane_id] = polygon_points
+                polygons[lane_id] = _to_px(polygon_points)
 
         # Left-hand lanes (positive IDs)
         for lane_num in range(1, self.cr_lane_count_left + 1):
@@ -414,27 +433,28 @@ class Road:
             if uses_distance_based_width and path_length_m > 0:
                 def inner_width_func(s_px, _il=inner_lanes):
                     s_m = s_px * scale
-                    return sum(il.get_width_at_s(s_m, path_length_m) / scale for il in _il)
+                    return sum(il.get_width_at_s(s_m, path_length_m) for il in _il)
 
                 def lane_width_func(s_px, _l=lane):
                     s_m = s_px * scale
-                    return _l.get_width_at_s(s_m, path_length_m) / scale
+                    return _l.get_width_at_s(s_m, path_length_m)
 
                 polygon_points = create_polynomial_width_lane_polygon(
-                    path, lane_id, inner_width_func, lane_width_func, s_values, is_left_lane=True)
+                    metric_path, lane_id, inner_width_func, lane_width_func,
+                    s_values, is_left_lane=True)
             elif lane.has_variable_width or any(il.has_variable_width for il in inner_lanes):
-                inner_offset_start = -sum(il.width / scale for il in inner_lanes)
-                inner_offset_end = -sum(il.get_width_at_end() / scale for il in inner_lanes)
+                inner_offset_start = -sum(il.width for il in inner_lanes)
+                inner_offset_end = -sum(il.get_width_at_end() for il in inner_lanes)
                 polygon_points = create_variable_width_lane_polygon(
-                    path, inner_offset_start, inner_offset_start - lane.width / scale,
-                    inner_offset_end, inner_offset_end - lane.get_width_at_end() / scale)
+                    metric_path, inner_offset_start, inner_offset_start - lane.width,
+                    inner_offset_end, inner_offset_end - lane.get_width_at_end())
             else:
-                inner_offset = -sum(il.width / scale for il in inner_lanes)
+                inner_offset = -sum(il.width for il in inner_lanes)
                 polygon_points = create_lane_polygon(
-                    path, inner_offset, inner_offset - lane.width / scale, closed=False)
+                    metric_path, inner_offset, inner_offset - lane.width, closed=False)
 
             if polygon_points and len(polygon_points) >= 3:
-                polygons[lane_id] = polygon_points
+                polygons[lane_id] = _to_px(polygon_points)
 
         return polygons
 
