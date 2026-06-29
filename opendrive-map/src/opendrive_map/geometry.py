@@ -24,20 +24,26 @@ def _to_global(seg: GeomSegment, lx: float, ly: float, lhdg: float) -> Tuple[flo
     )
 
 
-def _sample_positions(length: float, interval: float) -> List[float]:
+def _sample_positions(length: float, interval: float, extra=()) -> List[float]:
     n = max(2, int(math.ceil(length / max(interval, 1e-6))) + 1)
-    return [length * i / (n - 1) for i in range(n)]
+    pts = {length * i / (n - 1) for i in range(n)}
+    pts.update(e for e in extra if 0.0 <= e <= length)
+    return sorted(pts)
 
 
-def sample_segment(seg: GeomSegment, interval: float) -> List[Sample]:
-    """Sample one geometry primitive; returns [(s_local, x, y, hdg), ...]."""
+def sample_segment(seg: GeomSegment, interval: float, extra_local=()) -> List[Sample]:
+    """Sample one geometry primitive; returns [(s_local, x, y, hdg), ...].
+
+    extra_local forces sample points at the given local s-offsets (e.g. lane width /
+    laneOffset polynomial breakpoints) in addition to the regular interval grid.
+    """
     L = seg.length
     if L <= 0:
         return [(0.0, seg.x, seg.y, seg.hdg)]
 
     kind = seg.kind
     p = seg.params
-    ss = _sample_positions(L, interval)
+    ss = _sample_positions(L, interval, extra_local)
     out: List[Sample] = []
 
     if kind == "arc" and abs(float(p.get("curvature", 0.0))) >= 1e-12:
@@ -122,12 +128,17 @@ def _sample_param_poly3(seg: GeomSegment, ss: List[float]) -> List[Sample]:
     return out
 
 
-def sample_reference_line(road: Road, interval: float) -> List[Sample]:
-    """Sample the whole road reference line; returns [(s_road, x, y, hdg), ...]."""
+def sample_reference_line(road: Road, interval: float, breakpoints=()) -> List[Sample]:
+    """Sample the whole road reference line; returns [(s_road, x, y, hdg), ...].
+
+    breakpoints are road-frame s-values that must appear as samples (e.g. lane width /
+    laneOffset transitions), so lane polygon edges align with those transitions.
+    """
+    bps = sorted(set(breakpoints))
     samples: List[Sample] = []
     for seg in road.geom_segments:
-        seg_samples = sample_segment(seg, interval)
-        for s_local, x, y, hdg in seg_samples:
+        seg_extra = [b - seg.s for b in bps if seg.s - 1e-9 <= b <= seg.s + seg.length + 1e-9]
+        for s_local, x, y, hdg in sample_segment(seg, interval, seg_extra):
             s_road = seg.s + s_local
             if samples and abs(samples[-1][1] - x) < 1e-6 and abs(samples[-1][2] - y) < 1e-6:
                 continue  # drop duplicate point at segment boundary

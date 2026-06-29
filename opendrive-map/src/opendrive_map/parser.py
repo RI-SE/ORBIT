@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import math
 import re
 import xml.etree.ElementTree as ET
 from typing import List, Optional, Tuple
@@ -17,21 +19,24 @@ from .model import (
     Road,
 )
 
+log = logging.getLogger("opendrive_map")
+
 _GEOM_KINDS = ("line", "arc", "spiral", "poly3", "paramPoly3")
 
 
-def _polys(elements, *, with_soffset_attr: str = "sOffset") -> List[Poly]:
+def _polys(elements, *, with_soffset_attr: str = "sOffset", ctx: str = "") -> List[Poly]:
+    """Parse cubic-polynomial records, clamping negative sOffset and dropping non-finite ones."""
     out: List[Poly] = []
     for el in elements:
-        out.append(
-            Poly(
-                sOffset=float(el.get(with_soffset_attr, 0.0)),
-                a=float(el.get("a", 0.0)),
-                b=float(el.get("b", 0.0)),
-                c=float(el.get("c", 0.0)),
-                d=float(el.get("d", 0.0)),
-            )
-        )
+        s = float(el.get(with_soffset_attr, 0.0))
+        if s < 0.0:
+            log.warning("%s: %s=%g < 0, clamped to 0", ctx or "poly", with_soffset_attr, s)
+            s = 0.0
+        coeffs = [float(el.get(k, 0.0)) for k in ("a", "b", "c", "d")]
+        if not all(math.isfinite(c) for c in coeffs):
+            log.warning("%s: non-finite coefficients %s at sOffset=%g, record dropped", ctx or "poly", coeffs, s)
+            continue
+        out.append(Poly(s, *coeffs))
     out.sort(key=lambda p: p.sOffset)
     return out
 
@@ -73,7 +78,9 @@ def _parse_road(road_el: ET.Element) -> Road:
             )
         )
 
-    road.lane_offsets = _polys(road_el.findall("./lanes/laneOffset"), with_soffset_attr="s")
+    rid = road_el.get("id", "")
+    road.lane_offsets = _polys(road_el.findall("./lanes/laneOffset"),
+                               with_soffset_attr="s", ctx=f"road {rid} laneOffset")
 
     for ls_el in road_el.findall("./lanes/laneSection"):
         section = LaneSection(s=float(ls_el.get("s", 0.0)))
@@ -89,7 +96,7 @@ def _parse_road(road_el: ET.Element) -> Road:
                     RawLane(
                         id=lid,
                         type=lane_el.get("type", "none"),
-                        widths=_polys(lane_el.findall("width")),
+                        widths=_polys(lane_el.findall("width"), ctx=f"road {rid} lane {lid} width"),
                     )
                 )
         road.lane_sections.append(section)

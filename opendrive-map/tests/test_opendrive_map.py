@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from opendrive_map import RoadNetwork
+from opendrive_map.geometry import sample_reference_line
 
 # A straight 100 m road, one 3 m driving lane each side, header offset, UTM
 # geoReference WITHOUT +lat_0/+lon_0 (the case that silently broke data-metrics).
@@ -136,6 +137,43 @@ def test_parking_placement():
     assert cx == pytest.approx(50.0, abs=1.0)
     assert cy == pytest.approx(-5.0, abs=0.5)
     assert poly.area == pytest.approx(5.0 * 2.5, rel=1e-6)  # 5.0 x 2.5 outline
+
+
+# Negative laneOffset sOffset (clamp to 0) + a NaN width record (dropped).
+ROBUSTNESS = """<OpenDRIVE>
+  <header revMajor="1" revMinor="8"/>
+  <road id="1" length="100.0" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0"><line/></geometry>
+    </planView>
+    <lanes>
+      <laneOffset s="-5.0" a="0.0" b="0.0" c="0.0" d="0.0"/>
+      <laneSection s="0.0">
+        <left><lane id="1" type="driving">
+          <width sOffset="0.0" a="nan" b="0.0" c="0.0" d="0.0"/>
+          <width sOffset="0.0" a="3.0" b="0.0" c="0.0" d="0.0"/>
+        </lane></left>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>"""
+
+
+def test_parser_robustness_clamp_and_drop():
+    net = RoadNetwork.from_text(ROBUSTNESS)
+    road = net.roads[0]
+    assert road.lane_offsets[0].sOffset == 0.0          # negative sOffset clamped
+    widths = road.lane_sections[0].lanes[0].widths
+    assert len(widths) == 1 and widths[0].a == 3.0       # NaN width record dropped
+
+
+def test_sampling_hits_breakpoints():
+    net = RoadNetwork.from_text(STRAIGHT)
+    road = net.roads[0]
+    # Coarse interval that would skip s=5.0 and s=7.3 without forced breakpoints.
+    ss = [s for s, _x, _y, _h in sample_reference_line(road, interval=10.0, breakpoints={5.0, 7.3})]
+    assert any(abs(s - 5.0) < 1e-6 for s in ss)
+    assert any(abs(s - 7.3) < 1e-6 for s in ss)
 
 
 def test_variable_width_and_multisection():

@@ -34,7 +34,13 @@ def build_road_lanes(
     lane_types: Optional[Sequence[str]] = None,
 ) -> List[Lane]:
     """Return built Lanes for one road; lane_types=None keeps all types."""
-    samples = sample_reference_line(road, interval)
+    # Force samples at lane-section, width and laneOffset transitions so polygon
+    # edges land exactly on width changes (not just on the regular interval grid).
+    breakpoints = {ls.s for ls in road.lane_sections}
+    breakpoints.update(p.sOffset for p in road.lane_offsets)
+    for ls in road.lane_sections:
+        breakpoints.update(ls.s + w.sOffset for lane in ls.lanes for w in lane.widths)
+    samples = sample_reference_line(road, interval, breakpoints=breakpoints)
     if not samples:
         return []
 
