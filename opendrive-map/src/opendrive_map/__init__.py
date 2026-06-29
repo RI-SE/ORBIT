@@ -10,10 +10,11 @@ from .model import (
     RawLane,
     Road,
 )
-from .network import RoadNetwork
+from .network import RoadNetwork, read_offset
 
 __all__ = [
     "RoadNetwork",
+    "read_offset",
     "Road",
     "Lane",
     "RawLane",

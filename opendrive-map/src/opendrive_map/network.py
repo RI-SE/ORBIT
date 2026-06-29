@@ -22,6 +22,13 @@ from .parser import parse_xodr_text
 DEFAULT_INTERVAL = 0.5
 
 
+def read_offset(path: str) -> Tuple[float, float, float]:
+    """Authoritative header <offset> (x, y, z) of a map file, without building lanes."""
+    with open(path, encoding="utf-8", errors="ignore") as f:
+        _roads, _junctions, offset, _geo = parse_xodr_text(f.read())
+    return offset
+
+
 @dataclass
 class RoadNetwork:
     roads: List[Road]
