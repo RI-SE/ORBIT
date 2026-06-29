@@ -1,10 +1,7 @@
 """Tests for opendrive-map, focused on the gaps the old parsers had."""
 
-import math
-
 import numpy as np
 import pytest
-
 from opendrive_map import RoadNetwork
 from opendrive_map.geometry import sample_reference_line
 
