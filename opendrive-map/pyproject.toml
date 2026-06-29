@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "opendrive-map"
+version = "0.1.0"
+description = "Read-only OpenDRIVE road-network / lane-geometry model shared across the ORBIT drone toolchain (COSMO, data-metrics)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = ["numpy>=1.20.0", "shapely>=2.0", "pyproj>=3.0.0"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/opendrive_map"]
