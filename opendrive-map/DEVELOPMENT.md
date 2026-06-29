@@ -34,10 +34,7 @@ the OSM export, not the XODR.
 
 ---
 
-## Q2 — Ideas from libOpenDRIVE (analyzed, not yet adopted)
-
-Reference: `/home/fredrik/fwrise/libOpenDRIVE` (C++). **Do not copy code** (C++ + licensing);
-reimplement ideas in Python.
+## Q2 — Ideas from other projects (analyzed, not yet adopted)
 
 ### Worth doing later
 1. **Spiral via Fresnel integrals** (`src/Geometries/Spiral/odrSpiral.cpp`). Our `geometry.py`
