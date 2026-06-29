@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "orbit-georef"
-version = "0.1.1"
+version = "0.1.2"
 description = "Georeferencing library for pixel↔geo coordinate transformation"
 readme = "README.md"
 license = "MIT"

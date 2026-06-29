@@ -16,7 +16,7 @@ from .io import load_georef, save_georef
 from .models import ControlPoint
 from .transformer import GeoTransformer
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
 
 __all__ = [
     "GeoTransformer",
