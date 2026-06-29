@@ -21,6 +21,8 @@ import numpy as np
 
 from orbit.models.project import Project
 from orbit.utils.logging_config import get_logger
+from orbit.export.curve_fitting import CurveFitter
+from orbit.export.reference_line_sampler import compute_lane_polygons, sample_reference_line
 
 from .reference_line_sampler import LanePolygonData
 
@@ -79,74 +81,8 @@ class LayoutMaskExporter:
         self.preserve_geometry = preserve_geometry
         self.lane_polygons = lane_polygons or []
 
-        for junction in self.project.junctions:
-            print("DEBUG: Junction", junction.id, 
-                "has boundary:", junction.boundary is not None)
 
-    def _enhance_connecting_lane_links(self, region_map, region_info):
-        """
-        Lanelet-compatible connecting-lane linkage:
-        - Connecting lanes link ONLY to the final lane of predecessor road
-        and the first lane of the successor road.
-        - Symmetry is enforced.
-        """
-        lane_lookup = {}
-        for key, rid in region_map.items():
-            road, section, lane, is_conn = key
-            if not is_conn:
-                lane_lookup[(road, lane)] = str(rid)
-
-        for rid_str, info in region_info.items():
-            if info.get("type") != "connecting_lane":
-                continue
-
-            cr_id = info["road_id"]
-            lane_id = info["lane_id"]
-            cr_obj = None
-
-            for j in self.project.junctions:
-                for cr in j.connecting_roads:
-                    if cr.id == cr_id:
-                        cr_obj = cr
-                        break
-                if cr_obj:
-                    break
-
-            if not cr_obj:
-                continue
-
-            pred_road = cr_obj.predecessor_road_id
-            succ_road = cr_obj.successor_road_id
-
-            # predecessor
-            if pred_road:
-                tup = (pred_road, lane_id)
-                if tup in lane_lookup:
-                    pid = lane_lookup[tup]
-                    if pid not in info["predecessors"]:
-                        info["predecessors"].append(pid)
-                    if rid_str not in region_info[pid]["successors"]:
-                        region_info[pid]["successors"].append(rid_str)
-
-            # successor
-            if succ_road:
-                tup = (succ_road, lane_id)
-                if tup in lane_lookup:
-                    sid = lane_lookup[tup]
-                    if sid not in info["successors"]:
-                        info["successors"].append(sid)
-                    if rid_str not in region_info[sid]["predecessors"]:
-                        region_info[sid]["predecessors"].append(rid_str)
-
-        # dedupe & sort
-        for rid_str, info in region_info.items():
-            if not isinstance(info, dict):
-                continue
-            info["successors"] = sorted(set(info.get("successors", [])), key=lambda v: int(v) if v.isdigit() else v)
-            info["predecessors"] = sorted(set(info.get("predecessors", [])), key=lambda v: int(v) if v.isdigit() else v)
-
-
-    def _apply_adjacency_fixscript_like(
+    def _apply_adjacency(
         self,
         region_map: Dict[Tuple, int],
         region_info: Dict[str, dict],
@@ -224,9 +160,7 @@ class LayoutMaskExporter:
                     if other in lane_map:
                         add_adj(rid, lane_map[other])
 
-        # Rule C: Overlap members are NOT adjacency carriers.
-
-        # Geometric adjacency (NEW) ------------------------------
+        # Geometric adjacency  ------------------------------
         # threshold = 3 meters (or scaled pixels)
         threshold = 3.0
         for ridA, infoA in regions.items():
@@ -258,6 +192,32 @@ class LayoutMaskExporter:
                     regions[ridA]["adjacent_geometric"].append(ridB)
                     regions[ridB]["adjacent_geometric"].append(ridA)
 
+        # ----------------------------------------------------------
+        # RULE: overlap members are adjacent to each other
+        # ----------------------------------------------------------
+        for oid, oinfo in regions.items():
+            if not isinstance(oinfo, dict):
+                continue
+            if oinfo.get("type") != "overlap":
+                continue
+
+
+            members = [str(m) for m in oinfo.get("members", [])]
+
+            for i in range(len(members)):
+                for j in range(i + 1, len(members)):
+                    a = members[i]
+                    b = members[j]
+
+                    if a in adj and b in adj:
+                        adj[a].add(b)
+                        adj[b].add(a)
+
+            # If only ONE member exists (edge crop case), mark geometric adjacency
+            if len(members) == 1:
+                m = members[0]
+                regions[m].setdefault("adjacent_geometric", [])
+
         # finalize adjacency
         for rid, info in regions.items():
             if not isinstance(info, dict):
@@ -273,6 +233,27 @@ class LayoutMaskExporter:
             else:
                 info["adjacent"] = []
                 info["adjacent_geometric"] = []
+
+    def _mark_boundary_regions(self, region_info):
+        """Mark regions touching crop border (likely external connectivity)."""
+
+        w, h = self.image_size
+
+        for rid, info in region_info.items():
+            if not isinstance(info, dict):
+                continue
+            if "polygon" not in info:
+                continue
+
+            pts = info["polygon"]
+
+            touches_border = any(
+                x <= 1 or x >= (w - 2) or y <= 1 or y >= (h - 2)
+                for x, y in pts
+            )
+
+            if touches_border:
+                info["is_crop_boundary"] = True
 
     def _populate_overlap_links(self, region_info: Dict[str, dict]) -> None:
         """
@@ -366,14 +347,14 @@ class LayoutMaskExporter:
 
 
             self._compute_connectivity(region_map, region_info)
-            self._enhance_connecting_lane_links(region_map, region_info)
-            # --- adjacency using fix-script-like rules  ---
-            self._apply_adjacency_fixscript_like(region_map, region_info)
-            # --- overlap successor/predecessor unions (same as fix script) ---
+            self._mark_boundary_regions(region_info)
+            self._apply_adjacency(region_map, region_info)
             self._populate_overlap_links(region_info)
             self._infer_road_junction_references()
             self._compute_junction_grouping(region_map, region_info)
             self._compute_distances(region_map, region_info)
+
+
 
 
             self._save_mask(mask, output_path)
@@ -410,11 +391,6 @@ class LayoutMaskExporter:
 
     def _collect_opendrive_polygons(self) -> List[LanePolygonData]:
         """Generate polygons via curve fitting and reference line sampling."""
-        from orbit.export.curve_fitting import CurveFitter
-        from orbit.export.reference_line_sampler import (
-            compute_lane_polygons,
-            sample_reference_line,
-        )
 
         if not self.transformer:
             logger.error("OPENDRIVE method requires a coordinate transformer")
@@ -459,21 +435,29 @@ class LayoutMaskExporter:
             road_ref_headings[(road.id, "start")] = ref_points[0][2]
             road_ref_headings[(road.id, "end")] = ref_points[-1][2]
 
-            # Estimate scale (meters per pixel)
-            total_px = sum(
-                math.sqrt((polyline.points[i+1][0] - polyline.points[i][0])**2 +
-                           (polyline.points[i+1][1] - polyline.points[i][1])**2)
-                for i in range(len(polyline.points) - 1)
-            )
-            total_m = sum(
-                math.sqrt((meter_points[i+1][0] - meter_points[i][0])**2 +
-                           (meter_points[i+1][1] - meter_points[i][1])**2)
-                for i in range(len(meter_points) - 1)
-            )
-            scale_x = total_m / total_px if total_px > 0 else 0.058
-
             # Compute lane polygons in meters
-            lane_polys = compute_lane_polygons(ref_points, road, scale_x)
+            lane_polys = []
+
+            for section in road.lane_sections:
+                for lane in section.lanes:
+
+                    # EXPLICIT mode
+                    if hasattr(lane, "boundary_mode") and lane.boundary_mode.value == "explicit":
+                        poly = self._build_polygon_from_explicit_boundaries(
+                            lane,
+                            section.section_number,
+                            is_connecting=False
+                        )
+                        if poly:
+                            lane_polys.append(poly)
+                        continue
+
+                    # OFFSET mode (fallback to old logic)
+                    polys = compute_lane_polygons(ref_points, road, 1)
+                    lane_polys.extend(polys)
+                    break  # prevent duplicate reprocessing
+                break
+
 
             # Convert to pixel coordinates
             for lp in lane_polys:
@@ -497,6 +481,39 @@ class LayoutMaskExporter:
 
         return polygons
 
+    def _build_polygon_from_explicit_boundaries(self, lane, section_number, is_connecting=False):
+        """Build polygon using explicit left/right boundary polylines."""
+
+        if not lane.left_boundary_id or not lane.right_boundary_id:
+            return None
+
+        left_poly = self.project.get_polyline(lane.left_boundary_id)
+        right_poly = self.project.get_polyline(lane.right_boundary_id)
+
+        if not left_poly or not right_poly:
+            return None
+
+        if len(left_poly.points) < 2 or len(right_poly.points) < 2:
+            return None
+
+        # Build polygon (left forward, right reversed)
+        pts = list(left_poly.points) + list(reversed(right_poly.points))
+
+        if self.transformer:
+            # Explicit boundaries are in pixel already → keep as-is
+            pixel_pts = [(float(px), float(py)) for px, py in pts]
+        else:
+            pixel_pts = [(float(px), float(py)) for px, py in pts]
+
+        return LanePolygonData(
+            road_id=getattr(lane, "road_id", "unknown"),
+            section_number=section_number,
+            lane_id=lane.id,
+            points=pixel_pts,
+            is_connecting_road=is_connecting,
+            lane_type=lane.lane_type.value if hasattr(lane.lane_type, "value") else "driving",
+        )    
+
     def _collect_connecting_road_polygons(
         self, cr, road_ref_headings: Optional[Dict] = None,
     ) -> List[LanePolygonData]:
@@ -512,6 +529,7 @@ class LayoutMaskExporter:
                 headings so lane edges align with road lane edges at
                 junction boundaries.
         """
+        
         # Transform path to meters
         path_meters = []
         for px, py in cr.path:
@@ -549,32 +567,6 @@ class LayoutMaskExporter:
             )
             if succ_hdg is not None and len(headings) > 0:
                 headings[-1] = succ_hdg
-
-        # Extend CR path slightly at both endpoints along the heading.
-        # Curve-fitted road reference lines may not end at exactly the same
-        # position as the raw CR path endpoints. The extension ensures the
-        # CR polygon reaches the road polygon boundary. The mask renderer
-        # gives road pixels priority, so the extended part is clipped at
-        # the road boundary — producing a clean seam with no gap or overlap.
-        _EXT_M = 0.5  # extension distance in meters
-        if len(path_meters) >= 2:
-            hdg0 = headings[0]
-            ext_start = (
-                path_meters[0][0] - math.cos(hdg0) * _EXT_M,
-                path_meters[0][1] - math.sin(hdg0) * _EXT_M,
-            )
-            path_meters.insert(0, ext_start)
-            headings.insert(0, hdg0)
-            s_values = [0.0] + [s + _EXT_M for s in s_values]
-
-            hdg_end = headings[-1]
-            ext_end = (
-                path_meters[-1][0] + math.cos(hdg_end) * _EXT_M,
-                path_meters[-1][1] + math.sin(hdg_end) * _EXT_M,
-            )
-            path_meters.append(ext_end)
-            headings.append(hdg_end)
-            s_values.append(s_values[-1] + _EXT_M)
 
         path_length_m = s_values[-1] if len(s_values) > 1 else 0.0
         if path_length_m < 1e-6:
@@ -620,7 +612,16 @@ class LayoutMaskExporter:
         self, cr, path_meters, headings, s_values, path_length_m,
         lane, inner_lanes, lane_id, side,
     ):
-        """Offset a single connecting road lane in meter space and convert to pixels."""
+        
+        if hasattr(lane, "boundary_mode") and lane.boundary_mode.value == "explicit":
+            poly = self._build_polygon_from_explicit_boundaries(
+                lane,
+                section_number=1,
+                is_connecting=True
+            )
+            if poly:
+                return poly
+
         inner_boundary = []
         outer_boundary = []
 
@@ -628,14 +629,9 @@ class LayoutMaskExporter:
             hdg = headings[i]
             s_m = s_values[i]
 
-            # Cumulative inner offset from inner lanes
-            inner_offset = sum(
-                il.get_width_at_s(s_m, path_length_m)
-                for il in inner_lanes
-            )
+            inner_offset = sum(il.get_width_at_s(s_m, path_length_m) for il in inner_lanes)
             outer_offset = inner_offset + lane.get_width_at_s(s_m, path_length_m)
 
-            # Perpendicular direction
             perp_x = -math.sin(hdg)
             perp_y = math.cos(hdg)
 
@@ -653,16 +649,15 @@ class LayoutMaskExporter:
             inner_boundary.append((in_x, in_y))
             outer_boundary.append((out_x, out_y))
 
-        # Build polygon: inner forward + outer reversed
-        meter_pts = inner_boundary + list(reversed(outer_boundary))
-        if len(meter_pts) < 3:
+        pts_m = inner_boundary + list(reversed(outer_boundary))
+        if len(pts_m) < 3:
             return None
 
-        # Convert to pixels
-        pixel_pts = []
-        for mx, my in meter_pts:
-            px, py = self.transformer.meters_to_pixel(mx, my)
-            pixel_pts.append((px, py))
+        # convert to pixels
+        pixel_pts = [
+            self.transformer.meters_to_pixel(mx, my)
+            for mx, my in pts_m
+        ]
 
         lane_type = lane.lane_type.value if hasattr(lane.lane_type, 'value') else "driving"
 
@@ -715,6 +710,10 @@ class LayoutMaskExporter:
                     "previous_junction_ids": [],
                     "distance_to_next_junction_m": None,
                     "distance_to_prev_junction_m": None,
+                    "has_external_successor": False,
+                    "has_external_predecessor": False,
+                    "external_successors": [],
+                    "external_predecessors": [],                    
                     "polygon": [[float(px), float(py)] for (px, py) in poly.points]
                 }
                 next_id += 1
@@ -723,105 +722,142 @@ class LayoutMaskExporter:
 
     # ---- Mask rendering ----
 
-    def _render_mask_with_overlaps(
-        self,
-        polygons: List[LanePolygonData],
-        region_map: Dict[Tuple, int],
-        region_info: Dict[str, dict],
-    ) -> np.ndarray:
-        """Render polygons into a mask, tracking overlapping regions.
-
-        Rendering priority rules:
-        - Road polygons are painted first (they appear first in the polygon list).
-        - CR polygons that overlap road pixels are clipped: road pixels are
-          preserved and the CR fills only the remaining background pixels up
-          to the road boundary. This produces a clean 1-pixel seam between
-          CR and road regions with no gap and no overlap.
-        - When two CR polygons overlap (e.g. CRs sharing a common start
-          that diverge), a combo region is created for downstream consumers.
-        """
+    def _render_mask_with_overlaps(self, polygons, region_map, region_info):
         h, w = self.image_size[1], self.image_size[0]
         mask = np.zeros((h, w), dtype=np.int32)
 
-        # Track which base IDs occupy each combo
-        combo_map: Dict[frozenset, int] = {}
-        id_members: Dict[int, frozenset] = {}
-        next_combo_id = max(int(k) for k in region_info) + 1
+        # --------------------------------------------------
+        # HELPERS
+        # --------------------------------------------------
+        def is_connecting(rid):
+            return region_info.get(str(rid), {}).get("type") == "connecting_lane"
 
-        # Build set of region IDs that are regular road lanes (not CRs)
-        road_lane_ids: Set[int] = set()
-        for key, rid in region_map.items():
-            _, _, _, is_connecting = key
-            if not is_connecting:
-                road_lane_ids.add(rid)
+        def are_longitudinal(a, b):
+            a = str(a); b = str(b)
+            return (
+                b in region_info.get(a, {}).get("successors", []) or
+                b in region_info.get(a, {}).get("predecessors", []) or
+                a in region_info.get(b, {}).get("successors", []) or
+                a in region_info.get(b, {}).get("predecessors", [])
+            )
 
-        for poly in polygons:
+        # --------------------------------------------------
+        # PASS 1: paint base regions (WITHOUT overwrite)
+        # --------------------------------------------------
+        polygons_sorted = sorted(
+            polygons,
+            key=lambda p: (p.is_connecting_road, abs(p.lane_id))
+        )
+
+        for poly in polygons_sorted:
             key = (poly.road_id, poly.section_number, poly.lane_id, poly.is_connecting_road)
-            region_id = region_map.get(key)
-            if region_id is None:
+            rid = region_map.get(key)
+            if rid is None:
                 continue
 
-            is_cr = poly.is_connecting_road
-
-            pts = np.array(poly.points, dtype=np.int32).reshape((-1, 1, 2))
-            if pts.shape[0] < 3:
+            pts = np.round(np.asarray(poly.points)).astype(np.int32)
+            if len(pts) < 3:
                 continue
 
-            # Find pixels that would be painted
-            temp = np.zeros((h, w), dtype=np.uint8)
-            cv2.fillPoly(temp, [pts], 1)
-            new_pixels = temp > 0
+            tmp = np.zeros((h, w), dtype=np.uint8)
+            cv2.fillPoly(tmp, [pts.reshape((-1, 1, 2))], 1)
+            poly_mask = tmp.astype(bool)
 
-            # Check for overlaps with existing painted regions
-            existing = mask[new_pixels]
-            overlap_mask = existing > 0
+            # only fill empty
+            mask[(mask == 0) & poly_mask] = rid
 
-            if np.any(overlap_mask):
-                # Get unique existing IDs in overlap
-                overlap_ids = np.unique(existing[overlap_mask])
+        # --------------------------------------------------
+        # PASS 2: detect overlaps
+        # --------------------------------------------------
+        overlap_map: Dict[Tuple[int, int], np.ndarray] = {}
 
-                for old_id in overlap_ids:
-                    old_id = int(old_id)
+        for poly in polygons_sorted:
+            key = (poly.road_id, poly.section_number, poly.lane_id, poly.is_connecting_road)
+            rid = region_map.get(key)
+            if rid is None:
+                continue
 
-                    # CR overlapping a road lane at junction boundary:
-                    # road pixels take priority — skip, don't overwrite.
-                    # The CR will fill background pixels up to the road
-                    # boundary in the "paint remaining" step below.
-                    if is_cr and old_id in road_lane_ids:
-                        continue
+            pts = np.round(np.asarray(poly.points)).astype(np.int32)
+            if len(pts) < 3:
+                continue
 
-                    # CR overlapping a road-only combo: same — preserve.
-                    old_members = id_members.get(old_id, frozenset([old_id]))
-                    if is_cr and old_members.issubset(road_lane_ids):
-                        continue
+            tmp = np.zeros((h, w), dtype=np.uint8)
+            cv2.fillPoly(tmp, [pts.reshape((-1, 1, 2))], 1)
+            poly_mask = tmp.astype(bool)
 
-                    # All other overlaps (CR-CR, road-road): create combo region
-                    new_members = old_members | frozenset([region_id])
+            overlap = poly_mask & (mask != 0) & (mask != rid)
+            if not np.any(overlap):
+                continue
 
-                    if new_members in combo_map:
-                        combo_id = combo_map[new_members]
-                    else:
-                        combo_id = next_combo_id
-                        next_combo_id += 1
-                        combo_map[new_members] = combo_id
-                        id_members[combo_id] = new_members
-                        # Create overlap metadata
-                        member_strs = sorted(str(m) for m in new_members)
-                        region_info[str(combo_id)] = {
-                            "type": "overlap",
-                            "members": member_strs,
-                            "adjacent": [],
-                        }
-                    # Paint overlap pixels with combo ID
-                    overlap_pixel_mask = new_pixels & (mask == old_id)
-                    mask[overlap_pixel_mask] = combo_id
+            existing_ids = mask[overlap]
+            for other_id in np.unique(existing_ids):
+                pair = tuple(sorted((rid, int(other_id))))
+                submask = overlap & (mask == other_id)
 
-            # Paint remaining (non-overlap) pixels
-            no_overlap = new_pixels & (mask == 0)
-            mask[no_overlap] = region_id
-            id_members[region_id] = frozenset([region_id])
+                if pair not in overlap_map:
+                    overlap_map[pair] = submask
+                else:
+                    overlap_map[pair] |= submask
+
+        # --------------------------------------------------
+        # PASS 3: classify overlaps (STRICT RULES)
+        # --------------------------------------------------
+
+        next_id = max(int(k) for k in region_info) + 1
+
+        unique_ids, counts = np.unique(mask, return_counts=True)
+        region_sizes = dict(zip(unique_ids.astype(int), counts))
+
+        for (a, b), omask in overlap_map.items():
+            area = int(np.sum(omask))
+
+            # RULE 1 — only connecting lanes allowed
+            if not (is_connecting(a) and is_connecting(b)):
+                winner = a if region_sizes.get(a, 0) >= region_sizes.get(b, 0) else b
+                mask[omask] = winner
+                continue
+
+            # RULE 2 — NO longitudinal overlap allowed
+            if are_longitudinal(a, b):
+                winner = a if region_sizes.get(a, 0) >= region_sizes.get(b, 0) else b
+                mask[omask] = winner
+                continue
+
+
+            # VALID overlap (junction crossing)
+            oid = next_id
+            next_id += 1
+
+            region_info[str(oid)] = {
+                "type": "overlap",
+                "members": [str(a), str(b)],
+                "adjacent": [],
+            }
+
+            mask[omask] = oid
+
+        # --------------------------------------------------
+        # PASS 4: GAP FILL (critical for topology)
+        # --------------------------------------------------
+        # small holes between connected lanes are filled
+        gap_mask = (mask == 0)
+
+        if np.any(gap_mask):
+            kernel = np.ones((3, 3), np.uint8)
+
+            dilated = cv2.dilate(mask.astype(np.uint16), kernel, iterations=1)
+
+            fill = (gap_mask) & (dilated != 0)
+            mask[fill] = dilated[fill]
+
+        # --------------------------------------------------
+        # FINAL: denoise
+        # --------------------------------------------------
+        mask = cv2.medianBlur(mask.astype(np.uint16), 3).astype(np.int32)
 
         return mask
+
+
 
     # ---- Junction encoding ----
 
@@ -959,174 +995,154 @@ class LayoutMaskExporter:
 
             region_info[jid]["members"] = members
 
-    def _compute_adjacency(self, mask: np.ndarray) -> Dict[int, Set[int]]:
-        """Compute spatial adjacency between regions using vectorized comparison.
-
-        Checks horizontal and vertical neighbor pairs. Two regions are adjacent
-        if they share at least one edge pixel boundary.
-        """
-        # Horizontal pairs
-        left = mask[:, :-1]
-        right = mask[:, 1:]
-        h_diff = left != right
-        if np.any(h_diff):
-            h_pairs = np.column_stack([left[h_diff], right[h_diff]])
-        else:
-            h_pairs = np.empty((0, 2), dtype=mask.dtype)
-
-        # Vertical pairs
-        top = mask[:-1, :]
-        bottom = mask[1:, :]
-        v_diff = top != bottom
-        if np.any(v_diff):
-            v_pairs = np.column_stack([top[v_diff], bottom[v_diff]])
-        else:
-            v_pairs = np.empty((0, 2), dtype=mask.dtype)
-
-        if h_pairs.shape[0] == 0 and v_pairs.shape[0] == 0:
-            return {}
-
-        all_pairs = np.vstack([h_pairs, v_pairs])
-        # Filter out background (0)
-        valid = (all_pairs[:, 0] != 0) & (all_pairs[:, 1] != 0)
-        all_pairs = all_pairs[valid]
-
-        if all_pairs.shape[0] == 0:
-            return {}
-
-        # Normalize pair order and deduplicate
-        sorted_pairs = np.sort(all_pairs, axis=1)
-        unique_pairs = np.unique(sorted_pairs, axis=0)
-
-        adjacency: Dict[int, Set[int]] = {}
-        for a, b in unique_pairs:
-            a, b = int(a), int(b)
-            if a == b:
-                continue
-            adjacency.setdefault(a, set()).add(b)
-            adjacency.setdefault(b, set()).add(a)
-        return adjacency
-
-    def _apply_adjacency(
-        self, region_info: Dict[str, dict], adjacency: Dict[int, Set[int]],
-    ) -> None:
-        """Write adjacency sets into region_info."""
-        for region_id, neighbors in adjacency.items():
-            key = str(region_id)
-            if key in region_info:
-                region_info[key]["adjacent"] = sorted(str(n) for n in neighbors)
+    
 
     # ---- Connectivity ----
 
-    def _link(info_src, info_dst, src_id_str, dst_id_str, as_successor: bool):
-        if as_successor:
-            if dst_id_str not in info_src["successors"]:
-                info_src["successors"].append(dst_id_str)
-            if src_id_str not in info_dst["predecessors"]:
-                info_dst["predecessors"].append(src_id_str)
-        else:
-            if dst_id_str not in info_src["predecessors"]:
-                info_src["predecessors"].append(dst_id_str)
-            if src_id_str not in info_dst["successors"]:
-                info_dst["successors"].append(src_id_str)
 
+    def _connect_within_road_sections(self, region_map, region_info, road_lookup):
+        """
+        Ensure continuity between lane sections of same road.
+        Fixes missing links inside long roads (common XODR defect).
+        """
+        def link(a, b):
+            if a not in region_info or b not in region_info:
+                return
+            if b not in region_info[a]["successors"]:
+                region_info[a]["successors"].append(b)
+            if a not in region_info[b]["predecessors"]:
+                region_info[b]["predecessors"].append(a)
+
+        for road in self.project.roads:
+            if not road.lane_sections or len(road.lane_sections) < 2:
+                continue
+
+            sections = sorted(road.lane_sections, key=lambda s: s.section_number)
+
+            for i in range(len(sections) - 1):
+                s0 = sections[i].section_number
+                s1 = sections[i + 1].section_number
+
+                # match lanes by same lane_id
+                lane_ids = set()
+
+                for (r, lane, sec) in road_lookup.keys():
+                    if r == str(road.id):
+                        lane_ids.add(lane)
+
+                for lane_id in lane_ids:
+                    src = road_lookup.get((road.id, lane_id, s0), [])
+                    dst = road_lookup.get((road.id, lane_id, s1), [])
+
+                    for a in src:
+                        for b in dst:
+                            link(a, b)
 
     def _compute_connectivity(self, region_map, region_info):
-        """
-        Lanelet-compatible longitudinal connectivity:
-        - Pure successor/predecessor graph.
-        - No lateral adjacency.
-        - No contradictions.
-        """
-
-        id_to_key = {v: k for k, v in region_map.items()}
-        lane_lookup = {(road, sec, lane): rid
-                    for (road, sec, lane, is_conn), rid in region_map.items()}
-
-        for region_id, key in id_to_key.items():
-            road_id, section_number, lane_id, is_conn = key
-            rid_str = str(region_id)
-
-            if rid_str not in region_info:
-                continue
-            info = region_info[rid_str]
-            if info.get("type") not in ("lane", "connecting_lane"):
-                continue
-
-            try:
-                connected = self.find_connected_lanes(road_id, section_number, lane_id)
-            except Exception:
-                continue
-
-            for conn_road, conn_sec, conn_lane in connected.get("road_lanes", []):
-                target = lane_lookup.get((conn_road, conn_sec, conn_lane))
-                if target is None:
-                    continue
-                tid = str(target)
-
-                # enforce symmetry
-                if tid not in info["successors"]:
-                    info["successors"].append(tid)
-                if rid_str not in region_info[tid]["predecessors"]:
-                    region_info[tid]["predecessors"].append(rid_str)
-
-        # dedupe + sort
-        for rid_str, info in region_info.items():
-            if not isinstance(info, dict):
-                continue
-            info["successors"] = sorted(set(info.get("successors", [])), key=lambda v: int(v) if v.isdigit() else v)
-            info["predecessors"] = sorted(set(info.get("predecessors", [])), key=lambda v: int(v) if v.isdigit() else v)
-
-        # handle junction-crossing direct edges
-        self._compute_direct_connections(region_map, region_info, lane_lookup)
 
 
-    
-    def _compute_direct_connections(
-        self,
-        region_map: Dict[Tuple, int],
-        region_info: Dict[str, dict],
-        lane_lookup: Dict[Tuple[str, int, int], int],
-    ) -> None:
-        """
-        Direct connections across junctions represent turn-paths.
-        - Must NOT include connecting-lane IDs.
-        - Must refer only to entry-lane -> exit-lane relationships.
-        """
+        # --- Build lookups ---
+        road_lookup, cr_lookup = {}, {}
+        for (road, section, lane, is_conn), rid in region_map.items():
+            key = (str(road), int(lane), int(section))
+            if is_conn:
+                cr_lookup.setdefault((str(road), int(lane)), []).append(str(rid))
+            else:
+                road_lookup.setdefault(key, []).append(str(rid))
+
+        def link(a, b):
+            if a not in region_info or b not in region_info:
+                return
+            if b not in region_info[a]["successors"]:
+                region_info[a]["successors"].append(b)
+            if a not in region_info[b]["predecessors"]:
+                region_info[b]["predecessors"].append(a)
+
+        # --- 1. Intra-road continuity ---
+        self._connect_within_road_sections(region_map, region_info, road_lookup)
+
+        # --- 2. Junction connectivity ---
         for junction in self.project.junctions:
+
+            cr_successor = {str(cr.id): cr.successor_road_id for cr in junction.connecting_roads}
+
             for lc in junction.lane_connections:
-                src_road = self.project.get_road(lc.from_road_id)
-                tgt_road = self.project.get_road(lc.to_road_id)
 
-                if not src_road or not tgt_road:
-                    continue
-                if not src_road.lane_sections or not tgt_road.lane_sections:
-                    continue
-
-                last_section = src_road.lane_sections[-1].section_number
-                first_section = tgt_road.lane_sections[0].section_number
-
-                src_rid = lane_lookup.get((lc.from_road_id, last_section, lc.from_lane_id))
-                tgt_rid = lane_lookup.get((lc.to_road_id, first_section, lc.to_lane_id))
-
-                if src_rid is None or tgt_rid is None:
+                src_road = str(lc.from_road_id)
+                src_lane = int(lc.from_lane_id)
+                cr_id = str(lc.connecting_road_id)
+                cr_lane = int(lc.connecting_lane_id)
+                
+                if (cr_id, cr_lane) not in cr_lookup:
                     continue
 
-                src = str(src_rid)
-                tgt = str(tgt_rid)
+                to_lane = int(lc.to_lane_id)
 
-                if region_info[src].get("type") == "connecting_lane":
-                    continue
-                if region_info[tgt].get("type") == "connecting_lane":
+                cr_obj = next((cr for cr in junction.connecting_roads if str(cr.id) == cr_id), None)
+                if not cr_obj:
                     continue
 
-                region_info[src].setdefault("direct_successors", [])
-                region_info[tgt].setdefault("direct_predecessors", [])
+                road_obj = self.project.get_road(src_road)
+                if not road_obj or not road_obj.lane_sections:
+                    continue
 
-                if tgt not in region_info[src]["direct_successors"]:
-                    region_info[src]["direct_successors"].append(tgt)
-                if src not in region_info[tgt]["direct_predecessors"]:
-                    region_info[tgt]["direct_predecessors"].append(src)
+                sec_nums = [s.section_number for s in road_obj.lane_sections]
+                sec_src = min(sec_nums) if cr_obj.contact_point_start == "start" else max(sec_nums)
+
+                src_rids = road_lookup.get((src_road, src_lane, sec_src), [])
+                cr_rids = cr_lookup.get((cr_id, cr_lane), [])
+
+                for a in src_rids:
+                    for b in cr_rids:
+                        link(a, b)
+
+                # --- CR → successor road ---
+                succ_road = cr_successor.get(cr_id)
+                if not succ_road:
+                    continue
+
+                road_obj = self.project.get_road(succ_road)
+                if not road_obj or not road_obj.lane_sections:
+                    continue
+
+                sec_nums = [s.section_number for s in road_obj.lane_sections]
+                sec_succ = min(sec_nums) if cr_obj.contact_point_end == "start" else max(sec_nums)
+
+                # lane mapping
+                mapped_lane = int(lc.to_lane_id)
+
+                key = (str(succ_road), int(mapped_lane), sec_succ)
+                target_rids = road_lookup.get(key, [])
+
+                if not target_rids:
+                    for a in cr_rids:
+                        if a in region_info:
+                            region_info[a]["has_external_successor"] = True
+                            region_info[a].setdefault("external_successors", []).append({
+                                "road_id": str(succ_road),
+                                "lane_id": int(mapped_lane)
+                            })
+                    continue
+
+                # ✅ always link
+                for a in cr_rids:
+                    for b in target_rids:
+                        link(a, b)
+
+        # --- external predecessor detection ---
+        for (road, lane, section), rids in road_lookup.items():
+            for rid in rids:
+                info = region_info.get(rid)
+                if info and info.get("type") == "lane" and not info.get("predecessors"):
+                    road_obj = self.project.get_road(road)
+                    if road_obj and (road_obj.predecessor_id or road_obj.predecessor_junction_id):
+                        info["has_external_predecessor"] = True
+
+        # --- cleanup ---
+        for info in region_info.values():
+            if isinstance(info, dict):
+                info["successors"] = sorted(set(info.get("successors", [])))
+                info["predecessors"] = sorted(set(info.get("predecessors", [])))
 
 
 
