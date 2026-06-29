@@ -11,6 +11,7 @@ from .model import (
     GeomSegment,
     Junction,
     LaneSection,
+    ParkingObject,
     Poly,
     RawLane,
     Road,
@@ -96,6 +97,27 @@ def _parse_road(road_el: ET.Element) -> Road:
     return road
 
 
+def _parse_parking(road_el: ET.Element, road_id: str) -> List[ParkingObject]:
+    out: List[ParkingObject] = []
+    for obj in road_el.findall("./objects/object"):
+        if obj.get("type") != "parking":
+            continue
+        outline = [
+            (float(c.get("u", 0.0)), float(c.get("v", 0.0)))
+            for c in obj.findall("./outline/cornerLocal")
+        ]
+        out.append(ParkingObject(
+            road_id=road_id,
+            s=float(obj.get("s", 0.0)),
+            t=float(obj.get("t", 0.0)),
+            hdg=float(obj.get("hdg", 0.0)),
+            length=float(obj.get("length", 5.0)),
+            width=float(obj.get("width", 2.0)),
+            outline=outline,
+        ))
+    return out
+
+
 def _parse_junction(j_el: ET.Element) -> Junction:
     junction = Junction(id=j_el.get("id", ""))
     for c in j_el.findall("connection"):
@@ -110,9 +132,12 @@ def _parse_junction(j_el: ET.Element) -> Junction:
 
 
 def parse_xodr_text(text: str):
-    """Parse XODR text → (roads, junctions, offset, geo_reference)."""
+    """Parse XODR text → (roads, junctions, parking, offset, geo_reference)."""
     text = re.sub(r'\s+xmlns="[^"]+"', "", text)  # strip default namespace
     root = ET.fromstring(text)
     roads = [_parse_road(r) for r in root.findall("road")]
     junctions = [_parse_junction(j) for j in root.findall("junction")]
-    return roads, junctions, parse_offset(root), parse_geo_reference(root)
+    parking = [
+        p for r in root.findall("road") for p in _parse_parking(r, r.get("id", ""))
+    ]
+    return roads, junctions, parking, parse_offset(root), parse_geo_reference(root)

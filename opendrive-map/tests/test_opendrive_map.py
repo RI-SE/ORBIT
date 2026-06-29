@@ -103,6 +103,41 @@ def test_arc_is_not_degraded_to_line():
     assert lane.length_m > chord + 5.0
 
 
+PARKING = """<OpenDRIVE>
+  <header revMajor="1" revMinor="8"/>
+  <road id="1" length="100.0" junction="-1">
+    <planView>
+      <geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="100.0"><line/></geometry>
+    </planView>
+    <lanes>
+      <laneSection s="0.0">
+        <left><lane id="1" type="driving"><width sOffset="0.0" a="3.0" b="0.0" c="0.0" d="0.0"/></lane></left>
+      </laneSection>
+    </lanes>
+    <objects>
+      <object type="parking" s="50.0" t="-5.0" hdg="0.0" length="5.0" width="2.5">
+        <outline>
+          <cornerLocal u="-2.5" v="-1.25"/><cornerLocal u="2.5" v="-1.25"/>
+          <cornerLocal u="2.5" v="1.25"/><cornerLocal u="-2.5" v="1.25"/>
+        </outline>
+      </object>
+    </objects>
+  </road>
+</OpenDRIVE>"""
+
+
+def test_parking_placement():
+    net = RoadNetwork.from_text(PARKING)
+    assert len(net.parking) == 1
+    assert len(net.parking_polygons) == 1
+    poly = net.parking_polygons[0]
+    # Road runs along +x; object at s=50, t=-5 (right side) -> centre near (50, -5).
+    cx, cy = poly.centroid.x, poly.centroid.y
+    assert cx == pytest.approx(50.0, abs=1.0)
+    assert cy == pytest.approx(-5.0, abs=0.5)
+    assert poly.area == pytest.approx(5.0 * 2.5, rel=1e-6)  # 5.0 x 2.5 outline
+
+
 def test_variable_width_and_multisection():
     net = RoadNetwork.from_text(MULTISECTION)
     lanes = sorted(net.lanes, key=lambda ln: ln.section_s)

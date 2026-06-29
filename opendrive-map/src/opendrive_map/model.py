@@ -83,6 +83,19 @@ class Road:
 
 
 @dataclass
+class ParkingObject:
+    """A <object type="parking"> on a road: outline placed at (s, t, hdg)."""
+
+    road_id: str
+    s: float
+    t: float
+    hdg: float
+    length: float
+    width: float
+    outline: List[Tuple[float, float]] = field(default_factory=list)  # local (u, v) corners
+
+
+@dataclass
 class Connection:
     incoming_road: str
     connecting_road: str
