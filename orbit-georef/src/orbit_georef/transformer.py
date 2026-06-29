@@ -134,6 +134,28 @@ class GeoTransformer:
             control_points=control_points,
         )
 
+    def pixel_to_ground(self, pixel_x: float, pixel_y: float) -> Tuple[float, float]:
+        """Pixel → coordinates in the transform's native (matrix) frame, without geo conversion.
+
+        For homography this is the ground plane the matrix was fitted to — the
+        ``proj_string`` CRS if one is set, otherwise equirectangular-local metres.
+        For affine it is the raw matrix output (longitude, latitude). Use this when the
+        caller wants coordinates in the projection frame the matrix was built in
+        (e.g. to match an OpenDRIVE ``geoReference``).
+        """
+        q = self.transform_matrix @ np.array([pixel_x, pixel_y, 1.0])
+        if self.method == "homography":
+            if abs(q[2]) < 1e-12:
+                return float("nan"), float("nan")
+            return float(q[0] / q[2]), float(q[1] / q[2])
+        return float(q[0]), float(q[1])
+
+    def pixels_to_ground_batch(
+        self, points: List[Tuple[float, float]]
+    ) -> List[Tuple[float, float]]:
+        """Convert multiple pixel coordinates to native-frame ground coordinates."""
+        return [self.pixel_to_ground(x, y) for x, y in points]
+
     def pixel_to_geo(self, pixel_x: float, pixel_y: float, proj_string: str = None) -> Tuple[float, float]:
         """
         Convert pixel coordinates to geographic coordinates.
@@ -148,10 +170,7 @@ class GeoTransformer:
         """
         if self.method == "homography":
             # Homography: pixel → projected coords → geo
-            pixel_homo = np.array([pixel_x, pixel_y, 1.0])
-            ground_homo = self.transform_matrix @ pixel_homo
-            mx = ground_homo[0] / ground_homo[2]
-            my = ground_homo[1] / ground_homo[2]
+            mx, my = self.pixel_to_ground(pixel_x, pixel_y)
 
             if self.proj_string:
                 # Matrix was fitted in self.proj_string CRS — invert back to lon/lat
