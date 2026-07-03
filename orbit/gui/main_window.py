@@ -584,6 +584,8 @@ class MainWindow(QMainWindow):
         self.road_tree.roads_merge_requested.connect(self.on_roads_merge_requested)
         self.road_tree.sections_merge_requested.connect(self.on_sections_merge_requested)
         self.road_tree.section_delete_requested.connect(self.on_section_delete_requested)
+        self.road_tree.lane_add_requested.connect(self.on_lane_add_requested)
+        self.road_tree.lane_remove_requested.connect(self.on_lane_remove_requested)
 
         # Adjustment dock for transform adjustment
         self.adjustment_dock = QDockWidget("Alignment Adjustment", self)
@@ -4314,6 +4316,63 @@ class MainWindow(QMainWindow):
 
         self.road_tree.refresh_tree()
         self.statusBar().showMessage(f"Section {section_number} deleted")
+        self.update_affected_road_lanes()
+
+    def on_lane_add_requested(self, road_id: str, section_number: int):
+        """Handle add-lane request from RoadTreeWidget."""
+        from .dialogs import AddLaneDialog
+
+        road = self.project.get_road(road_id)
+        section = road.get_section(section_number) if road else None
+        if section is None:
+            return
+        spec = AddLaneDialog.get_lane_spec(section, road, self)
+        if spec:
+            self._apply_section_lane_change(road, section_number, spec, None)
+
+    def on_lane_remove_requested(self, road_id: str, section_number: int, lane_id: int):
+        """Handle remove-lane request from RoadTreeWidget."""
+        road = self.project.get_road(road_id)
+        if road:
+            self._apply_section_lane_change(road, section_number, None, lane_id)
+
+    def _apply_section_lane_change(self, road, section_number: int,
+                                   add_spec: Optional[dict], remove_lane_id: Optional[int]):
+        """Insert or remove a lane in one section as a single undoable command."""
+        from .undo_commands import ChangeSectionLanesCommand
+
+        old_road_data = road.to_dict()
+        old_junctions = {j.id: j.to_dict() for j in self.project.junctions}
+
+        if add_spec is not None:
+            label = "Add Lane"
+            mapping = road.insert_lane_in_section(
+                section_number, add_spec['new_lane_id'], add_spec['lane'])
+        else:
+            label = "Remove Lane"
+            mapping = road.remove_lane_in_section(section_number, remove_lane_id)
+
+        if mapping is None:
+            show_warning(self, "The lane position is not valid for this section.",
+                         f"{label} Failed")
+            return
+
+        road.fix_links_after_lane_change(section_number, mapping)
+        affected = self.project.remap_junction_lane_ids(road, section_number, mapping)
+
+        junction_snapshots = [
+            (jid, old_junctions[jid], self.project.get_junction(jid).to_dict())
+            for jid in affected
+        ]
+        cmd = ChangeSectionLanesCommand(
+            self, road.id, old_road_data, road.to_dict(), junction_snapshots, label)
+        self.undo_stack.push(cmd)
+
+        self.road_tree.refresh_tree()
+        message = f"{label}: section {section_number} of road {road.id}"
+        if affected:
+            message += f" (junction connections updated: {', '.join(affected)})"
+        self.statusBar().showMessage(message)
         self.update_affected_road_lanes()
 
     def on_road_split_requested(self, road_id: str, polyline_id: str, point_index: int):

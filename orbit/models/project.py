@@ -1390,6 +1390,87 @@ class Project:
                 return junction
         return None
 
+    def remap_junction_lane_ids(
+        self, road: Road, section_number: int,
+        mapping: Dict[int, Optional[int]],
+    ) -> List[str]:
+        """
+        Remap junction lane connections after lanes changed in a road section.
+
+        Only junctions touching the road end where the section sits are
+        affected; connections referencing a removed lane are deleted.
+        Returns the IDs of junctions whose connections changed.
+        """
+        if not road.lane_sections:
+            return []
+        is_first = road.lane_sections[0].section_number == section_number
+        is_last = road.lane_sections[-1].section_number == section_number
+        if not (is_first or is_last):
+            return []
+        affected = []
+        for junction in self.junctions:
+            if road.is_connecting_road and junction.id != road.junction_id:
+                continue
+            references_road = any(
+                road.id in (lc.from_road_id, lc.to_road_id, lc.connecting_road_id)
+                for lc in junction.lane_connections
+            )
+            if not references_road:
+                continue
+            touches_start = self._junction_touches_road_start(junction, road)
+            if not ((touches_start and is_first) or (not touches_start and is_last)):
+                continue
+            if self._remap_junction_connections(junction, road, mapping):
+                affected.append(junction.id)
+        return affected
+
+    def _junction_touches_road_start(self, junction: Junction, road: Road) -> bool:
+        """Whether the junction sits nearer the road's start than its end."""
+        if road.predecessor_junction_id == junction.id:
+            return True
+        if road.successor_junction_id == junction.id:
+            return False
+        points = road.get_reference_points(self)
+        if len(points) < 2 or not junction.center_point:
+            return True
+        cx, cy = junction.center_point
+        start_d = (points[0][0] - cx) ** 2 + (points[0][1] - cy) ** 2
+        end_d = (points[-1][0] - cx) ** 2 + (points[-1][1] - cy) ** 2
+        return start_d <= end_d
+
+    @staticmethod
+    def _remap_junction_connections(
+        junction: Junction, road: Road,
+        mapping: Dict[int, Optional[int]],
+    ) -> bool:
+        """Apply a lane-ID mapping to a junction's connections for one road."""
+        changed = False
+        kept = []
+        for lc in junction.lane_connections:
+            removed = False
+            for road_attr, lane_attr in (
+                ('from_road_id', 'from_lane_id'),
+                ('to_road_id', 'to_lane_id'),
+                ('connecting_road_id', 'connecting_lane_id'),
+            ):
+                if getattr(lc, road_attr) != road.id:
+                    continue
+                old_lane_id = getattr(lc, lane_attr)
+                if old_lane_id not in mapping:
+                    continue
+                new_lane_id = mapping[old_lane_id]
+                if new_lane_id is None:
+                    removed = True
+                elif new_lane_id != old_lane_id:
+                    setattr(lc, lane_attr, new_lane_id)
+                    changed = True
+            if removed:
+                changed = True
+            else:
+                kept.append(lc)
+        junction.lane_connections = kept
+        return changed
+
     # Signal management
     def add_signal(self, signal: Signal) -> None:
         """Add a traffic signal to the project. Auto-assigns ID if empty."""

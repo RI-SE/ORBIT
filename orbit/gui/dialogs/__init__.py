@@ -2,6 +2,7 @@
 Dialog components for ORBIT GUI.
 """
 
+from .add_lane_dialog import AddLaneDialog
 from .base_dialog import BaseDialog
 from .batch_delete_dialog import BatchDeleteDialog
 from .connecting_road_dialog import ConnectingRoadDialog
@@ -58,4 +59,5 @@ __all__ = [
     'JunctionGroupDialog',
     'BatchDeleteDialog',
     'RoadLaneLinksDialog',
+    'AddLaneDialog',
 ]

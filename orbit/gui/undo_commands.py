@@ -772,6 +772,58 @@ class MergeSectionsCommand(QUndoCommand):
         self.main_window._refresh_trees()
 
 
+class ChangeSectionLanesCommand(QUndoCommand):
+    """Command for adding/removing a lane in a single lane section."""
+
+    def __init__(self, main_window: 'MainWindow', road_id: str,
+                 old_road_data: dict, new_road_data: dict,
+                 junction_snapshots: List[Tuple[str, dict, dict]],
+                 description: str = "Change Section Lanes"):
+        super().__init__(description)
+        self.main_window = main_window
+        self.road_id = road_id
+        self.old_road_data = old_road_data
+        self.new_road_data = new_road_data
+        # (junction_id, old_junction_dict, new_junction_dict)
+        self.junction_snapshots = junction_snapshots
+        self._first_redo = True
+
+    def redo(self):
+        if self._first_redo:
+            self._first_redo = False
+            return
+        self._apply_state(self.new_road_data, use_old=False)
+
+    def undo(self):
+        self._apply_state(self.old_road_data, use_old=True)
+
+    def _apply_state(self, road_data: dict, use_old: bool):
+        # Restore lane sections and junction lane connections in-place —
+        # do NOT remove/add road or junction from project, as remove_road
+        # clears predecessor_id/successor_id on connecting roads.
+        from orbit.models.lane_section import LaneSection as LS
+        road = self.main_window.project.get_road(self.road_id)
+        if not road:
+            return
+        road.lane_sections = [LS.from_dict(s) for s in road_data.get('lane_sections', [])]
+        for junction_id, old_data, new_data in self.junction_snapshots:
+            junction = self.main_window.project.get_junction(junction_id)
+            if junction is None:
+                continue
+            data = old_data if use_old else new_data
+            junction.lane_connections = [
+                LaneConnection.from_dict(lc)
+                for lc in data.get('lane_connections', [])
+            ]
+        self.main_window.image_view.remove_road_lanes(self.road_id)
+        if road.centerline_id:
+            scale_factors = self.main_window.get_current_scale()
+            self.main_window.image_view.add_road_lanes_graphics(road, scale_factors)
+        self.main_window.image_view.remove_section_boundaries(self.road_id)
+        self.main_window.image_view.draw_section_boundaries(road)
+        self.main_window._refresh_trees()
+
+
 class SplitRoadCommand(QUndoCommand):
     """Command for splitting a road into two roads."""
 

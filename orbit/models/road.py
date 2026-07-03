@@ -913,6 +913,185 @@ class Road:
                 return section
         return None
 
+    def insert_lane_in_section(
+        self, section_number: int, new_lane_id: int, lane_template: Lane
+    ) -> Optional[Dict[int, Optional[int]]]:
+        """
+        Insert a lane at new_lane_id in one section, shifting outward lanes.
+
+        Returns {old_id: new_id} for pre-existing lanes (identity entries
+        included), or None if the position is invalid. Lane 0 never moves.
+        """
+        section = self.get_section(section_number)
+        if section is None or new_lane_id == 0:
+            return None
+        existing_ids = [lane.id for lane in section.lanes]
+        if new_lane_id > 0:
+            max_left = max([i for i in existing_ids if i > 0], default=0)
+            if not 1 <= new_lane_id <= max_left + 1:
+                return None
+        else:
+            max_right = max([-i for i in existing_ids if i < 0], default=0)
+            if not 1 <= -new_lane_id <= max_right + 1:
+                return None
+        mapping: Dict[int, Optional[int]] = {}
+        for lane in section.lanes:
+            old_id = lane.id
+            if new_lane_id > 0 and lane.id >= new_lane_id:
+                lane.id += 1
+            elif new_lane_id < 0 and lane.id <= new_lane_id:
+                lane.id -= 1
+            mapping[old_id] = lane.id
+        lane_template.id = new_lane_id
+        section.lanes.append(lane_template)
+        section.lanes.sort(key=lambda lane: lane.id)
+        return mapping
+
+    def remove_lane_in_section(
+        self, section_number: int, lane_id: int
+    ) -> Optional[Dict[int, Optional[int]]]:
+        """
+        Remove a lane from one section, collapsing the ID gap.
+
+        Returns {old_id: new_id} with the removed lane mapped to None,
+        or None if the lane cannot be removed. Lane 0 cannot be removed.
+        """
+        section = self.get_section(section_number)
+        if section is None or lane_id == 0 or section.get_lane(lane_id) is None:
+            return None
+        mapping: Dict[int, Optional[int]] = {}
+        kept = []
+        for lane in section.lanes:
+            old_id = lane.id
+            if lane.id == lane_id:
+                mapping[old_id] = None
+                continue
+            if lane_id > 0 and lane.id > lane_id:
+                lane.id -= 1
+            elif lane_id < 0 and lane.id < lane_id:
+                lane.id += 1
+            mapping[old_id] = lane.id
+            kept.append(lane)
+        section.lanes = kept
+        return mapping
+
+    def fix_links_after_lane_change(
+        self, section_number: int, mapping: Dict[int, Optional[int]]
+    ) -> None:
+        """
+        Repair lane links after insert/remove so continuity follows old IDs.
+
+        Assumes mapping comes from insert_lane_in_section/remove_lane_in_section
+        applied to the section identified by section_number.
+        """
+        index = next(
+            (i for i, sec in enumerate(self.lane_sections)
+             if sec.section_number == section_number),
+            None,
+        )
+        if index is None:
+            return
+        section = self.lane_sections[index]
+        prev_section = self.lane_sections[index - 1] if index > 0 else None
+        next_section = (self.lane_sections[index + 1]
+                        if index < len(self.lane_sections) - 1 else None)
+        old_by_new = {new: old for old, new in mapping.items() if new is not None}
+        inserted_ids = ({lane.id for lane in section.lanes}
+                        - set(old_by_new) - {0})
+        has_pred = bool(self.predecessor_id or self.predecessor_junction_id)
+        has_succ = bool(self.successor_id or self.successor_junction_id)
+
+        if prev_section is not None:
+            self._remap_neighbor_links(prev_section, mapping, inserted_ids, 'successor')
+        if next_section is not None:
+            self._remap_neighbor_links(next_section, mapping, inserted_ids, 'predecessor')
+
+        for lane in section.lanes:
+            if lane.id == 0:
+                continue
+            if lane.id in inserted_ids:
+                self._init_inserted_lane_links(
+                    lane, prev_section, next_section, has_pred, has_succ)
+            else:
+                old_id = old_by_new[lane.id]
+                if (lane.predecessor_id is None and not lane.no_predecessor
+                        and (prev_section is not None or has_pred)):
+                    lane.predecessor_id = old_id
+                if (lane.successor_id is None and not lane.no_successor
+                        and (next_section is not None or has_succ)):
+                    lane.successor_id = old_id
+
+    @staticmethod
+    def _init_inserted_lane_links(
+        lane: Lane,
+        prev_section: Optional[LaneSection],
+        next_section: Optional[LaneSection],
+        has_pred: bool,
+        has_succ: bool,
+    ) -> None:
+        """
+        Set links for a newly inserted lane.
+
+        Links to a same-ID neighbor lane only when that lane already points
+        back at this one (set by _remap_neighbor_links for dangling lanes);
+        otherwise the lane appears/ends here and links are explicitly none.
+        """
+        lane.predecessor_id = None
+        lane.successor_id = None
+        if prev_section is not None:
+            prev_lane = prev_section.get_lane(lane.id)
+            if prev_lane is not None and prev_lane.successor_id == lane.id:
+                lane.predecessor_id = lane.id
+            else:
+                lane.no_predecessor = True
+        elif has_pred:
+            lane.no_predecessor = True
+        if next_section is not None:
+            next_lane = next_section.get_lane(lane.id)
+            if next_lane is not None and next_lane.predecessor_id == lane.id:
+                lane.successor_id = lane.id
+            else:
+                lane.no_successor = True
+        elif has_succ:
+            lane.no_successor = True
+
+    @staticmethod
+    def _remap_neighbor_links(
+        neighbor: LaneSection,
+        mapping: Dict[int, Optional[int]],
+        inserted_ids: set,
+        side: str,
+    ) -> None:
+        """Remap a neighbor section's links into the changed section ('successor' or 'predecessor')."""
+        attr = side + '_id'
+        flag = 'no_' + side
+        for lane in neighbor.lanes:
+            if lane.id == 0:
+                continue
+            target = getattr(lane, attr)
+            if target is not None:
+                if target in mapping:
+                    new_target = mapping[target]
+                    setattr(lane, attr, new_target)
+                    if new_target is None:
+                        setattr(lane, flag, True)
+            elif getattr(lane, flag):
+                # Dangling lane (appears/ends here): an inserted same-ID lane
+                # continues it; nothing else can
+                if lane.id in inserted_ids:
+                    setattr(lane, attr, lane.id)
+                    setattr(lane, flag, False)
+            elif lane.id in mapping:
+                # Implied same-ID link: make explicit with the remapped target
+                new_target = mapping[lane.id]
+                setattr(lane, attr, new_target)
+                if new_target is None:
+                    setattr(lane, flag, True)
+            elif lane.id in inserted_ids:
+                # Inserted lane provides a same-ID continuation for this lane
+                setattr(lane, attr, lane.id)
+                setattr(lane, flag, False)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert road to dictionary for JSON serialization."""
         data = {

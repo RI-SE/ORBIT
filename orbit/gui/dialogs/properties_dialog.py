@@ -34,6 +34,7 @@ from orbit.utils import format_enum_name
 from orbit.utils.logging_config import get_logger
 
 from ..utils import set_combo_by_data
+from ..utils.message_helpers import ask_yes_no
 from .base_dialog import InfoIconLabel
 
 logger = get_logger(__name__)
@@ -778,13 +779,31 @@ class RoadPropertiesDialog(QDialog):
         if (old_left_count != new_left_count or
             old_right_count != new_right_count or
             old_lane_width != new_lane_width):
-            self.road.generate_lanes()
+            if self._confirm_lane_regeneration():
+                self.road.generate_lanes()
+            else:
+                self.road.lane_info.left_count = old_left_count
+                self.road.lane_info.right_count = old_right_count
+                self.road.lane_info.lane_width = old_lane_width
 
         # Save profile tables
         self.road.elevation_profile = self._get_profile_from_table(self.elevation_table)
         self.road.superelevation_profile = self._get_profile_from_table(self.superelevation_table)
         self.road.lane_offset = self._get_profile_from_table(self.lane_offset_table)
         self.road.surface_crg = self._get_crg_from_table()
+
+    def _confirm_lane_regeneration(self) -> bool:
+        """Ask before replacing custom lane sections with one uniform section."""
+        num_sections = len(self.road.lane_sections)
+        if num_sections <= 1:
+            return True
+        return ask_yes_no(
+            self,
+            f"Changing the lane configuration will regenerate all lanes and "
+            f"replace this road's {num_sections} lane sections with a single "
+            f"uniform section.\n\nContinue?",
+            "Replace Lane Sections?"
+        )
 
     def update_centerline_warning(self):
         """Update the centerline warning based on combo selection."""

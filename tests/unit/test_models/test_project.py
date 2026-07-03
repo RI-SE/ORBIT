@@ -1664,3 +1664,59 @@ class TestEnforceRoadLinkCoordinates:
         cl_b = empty_project.get_polyline(road_b.centerline_id)
         assert cl_b.points[0] == (100.0, 0.0)
         assert cl_b.points[-1] == (200.0, 0.0)
+
+
+class TestRemapJunctionLaneIds:
+    """Test junction lane connection remapping after section lane edits."""
+
+    def _make_project(self):
+        from orbit.models import Lane, LaneConnection, LaneSection
+        project = Project()
+        road = Road(id="r1", centerline_id="p1")
+        for i in range(2):
+            road.lane_sections.append(LaneSection(
+                section_number=i + 1, s_start=i * 100.0, s_end=(i + 1) * 100.0,
+                lanes=[Lane(id=0, width=0.0), Lane(id=1), Lane(id=-1)]))
+        project.add_road(road)
+        # Centerline from (0,0) to (0,200); junction at the road end
+        project.add_polyline(Polyline(id="p1", points=[(0, 0), (0, 200)]))
+        junction = Junction(id="j1", center_point=(0, 210))
+        junction.lane_connections = [
+            LaneConnection(id="lc1", from_road_id="r1", from_lane_id=1,
+                           to_road_id="r2", to_lane_id=-1, turn_type="straight"),
+            LaneConnection(id="lc2", from_road_id="r2", from_lane_id=1,
+                           to_road_id="r1", to_lane_id=-1, turn_type="straight"),
+        ]
+        project.junctions.append(junction)
+        return project, road, junction
+
+    def test_remap_at_junction_end(self):
+        from orbit.models import Lane
+        project, road, junction = self._make_project()
+        mapping = road.insert_lane_in_section(2, 1, Lane(id=0))
+
+        affected = project.remap_junction_lane_ids(road, 2, mapping)
+
+        assert affected == ["j1"]
+        assert junction.lane_connections[0].from_lane_id == 2
+        assert junction.lane_connections[1].to_lane_id == -1
+
+    def test_section_away_from_junction_untouched(self):
+        from orbit.models import Lane
+        project, road, junction = self._make_project()
+        mapping = road.insert_lane_in_section(1, 1, Lane(id=0))
+
+        affected = project.remap_junction_lane_ids(road, 1, mapping)
+
+        assert affected == []
+        assert junction.lane_connections[0].from_lane_id == 1
+
+    def test_removed_lane_deletes_connections(self):
+        project, road, junction = self._make_project()
+        mapping = road.remove_lane_in_section(2, 1)
+
+        affected = project.remap_junction_lane_ids(road, 2, mapping)
+
+        assert affected == ["j1"]
+        remaining_ids = [lc.id for lc in junction.lane_connections]
+        assert remaining_ids == ["lc2"]

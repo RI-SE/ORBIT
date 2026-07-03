@@ -587,3 +587,21 @@ class TestLaneMissingCoverage:
         assert restored.level == original.level
         assert restored.turn_directions == original.turn_directions
         assert restored.boundary_mode == original.boundary_mode
+
+
+class TestLaneNoLinkFlags:
+    """Test explicit no-link flags serialization."""
+
+    def test_flags_default_false_and_omitted(self):
+        lane = Lane(id=1)
+        assert lane.no_predecessor is False
+        assert lane.no_successor is False
+        data = lane.to_dict()
+        assert 'no_predecessor' not in data
+        assert 'no_successor' not in data
+
+    def test_flags_round_trip(self):
+        lane = Lane(id=1, no_predecessor=True, no_successor=True)
+        restored = Lane.from_dict(lane.to_dict())
+        assert restored.no_predecessor is True
+        assert restored.no_successor is True
