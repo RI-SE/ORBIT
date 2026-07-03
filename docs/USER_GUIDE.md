@@ -94,7 +94,7 @@ Load Image → Draw Polylines → Create Roads → Add Junctions → Georeferenc
 ### Quick Start Example
 
 1. **Load image**: `orbit intersection.jpg` or File → Load Image
-2. **Draw centerline**: Click "New Line", trace road center, double-click to finish
+2. **Draw centerline**: Click "New Polyline", trace road center, double-click to finish
 3. **Set as centerline**: Double-click polyline, change Line Type to "Centerline"
 4. **Draw boundaries**: Trace lane markings with appropriate road mark types
 5. **Create road**: Select polylines, press Ctrl+G to group into road
@@ -121,7 +121,7 @@ New polylines default to **Lane Boundary**. Change type via double-click.
 ### Drawing Operations
 
 **Start Drawing**:
-- Click "New Line" button (right sidebar)
+- Click "New Polyline" in the toolbar
 - Or press **Ctrl+P**
 - Or menu: Draw → New Polyline
 
@@ -851,7 +851,7 @@ Access via **Edit → Preferences**.
 - Try absolute path
 
 **Can't draw polylines**
-- Ensure "New Line" mode is active
+- Ensure "New Polyline" mode is active (toolbar button toggled)
 - Check that image is loaded
 
 **Can't export**

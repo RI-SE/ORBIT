@@ -127,6 +127,7 @@ class MainWindow(QMainWindow):
         self.image_view.object_selected.connect(self.on_object_selected_in_view)
         self.image_view.object_placement_requested.connect(self.on_object_placement_requested)
         self.image_view.parking_placement_requested.connect(self.on_parking_placement_requested)
+        self.image_view.placement_cancelled.connect(self.on_placement_cancelled)
         self.image_view.parking_polygon_completed.connect(self.on_parking_polygon_completed)
         self.image_view.object_polygon_completed.connect(self.on_object_polygon_completed)
         self.image_view.section_split_requested.connect(self.on_section_split_requested)
@@ -1796,6 +1797,32 @@ class MainWindow(QMainWindow):
         else:
             self.add_signal_action.setChecked(False)
             self.statusBar().showMessage("Ready")
+
+    def on_placement_cancelled(self, mode: str):
+        """Exit a placement mode cancelled with Esc in the image view."""
+        if mode == 'polyline':
+            # Drawing already cancelled view-side; just sync the toolbar
+            self.new_polyline_action.setChecked(False)
+        elif mode == 'junction':
+            self.junction_mode_active = False
+            self.image_view.set_junction_mode(False)
+            self.add_junction_action.setChecked(False)
+        elif mode == 'signal':
+            self.signal_mode_active = False
+            self.image_view.set_signal_mode(False)
+            self.add_signal_action.setChecked(False)
+        elif mode == 'object':
+            # Object mode serves both Add Object and Add Land Use
+            self.object_mode_active = False
+            self.landuse_mode_active = False
+            self.image_view.set_object_mode(False)
+            self.add_object_action.setChecked(False)
+            self.add_landuse_action.setChecked(False)
+        elif mode == 'parking':
+            self.parking_mode_active = False
+            self.image_view.set_parking_mode(False)
+            self.add_parking_action.setChecked(False)
+        self.statusBar().showMessage("Ready")
 
     def add_object(self):
         """Add a roadside object by selecting type and clicking on the map."""

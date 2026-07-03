@@ -144,6 +144,7 @@ class ImageView(QGraphicsView):
     object_selected = pyqtSignal(str)  # Emits object ID when selected in view
     object_placement_requested = pyqtSignal(float, float, object)  # Emits x, y coordinates and ObjectType
     parking_placement_requested = pyqtSignal(float, float, object, object)  # Emits x, y, ParkingType, ParkingAccess
+    placement_cancelled = pyqtSignal(str)  # Emits mode ('signal', 'object', 'parking') on Esc
     parking_polygon_completed = pyqtSignal(list, object, object)  # Emits points list, ParkingType, ParkingAccess
     object_polygon_completed = pyqtSignal(list, object)  # Emits points list, ObjectType
     section_split_requested = pyqtSignal(str, str, int)  # Emits road_id, polyline_id, point_index
@@ -4276,19 +4277,10 @@ class ImageView(QGraphicsView):
         elif self.drawing_guardrail:
             self._finish_guardrail()
 
-        elif self.signal_mode:
-            for signal_id, item in self.signal_items.items():
-                if item.contains(item.mapFromScene(scene_pos)):
-                    self._show_signal_menu(event.pos(), signal_id)
-                    return
-
-        elif self.object_mode:
-            for object_id, item in self.object_items.items():
-                if self._is_click_on_object(item, scene_pos):
-                    self._show_object_menu(event.pos(), object_id, scene_pos)
-                    return
-
         elif not self.drawing_mode:
+            # Placement modes (signal/object/parking) fall through to the
+            # generic dispatcher, which checks signals and objects first —
+            # right-click keeps working on all other elements meanwhile
             self._handle_right_click_context_menu(scene_pos, event)
 
     def _handle_right_click_context_menu(self, scene_pos, event: QMouseEvent):
@@ -4669,6 +4661,7 @@ class ImageView(QGraphicsView):
                 self.current_polyline_item = None
                 self.drawing_mode = False
                 self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+                self.placement_cancelled.emit('polyline')
         elif self.measure_mode:
             if event.key() == Qt.Key.Key_Escape:
                 # Exit measure mode - will be handled by MainWindow
@@ -4680,17 +4673,33 @@ class ImageView(QGraphicsView):
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 self._finish_parking_polygon()
             elif event.key() == Qt.Key.Key_Escape:
-                self._cancel_parking_polygon()
+                # First Esc cancels the partial polygon, second exits the mode
+                if self.parking_polygon_points:
+                    self._cancel_parking_polygon()
+                else:
+                    self.placement_cancelled.emit('parking')
         elif self.object_mode and self.object_polygon_mode:
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 self._finish_object_polygon()
             elif event.key() == Qt.Key.Key_Escape:
-                self._cancel_object_polygon()
+                # First Esc cancels the partial polygon, second exits the mode
+                if self.object_polygon_points:
+                    self._cancel_object_polygon()
+                else:
+                    self.placement_cancelled.emit('object')
         elif self.drawing_guardrail:
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 self._finish_guardrail()
             elif event.key() == Qt.Key.Key_Escape:
                 self._cancel_guardrail()
+        elif event.key() == Qt.Key.Key_Escape and self.junction_mode:
+            self.placement_cancelled.emit('junction')
+        elif event.key() == Qt.Key.Key_Escape and self.signal_mode:
+            self.placement_cancelled.emit('signal')
+        elif event.key() == Qt.Key.Key_Escape and self.object_mode:
+            self.placement_cancelled.emit('object')
+        elif event.key() == Qt.Key.Key_Escape and self.parking_mode:
+            self.placement_cancelled.emit('parking')
         else:
             if event.key() == Qt.Key.Key_Delete:
                 # Delete selected polyline
