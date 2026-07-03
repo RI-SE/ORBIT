@@ -181,6 +181,8 @@ Roads group polylines and define lane configuration.
 
 ### Road Properties
 
+![Road properties dialog](screenshot_road_properties_dialog.png)
+
 **Basic Properties**:
 - **Road Name**: Descriptive name (e.g., "Main Street")
 - **Road Type**: ASAM OpenDRIVE road type (motorway, town, rural, etc.)
@@ -218,7 +220,17 @@ The Roads panel shows a hierarchical tree:
 
 ## Lane Sections
 
+![Road Tree with sections and context menu](screenshot_road_tree_sections.png)
+
 Roads can be divided into sections where lane configuration changes.
+
+Section commands live in three places:
+
+| Right-click on... | Menu items |
+|---|---|
+| A **centerline point** on the canvas | Split Section Here, Split Road Here, Delete Point |
+| A **section** in the Road Tree | Edit Section Properties, Add Lane..., Delete Section (shown only when the road has more than one section) |
+| A **lane** in the Road Tree | Edit Lane Properties, Remove Lane |
 
 ### Creating Sections
 
@@ -245,6 +257,8 @@ Two or more consecutive sections with the same lane IDs can be merged back into 
 > **Note**: Merging resets the width polynomial to linear. If sections had cubic width polynomials those are simplified.
 
 ### Adding and Removing Lanes
+
+![Add lane dialog](screenshot_add_lane_dialog.png)
 
 A lane can be added to or removed from a single section — this is how lane
 splits, merges, and turn pockets are modeled:
@@ -280,14 +294,52 @@ To model a turn pocket that tapers out of a through lane before a junction:
    renumbered through lane automatically).
 
 For a merge lane after the junction, mirror the pattern with a
-3.5 → 0 m taper. The same steps model a one-lane approach that splits into
-separate left/right turn lanes before a junction.
+3.5 → 0 m taper.
+
+### Example: Approach Splitting into Left/Right Turn Lanes
+
+Where a single-lane approach to a T-junction widens into a dedicated
+left-turn lane and right-turn lane:
+
+1. Split the approach section twice: where both lanes reach full width and
+   where the widening begins. This gives full-width / taper / single-lane
+   sections.
+2. **Full-width section** → Add Lane...: approach side, **innermost**
+   position, driving, constant width. The innermost lane is the leftmost
+   lane in the direction of travel, so it becomes the left-turn lane; the
+   original lane is renumbered outward and becomes the right-turn lane.
+3. **Taper section** → Add Lane...: same position, tapering to 0 toward the
+   single-lane section. Width start/end follow the road's s-direction: if
+   the junction is at the road's *start*, the taper is 3.5 → 0 m; if at the
+   *end*, 0 → 3.5 m.
+4. Open **Edit Lane Connections**: the original lane's movements were
+   remapped to the renumbered (outer) lane. Move the left-turn connection to
+   the new innermost lane and keep the right turn on the outer lane.
 
 ### Section Properties
 
 - **Section Number**: Sequential numbering (1, 2, 3...)
 - **s_start / s_end**: Position along centerline
 - **singleSide**: OpenDRIVE attribute (left, right, or none)
+
+### Lane Properties
+
+![Lane properties dialog](screenshot_lane_properties_dialog.png)
+
+Double-click a lane in the Road Tree (or right-click → **Edit Lane
+Properties**) to edit an individual lane within a section:
+
+- **Lane Type**: driving, biking, sidewalk, shoulder, parking, etc.
+- **Road Mark**: type, color, weight, and mark width
+- **Width**: constant, or check **Variable width** for a linear start → end
+  taper; advanced polynomial coefficients (b, c, d) are available under
+  Advanced
+- **Speed**: per-lane speed limit
+- **Access**: bicycle/pedestrian access restrictions
+- **Outer Boundary**: bind the lane's outer edge to a drawn polyline
+  (explicit boundary) instead of the width-based offset
+- **OpenDRIVE 1.8**: direction, advisory, level flag, and explicit
+  predecessor/successor lane links (0 = none)
 
 ---
 
@@ -324,7 +376,7 @@ Junctions handle intersections where multiple roads meet.
 Create roundabouts via Roads → Create Roundabout (**Ctrl+Shift+R**):
 
 - **Center Point**: Click "Pick on Map" or enter coordinates
-- **Radius**: Inner and outer radius
+- **Radius**: Ring radius (enter or "Pick Radius from Map") and ring resolution
 - **Lanes**: Number of circular lanes
 - **Traffic Direction**: Clockwise or counter-clockwise
 - **Approach Roads**: Select connecting roads
@@ -378,6 +430,8 @@ Junction groups combine multiple junctions into a logical unit, as defined in Op
 ## Lane Connections
 
 Lane connections define the lane-level mappings through junctions — which incoming lane connects to which outgoing lane.
+
+![Lane connections dialog](screenshot_lane_connections_dialog.png)
 
 ### Editing Lane Connections
 
@@ -589,15 +643,21 @@ Import existing .xodr files for round-trip editing:
    - Georeferencing Status: Active (green) required
    - Transformation Info: control points, RMS error, scale
 3. Set export options:
-   - **Preserve Geometry**: Keep all polyline points (default)
-   - **Curve Fitting**: Enable line/arc fitting with configurable tolerances:
-     - **Line tolerance**: Maximum deviation for line segments (meters)
-     - **Arc tolerance**: Maximum deviation for arc segments (meters)
-     - **Clothoid tolerance**: Maximum deviation for clothoid segments (meters)
-   - **Enable Clothoids**: Toggle clothoid (Euler spiral) fitting
-   - **XSD Validation**: Toggle schema validation against ASAM XSD (requires `--xodr_schema` flag)
+   - **Preserve Geometry**: Keep all polyline points (default). Uncheck to
+     enable curve fitting with **Line/Arc Tolerance** (maximum deviation in
+     meters)
+   - **Projection**: UTM, Transverse Mercator, or Preserved
+   - **Origin Point**: Control point or custom latitude/longitude for the
+     coordinate origin
+   - **Signal Codes**: Optionally use German (DE) equivalent codes for signals
+   - **Compatibility**: CARLA compatibility mode (OpenDRIVE 1.4)
+   - **Feature Categories**: Select which object types to include (shown when
+     the project contains objects)
 4. Click "Browse" to select output location
 5. Click "Export"
+
+> **Note**: XSD schema validation runs automatically when ORBIT was launched
+> with the `--xodr_schema` flag — there is no toggle in the dialog.
 
 ### Export Georeferencing
 
