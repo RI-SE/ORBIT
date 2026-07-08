@@ -272,7 +272,9 @@ splits, merges, and turn pockets are modeled:
 
 Outward lanes on the same side are renumbered automatically, and lane
 links and junction lane connections are updated to follow the renumbered
-lanes. To remove a lane, right-click it in the Road Tree → **Remove Lane**
+lanes. Lanes of type **median** are drawn with a diagonal hatch pattern on
+the canvas (in the side color) so painted separation areas stand out from
+driving lanes. To remove a lane, right-click it in the Road Tree → **Remove Lane**
 (junction connections referencing the lane are deleted; undo restores them).
 
 > **Warning**: Changing the road-level lane counts in Road Properties
@@ -340,6 +342,15 @@ Properties**) to edit an individual lane within a section:
   (explicit boundary) instead of the width-based offset
 - **OpenDRIVE 1.8**: direction, advisory, level flag, and explicit
   predecessor/successor lane links (0 = none)
+- **Junction Connections**: every junction movement that starts or ends in
+  this lane, with editable connecting road and connecting-road lane — a
+  quick alternative to the junction's full lane connection editor (which is
+  still needed to add or remove movements)
+
+For **connecting road lanes** (double-click a lane inside a junction), the
+dialog instead shows a **Road Attachments** group: the incoming and outgoing
+road lanes this connecting-road lane links, each editable — pick a different
+lane to reattach the movement, e.g. onto a newly added turn pocket.
 
 ---
 

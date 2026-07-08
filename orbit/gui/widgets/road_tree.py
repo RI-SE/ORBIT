@@ -11,6 +11,7 @@ from PyQt6.QtGui import QAction, QDrag
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QDialog,
     QHBoxLayout,
     QLineEdit,
     QMenu,
@@ -172,6 +173,7 @@ class RoadTreeWidget(QWidget):
     section_delete_requested = pyqtSignal(str, int, bool)  # Emits road_id, section_number, re_snap
     lane_add_requested = pyqtSignal(str, int)  # Emits road_id, section_number
     lane_remove_requested = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id
+    junction_realign_requested = pyqtSignal(str)  # Emits junction ID needing CR re-alignment
 
     def __init__(self, project: Project, parent=None, verbose: bool = False):
         super().__init__(parent)
@@ -832,10 +834,16 @@ class RoadTreeWidget(QWidget):
         if road:
             lane = road.get_lane(lane_id)
             if lane:
-                if LanePropertiesDialog.edit_lane(lane, self.project, road_id, None, parent=self):
+                dialog = LanePropertiesDialog(lane, self.project, road_id, None, parent=self)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
                     # Lane was modified, refresh displays
                     self.road_modified.emit(road_id)
                     self.refresh_tree()
+                    if dialog.junction_connections_changed:
+                        for junction in self.project.junctions:
+                            if any(road_id in (lc.from_road_id, lc.to_road_id)
+                                   for lc in junction.lane_connections):
+                                self.junction_realign_requested.emit(junction.id)
 
     def edit_section(self, section_number: int, road_id: str):
         """Edit a lane section's properties."""

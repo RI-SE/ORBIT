@@ -423,8 +423,11 @@ class RoadLanesGraphicsItem:
                     parent_view = view
                     break
         if parent_view:
+            section = self.road.get_section(section_number)
+            lane = section.get_lane(lane_id) if section else None
             lane_polygon = InteractiveLanePolygon(
-                lane_id, section_number, self.road.id, polygon_points, parent_view
+                lane_id, section_number, self.road.id, polygon_points, parent_view,
+                lane_type=lane.lane_type if lane else None,
             )
             self.scene.addItem(lane_polygon)
             self.lane_items.append(lane_polygon)

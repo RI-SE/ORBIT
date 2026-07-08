@@ -40,18 +40,27 @@ def align_connecting_road_paths(
         if not cr or not cr.inline_path or len(cr.inline_path) < 2:
             continue
 
-        # Bidirectional CRs (left AND right lanes) are generated from CL-to-CL
-        # endpoints and carry equal traffic in both directions. Their reference
-        # line is already at the road centerline — no lateral shift is needed.
-        if cr.cr_lane_count_left > 0 and cr.cr_lane_count_right > 0:
-            continue
-
-        # Find primary lane connection for this CR
+        # Find lane connections for this CR
         cr_conns = [
             c for c in junction.lane_connections if c.connecting_road_id == cr.id
         ]
         if not cr_conns:
             continue
+
+        # Bidirectional CRs (left AND right lanes) carry a movement in each
+        # direction. Anchor each endpoint at the average of the per-direction
+        # lane targets — ~the road centerline for symmetric 1+1 roads, but it
+        # follows the target lanes on multi-lane approaches (turn pockets).
+        if cr.cr_lane_count_left > 0 and cr.cr_lane_count_right > 0:
+            cr.ensure_cr_lanes_initialized()
+            start_shift, end_shift = _bidirectional_endpoint_shifts(
+                cr, cr_conns, project, scale
+            )
+            if start_shift or end_shift:
+                regenerate_connecting_road_path(cr, start_shift, end_shift)
+                modified_ids.append(cr.id)
+            continue
+
         conn = cr_conns[0]
         # Determine CR lane id: right lane (-1) or left lane (+1).
         # Fall back to the CR's actual lane config when not explicitly set.
@@ -111,6 +120,55 @@ def align_connecting_road_paths(
             modified_ids.append(cr.id)
 
     return modified_ids
+
+
+def _bidirectional_endpoint_shifts(
+    cr,
+    cr_conns,
+    project: Project,
+    scale: float,
+) -> Tuple[Optional[Tuple[float, float]], Optional[Tuple[float, float]]]:
+    """Average per-direction lane alignment shifts for a bidirectional CR."""
+
+    def shifts_for_end(road_id, contact, endpoint, fwd_p1, fwd_p2, at_start):
+        shifts = []
+        for conn in cr_conns:
+            if conn.connecting_lane_id is None:
+                continue
+            if conn.from_road_id == road_id:
+                target_lane_id = conn.from_lane_id
+            elif conn.to_road_id == road_id:
+                target_lane_id = conn.to_lane_id
+            else:
+                continue
+            cr_lane = cr.get_cr_lane(conn.connecting_lane_id)
+            if cr_lane is None:
+                continue
+            width = cr_lane.width if at_start else cr_lane.get_width_at_end()
+            shift = _compute_lane_alignment_shift(
+                project=project, road_id=road_id, contact_point=contact,
+                target_lane_id=target_lane_id,
+                cr_lane_id=conn.connecting_lane_id,
+                cr_lane_width=width, cr_endpoint=endpoint,
+                cr_fwd_p1=fwd_p1, cr_fwd_p2=fwd_p2, scale=scale,
+            )
+            shifts.append(shift or (0.0, 0.0))
+        if not shifts:
+            return None
+        avg = (sum(dx for dx, _ in shifts) / len(shifts),
+               sum(dy for _, dy in shifts) / len(shifts))
+        # Symmetric targets cancel out; skip trivial net shifts (< 1 px)
+        if abs(avg[0]) < 1.0 and abs(avg[1]) < 1.0:
+            return None
+        return avg
+
+    start_shift = shifts_for_end(
+        cr.predecessor_id, cr.predecessor_contact,
+        cr.inline_path[0], cr.inline_path[0], cr.inline_path[1], True)
+    end_shift = shifts_for_end(
+        cr.successor_id, cr.successor_contact,
+        cr.inline_path[-1], cr.inline_path[-2], cr.inline_path[-1], False)
+    return start_shift, end_shift
 
 
 def _compute_lane_alignment_shift(

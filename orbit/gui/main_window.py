@@ -558,6 +558,7 @@ class MainWindow(QMainWindow):
         self.elements_tree.parking_deleted.connect(self.on_parking_deleted)
         self.elements_tree.connecting_road_selected.connect(self.on_connecting_road_selected)
         self.elements_tree.connecting_road_modified.connect(self.on_connecting_road_modified)
+        self.elements_tree.junction_realign_requested.connect(self.on_junction_realign_requested)
         self.elements_tree.connecting_road_lane_selected.connect(self.on_connecting_road_lane_selected)
 
         # Roads dock with tree widget
@@ -587,6 +588,7 @@ class MainWindow(QMainWindow):
         self.road_tree.section_delete_requested.connect(self.on_section_delete_requested)
         self.road_tree.lane_add_requested.connect(self.on_lane_add_requested)
         self.road_tree.lane_remove_requested.connect(self.on_lane_remove_requested)
+        self.road_tree.junction_realign_requested.connect(self.on_junction_realign_requested)
 
         # Adjustment dock for transform adjustment
         self.adjustment_dock = QDockWidget("Alignment Adjustment", self)
@@ -3529,6 +3531,23 @@ class MainWindow(QMainWindow):
         """Apply lane alignment to all junctions' connecting roads."""
         self.controller.align_all_junction_crs(scale_factors)
 
+    def on_junction_realign_requested(self, junction_id: str):
+        """Re-align one junction's CRs and refresh their graphics."""
+        scale_factors = self.get_current_scale()
+        modified_ids = self.controller.align_junction_crs(junction_id, scale_factors)
+        for cr_id in modified_ids:
+            self.image_view.update_connecting_road_graphics(cr_id, scale_factors)
+        if modified_ids:
+            self.modified = True
+            self.update_window_title()
+
+    def realign_junctions_for_road(self, road_id: str):
+        """Re-align every junction whose lane connections reference the road."""
+        for junction in self.project.junctions:
+            if any(road_id in (lc.from_road_id, lc.to_road_id)
+                   for lc in junction.lane_connections):
+                self.on_junction_realign_requested(junction.id)
+
     def _realign_all_junctions(self):
         """Re-align all junction CRs and refresh graphics (menu action)."""
         scale_factors = self.get_current_scale()
@@ -4744,7 +4763,8 @@ class MainWindow(QMainWindow):
             return
 
         # Open lane properties dialog
-        if LanePropertiesDialog.edit_lane(lane, self.project, road_id, None, parent=self):
+        dialog = LanePropertiesDialog(lane, self.project, road_id, None, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             # Properties were modified, update the view
             scale_factors = self.get_current_scale()
             self.image_view.update_road_lanes(road_id, scale_factors)
@@ -4752,6 +4772,8 @@ class MainWindow(QMainWindow):
             self.road_tree.refresh_tree()
             self.update_window_title()
             self.statusBar().showMessage(f"Lane properties updated: {lane.get_display_name()}")
+            if dialog.junction_connections_changed:
+                self.realign_junctions_for_road(road_id)
 
     def on_connecting_road_lane_edit_requested(self, connecting_road_id: str, lane_id: int):
         """
@@ -4773,9 +4795,12 @@ class MainWindow(QMainWindow):
         lane = connecting_road.get_cr_lane(lane_id)
         if not lane:
             return
-        # Open lane properties dialog (without project/road_id since connecting roads are standalone)
-        if LanePropertiesDialog.edit_lane(lane, None, None, connecting_road, parent=self):
+        # Open lane properties dialog (project enables the Road Attachments section)
+        dialog = LanePropertiesDialog(lane, self.project, None, connecting_road, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             # Properties were modified, update the view
+            if dialog.junction_connections_changed and connecting_road.junction_id:
+                self.on_junction_realign_requested(connecting_road.junction_id)
             scale_factors = self.get_current_scale()
             self.image_view.update_connecting_road_graphics(connecting_road_id, scale_factors)
             self.modified = True
