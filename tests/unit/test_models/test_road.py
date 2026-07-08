@@ -1046,3 +1046,100 @@ class TestCRLaneWidths:
         # Right lane polygon should be wider at end than left lane
         # (they should be different shapes)
         assert polygons[-1] != polygons[1]
+
+
+class TestSectionLaneEditing:
+    """Test per-section lane insertion/removal and link fixup."""
+
+    def _make_road(self, num_sections=3):
+        """Road with num_sections sections of lanes 0, +1, -1."""
+        road = Road(id="r1")
+        per = 100.0
+        for i in range(num_sections):
+            lanes = [
+                Lane(id=0, width=0.0),
+                Lane(id=1, width=3.5),
+                Lane(id=-1, width=3.5),
+            ]
+            road.lane_sections.append(LaneSection(
+                section_number=i + 1,
+                s_start=i * per,
+                s_end=(i + 1) * per,
+                lanes=lanes,
+            ))
+        return road
+
+    def test_insert_left_innermost_renumbers(self):
+        road = self._make_road(1)
+        mapping = road.insert_lane_in_section(1, 1, Lane(id=0, width=3.5))
+
+        assert mapping == {0: 0, 1: 2, -1: -1}
+        section = road.lane_sections[0]
+        assert sorted(lane.id for lane in section.lanes) == [-1, 0, 1, 2]
+
+    def test_insert_right_outermost(self):
+        road = self._make_road(1)
+        mapping = road.insert_lane_in_section(1, -2, Lane(id=0, width=3.5))
+
+        assert mapping == {0: 0, 1: 1, -1: -1}
+        assert road.lane_sections[0].get_lane(-2) is not None
+
+    def test_insert_invalid_position_rejected(self):
+        road = self._make_road(1)
+        assert road.insert_lane_in_section(1, 3, Lane(id=0)) is None
+        assert road.insert_lane_in_section(1, 0, Lane(id=0)) is None
+        assert road.insert_lane_in_section(99, 1, Lane(id=0)) is None
+
+    def test_remove_lane_collapses_ids(self):
+        road = self._make_road(1)
+        road.insert_lane_in_section(1, 1, Lane(id=0, width=3.5))
+
+        mapping = road.remove_lane_in_section(1, 1)
+
+        assert mapping == {0: 0, 1: None, 2: 1, -1: -1}
+        section = road.lane_sections[0]
+        assert sorted(lane.id for lane in section.lanes) == [-1, 0, 1]
+
+    def test_remove_center_lane_rejected(self):
+        road = self._make_road(1)
+        assert road.remove_lane_in_section(1, 0) is None
+
+    def test_pocket_lane_workflow_links(self):
+        """Taper + pocket sections keep through-lane and pocket-lane chains apart."""
+        road = self._make_road(3)
+
+        mapping = road.insert_lane_in_section(2, 1, Lane(id=0, width=0.0, width_end=3.5))
+        road.fix_links_after_lane_change(2, mapping)
+        mapping = road.insert_lane_in_section(3, 1, Lane(id=0, width=3.5))
+        road.fix_links_after_lane_change(3, mapping)
+
+        s1, s2, s3 = road.lane_sections
+        # Through lane chain: S1.1 -> S2.2 -> S3.2
+        assert s1.get_lane(1).successor_id == 2
+        assert s2.get_lane(2).predecessor_id == 1
+        assert s2.get_lane(2).successor_id == 2
+        assert s3.get_lane(2).predecessor_id == 2
+        # Pocket lane appears in S2, continues to S3
+        pocket2, pocket3 = s2.get_lane(1), s3.get_lane(1)
+        assert pocket2.predecessor_id is None and pocket2.no_predecessor
+        assert pocket2.successor_id == 1 and not pocket2.no_successor
+        assert pocket3.predecessor_id == 1
+        # Unchanged right side keeps continuity
+        assert s1.get_lane(-1).successor_id == -1
+        assert s2.get_lane(-1).predecessor_id == -1
+
+    def test_remove_pocket_restores_dangling_flag(self):
+        road = self._make_road(3)
+        mapping = road.insert_lane_in_section(2, 1, Lane(id=0, width=0.0, width_end=3.5))
+        road.fix_links_after_lane_change(2, mapping)
+        mapping = road.insert_lane_in_section(3, 1, Lane(id=0, width=3.5))
+        road.fix_links_after_lane_change(3, mapping)
+
+        mapping = road.remove_lane_in_section(3, 1)
+        road.fix_links_after_lane_change(3, mapping)
+
+        s2, s3 = road.lane_sections[1], road.lane_sections[2]
+        assert s2.get_lane(1).successor_id is None
+        assert s2.get_lane(1).no_successor
+        # Through lane back at ID 1, still linked to S2.2
+        assert s3.get_lane(1).predecessor_id == 2

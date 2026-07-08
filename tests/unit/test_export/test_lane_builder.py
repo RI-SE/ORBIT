@@ -593,3 +593,71 @@ class TestCreateLane:
         result = builder._create_lane(mock_lane)
 
         assert result.get('type') == 'biking'
+
+
+class TestInteriorSectionLinks:
+    """Tests for default lane links at interior section boundaries."""
+
+    @pytest.fixture
+    def builder(self):
+        return LaneBuilder(scale_x=0.1)
+
+    def _make_road(self, section_lane_ids, predecessor=None, successor=None):
+        """Real Road with sections holding driving lanes with the given IDs."""
+        from orbit.models import Lane, LaneSection, Road
+        road = Road(id="r1", predecessor_id=predecessor, successor_id=successor)
+        per = 100.0
+        for i, lane_ids in enumerate(section_lane_ids):
+            lanes = [Lane(id=0, width=0.0)]
+            lanes += [Lane(id=lane_id, width=3.5) for lane_id in lane_ids]
+            road.lane_sections.append(LaneSection(
+                section_number=i + 1, s_start=i * per, s_end=(i + 1) * per,
+                lanes=lanes))
+        return road
+
+    def _links(self, lanes_elem, section_idx, lane_id):
+        section = lanes_elem.findall('laneSection')[section_idx]
+        for lane in section.iter('lane'):
+            if lane.get('id') == str(lane_id):
+                link = lane.find('link')
+                pred = link.find('predecessor') if link is not None else None
+                succ = link.find('successor') if link is not None else None
+                return (pred.get('id') if pred is not None else None,
+                        succ.get('id') if succ is not None else None)
+        return (None, None)
+
+    def test_equal_id_sets_get_default_interior_links(self, builder):
+        road = self._make_road([[1, -1], [1, -1]])
+        result = builder.create_lanes(road, 100.0, [])
+
+        assert self._links(result, 0, 1) == (None, '1')
+        assert self._links(result, 1, 1) == ('1', None)
+        assert self._links(result, 1, -1) == ('-1', None)
+
+    def test_differing_id_sets_suppress_default_links(self, builder):
+        road = self._make_road([[1, -1], [1, 2, -1]])
+        result = builder.create_lanes(road, 100.0, [])
+
+        # No explicit links set: nothing should be emitted at the boundary
+        assert self._links(result, 0, 1) == (None, None)
+        assert self._links(result, 1, 2) == (None, None)
+
+    def test_explicit_links_emitted_when_sets_differ(self, builder):
+        road = self._make_road([[1, -1], [1, 2, -1]])
+        road.lane_sections[0].get_lane(1).successor_id = 2
+        road.lane_sections[1].get_lane(2).predecessor_id = 1
+        result = builder.create_lanes(road, 100.0, [])
+
+        assert self._links(result, 0, 1) == (None, '2')
+        assert self._links(result, 1, 2) == ('1', None)
+
+    def test_no_link_flags_suppress_road_boundary_defaults(self, builder):
+        road = self._make_road([[1, -1]], predecessor="r0", successor="r2")
+        lane = road.lane_sections[0].get_lane(1)
+        lane.no_predecessor = True
+        lane.no_successor = True
+        result = builder.create_lanes(road, 100.0, [])
+
+        assert self._links(result, 0, 1) == (None, None)
+        # Other lane keeps the same-ID defaults
+        assert self._links(result, 0, -1) == ('-1', '-1')

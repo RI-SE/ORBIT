@@ -11,6 +11,7 @@ from PyQt6.QtGui import QAction, QDrag
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QDialog,
     QHBoxLayout,
     QLineEdit,
     QMenu,
@@ -170,6 +171,9 @@ class RoadTreeWidget(QWidget):
     polyline_delete_requested = pyqtSignal(str)  # Emits polyline ID - handler does deletion
     lane_selected = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id
     section_delete_requested = pyqtSignal(str, int, bool)  # Emits road_id, section_number, re_snap
+    lane_add_requested = pyqtSignal(str, int)  # Emits road_id, section_number
+    lane_remove_requested = pyqtSignal(str, int, int)  # Emits road_id, section_number, lane_id
+    junction_realign_requested = pyqtSignal(str)  # Emits junction ID needing CR re-alignment
 
     def __init__(self, project: Project, parent=None, verbose: bool = False):
         super().__init__(parent)
@@ -674,6 +678,12 @@ class RoadTreeWidget(QWidget):
             ))
             menu.addAction(edit_action)
 
+            add_lane_action = QAction("Add Lane...", self)
+            add_lane_action.triggered.connect(
+                lambda checked=False, sn=data["section_number"],
+                rid=data["road_id"]: self.lane_add_requested.emit(rid, sn))
+            menu.addAction(add_lane_action)
+
             road = self.project.get_road(data["road_id"])
             if road and len(road.lane_sections) > 1:
                 delete_action = QAction("Delete Section", self)
@@ -686,6 +696,13 @@ class RoadTreeWidget(QWidget):
             edit_action = QAction("Edit Lane Properties", self)
             edit_action.triggered.connect(lambda: self.edit_lane(data["lane_id"], data["road_id"]))
             menu.addAction(edit_action)
+
+            if data["lane_id"] != 0 and data.get("section_number") is not None:
+                remove_action = QAction("Remove Lane", self)
+                remove_action.triggered.connect(
+                    lambda checked=False, rid=data["road_id"], sn=data["section_number"],
+                    lid=data["lane_id"]: self.lane_remove_requested.emit(rid, sn, lid))
+                menu.addAction(remove_action)
 
         menu.exec(self.tree.viewport().mapToGlobal(position))
 
@@ -817,10 +834,16 @@ class RoadTreeWidget(QWidget):
         if road:
             lane = road.get_lane(lane_id)
             if lane:
-                if LanePropertiesDialog.edit_lane(lane, self.project, road_id, None, parent=self):
+                dialog = LanePropertiesDialog(lane, self.project, road_id, None, parent=self)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
                     # Lane was modified, refresh displays
                     self.road_modified.emit(road_id)
                     self.refresh_tree()
+                    if dialog.junction_connections_changed:
+                        for junction in self.project.junctions:
+                            if any(road_id in (lc.from_road_id, lc.to_road_id)
+                                   for lc in junction.lane_connections):
+                                self.junction_realign_requested.emit(junction.id)
 
     def edit_section(self, section_number: int, road_id: str):
         """Edit a lane section's properties."""

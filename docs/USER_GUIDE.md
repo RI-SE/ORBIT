@@ -2,7 +2,7 @@
 
 Complete guide for creating OpenDRIVE road networks from aerial imagery using ORBIT.
 
-**Version**: 0.6.0 | **OpenDRIVE**: 1.8
+**Version**: 0.13.0 | **OpenDRIVE**: 1.8
 
 ---
 
@@ -28,6 +28,24 @@ Complete guide for creating OpenDRIVE road networks from aerial imagery using OR
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Troubleshooting](#troubleshooting)
 - [Best Practices](#best-practices)
+
+### How Do I...?
+
+| Task | See |
+|------|-----|
+| Trace a road on the image | [Drawing Polylines](#drawing-polylines) |
+| Turn polylines into a road with lanes | [Creating Roads](#creating-roads) |
+| Change lane count / width for a whole road | [Creating Roads → Road Properties](#road-properties) |
+| Change lanes along part of a road | [Lane Sections](#lane-sections) |
+| Add a turn lane / model a lane split or merge | [Adding and Removing Lanes](#adding-and-removing-lanes) |
+| Connect roads at an intersection | [Junctions](#junctions), [Connecting Roads](#connecting-roads) |
+| Define which lane leads where in a junction | [Lane Connections](#lane-connections) |
+| Build a roundabout | [Junctions → Roundabout Wizard](#roundabout-wizard) |
+| Place traffic signs, poles, buildings | [Signals & Objects](#signals--objects) |
+| Map pixels to real-world coordinates | [Georeferencing](#georeferencing) |
+| Start from OpenStreetMap data | [Import Features](#import-features) |
+| Produce the .xodr file | [Export to OpenDRIVE](#export-to-opendrive) |
+| Fix an export or drawing problem | [Troubleshooting](#troubleshooting) |
 
 ---
 
@@ -76,12 +94,12 @@ Load Image → Draw Polylines → Create Roads → Add Junctions → Georeferenc
 ### Quick Start Example
 
 1. **Load image**: `orbit intersection.jpg` or File → Load Image
-2. **Draw centerline**: Click "New Line", trace road center, double-click to finish
+2. **Draw centerline**: Click "New Polyline", trace road center, double-click to finish
 3. **Set as centerline**: Double-click polyline, change Line Type to "Centerline"
 4. **Draw boundaries**: Trace lane markings with appropriate road mark types
 5. **Create road**: Select polylines, press Ctrl+G to group into road
-6. **Add control points**: Tools → Georeferencing (minimum 3 points)
-7. **Export**: File → Export to OpenDrive
+6. **Add control points**: Georeferencing → Control Points (minimum 3 points)
+7. **Export**: File → Export → Export to OpenDrive
 
 ---
 
@@ -103,9 +121,9 @@ New polylines default to **Lane Boundary**. Change type via double-click.
 ### Drawing Operations
 
 **Start Drawing**:
-- Click "New Line" button (right sidebar)
+- Click "New Polyline" in the toolbar
 - Or press **Ctrl+P**
-- Or menu: Tools → New Polyline
+- Or menu: Draw → New Polyline
 
 **Add Points**:
 - Click on image to add points
@@ -150,7 +168,7 @@ Roads group polylines and define lane configuration.
 ### Method 1: Quick Creation
 
 1. Select a polyline by clicking on it
-2. Press **Ctrl+G** (or Tools → Group to Road)
+2. Press **Ctrl+G** (or Roads → Group to Road)
 3. Fill in road properties
 4. Click OK
 
@@ -162,6 +180,8 @@ Roads group polylines and define lane configuration.
 4. Assign polylines later via "Assign Selected"
 
 ### Road Properties
+
+![Road properties dialog](screenshot_road_properties_dialog.png)
 
 **Basic Properties**:
 - **Road Name**: Descriptive name (e.g., "Main Street")
@@ -200,7 +220,17 @@ The Roads panel shows a hierarchical tree:
 
 ## Lane Sections
 
+![Road Tree with sections and context menu](screenshot_road_tree_sections.png)
+
 Roads can be divided into sections where lane configuration changes.
+
+Section commands live in three places:
+
+| Right-click on... | Menu items |
+|---|---|
+| A **centerline point** on the canvas | Split Section Here, Split Road Here, Delete Point |
+| A **section** in the Road Tree | Edit Section Properties, Add Lane..., Delete Section (shown only when the road has more than one section) |
+| A **lane** in the Road Tree | Edit Lane Properties, Remove Lane |
 
 ### Creating Sections
 
@@ -226,11 +256,101 @@ Two or more consecutive sections with the same lane IDs can be merged back into 
 
 > **Note**: Merging resets the width polynomial to linear. If sections had cubic width polynomials those are simplified.
 
+### Adding and Removing Lanes
+
+![Add lane dialog](screenshot_add_lane_dialog.png)
+
+A lane can be added to or removed from a single section — this is how lane
+splits, merges, and turn pockets are modeled:
+
+1. In the Road Tree, expand the road and right-click a section → **Add Lane...**
+2. Choose the side (left/right) and insert position (innermost = next to the
+   center lane)
+3. Set lane type and road mark
+4. Set width: equal start/end values give a constant width; different values
+   give a linear taper (e.g. 0 → 3.5 m for a lane that appears)
+
+Outward lanes on the same side are renumbered automatically, and lane
+links and junction lane connections are updated to follow the renumbered
+lanes. Lanes of type **median** are drawn with a diagonal hatch pattern on
+the canvas (in the side color) so painted separation areas stand out from
+driving lanes. To remove a lane, right-click it in the Road Tree → **Remove Lane**
+(junction connections referencing the lane are deleted; undo restores them).
+
+> **Warning**: Changing the road-level lane counts in Road Properties
+> regenerates all lanes and replaces custom sections with a single uniform
+> section. A confirmation is shown when sections would be lost.
+
+### Example: Turn Lane at a Junction (Lane Split)
+
+To model a turn pocket that tapers out of a through lane before a junction:
+
+1. Split the section twice on the approach: right-click a centerline point at
+   the start of the taper → **Split Section Here**, and again where the pocket
+   reaches full width. This gives three sections: approach / taper / pocket.
+2. **Taper section** → Add Lane...: travel side, innermost position, driving,
+   width 0 → 3.5 m.
+3. **Pocket section** → Add Lane...: same position, constant 3.5 m.
+4. Open the junction's **Edit Lane Connections** and add the turn movement
+   from the new pocket lane (the existing connections keep following the
+   renumbered through lane automatically).
+
+For a merge lane after the junction, mirror the pattern with a
+3.5 → 0 m taper.
+
+### Example: Approach Splitting into Left/Right Turn Lanes
+
+Where a single-lane approach to a T-junction widens into a dedicated
+left-turn lane and right-turn lane:
+
+1. Split the approach section twice: where both lanes reach full width and
+   where the widening begins. This gives full-width / taper / single-lane
+   sections.
+2. **Full-width section** → Add Lane...: approach side, **innermost**
+   position, driving, constant width. The innermost lane is the leftmost
+   lane in the direction of travel, so it becomes the left-turn lane; the
+   original lane is renumbered outward and becomes the right-turn lane.
+3. **Taper section** → Add Lane...: same position, tapering to 0 toward the
+   single-lane section. Width start/end follow the road's s-direction: if
+   the junction is at the road's *start*, the taper is 3.5 → 0 m; if at the
+   *end*, 0 → 3.5 m.
+4. Open **Edit Lane Connections**: the original lane's movements were
+   remapped to the renumbered (outer) lane. Move the left-turn connection to
+   the new innermost lane and keep the right turn on the outer lane.
+
 ### Section Properties
 
 - **Section Number**: Sequential numbering (1, 2, 3...)
 - **s_start / s_end**: Position along centerline
 - **singleSide**: OpenDRIVE attribute (left, right, or none)
+
+### Lane Properties
+
+![Lane properties dialog](screenshot_lane_properties_dialog.png)
+
+Double-click a lane in the Road Tree (or right-click → **Edit Lane
+Properties**) to edit an individual lane within a section:
+
+- **Lane Type**: driving, biking, sidewalk, shoulder, parking, etc.
+- **Road Mark**: type, color, weight, and mark width
+- **Width**: constant, or check **Variable width** for a linear start → end
+  taper; advanced polynomial coefficients (b, c, d) are available under
+  Advanced
+- **Speed**: per-lane speed limit
+- **Access**: bicycle/pedestrian access restrictions
+- **Outer Boundary**: bind the lane's outer edge to a drawn polyline
+  (explicit boundary) instead of the width-based offset
+- **OpenDRIVE 1.8**: direction, advisory, level flag, and explicit
+  predecessor/successor lane links (0 = none)
+- **Junction Connections**: every junction movement that starts or ends in
+  this lane, with editable connecting road and connecting-road lane — a
+  quick alternative to the junction's full lane connection editor (which is
+  still needed to add or remove movements)
+
+For **connecting road lanes** (double-click a lane inside a junction), the
+dialog instead shows a **Road Attachments** group: the incoming and outgoing
+road lanes this connecting-road lane links, each editable — pick a different
+lane to reattach the movement, e.g. onto a newly added turn pocket.
 
 ---
 
@@ -240,7 +360,7 @@ Junctions handle intersections where multiple roads meet.
 
 ### Creating a Junction
 
-1. Press **Ctrl+J** or Tools → Add Junction
+1. Press **Ctrl+J** or Roads → Add Junction
 2. Click on the map where the intersection is located
 3. Fill in junction properties:
    - **Junction Name**: e.g., "Main & Oak Intersection"
@@ -264,10 +384,10 @@ Junctions handle intersections where multiple roads meet.
 
 ![Roundabout wizard dialog](screenshot_roundabout_wizard.png)
 
-Create roundabouts via Tools → Create Roundabout (**Ctrl+Shift+R**):
+Create roundabouts via Roads → Create Roundabout (**Ctrl+Shift+R**):
 
 - **Center Point**: Click "Pick on Map" or enter coordinates
-- **Radius**: Inner and outer radius
+- **Radius**: Ring radius (enter or "Pick Radius from Map") and ring resolution
 - **Lanes**: Number of circular lanes
 - **Traffic Direction**: Clockwise or counter-clockwise
 - **Approach Roads**: Select connecting roads
@@ -322,6 +442,8 @@ Junction groups combine multiple junctions into a logical unit, as defined in Op
 
 Lane connections define the lane-level mappings through junctions — which incoming lane connects to which outgoing lane.
 
+![Lane connections dialog](screenshot_lane_connections_dialog.png)
+
 ### Editing Lane Connections
 
 1. Right-click a junction in the Elements tree → **Edit Lane Connections**
@@ -342,7 +464,7 @@ Lane connections define the lane-level mappings through junctions — which inco
 Place traffic signs from country-specific sign libraries.
 
 **Adding a Signal**:
-1. Press **Ctrl+T** or Tools → Add Signal
+1. Press **Ctrl+T** or Draw → Add Signal
 2. Click on the map to place the signal
 3. In the signal dialog:
    - Select from the **sign library** (organized by category)
@@ -359,7 +481,7 @@ Place traffic signs from country-specific sign libraries.
 Place physical objects along roads.
 
 **Adding an Object**:
-1. Press **Ctrl+Alt+O** or Tools → Add Object
+1. Press **Ctrl+Alt+O** or Draw → Add Object
 2. Click on the map to place the object
 3. Select object type:
    - Lamppost
@@ -379,7 +501,7 @@ Place physical objects along roads.
 Draw polygon areas representing land use and natural features.
 
 **Adding a Land Use Area**:
-1. Press **Ctrl+Shift+L** or Tools → Add Land Use
+1. Press **Ctrl+Shift+L** or Draw → Add Land Use
 2. A dialog asks for the land use type:
    - Forest, Farmland, Meadow / Grass, Scrub / Heath, Water, Wetland
 3. Click on the map to place polygon vertices; double-click or press **Enter** to finish
@@ -397,7 +519,7 @@ Draw polygon areas representing land use and natural features.
 
 ### Adding Parking
 
-1. Press **Ctrl+Shift+P** or Tools → Add Parking
+1. Press **Ctrl+Shift+P** or Draw → Add Parking
 2. Choose drawing mode:
    - **Single space**: Click to place an individual parking space
    - **Polygon area**: Multi-click to draw a parking lot outline, double-click to finish
@@ -436,7 +558,7 @@ Georeferencing converts pixel coordinates to real-world geographic coordinates.
 
 ### Adding Control Points
 
-1. Go to **Tools → Georeferencing** (Ctrl+Shift+G)
+1. Go to **Georeferencing → Control Points** (Ctrl+Shift+G)
 2. Click "Pick Point on Image"
 3. Click on a distinctive feature
 4. Enter latitude/longitude coordinates
@@ -494,7 +616,7 @@ Import road networks from OSM via Overpass API.
 - At least 3 control points set up
 
 **Process**:
-1. File → Import OpenStreetMap Data (Ctrl+Shift+I)
+1. File → Import → Import OpenStreetMap Data (Ctrl+Shift+I)
 2. Configure options:
    - Import Mode: Add or Replace
    - Detail Level: Moderate or Full
@@ -510,7 +632,7 @@ See the [OSM Import Guide](OSM_IMPORT.md) for details.
 
 Import existing .xodr files for round-trip editing:
 
-1. File → Import OpenDRIVE (Ctrl+Shift+O)
+1. File → Import → Import from OpenDrive (Ctrl+Shift+O)
 2. Select .xodr file
 3. Review the **import dialog** with options and preview
 4. Check the import report for:
@@ -526,27 +648,33 @@ Import existing .xodr files for round-trip editing:
 
 ### Export Process
 
-1. Press **Ctrl+E** or File → Export to OpenDrive
+1. Press **Ctrl+E** or File → Export → Export to OpenDrive
 2. Review the Export Dialog:
    - Project Summary: counts of elements
    - Georeferencing Status: Active (green) required
    - Transformation Info: control points, RMS error, scale
 3. Set export options:
-   - **Preserve Geometry**: Keep all polyline points (default)
-   - **Curve Fitting**: Enable line/arc fitting with configurable tolerances:
-     - **Line tolerance**: Maximum deviation for line segments (meters)
-     - **Arc tolerance**: Maximum deviation for arc segments (meters)
-     - **Clothoid tolerance**: Maximum deviation for clothoid segments (meters)
-   - **Enable Clothoids**: Toggle clothoid (Euler spiral) fitting
-   - **XSD Validation**: Toggle schema validation against ASAM XSD (requires `--xodr_schema` flag)
+   - **Preserve Geometry**: Keep all polyline points (default). Uncheck to
+     enable curve fitting with **Line/Arc Tolerance** (maximum deviation in
+     meters)
+   - **Projection**: UTM, Transverse Mercator, or Preserved
+   - **Origin Point**: Control point or custom latitude/longitude for the
+     coordinate origin
+   - **Signal Codes**: Optionally use German (DE) equivalent codes for signals
+   - **Compatibility**: CARLA compatibility mode (OpenDRIVE 1.4)
+   - **Feature Categories**: Select which object types to include (shown when
+     the project contains objects)
 4. Click "Browse" to select output location
 5. Click "Export"
+
+> **Note**: XSD schema validation runs automatically when ORBIT was launched
+> with the `--xodr_schema` flag — there is no toggle in the dialog.
 
 ### Export Georeferencing
 
 Export georeferencing parameters separately:
 
-1. File → Export Georeferencing
+1. File → Export → Export Georeferencing
 2. Select output location for the JSON file
 3. The export includes:
    - Control points (pixel and geographic coordinates)
@@ -583,7 +711,7 @@ Export a semantic segmentation mask where each pixel value identifies a lane reg
 
 ### Access
 
-File menu → Export Layout Mask...
+File → Export → Export Layout Mask...
 
 ### Export Methods
 
@@ -734,7 +862,7 @@ Access via **Edit → Preferences**.
 - Try absolute path
 
 **Can't draw polylines**
-- Ensure "New Line" mode is active
+- Ensure "New Polyline" mode is active (toolbar button toggled)
 - Check that image is loaded
 
 **Can't export**
@@ -795,4 +923,4 @@ Access via **Edit → Preferences**.
 
 ---
 
-**Last Updated**: 2026-02
+**Last Updated**: 2026-07

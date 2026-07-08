@@ -13,6 +13,13 @@ from orbit.models import Road, RoadMarkType
 from .lane_analyzer import BoundaryInfo
 
 
+def _same_lane_id_set(section_a, section_b) -> bool:
+    """Whether two sections have identical non-center lane IDs."""
+    ids_a = {lane.id for lane in section_a.lanes if lane.id != 0}
+    ids_b = {lane.id for lane in section_b.lanes if lane.id != 0}
+    return ids_a == ids_b
+
+
 def convert_road_mark_type(road_mark_type: RoadMarkType) -> str:
     """
     Convert ORBIT RoadMarkType enum to OpenDRIVE road mark type string.
@@ -148,9 +155,20 @@ class LaneBuilder:
             # OpenDRIVE requires elements in order: left, center, right
             # Only add left/right if there are lanes
 
-            # First section needs predecessor lane links, last needs successor
-            add_pred = (idx == 0) and has_road_predecessor
-            add_succ = (idx == num_sections - 1) and has_road_successor
+            # Default same-ID links apply at road boundaries and at interior
+            # section boundaries where both sections have identical lane IDs.
+            # Where lane IDs differ (lane split/merge), only explicit links
+            # set on the Lane objects are emitted.
+            prev_sec = road.lane_sections[idx - 1] if idx > 0 else None
+            next_sec = road.lane_sections[idx + 1] if idx < num_sections - 1 else None
+            add_pred = (
+                ((idx == 0) and has_road_predecessor)
+                or (prev_sec is not None and _same_lane_id_set(prev_sec, section))
+            )
+            add_succ = (
+                ((idx == num_sections - 1) and has_road_successor)
+                or (next_sec is not None and _same_lane_id_set(section, next_sec))
+            )
 
             # Left lanes (positive IDs)
             left_lanes = [lane for lane in section.lanes if lane.id > 0]
@@ -258,10 +276,11 @@ class LaneBuilder:
         pred_id = lane_obj.predecessor_id
         succ_id = lane_obj.successor_id
 
-        # Default to same lane ID for road-to-road connections
-        if pred_id is None and add_pred_link:
+        # Default to same lane ID for road-to-road connections,
+        # unless the lane explicitly has no link (e.g. appearing/merging pocket lane)
+        if pred_id is None and add_pred_link and not lane_obj.no_predecessor:
             pred_id = lane_obj.id
-        if succ_id is None and add_succ_link:
+        if succ_id is None and add_succ_link and not lane_obj.no_successor:
             succ_id = lane_obj.id
 
         link = etree.SubElement(lane, 'link')

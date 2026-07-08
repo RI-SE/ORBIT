@@ -107,6 +107,9 @@ class Lane:
     # Lane predecessor/successor links (lane IDs)
     predecessor_id: Optional[int] = None
     successor_id: Optional[int] = None
+    # Explicitly no link (suppresses export's same-ID default, e.g. for pocket lanes)
+    no_predecessor: bool = False
+    no_successor: bool = False
     # OpenDRIVE 1.8 attributes
     direction: Optional[str] = None  # "standard", "reversed", "both"
     advisory: Optional[str] = None  # "none", "inner", "outer", "both"
@@ -162,6 +165,10 @@ class Lane:
             data['predecessor_id'] = self.predecessor_id
         if self.successor_id is not None:
             data['successor_id'] = self.successor_id
+        if self.no_predecessor:
+            data['no_predecessor'] = self.no_predecessor
+        if self.no_successor:
+            data['no_successor'] = self.no_successor
         # Only include V1.8 attributes if set
         if self.direction is not None:
             data['direction'] = self.direction
@@ -208,6 +215,8 @@ class Lane:
             heights=[tuple(h) for h in data.get('heights', [])],
             predecessor_id=data.get('predecessor_id'),
             successor_id=data.get('successor_id'),
+            no_predecessor=data.get('no_predecessor', False),
+            no_successor=data.get('no_successor', False),
             direction=data.get('direction'),
             advisory=data.get('advisory'),
             level=data.get('level', False),

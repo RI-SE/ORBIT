@@ -10,6 +10,8 @@ from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsPolygonItem
 
+from orbit.models.lane import LaneType
+
 if TYPE_CHECKING:
     from ..image_view import ImageView
 
@@ -28,7 +30,7 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
 
     def __init__(self, lane_id: int, section_number: int, road_id: str,
                  polygon_points: List[tuple], parent_view: 'ImageView',
-                 is_connecting_road: bool = False) -> None:
+                 is_connecting_road: bool = False, lane_type=None) -> None:
         """
         Create an interactive lane polygon.
 
@@ -39,6 +41,7 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
             polygon_points: List of (x, y) points forming the lane polygon
             parent_view: Parent ImageView for signaling
             is_connecting_road: True if this is a connecting road lane, False for regular road lane
+            lane_type: Optional LaneType; median lanes are drawn with a hatch pattern
         """
         # Create polygon
         polygon = QPolygonF()
@@ -58,6 +61,7 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
         self.is_selected = False
         self.is_linked = False  # True when this lane is connected to a selected lane
         self.is_connecting_road = is_connecting_road
+        self.lane_type = lane_type
 
         # Choose base color based on lane side (OpenDRIVE convention)
         # Connecting road lanes use darker shades to distinguish from regular lanes
@@ -109,6 +113,10 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
             alpha: Alpha value (0-255)
             tinted: If True, blend base color with LINKED_TINT for connected lanes
         """
+        is_median = self.lane_type == LaneType.MEDIAN
+        if is_median:
+            # Hatch coverage is sparse; raise alpha so the pattern stays visible
+            alpha = min(255, int(alpha * 1.6))
         if tinted:
             # Blend base color with yellow/orange tint (50% blend)
             r = (self.base_color.red() + self.LINKED_TINT.red()) // 2
@@ -118,7 +126,11 @@ class InteractiveLanePolygon(QGraphicsPolygonItem):
         else:
             color = QColor(self.base_color)
             color.setAlpha(alpha)
-        self.setBrush(QBrush(color))
+        brush = QBrush(color)
+        if is_median:
+            # Diagonal hatch mirrors real hatched median road paint
+            brush.setStyle(Qt.BrushStyle.BDiagPattern)
+        self.setBrush(brush)
 
     def set_selected(self, selected: bool) -> None:
         """Set selection state and update appearance."""

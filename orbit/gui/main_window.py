@@ -127,6 +127,7 @@ class MainWindow(QMainWindow):
         self.image_view.object_selected.connect(self.on_object_selected_in_view)
         self.image_view.object_placement_requested.connect(self.on_object_placement_requested)
         self.image_view.parking_placement_requested.connect(self.on_parking_placement_requested)
+        self.image_view.placement_cancelled.connect(self.on_placement_cancelled)
         self.image_view.parking_polygon_completed.connect(self.on_parking_polygon_completed)
         self.image_view.object_polygon_completed.connect(self.on_object_polygon_completed)
         self.image_view.section_split_requested.connect(self.on_section_split_requested)
@@ -557,6 +558,7 @@ class MainWindow(QMainWindow):
         self.elements_tree.parking_deleted.connect(self.on_parking_deleted)
         self.elements_tree.connecting_road_selected.connect(self.on_connecting_road_selected)
         self.elements_tree.connecting_road_modified.connect(self.on_connecting_road_modified)
+        self.elements_tree.junction_realign_requested.connect(self.on_junction_realign_requested)
         self.elements_tree.connecting_road_lane_selected.connect(self.on_connecting_road_lane_selected)
 
         # Roads dock with tree widget
@@ -584,6 +586,9 @@ class MainWindow(QMainWindow):
         self.road_tree.roads_merge_requested.connect(self.on_roads_merge_requested)
         self.road_tree.sections_merge_requested.connect(self.on_sections_merge_requested)
         self.road_tree.section_delete_requested.connect(self.on_section_delete_requested)
+        self.road_tree.lane_add_requested.connect(self.on_lane_add_requested)
+        self.road_tree.lane_remove_requested.connect(self.on_lane_remove_requested)
+        self.road_tree.junction_realign_requested.connect(self.on_junction_realign_requested)
 
         # Adjustment dock for transform adjustment
         self.adjustment_dock = QDockWidget("Alignment Adjustment", self)
@@ -1794,6 +1799,32 @@ class MainWindow(QMainWindow):
         else:
             self.add_signal_action.setChecked(False)
             self.statusBar().showMessage("Ready")
+
+    def on_placement_cancelled(self, mode: str):
+        """Exit a placement mode cancelled with Esc in the image view."""
+        if mode == 'polyline':
+            # Drawing already cancelled view-side; just sync the toolbar
+            self.new_polyline_action.setChecked(False)
+        elif mode == 'junction':
+            self.junction_mode_active = False
+            self.image_view.set_junction_mode(False)
+            self.add_junction_action.setChecked(False)
+        elif mode == 'signal':
+            self.signal_mode_active = False
+            self.image_view.set_signal_mode(False)
+            self.add_signal_action.setChecked(False)
+        elif mode == 'object':
+            # Object mode serves both Add Object and Add Land Use
+            self.object_mode_active = False
+            self.landuse_mode_active = False
+            self.image_view.set_object_mode(False)
+            self.add_object_action.setChecked(False)
+            self.add_landuse_action.setChecked(False)
+        elif mode == 'parking':
+            self.parking_mode_active = False
+            self.image_view.set_parking_mode(False)
+            self.add_parking_action.setChecked(False)
+        self.statusBar().showMessage("Ready")
 
     def add_object(self):
         """Add a roadside object by selecting type and clicking on the map."""
@@ -3500,6 +3531,23 @@ class MainWindow(QMainWindow):
         """Apply lane alignment to all junctions' connecting roads."""
         self.controller.align_all_junction_crs(scale_factors)
 
+    def on_junction_realign_requested(self, junction_id: str):
+        """Re-align one junction's CRs and refresh their graphics."""
+        scale_factors = self.get_current_scale()
+        modified_ids = self.controller.align_junction_crs(junction_id, scale_factors)
+        for cr_id in modified_ids:
+            self.image_view.update_connecting_road_graphics(cr_id, scale_factors)
+        if modified_ids:
+            self.modified = True
+            self.update_window_title()
+
+    def realign_junctions_for_road(self, road_id: str):
+        """Re-align every junction whose lane connections reference the road."""
+        for junction in self.project.junctions:
+            if any(road_id in (lc.from_road_id, lc.to_road_id)
+                   for lc in junction.lane_connections):
+                self.on_junction_realign_requested(junction.id)
+
     def _realign_all_junctions(self):
         """Re-align all junction CRs and refresh graphics (menu action)."""
         scale_factors = self.get_current_scale()
@@ -4316,6 +4364,63 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Section {section_number} deleted")
         self.update_affected_road_lanes()
 
+    def on_lane_add_requested(self, road_id: str, section_number: int):
+        """Handle add-lane request from RoadTreeWidget."""
+        from .dialogs import AddLaneDialog
+
+        road = self.project.get_road(road_id)
+        section = road.get_section(section_number) if road else None
+        if section is None:
+            return
+        spec = AddLaneDialog.get_lane_spec(section, road, self)
+        if spec:
+            self._apply_section_lane_change(road, section_number, spec, None)
+
+    def on_lane_remove_requested(self, road_id: str, section_number: int, lane_id: int):
+        """Handle remove-lane request from RoadTreeWidget."""
+        road = self.project.get_road(road_id)
+        if road:
+            self._apply_section_lane_change(road, section_number, None, lane_id)
+
+    def _apply_section_lane_change(self, road, section_number: int,
+                                   add_spec: Optional[dict], remove_lane_id: Optional[int]):
+        """Insert or remove a lane in one section as a single undoable command."""
+        from .undo_commands import ChangeSectionLanesCommand
+
+        old_road_data = road.to_dict()
+        old_junctions = {j.id: j.to_dict() for j in self.project.junctions}
+
+        if add_spec is not None:
+            label = "Add Lane"
+            mapping = road.insert_lane_in_section(
+                section_number, add_spec['new_lane_id'], add_spec['lane'])
+        else:
+            label = "Remove Lane"
+            mapping = road.remove_lane_in_section(section_number, remove_lane_id)
+
+        if mapping is None:
+            show_warning(self, "The lane position is not valid for this section.",
+                         f"{label} Failed")
+            return
+
+        road.fix_links_after_lane_change(section_number, mapping)
+        affected = self.project.remap_junction_lane_ids(road, section_number, mapping)
+
+        junction_snapshots = [
+            (jid, old_junctions[jid], self.project.get_junction(jid).to_dict())
+            for jid in affected
+        ]
+        cmd = ChangeSectionLanesCommand(
+            self, road.id, old_road_data, road.to_dict(), junction_snapshots, label)
+        self.undo_stack.push(cmd)
+
+        self.road_tree.refresh_tree()
+        message = f"{label}: section {section_number} of road {road.id}"
+        if affected:
+            message += f" (junction connections updated: {', '.join(affected)})"
+        self.statusBar().showMessage(message)
+        self.update_affected_road_lanes()
+
     def on_road_split_requested(self, road_id: str, polyline_id: str, point_index: int):
         """
         Handle road split request from ImageView.
@@ -4658,7 +4763,8 @@ class MainWindow(QMainWindow):
             return
 
         # Open lane properties dialog
-        if LanePropertiesDialog.edit_lane(lane, self.project, road_id, None, parent=self):
+        dialog = LanePropertiesDialog(lane, self.project, road_id, None, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             # Properties were modified, update the view
             scale_factors = self.get_current_scale()
             self.image_view.update_road_lanes(road_id, scale_factors)
@@ -4666,6 +4772,8 @@ class MainWindow(QMainWindow):
             self.road_tree.refresh_tree()
             self.update_window_title()
             self.statusBar().showMessage(f"Lane properties updated: {lane.get_display_name()}")
+            if dialog.junction_connections_changed:
+                self.realign_junctions_for_road(road_id)
 
     def on_connecting_road_lane_edit_requested(self, connecting_road_id: str, lane_id: int):
         """
@@ -4687,9 +4795,12 @@ class MainWindow(QMainWindow):
         lane = connecting_road.get_cr_lane(lane_id)
         if not lane:
             return
-        # Open lane properties dialog (without project/road_id since connecting roads are standalone)
-        if LanePropertiesDialog.edit_lane(lane, None, None, connecting_road, parent=self):
+        # Open lane properties dialog (project enables the Road Attachments section)
+        dialog = LanePropertiesDialog(lane, self.project, None, connecting_road, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             # Properties were modified, update the view
+            if dialog.junction_connections_changed and connecting_road.junction_id:
+                self.on_junction_realign_requested(connecting_road.junction_id)
             scale_factors = self.get_current_scale()
             self.image_view.update_connecting_road_graphics(connecting_road_id, scale_factors)
             self.modified = True

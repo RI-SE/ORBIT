@@ -9,6 +9,7 @@ from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
+    QDialog,
     QLineEdit,
     QMenu,
     QStyle,
@@ -33,6 +34,7 @@ class ElementsTreeWidget(QWidget):
     junction_selected = pyqtSignal(str)  # Emits junction ID
     junction_modified = pyqtSignal(str)  # Emits junction ID
     junction_deleted = pyqtSignal(str)  # Emits junction ID
+    junction_realign_requested = pyqtSignal(str)  # Emits junction ID needing CR re-alignment
     signal_selected = pyqtSignal(str)  # Emits signal ID
     signal_modified = pyqtSignal(str)  # Emits signal ID
     signal_deleted = pyqtSignal(str)  # Emits signal ID
@@ -608,12 +610,14 @@ class ElementsTreeWidget(QWidget):
             return
 
         # Open lane properties dialog with connecting road for start/end width editing
-        result = LanePropertiesDialog.edit_lane(
-            lane, None, None,
+        dialog = LanePropertiesDialog(
+            lane, self.project, None,
             connecting_road=connecting_road,
             parent=self
         )
-        if result:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            if dialog.junction_connections_changed and connecting_road.junction_id:
+                self.junction_realign_requested.emit(connecting_road.junction_id)
             # Emit modification signal
             self.connecting_road_modified.emit(connecting_road_id)
             self.refresh_tree()

@@ -50,6 +50,8 @@ class LanePropertiesDialog(BaseDialog):
         self.project = project
         self.road_id = road_id
         self.connecting_road = connecting_road  # For connecting road lanes
+        # True after accept() if junction connection rows were modified
+        self.junction_connections_changed = False
         self.setup_ui()
         self.load_properties()
 
@@ -75,6 +77,10 @@ class LanePropertiesDialog(BaseDialog):
             self._setup_advanced_section()
         if self.project and self.road_id:
             self._create_boundary_section()
+        if self.project and self.road_id and self.connecting_road is None:
+            self._create_junction_connections_section()
+        if self.project and self.connecting_road is not None:
+            self._create_cr_attachment_section()
 
         self.create_button_box()
         self.update_description()
@@ -250,6 +256,143 @@ class LanePropertiesDialog(BaseDialog):
 
         self.outer_boundary_combo.currentIndexChanged.connect(self._update_fit_button_state)
         self._update_fit_button_state()
+
+    def _create_junction_connections_section(self):
+        """List this lane's junction movements with editable connecting road/lane."""
+        self._connection_rows = []
+        connections = self._find_lane_connections()
+        if not connections:
+            return
+        layout = self.add_form_group_with_info(
+            "Junction Connections",
+            "Movements through junctions that start or end in this lane. "
+            "Choose which connecting road and connecting-road lane carries each "
+            "movement. To add or remove movements, use Edit Junction Lane "
+            "Connections on the road."
+        )
+        for junction, lane_connection in connections:
+            self._add_connection_row(layout, junction, lane_connection)
+
+    def _find_lane_connections(self):
+        """Junction lane connections where this lane is the source or target."""
+        result = []
+        for junction in self.project.junctions:
+            for lc in junction.lane_connections:
+                if ((lc.from_road_id == self.road_id and lc.from_lane_id == self.lane.id)
+                        or (lc.to_road_id == self.road_id and lc.to_lane_id == self.lane.id)):
+                    result.append((junction, lc))
+        return result
+
+    def _add_connection_row(self, layout, junction, lane_connection):
+        """Add one editable row: connecting road combo + connecting lane combo."""
+        outgoing = (lane_connection.from_road_id == self.road_id
+                    and lane_connection.from_lane_id == self.lane.id)
+        other_road_id = (lane_connection.to_road_id if outgoing
+                         else lane_connection.from_road_id)
+        other_road = self.project.get_road(other_road_id)
+        other_name = other_road.name if other_road else f"road {other_road_id}"
+        direction = "to" if outgoing else "from"
+        label = (f"{lane_connection.get_turn_type_display()} {direction} "
+                 f"{other_name} ({junction.name}):")
+
+        cr_combo = QComboBox()
+        for cr_id in junction.connecting_road_ids:
+            cr = self.project.get_road(cr_id)
+            cr_combo.addItem(f"{cr.name} ({cr_id})" if cr else cr_id, cr_id)
+        set_combo_by_data(cr_combo, lane_connection.connecting_road_id)
+
+        lane_combo = QComboBox()
+        self._populate_connecting_lanes(lane_combo, cr_combo.currentData(),
+                                        lane_connection.connecting_lane_id)
+        cr_combo.currentIndexChanged.connect(
+            lambda _idx, cc=cr_combo, lc_combo=lane_combo:
+            self._populate_connecting_lanes(lc_combo, cc.currentData(), None))
+
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(cr_combo, 2)
+        row_layout.addWidget(QLabel("Lane:"))
+        row_layout.addWidget(lane_combo, 1)
+        layout.addRow(label, row)
+        self._connection_rows.append((lane_connection, cr_combo, lane_combo))
+
+    def _populate_connecting_lanes(self, combo: QComboBox, cr_id, current_lane_id):
+        """Fill combo with the connecting road's driving lane IDs."""
+        combo.clear()
+        cr = self.project.get_road(cr_id) if cr_id else None
+        lane_ids = []
+        if cr and cr.lane_sections:
+            lane_ids = [lane.id for lane in cr.lane_sections[0].lanes if lane.id != 0]
+        elif cr:
+            lane_ids = ([i for i in range(1, cr.cr_lane_count_left + 1)]
+                        + [-i for i in range(1, cr.cr_lane_count_right + 1)])
+        for lane_id in sorted(lane_ids, reverse=True):
+            combo.addItem(str(lane_id), lane_id)
+        if current_lane_id is not None:
+            set_combo_by_data(combo, current_lane_id)
+
+    def _create_cr_attachment_section(self):
+        """Editable incoming/outgoing road-lane attachments for a connecting road lane."""
+        self._attachment_rows = []
+        junction = self.project.get_junction(self.connecting_road.junction_id)
+        if junction is None:
+            return
+        connections = [
+            lc for lc in junction.lane_connections
+            if lc.connecting_road_id == self.connecting_road.id
+            and lc.connecting_lane_id == self.lane.id
+        ]
+        if not connections:
+            return
+        layout = self.add_form_group_with_info(
+            "Road Attachments",
+            "The incoming and outgoing road lanes this connecting-road lane "
+            "links. Pick a different lane to reattach the movement."
+        )
+        for lane_connection in connections:
+            self._add_attachment_row(layout, junction, lane_connection)
+
+    def _add_attachment_row(self, layout, junction, lane_connection):
+        """Add one row: from-road lane combo → to-road lane combo."""
+        from_road = self.project.get_road(lane_connection.from_road_id)
+        to_road = self.project.get_road(lane_connection.to_road_id)
+        from_combo = self._road_end_lane_combo(
+            junction, from_road, lane_connection.from_lane_id)
+        to_combo = self._road_end_lane_combo(
+            junction, to_road, lane_connection.to_lane_id)
+
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        from_name = from_road.name if from_road else lane_connection.from_road_id
+        to_name = to_road.name if to_road else lane_connection.to_road_id
+        row_layout.addWidget(QLabel(f"From {from_name} lane"))
+        row_layout.addWidget(from_combo)
+        row_layout.addWidget(QLabel(f"to {to_name} lane"))
+        row_layout.addWidget(to_combo)
+        row_layout.addStretch()
+        layout.addRow(f"{lane_connection.get_turn_type_display()}:", row)
+        self._attachment_rows.append((lane_connection, from_combo, to_combo))
+
+    def _road_end_lane_combo(self, junction, road, current_lane_id) -> QComboBox:
+        """Combo with the road's lane IDs at its junction-adjacent section."""
+        combo = QComboBox()
+        lane_ids = []
+        if road is not None and road.lane_sections:
+            touches_start = self.project._junction_touches_road_start(junction, road)
+            section = (road.lane_sections[0] if touches_start
+                       else road.lane_sections[-1])
+            lane_ids = [lane.id for lane in section.lanes if lane.id != 0]
+        for lane_id in sorted(lane_ids, reverse=True):
+            combo.addItem(str(lane_id), lane_id)
+        if current_lane_id is not None:
+            set_combo_by_data(combo, current_lane_id)
+            if combo.currentData() != current_lane_id:
+                # Keep a stale reference visible instead of silently changing it
+                combo.insertItem(0, str(current_lane_id), current_lane_id)
+                combo.setCurrentIndex(0)
+        return combo
 
     def _populate_boundary_polylines(self, combo: QComboBox):
         """Populate combo box with boundary polylines from the road."""
@@ -1006,6 +1149,22 @@ class LanePropertiesDialog(BaseDialog):
         if self.pedestrian_access_checkbox.isChecked():
             access_restrictions.append('pedestrian')
         self.lane.access_restrictions = access_restrictions
+
+        # Update junction connections (connecting road / connecting lane)
+        for lane_connection, cr_combo, lane_combo in getattr(self, '_connection_rows', []):
+            if (lane_connection.connecting_road_id != cr_combo.currentData()
+                    or lane_connection.connecting_lane_id != lane_combo.currentData()):
+                self.junction_connections_changed = True
+            lane_connection.connecting_road_id = cr_combo.currentData()
+            lane_connection.connecting_lane_id = lane_combo.currentData()
+
+        # Update road attachments (connecting road lane → from/to road lanes)
+        for lane_connection, from_combo, to_combo in getattr(self, '_attachment_rows', []):
+            if (lane_connection.from_lane_id != from_combo.currentData()
+                    or lane_connection.to_lane_id != to_combo.currentData()):
+                self.junction_connections_changed = True
+            lane_connection.from_lane_id = from_combo.currentData()
+            lane_connection.to_lane_id = to_combo.currentData()
 
         # Update advanced properties (if available - not for connecting road lanes)
         if hasattr(self, 'width_b_spin'):

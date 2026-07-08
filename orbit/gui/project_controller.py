@@ -102,23 +102,27 @@ class ProjectController:
 
     def align_all_junction_crs(self, scale_factors) -> Dict[str, Set[str]]:
         """Align all junctions' CRs. Returns {junction_id: set of modified CR IDs}."""
+        result: Dict[str, Set[str]] = {}
+        for junction in self.project.junctions:
+            modified_ids = self.align_junction_crs(junction.id, scale_factors)
+            if modified_ids:
+                result[junction.id] = modified_ids
+        return result
+
+    def align_junction_crs(self, junction_id: str, scale_factors) -> Set[str]:
+        """Align one junction's CRs. Returns the modified CR IDs."""
         from orbit.utils.connecting_road_alignment import align_connecting_road_paths
 
+        junction = self.project.get_junction(junction_id)
+        if not junction or not (junction.lane_connections and junction.connecting_road_ids):
+            return set()
         scale = self._avg_scale(scale_factors)
-        result: Dict[str, Set[str]] = {}
-
-        for junction in self.project.junctions:
-            if junction.lane_connections and junction.connecting_road_ids:
-                modified_ids = align_connecting_road_paths(
-                    junction, self.project, scale
-                )
-                if modified_ids:
-                    for cr_id in junction.connecting_road_ids:
-                        cr = self.project.get_road(cr_id)
-                        if cr and cr.id in modified_ids:
-                            self.refresh_connecting_road_geo_path(cr)
-                    result[junction.id] = modified_ids
-        return result
+        modified_ids = align_connecting_road_paths(junction, self.project, scale)
+        for cr_id in junction.connecting_road_ids:
+            cr = self.project.get_road(cr_id)
+            if cr and cr.id in modified_ids:
+                self.refresh_connecting_road_geo_path(cr)
+        return modified_ids
 
     def regenerate_affected_crs(self, polyline_id: str) -> List[str]:
         """Regenerate CRs affected by a centerline change.
