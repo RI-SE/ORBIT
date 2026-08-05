@@ -198,7 +198,7 @@ See [Developer Guide](docs/DEV_GUIDE.md) for architecture details.
 
 The main ORBIT project is licensed under the [GNU General Public License v3.0 (GPL-3.0)](LICENSE).
 
-The separate library **orbit-georef** (located in `orbit-georef/`) is licensed under the [MIT License](orbit-georef/LICENSE), allowing for more permissive use in downstream projects.
+The separate libraries **orbit-georef** (located in `orbit-georef/`) and **opendrive-map** (located in `opendrive-map/`) are licensed under the MIT License — see [orbit-georef/LICENSE](orbit-georef/LICENSE) and [opendrive-map/LICENSE](opendrive-map/LICENSE) — allowing for more permissive use in downstream projects. Neither library depends on PyQt6, which is what places the main application under GPL-3.0.
 
 ### Dependencies and Their Licenses
 
@@ -225,6 +225,14 @@ The separate library **orbit-georef** (located in `orbit-georef/`) is licensed u
 **orbit-georef library (development, optional):**
 - **pytest** - MIT License
 - **pytest-cov** - MIT License
+
+**opendrive-map library (runtime):**
+- **NumPy** - BSD 3-Clause License
+- **Shapely** - BSD 3-Clause License
+- **pyproj** - MIT License
+
+**opendrive-map library (development, optional):**
+- **pytest** - MIT License
 
 ## Acknowledgement
 <br><div align="center">
