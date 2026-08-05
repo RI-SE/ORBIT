@@ -5,6 +5,7 @@ Tests polyline creation, point manipulation, serialization, and validation.
 """
 
 import pytest
+
 from orbit_core.models import LineType, Polyline, RoadMarkType
 
 

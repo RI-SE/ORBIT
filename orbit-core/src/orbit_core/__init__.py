@@ -14,7 +14,7 @@ Typical use -- coordinates to a CARLA-ready .xodr:
 The two OSM sources are interchangeable: both produce an `OSMData`, so callers can
 implement whatever fallback policy they need (Overpass is a shared public service and
 does fail). Fetch and convert are deliberately separate so a caller can cache the
-fetched data -- see `osm_data_to_file`.
+raw response -- see `fetch_osm_json` and `osm_data_from_json`.
 """
 
 from pathlib import Path
@@ -23,7 +23,7 @@ from typing import Optional, Tuple
 from .export.opendrive_writer import ExportOptions, OpenDriveWriter
 from .importers.osm_importer import DetailLevel, ImportMode, ImportOptions, OSMImporter
 from .importers.osm_parser import OSMData, OSMParser
-from .importers.osm_query import OverpassAPIError, query_osm_data
+from .importers.osm_query import OverpassAPIClient, OverpassAPIError
 from .importers.osm_to_orbit import calculate_bbox_from_center
 from .models.project import Project
 from .utils.coordinate_transform import WebMercatorTransformer
@@ -33,7 +33,8 @@ __all__ = [
     "bbox_of",
     "osm_data_from_overpass",
     "osm_data_from_file",
-    "osm_data_to_file",
+    "fetch_osm_json",
+    "osm_data_from_json",
     "opendrive_from_osm_data",
     "OSMData",
     "OverpassAPIError",
@@ -71,17 +72,35 @@ def bbox_of(osm_data: OSMData) -> Bbox:
     return min(lats), min(lons), max(lats), max(lons)
 
 
+def fetch_osm_json(
+    bbox: Bbox,
+    detail_level: str = "moderate",
+    timeout: int = 60,
+    endpoint: Optional[str] = None,
+) -> dict:
+    """Raw Overpass JSON for a bounding box.
+
+    Exposed separately from `osm_data_from_overpass` so callers can cache the response
+    verbatim -- Overpass is a shared service that fails, and a pipeline depending on a
+    live third-party API is not reproducible.
+    """
+    client = OverpassAPIClient(endpoint=endpoint, timeout=timeout)
+    return client.query_bbox(bbox, detail_level)
+
+
+def osm_data_from_json(raw: dict) -> OSMData:
+    """Parse a raw Overpass JSON response, e.g. one reloaded from a cache."""
+    return OSMParser.parse(raw)
+
+
 def osm_data_from_overpass(
     bbox: Bbox,
     detail_level: str = "moderate",
     timeout: int = 60,
+    endpoint: Optional[str] = None,
 ) -> OSMData:
     """Fetch and parse OSM data for a bounding box. Raises if Overpass is unreachable."""
-    raw = query_osm_data(bbox, detail_level=detail_level, timeout=timeout)
-    if raw is None:
-        raise OverpassAPIError(f"Overpass query failed for bbox {bbox}")
-
-    return OSMParser.parse(raw)
+    return osm_data_from_json(fetch_osm_json(bbox, detail_level, timeout, endpoint))
 
 
 def osm_data_from_file(path: str | Path) -> OSMData:
@@ -92,14 +111,6 @@ def osm_data_from_file(path: str | Path) -> OSMData:
     in its bounding box.
     """
     return OSMParser.parse_xml(Path(path).read_text(encoding="utf-8"))
-
-
-def osm_data_to_file(raw_xml: str, path: str | Path) -> Path:
-    """Write raw OSM XML to disk so a later run can work offline."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(raw_xml, encoding="utf-8")
-    return path
 
 
 def opendrive_from_osm_data(

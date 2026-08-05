@@ -3,6 +3,7 @@
 import math
 
 import pytest
+
 from orbit_core.importers.junction_analyzer import (
     ConnectionPattern,
     RoadEndpointInfo,

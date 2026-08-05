@@ -2,6 +2,7 @@
 back to the original image and reach export-ready geo coordinates (M7)."""
 
 import pytest
+
 from orbit_core.models.junction import Junction
 from orbit_core.models.polyline import LineType, Polyline
 from orbit_core.models.project import ControlPoint, Project

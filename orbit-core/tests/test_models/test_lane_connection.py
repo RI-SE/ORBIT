@@ -5,6 +5,7 @@ Tests lane connection creation, validation, turn type classification, and serial
 """
 
 import pytest
+
 from orbit_core.models import LaneConnection
 
 

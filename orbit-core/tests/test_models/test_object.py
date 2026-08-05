@@ -7,6 +7,7 @@ Tests the object model for roadside objects (lampposts, buildings, trees, etc.).
 from typing import Tuple
 
 import pytest
+
 from orbit_core.models.object import ObjectType, RoadObject
 
 # ============================================================================

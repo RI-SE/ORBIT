@@ -9,10 +9,9 @@ operations that don't require direct widget interaction.
 import math
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
+from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
 from orbit_core.models import LineType, Project
 from orbit_core.utils.logging_config import get_logger
-
-from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
 
 logger = get_logger(__name__)
 

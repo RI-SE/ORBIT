@@ -3,6 +3,7 @@
 from unittest.mock import Mock
 
 import pytest
+
 from orbit_core.utils.gcp_analyzer import (
     GCPAnalysisResult,
     PointAnalysis,

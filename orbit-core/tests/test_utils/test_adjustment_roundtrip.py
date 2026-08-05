@@ -1,6 +1,7 @@
 """Tests for adjustment handling during aerial view round-trip and refinement."""
 
 import pytest
+
 from orbit_core.models.junction import Junction
 from orbit_core.models.polyline import LineType, Polyline, RoadMarkType
 from orbit_core.models.project import ControlPoint, Project

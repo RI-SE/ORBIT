@@ -3,6 +3,7 @@
 import math
 
 import pytest
+
 from orbit_core.utils.geometry import (
     angle_between_vectors,
     arc_length,

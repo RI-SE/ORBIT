@@ -3,6 +3,7 @@
 import json
 
 import pytest
+
 from orbit_core.models.sign_library import SignCategory, SignDefinition, SignLibrary
 
 

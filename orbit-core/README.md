@@ -43,13 +43,24 @@ Overpass is a shared public service and does fail. Fetching and converting are s
 calls so you can cache, and both sources produce the same `OSMData`:
 
 ```python
+import json
+
 try:
-    osm = oc.osm_data_from_overpass(bbox)
+    raw = oc.fetch_osm_json(bbox)               # cache the response verbatim
+    json.dump(raw, open("cache/area.json", "w"))
+    osm = oc.osm_data_from_json(raw)
 except oc.OverpassAPIError:
-    osm = oc.osm_data_from_file("cached/area.osm")
-    bbox = oc.bbox_of(osm)          # a .osm file carries no bbox of its own
+    osm = oc.osm_data_from_json(json.load(open("cache/area.json")))
 
 oc.opendrive_from_osm_data(osm, bbox, "out.xodr")
+```
+
+A `.osm` XML file exported from JOSM or ORBIT works too, though it carries no bbox of
+its own:
+
+```python
+osm = oc.osm_data_from_file("area.osm")
+bbox = oc.bbox_of(osm)
 ```
 
 Note the two are not equivalent for the same area: the Overpass query filters by detail

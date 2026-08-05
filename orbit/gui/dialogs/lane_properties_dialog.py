@@ -6,9 +6,6 @@ Allows editing of individual lane properties.
 
 from typing import TYPE_CHECKING, Optional
 
-from orbit_core.models import Lane, LaneType, LineType, Project, RoadMarkType
-from orbit_core.utils import format_enum_name
-from orbit_core.utils.lane_fitting import evaluate_fit_quality
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -30,6 +27,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from orbit_core.models import Lane, LaneType, LineType, Project, RoadMarkType
+from orbit_core.utils import format_enum_name
+from orbit_core.utils.lane_fitting import evaluate_fit_quality
 
 from ..utils import ask_yes_no, set_combo_by_data, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel

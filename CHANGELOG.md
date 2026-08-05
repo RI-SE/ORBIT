@@ -2,7 +2,51 @@
 
 All notable changes to this project are documented in this file.
 
-**Current Version**: 0.6.0
+**Current Version**: 0.15.0
+
+---
+
+> **Note**: entries for 0.7.0–0.14.0 were not recorded.
+
+## [0.15.0] - 2026-08
+
+### Changed
+- **Extracted `orbit-core`**, a headless MIT library holding the road-network model,
+  OSM/OpenDRIVE import and OpenDRIVE export. The ORBIT application is now a PyQt6 shell
+  over it, and its GPL-3.0 terms no longer reach the road-building logic.
+  `orbit.models` / `orbit.export` / `orbit.utils` / `orbit.import` moved to
+  `orbit_core.models` / `.export` / `.utils` / `.importers`.
+- `orbit/import/` renamed to `orbit_core/importers/`. The directory was named after a
+  Python keyword, so every access previously went through `importlib.import_module`;
+  those workarounds are gone.
+- Optional dependencies (`opencv-python`, `geomag`, `xmlschema`, `dataprov`) are now
+  extras of `orbit-core`, so a headless install pulls only numpy/scipy/pyproj/lxml.
+- Logging namespaces are now `orbit_core` and `orbit`; `setup_logging()` configures both.
+- Repository is a uv workspace over `orbit-core`, `orbit-georef` and `opendrive-map`.
+
+### Added
+- `orbit_core` public API for building OpenDRIVE from OpenStreetMap with no GUI and no
+  imagery: `bbox_from_center`, `osm_data_from_overpass`, `osm_data_from_file`,
+  `bbox_of`, `opendrive_from_osm_data`.
+- `OSMImporter.import_from_osm_data` is public (was `_import_from_osm_data`), so a
+  caller can supply OSM data from any source.
+
+### Removed
+- Python 3.10 support. It reaches end of security support in October 2026, nothing in
+  the codebase required it, and 3.11 matches the floor of downstream consumers.
+  `requires-python` is now `>=3.11` for both packages.
+
+### Fixed
+- `get_contact_pos_heading` moved from `orbit/gui/project_controller.py` into
+  `orbit_core.utils.geometry`; it is pure geometry and was the only GUI dependency in
+  otherwise headless code.
+- `orbit-core` no longer depends on the `orbit` application. `Project` metadata read
+  its version via `importlib.metadata.version("orbit")`, and two test modules imported
+  `orbit.gui`, so the headless library could not be installed or tested on its own.
+  The dialog test moved to `tests/unit/test_gui/`.
+- CI now lints and tests `orbit-core/`, and measures coverage over both packages.
+  After the extraction it was checking only the GUI shell -- 34k lines and 2,562 tests
+  had silently dropped out of the pipeline.
 
 ---
 

@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from lxml import etree
+
 from orbit_core.export.curve_fitting import CurveFitter, GeometryElement, GeometryType
 from orbit_core.export.opendrive_writer import OpenDriveWriter, export_to_opendrive, validate_opendrive_file
 from orbit_core.models import Junction, LineType, Polyline, Project, Road

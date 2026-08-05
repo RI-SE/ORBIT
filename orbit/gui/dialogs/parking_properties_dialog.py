@@ -2,8 +2,9 @@
 Dialog for editing parking space properties.
 """
 
-from orbit_core.models.parking import ParkingAccess, ParkingSpace, ParkingType
 from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QSpinBox
+
+from orbit_core.models.parking import ParkingAccess, ParkingSpace, ParkingType
 
 from .base_dialog import BaseDialog
 

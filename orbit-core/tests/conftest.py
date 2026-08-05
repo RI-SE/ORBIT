@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List
 
 import pytest
+
 from orbit_core.models import (
     ControlPoint,
     Junction,

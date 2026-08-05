@@ -7,13 +7,13 @@ Provides visual representation of connecting roads (junction paths) on the image
 import math
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from orbit_core.utils.geometry import calculate_directional_scale
-from orbit_core.utils.logging_config import get_logger
 from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsScene
 
 from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
+from orbit_core.utils.geometry import calculate_directional_scale
+from orbit_core.utils.logging_config import get_logger
 
 from .interactive_lane import InteractiveLanePolygon
 

@@ -6,9 +6,6 @@ Allows editing of per-lane predecessor/successor IDs for direct road-to-road con
 
 from typing import List, Optional, Tuple
 
-from orbit_core.models.lane import Lane
-from orbit_core.models.road import Road
-from orbit_core.utils.logging_config import get_logger
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog,
@@ -20,6 +17,10 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
 )
+
+from orbit_core.models.lane import Lane
+from orbit_core.models.road import Road
+from orbit_core.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 

@@ -13,6 +13,7 @@ Subpackages:
 """
 
 # Re-export main components for convenience
+from orbit.gui import ImageView, MainWindow
 from orbit_core.export import CoordinateTransformer, CurveFitter, OpenDriveWriter
 from orbit_core.models import (
     ControlPoint,
@@ -35,8 +36,6 @@ from orbit_core.models import (
     SpeedUnit,
 )
 from orbit_core.utils import TransformMethod, create_transformer
-
-from orbit.gui import ImageView, MainWindow
 
 try:
     from importlib.metadata import version as _get_version

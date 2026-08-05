@@ -2,9 +2,10 @@
 Dialog for editing object properties.
 """
 
+from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QLabel, QLineEdit, QVBoxLayout
+
 from orbit_core.models.object import ObjectType, RoadObject
 from orbit_core.utils.enum_formatting import format_enum_name, format_snake_case
-from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QLabel, QLineEdit, QVBoxLayout
 
 from ..utils import format_with_metric, get_scale_factors
 from .base_dialog import BaseDialog, InfoIconLabel

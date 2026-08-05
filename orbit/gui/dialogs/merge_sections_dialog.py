@@ -4,10 +4,6 @@ Dialog for resolving lane attribute conflicts when merging lane sections.
 
 from typing import Any, Dict, List, Optional
 
-from orbit_core.models.lane import BoundaryMode, Lane, LaneType
-from orbit_core.models.lane_section import LaneSection
-from orbit_core.models.polyline import RoadMarkType
-from orbit_core.utils.enum_formatting import format_enum_name
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -21,6 +17,11 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from orbit_core.models.lane import BoundaryMode, Lane, LaneType
+from orbit_core.models.lane_section import LaneSection
+from orbit_core.models.polyline import RoadMarkType
+from orbit_core.utils.enum_formatting import format_enum_name
 
 # Attributes checked for conflicts (width/links/materials/heights handled separately)
 CONFLICT_ATTRS: List[str] = [

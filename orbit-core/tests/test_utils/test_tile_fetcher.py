@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+
 from orbit_core.utils.tile_fetcher import (
     auto_zoom,
     deg2num,

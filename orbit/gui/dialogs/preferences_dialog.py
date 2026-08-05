@@ -5,8 +5,6 @@ Allows configuring project-level settings including georeferencing method,
 traffic side, and country code.
 """
 
-from orbit_core.models import Project, SignLibraryManager
-from orbit_core.utils.provenance import DEFAULT_TEMPLATE, is_dataprov_available
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -17,6 +15,9 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
 )
+
+from orbit_core.models import Project, SignLibraryManager
+from orbit_core.utils.provenance import DEFAULT_TEMPLATE, is_dataprov_available
 
 from .base_dialog import BaseDialog, InfoIconLabel
 

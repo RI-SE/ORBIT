@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import List
 
 import pytest
+from pyproj import Proj
+
 from orbit_core.models import ControlPoint
 from orbit_core.utils.coordinate_transform import (
     AffineTransformer,
@@ -17,7 +19,6 @@ from orbit_core.utils.coordinate_transform import (
     TransformMethod,
     create_transformer,
 )
-from pyproj import Proj
 
 # ============================================================================
 # Helper Functions
@@ -680,6 +681,7 @@ class TestTransformAdjustment:
     def test_get_adjustment_matrix_identity(self):
         """Test that identity adjustment produces identity matrix."""
         import numpy as np
+
         from orbit_core.utils.coordinate_transform import TransformAdjustment
         adj = TransformAdjustment()
         M = adj.get_adjustment_matrix()

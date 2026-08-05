@@ -3,6 +3,7 @@ Unit tests for geo/pixel consistency helpers (orbit_core.utils.geo_sync).
 """
 
 import pytest
+
 from orbit_core.models import Project, Road
 from orbit_core.models.polyline import Polyline
 from orbit_core.utils.geo_sync import (

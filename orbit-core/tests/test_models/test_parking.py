@@ -7,6 +7,7 @@ Tests the parking model for OpenDRIVE parking areas.
 from typing import Tuple
 
 import pytest
+
 from orbit_core.models.parking import ParkingAccess, ParkingSpace, ParkingType
 
 # ============================================================================

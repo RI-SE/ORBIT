@@ -8,6 +8,7 @@ import math
 from typing import Tuple
 
 import pytest
+
 from orbit_core.models.signal import Signal, SignalType, SpeedUnit
 
 # ============================================================================

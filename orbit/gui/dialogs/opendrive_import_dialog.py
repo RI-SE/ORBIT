@@ -2,8 +2,6 @@
 Dialog for OpenDrive import configuration.
 """
 
-from orbit_core.models.object import ObjectType
-from orbit_core.utils.enum_formatting import format_enum_name
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -18,6 +16,9 @@ from PyQt6.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
 )
+
+from orbit_core.models.object import ObjectType
+from orbit_core.utils.enum_formatting import format_enum_name
 
 from ..utils.message_helpers import show_warning
 from .base_dialog import BaseDialog

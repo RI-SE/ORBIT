@@ -7,6 +7,7 @@ Tests lane section creation, splitting, lane management, and serialization.
 from typing import List
 
 import pytest
+
 from orbit_core.models import Lane, LaneSection, LaneType
 
 

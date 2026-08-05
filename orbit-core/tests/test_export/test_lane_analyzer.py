@@ -4,6 +4,7 @@ from unittest.mock import Mock
 
 import numpy as np
 import pytest
+
 from orbit_core.export.lane_analyzer import BoundaryInfo, LaneAnalyzer
 from orbit_core.models import LineType
 

@@ -6,9 +6,6 @@ Allows editing of road properties including lanes, speed, type, etc.
 
 from typing import Optional
 
-from orbit_core.models import LineType, Project, Road, RoadType
-from orbit_core.utils import format_enum_name
-from orbit_core.utils.logging_config import get_logger
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -31,6 +28,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from orbit_core.models import LineType, Project, Road, RoadType
+from orbit_core.utils import format_enum_name
+from orbit_core.utils.logging_config import get_logger
 
 from ..utils import set_combo_by_data
 from ..utils.message_helpers import ask_yes_no

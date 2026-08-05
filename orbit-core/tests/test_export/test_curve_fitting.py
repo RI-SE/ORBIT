@@ -8,6 +8,7 @@ import math
 from typing import List, Tuple
 
 import pytest
+
 from orbit_core.export.curve_fitting import CurveFitter, GeometryType, simplify_polyline
 
 # ============================================================================

@@ -69,12 +69,16 @@ def top_long_functions(paths: list[Path], root: Path, threshold: int, limit: int
     return len(long_functions), long_functions[:limit]
 
 
+#: Both packages in the workspace: the PyQt6 shell and the headless core.
+SOURCE_PREFIXES = ("orbit/", "orbit-core/src/")
+
+
 def read_coverage_metrics(coverage_json: Path) -> list[CoverageMetric]:
     """Parse coverage.py JSON output into sortable file metrics."""
     payload = json.loads(coverage_json.read_text(encoding="utf-8"))
     metrics: list[CoverageMetric] = []
     for file_path, details in payload.get("files", {}).items():
-        if not file_path.startswith("orbit/"):
+        if not file_path.startswith(SOURCE_PREFIXES):
             continue
         summary = details.get("summary", {})
         total = int(summary.get("num_statements", 0))

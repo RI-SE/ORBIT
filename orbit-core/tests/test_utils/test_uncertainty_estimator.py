@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import numpy as np
 import pytest
+
 from orbit_core.utils.uncertainty_estimator import UncertaintyEstimator
 
 # ==== Test Fixtures ====

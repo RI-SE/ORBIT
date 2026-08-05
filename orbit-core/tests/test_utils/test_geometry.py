@@ -8,6 +8,7 @@ and polygon construction.
 import math
 
 import pytest
+
 from orbit_core.utils.geometry import (
     calculate_offset_polyline,
     calculate_path_length,

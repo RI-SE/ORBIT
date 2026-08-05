@@ -7,6 +7,7 @@ Tests polynomial fitting for lane boundaries.
 import math
 
 import pytest
+
 from orbit_core.utils.lane_fitting import (
     _get_perpendicular_at_point,
     _point_to_polyline_perpendicular_distance,

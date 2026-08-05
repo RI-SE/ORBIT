@@ -6,8 +6,6 @@ Displays hierarchical view of roads and their polylines with management capabili
 
 from typing import List, Optional, Tuple
 
-from orbit_core.models import LaneType, Polyline, Project, Road
-from orbit_core.utils.geometry_validator import GeometryIssue, validate_project_geometry
 from PyQt6.QtCore import QEvent, QMimeData, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QDrag
 from PyQt6.QtWidgets import (
@@ -26,6 +24,9 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from orbit_core.models import LaneType, Polyline, Project, Road
+from orbit_core.utils.geometry_validator import GeometryIssue, validate_project_geometry
 
 from ..utils.message_helpers import ask_yes_no, show_info
 

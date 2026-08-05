@@ -7,6 +7,7 @@ Tests connecting road creation, geometry calculations, and serialization.
 import math
 
 import pytest
+
 from orbit_core.models import ConnectingRoad
 
 

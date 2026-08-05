@@ -5,6 +5,7 @@ from typing import Optional
 from unittest.mock import Mock
 
 import pytest
+
 from orbit_core.export.lane_builder import LaneBuilder, convert_road_mark_type
 from orbit_core.models import RoadMarkType
 from orbit_core.models.lane import LaneType

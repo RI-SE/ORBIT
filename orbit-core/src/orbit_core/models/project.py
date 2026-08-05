@@ -21,14 +21,23 @@ from .polyline import Polyline
 from .road import Road
 from .signal import Signal
 
+#: Which tool stamped a project file. Prefer the ORBIT application when it is
+#: installed, so existing .orbit files keep reporting the app version; fall back to
+#: this library's own version when used headlessly, where "orbit" is absent.
+_VERSION_SOURCES = ("orbit", "orbit-core")
+
 
 def _get_version() -> str:
-    """Get package version from importlib.metadata, with fallback."""
-    try:
-        from importlib.metadata import version
-        return version("orbit")
-    except Exception:
-        return "0.5.0"
+    """Version of the tool writing this project file."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    for package in _VERSION_SOURCES:
+        try:
+            return version(package)
+        except PackageNotFoundError:
+            continue
+
+    return "0.0.0"
 
 logger = get_logger(__name__)
 

@@ -8,9 +8,9 @@ import json
 from pathlib import Path
 
 import pytest
-from orbit_core.models import ControlPoint, Junction, LineType, Polyline, Project, Road, RoadMarkType
 
-from orbit import __version__
+from orbit_core.models import ControlPoint, Junction, LineType, Polyline, Project, Road, RoadMarkType
+from orbit_core.models.project import _get_version
 
 
 class TestProjectCreation:
@@ -33,7 +33,7 @@ class TestProjectCreation:
         assert 'version' in empty_project.metadata
         assert 'created' in empty_project.metadata
         assert 'modified' in empty_project.metadata
-        assert empty_project.metadata['version'] == __version__
+        assert empty_project.metadata['version'] == _get_version()
 
     def test_project_with_initial_data(self, sample_project: Project):
         """Test creating project with initial data."""
@@ -372,7 +372,7 @@ class TestProjectClear:
         sample_project.clear()
 
         # Version should stay the same
-        assert sample_project.metadata['version'] == __version__
+        assert sample_project.metadata['version'] == _get_version()
         # Created timestamp should be updated
         assert sample_project.metadata['created'] != old_created
 

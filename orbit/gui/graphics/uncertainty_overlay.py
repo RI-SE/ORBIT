@@ -6,10 +6,11 @@ with optional markers suggesting optimal GCP placement locations.
 """
 
 import numpy as np
-from orbit_core.utils.uncertainty_estimator import UncertaintyEstimator
 from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import QGraphicsItem
+
+from orbit_core.utils.uncertainty_estimator import UncertaintyEstimator
 
 
 class UncertaintyOverlay(QGraphicsItem):

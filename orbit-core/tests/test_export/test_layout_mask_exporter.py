@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 import numpy as np
 import pytest
+
 from orbit_core.export.layout_mask_exporter import ExportMethod, LayoutMaskExporter
 from orbit_core.export.reference_line_sampler import LanePolygonData
 from orbit_core.models.project import Project

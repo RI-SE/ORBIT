@@ -6,8 +6,6 @@ Allows editing of junction groups (roundabouts, complex junctions).
 
 from typing import Optional
 
-from orbit_core.models import Project
-from orbit_core.models.junction import JunctionGroup
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -23,6 +21,9 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
 )
+
+from orbit_core.models import Project
+from orbit_core.models.junction import JunctionGroup
 
 from .base_dialog import InfoIconLabel
 

@@ -9,8 +9,6 @@ from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
-from orbit_core.models import Junction, LineType, ObjectType, Polyline, Project, Road, RoadObject, Signal
-from orbit_core.utils.coordinate_transform import TransformAdjustment
 from PyQt6.QtCore import QLineF, QPointF, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QFont, QImage, QKeyEvent, QMouseEvent, QPainter, QPen, QPixmap, QWheelEvent
 from PyQt6.QtWidgets import (
@@ -37,6 +35,8 @@ from orbit.gui.graphics import (
     PolylineGraphicsItem,
     RoadLanesGraphicsItem,
 )
+from orbit_core.models import Junction, LineType, ObjectType, Polyline, Project, Road, RoadObject, Signal
+from orbit_core.utils.coordinate_transform import TransformAdjustment
 
 from .graphics.object_graphics_item import ObjectGraphicsItem
 from .graphics.parking_item import ParkingGraphicsItem
@@ -3440,9 +3440,8 @@ class ImageView(QGraphicsView):
         """Smooth a regular road's centerline using adjacent road tangents."""
         import math as _math
 
-        from orbit_core.utils.geometry import fit_smooth_curve_to_polyline, get_contact_pos_heading
-
         from orbit.gui.undo_commands import ModifyPolylineCommand
+        from orbit_core.utils.geometry import fit_smooth_curve_to_polyline, get_contact_pos_heading
 
         item = self.polyline_items.get(polyline_id)
         if not item:
@@ -3502,9 +3501,8 @@ class ImageView(QGraphicsView):
 
     def _show_cr_centerline_menu(self, view_pos, conn_road_id: str, point_index: int) -> None:
         """Context menu for a connecting road centerline (right-click on point or segment)."""
-        from orbit_core.utils.geometry import fit_smooth_curve_to_polyline, get_smooth_cr_tangents
-
         from orbit.gui.undo_commands import SmoothCRCommand
+        from orbit_core.utils.geometry import fit_smooth_curve_to_polyline, get_smooth_cr_tangents
 
         item = self.connecting_road_centerline_items.get(conn_road_id)
         if not item:

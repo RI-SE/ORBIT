@@ -6,13 +6,6 @@ Allows editing of junction properties and road connections.
 
 from typing import Optional
 
-from orbit_core.models import Junction, Project
-from orbit_core.models.junction import (
-    JunctionBoundary,
-    JunctionBoundarySegment,
-    JunctionElevationGrid,
-    JunctionElevationGridPoint,
-)
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -33,6 +26,14 @@ from PyQt6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
+)
+
+from orbit_core.models import Junction, Project
+from orbit_core.models.junction import (
+    JunctionBoundary,
+    JunctionBoundarySegment,
+    JunctionElevationGrid,
+    JunctionElevationGridPoint,
 )
 
 from ..utils.message_helpers import show_error, show_info, show_warning

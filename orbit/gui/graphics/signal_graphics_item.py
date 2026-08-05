@@ -2,11 +2,12 @@
 Graphics item for displaying traffic signals on the map.
 """
 
-from orbit_core.models.sign_library_manager import SignLibraryManager
-from orbit_core.models.signal import Signal, SignalType
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPen, QPixmap
 from PyQt6.QtWidgets import QGraphicsItemGroup, QGraphicsPathItem, QGraphicsPixmapItem
+
+from orbit_core.models.sign_library_manager import SignLibraryManager
+from orbit_core.models.signal import Signal, SignalType
 
 from .signal_graphics import create_orientation_indicator, create_signal_pixmap
 

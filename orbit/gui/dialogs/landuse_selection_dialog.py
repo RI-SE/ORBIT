@@ -4,8 +4,9 @@ Dialog for selecting land use type when placing a new land use area polygon.
 
 from typing import Optional
 
-from orbit_core.models.object import ObjectType
 from PyQt6.QtWidgets import QComboBox, QLabel
+
+from orbit_core.models.object import ObjectType
 
 from .base_dialog import BaseDialog
 

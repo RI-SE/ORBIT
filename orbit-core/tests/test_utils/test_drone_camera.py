@@ -4,6 +4,7 @@ import math
 
 import numpy as np
 import pytest
+
 from orbit_core.models.project import ControlPoint, DroneMetadata
 from orbit_core.utils.camera_model import (
     DroneCameraModel,

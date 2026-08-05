@@ -7,10 +7,6 @@ Provides the main GUI with menus, toolbar, status bar, and central view.
 from pathlib import Path
 from typing import Optional
 
-from orbit_core.models import Project
-from orbit_core.utils.coordinate_transform import TransformAdjustment
-from orbit_core.utils.logging_config import get_logger
-from orbit_core.utils.provenance import is_dataprov_available, record_export, record_project_save
 from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QAction, QKeySequence, QUndoStack
 from PyQt6.QtWidgets import (
@@ -25,6 +21,10 @@ from PyQt6.QtWidgets import (
 )
 
 from orbit.gui.graphics.adjustment_ghost_overlay import AdjustmentGhostOverlay
+from orbit_core.models import Project
+from orbit_core.utils.coordinate_transform import TransformAdjustment
+from orbit_core.utils.logging_config import get_logger
+from orbit_core.utils.provenance import is_dataprov_available, record_export, record_project_save
 
 from .image_view import ImageView
 from .project_controller import ProjectController
@@ -1270,11 +1270,12 @@ class MainWindow(QMainWindow):
     def import_osm_data(self):
         """Import road network data from OpenStreetMap (API or file)."""
 
+        from PyQt6.QtCore import QCoreApplication
+        from PyQt6.QtWidgets import QProgressDialog
+
         from orbit_core.importers import DetailLevel, ImportMode, ImportOptions, OSMImporter
         from orbit_core.importers.osm_parser import OSMParser
         from orbit_core.importers.osm_to_orbit import calculate_bbox_from_center, calculate_bbox_from_image
-        from PyQt6.QtCore import QCoreApplication
-        from PyQt6.QtWidgets import QProgressDialog
 
         from .dialogs.osm_import_dialog import OSMImportDialog
 
@@ -1464,10 +1465,11 @@ class MainWindow(QMainWindow):
     def import_opendrive_file(self):
         """Import road network from OpenDrive file."""
 
-        from orbit_core.importers.opendrive_importer import ImportMode, ImportOptions, OpenDriveImporter
-        from orbit_core.importers.opendrive_parser import OpenDriveParser
         from PyQt6.QtCore import QCoreApplication
         from PyQt6.QtWidgets import QProgressDialog
+
+        from orbit_core.importers.opendrive_importer import ImportMode, ImportOptions, OpenDriveImporter
+        from orbit_core.importers.opendrive_parser import OpenDriveParser
 
         from .dialogs.import_report_dialog import show_opendrive_import_report
         from .dialogs.opendrive_import_dialog import OpenDriveImportDialog

@@ -5,9 +5,6 @@ Displays hierarchical view of junctions and other project elements with manageme
 """
 
 
-from orbit_core.models import Junction, ParkingSpace, Project, Signal
-from orbit_core.utils.enum_formatting import format_snake_case
-from orbit_core.utils.geometry_validator import validate_project_geometry
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
@@ -22,6 +19,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from orbit_core.models import Junction, ParkingSpace, Project, Signal
+from orbit_core.utils.enum_formatting import format_snake_case
+from orbit_core.utils.geometry_validator import validate_project_geometry
 
 from ..utils.message_helpers import ask_yes_no
 

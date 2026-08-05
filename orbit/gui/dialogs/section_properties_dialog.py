@@ -7,9 +7,10 @@ Allows editing of lane section properties.
 import math
 from typing import List, Optional, Tuple
 
+from PyQt6.QtWidgets import QComboBox, QDialog, QLabel
+
 from orbit_core.export import CoordinateTransformer
 from orbit_core.models import LaneSection
-from PyQt6.QtWidgets import QComboBox, QDialog, QLabel
 
 from .base_dialog import BaseDialog
 

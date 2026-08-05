@@ -6,6 +6,7 @@ metric space, which is exact for any direction (straight, diagonal, roundabout).
 """
 
 import pytest
+
 from orbit_core.utils.geometry import (
     build_lane_polygon_metric,
     calculate_directional_scale,

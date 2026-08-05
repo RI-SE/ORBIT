@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 from lxml import etree
+
 from orbit_core.export.object_builder import ObjectBuilder
 from orbit_core.models.object import ObjectType, RoadObject
 

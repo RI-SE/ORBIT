@@ -6,8 +6,9 @@ Collects the position and properties for a lane inserted into one section.
 
 from typing import Optional
 
-from orbit_core.models import Lane, LaneSection, LaneType, Road, RoadMarkType
 from PyQt6.QtWidgets import QComboBox, QDialog, QDoubleSpinBox, QLabel
+
+from orbit_core.models import Lane, LaneSection, LaneType, Road, RoadMarkType
 
 from .base_dialog import BaseDialog
 

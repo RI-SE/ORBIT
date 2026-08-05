@@ -4,9 +4,10 @@ Placeholder graphics generator for traffic signals.
 Creates simple placeholder icons that can be replaced with actual sign images later.
 """
 
-from orbit_core.models.signal import SignalType
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
+
+from orbit_core.models.signal import SignalType
 
 
 def create_give_way_sign(size: int = 48) -> QPixmap:

@@ -1,6 +1,7 @@
 """Tests for orbit_core.utils.connecting_road_alignment module."""
 
 import pytest
+
 from orbit_core.models.lane import Lane
 from orbit_core.models.lane_section import LaneSection
 from orbit_core.models.polyline import Polyline

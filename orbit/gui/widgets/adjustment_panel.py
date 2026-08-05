@@ -7,10 +7,11 @@ for interactive alignment of imported OSM data with the aerial image.
 
 from typing import Optional
 
-from orbit_core.utils.coordinate_transform import TransformAdjustment
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+
+from orbit_core.utils.coordinate_transform import TransformAdjustment
 
 
 class AdjustmentPanel(QWidget):

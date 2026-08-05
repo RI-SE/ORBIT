@@ -1,6 +1,7 @@
 """Tests for the reference validator."""
 
 import pytest
+
 from orbit_core.export.reference_validator import validate_references
 from orbit_core.models.junction import Junction, JunctionGroup
 from orbit_core.models.lane_connection import LaneConnection

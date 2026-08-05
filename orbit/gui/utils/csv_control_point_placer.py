@@ -7,7 +7,6 @@ Handles sequential placement of control points from CSV data on the image.
 import math
 from typing import List, Optional, Tuple
 
-from orbit_core.models import ControlPoint, Project
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog,
@@ -19,6 +18,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
 )
+
+from orbit_core.models import ControlPoint, Project
 
 from ..dialogs.csv_import_dialog import CSVControlPoint
 from .message_helpers import ask_yes_no, show_warning

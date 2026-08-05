@@ -3,6 +3,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
+
 from orbit_core.importers import osm_importer, osm_parser
 from orbit_core.importers.osm_importer import DetailLevel, ImportMode, ImportOptions, ImportResult, OSMImporter
 from orbit_core.importers.osm_parser import OSMData

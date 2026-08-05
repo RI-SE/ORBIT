@@ -6,6 +6,11 @@ Provides visual representation of lanes on the image view.
 
 from typing import List, Optional, Tuple
 
+from PyQt6.QtCore import QPointF
+from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
+from PyQt6.QtWidgets import QGraphicsScene
+
+from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
 from orbit_core.models import BoundaryMode, Polyline, Road
 from orbit_core.utils.geometry import (
     build_lane_polygon_metric,
@@ -17,11 +22,6 @@ from orbit_core.utils.geometry import (
     create_variable_width_lane_polygon,
 )
 from orbit_core.utils.logging_config import get_logger
-from PyQt6.QtCore import QPointF
-from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
-from PyQt6.QtWidgets import QGraphicsScene
-
-from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
 
 from .interactive_lane import InteractiveLanePolygon
 

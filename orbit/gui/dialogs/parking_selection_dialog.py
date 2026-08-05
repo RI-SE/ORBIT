@@ -4,8 +4,9 @@ Dialog for selecting parking type when placing a new parking space.
 
 from typing import Optional, Tuple
 
-from orbit_core.models.parking import ParkingAccess, ParkingType
 from PyQt6.QtWidgets import QButtonGroup, QComboBox, QLabel, QRadioButton
+
+from orbit_core.models.parking import ParkingAccess, ParkingType
 
 from .base_dialog import BaseDialog
 

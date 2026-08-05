@@ -10,10 +10,11 @@ Provides visual debugging for junction connections:
 import math
 from typing import Tuple
 
-from orbit_core.utils.logging_config import get_logger
 from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainterPath, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsEllipseItem, QGraphicsPathItem
+
+from orbit_core.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 

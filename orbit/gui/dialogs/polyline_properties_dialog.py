@@ -5,9 +5,10 @@ Allows editing of polyline line type and road mark type.
 """
 
 
-from orbit_core.models import LineType, Polyline, RoadMarkType
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushButton, QTextEdit, QVBoxLayout
+
+from orbit_core.models import LineType, Polyline, RoadMarkType
 
 from ..utils import set_combo_by_data
 from ..utils.message_helpers import show_info

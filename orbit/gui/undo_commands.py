@@ -8,8 +8,9 @@ Each command captures state using model to_dict()/from_dict() methods.
 import copy
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from orbit_core.models import Junction, LaneConnection, ParkingSpace, Polyline, Road, RoadObject, Signal
 from PyQt6.QtGui import QUndoCommand
+
+from orbit_core.models import Junction, LaneConnection, ParkingSpace, Polyline, Road, RoadObject, Signal
 
 if TYPE_CHECKING:
     from .image_view import ImageView

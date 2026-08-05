@@ -6,8 +6,6 @@ Allows editing of lane-to-lane connections within a junction.
 
 from typing import List
 
-from orbit_core.models import Junction, LaneConnection, Project
-from orbit_core.models.road import Road
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -22,6 +20,8 @@ from PyQt6.QtWidgets import (
 )
 
 from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
+from orbit_core.models import Junction, LaneConnection, Project
+from orbit_core.models.road import Road
 
 from ..utils import ask_yes_no, show_error, show_info, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel

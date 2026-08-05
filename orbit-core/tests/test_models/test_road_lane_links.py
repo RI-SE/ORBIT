@@ -1,6 +1,7 @@
 """Tests for RoadLaneLinksDialog — per-lane predecessor/successor link editing."""
 
 import pytest
+
 from orbit_core.models import LaneInfo, Road
 
 
@@ -80,20 +81,3 @@ class TestRoadLaneLinksSave:
         lane_data = lane.to_dict()
         assert 'predecessor_id' not in lane_data
         assert 'successor_id' not in lane_data
-
-
-class TestRoadLaneLinksDialogImport:
-    """Tests for RoadLaneLinksDialog import and instantiation (no GUI)."""
-
-    def test_import_succeeds(self):
-        """RoadLaneLinksDialog can be imported without errors."""
-        from orbit.gui.dialogs.road_lane_links_dialog import RoadLaneLinksDialog
-        assert RoadLaneLinksDialog is not None
-
-    def test_edit_lane_links_returns_false_for_no_sections(self):
-        """edit_lane_links returns False when road has no lane sections."""
-        from orbit.gui.dialogs.road_lane_links_dialog import RoadLaneLinksDialog
-        road = Road(name="Empty Road")
-        assert not road.lane_sections
-        result = RoadLaneLinksDialog.edit_lane_links(road, parent=None)
-        assert result is False

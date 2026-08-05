@@ -4,6 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 from lxml import etree
+
 from orbit_core.export.signal_builder import SignalBuilder
 from orbit_core.models.signal import Signal, SignalType, SpeedUnit
 

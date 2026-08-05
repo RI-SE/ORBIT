@@ -6,9 +6,6 @@ Supports library-based sign selection with categories and custom OpenDRIVE codes
 
 from typing import List, Optional, Tuple
 
-from orbit_core.models.sign_library import SignDefinition, SignLibrary
-from orbit_core.models.sign_library_manager import SignLibraryManager
-from orbit_core.models.signal import SignalType, SpeedUnit
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
@@ -24,6 +21,10 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
 )
+
+from orbit_core.models.sign_library import SignDefinition, SignLibrary
+from orbit_core.models.sign_library_manager import SignLibraryManager
+from orbit_core.models.signal import SignalType, SpeedUnit
 
 from ..graphics.signal_graphics import create_signal_pixmap
 from .base_dialog import BaseDialog

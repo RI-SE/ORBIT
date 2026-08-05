@@ -3,6 +3,7 @@
 import math
 
 import pytest
+
 from orbit_core.export.curve_fitting import GeometryElement, GeometryType
 from orbit_core.export.reference_line_sampler import (
     LanePolygonData,
