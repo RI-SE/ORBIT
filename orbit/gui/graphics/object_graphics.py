@@ -6,10 +6,9 @@ with appropriate shapes, colors, and dimension labels.
 """
 
 
+from orbit_core.models.object import ObjectType, RoadObject
 from PyQt6.QtCore import QPointF, QRectF
 from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath
-
-from orbit.models.object import ObjectType, RoadObject
 
 # Color scheme (30% opacity = 77 alpha, consistent with lanes/parking)
 COLORS = {

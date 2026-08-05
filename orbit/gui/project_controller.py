@@ -9,9 +9,10 @@ operations that don't require direct widget interaction.
 import math
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
+from orbit_core.models import LineType, Project
+from orbit_core.utils.logging_config import get_logger
+
 from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
-from orbit.models import LineType, Project
-from orbit.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
@@ -111,7 +112,7 @@ class ProjectController:
 
     def align_junction_crs(self, junction_id: str, scale_factors) -> Set[str]:
         """Align one junction's CRs. Returns the modified CR IDs."""
-        from orbit.utils.connecting_road_alignment import align_connecting_road_paths
+        from orbit_core.utils.connecting_road_alignment import align_connecting_road_paths
 
         junction = self.project.get_junction(junction_id)
         if not junction or not (junction.lane_connections and junction.connecting_road_ids):
@@ -167,7 +168,10 @@ class ProjectController:
 
     def _regenerate_parampoly3_cr(self, conn_road) -> None:
         """Regenerate a single ParamPoly3D CR from connected roads."""
-        from orbit.utils.geometry import generate_simple_connection_path
+        from orbit_core.utils.geometry import (
+            generate_simple_connection_path,
+            get_contact_pos_heading,
+        )
 
         pred_road = self.project.get_road(conn_road.predecessor_id)
         succ_road = self.project.get_road(conn_road.successor_id)
@@ -241,7 +245,7 @@ class ProjectController:
 
     def _align_affected_junction_crs(self, affected_road) -> List[str]:
         """Align CRs in junctions affected by a road change. Returns modified CR IDs."""
-        from orbit.utils.connecting_road_alignment import align_connecting_road_paths
+        from orbit_core.utils.connecting_road_alignment import align_connecting_road_paths
 
         scale_factors = self.get_current_scale()
         scale = self._avg_scale(scale_factors)
@@ -405,29 +409,3 @@ class ProjectController:
         if scale_factors:
             return (scale_factors[0] + scale_factors[1]) / 2.0
         return DEFAULT_SCALE_M_PER_PX
-
-
-def get_contact_pos_heading(polyline, contact_point) -> Tuple[Tuple[float, float], float]:
-    """Get position and raw road direction at a polyline contact point.
-
-    Returns the road's own travel direction at the contact, NOT the direction
-    of the connecting road. Callers must add π where the connecting road opposes
-    the road's defined direction (predecessor "start", successor "end").
-    """
-    if contact_point == "end":
-        pos = polyline.points[-1]
-        if len(polyline.points) >= 2:
-            dx = polyline.points[-1][0] - polyline.points[-2][0]
-            dy = polyline.points[-1][1] - polyline.points[-2][1]
-            heading = math.atan2(dy, dx)
-        else:
-            heading = 0.0
-    else:
-        pos = polyline.points[0]
-        if len(polyline.points) >= 2:
-            dx = polyline.points[1][0] - polyline.points[0][0]
-            dy = polyline.points[1][1] - polyline.points[0][1]
-            heading = math.atan2(dy, dx)
-        else:
-            heading = 0.0
-    return pos, heading

@@ -137,9 +137,35 @@ orbit --xodr_schema /path/to/OpenDRIVE_Core.xsd
 
 ## Related Packages
 
+All three are MIT licensed and free of any PyQt dependency, so they can be used in
+scripts, pipelines and downstream tools without taking on ORBIT's GPL-3.0 terms.
+
+### [orbit-core](orbit-core/)
+
+The headless half of ORBIT: road-network model, OpenStreetMap and OpenDRIVE import, and
+OpenDRIVE export. Build a CARLA-ready `.xodr` from coordinates in three calls, with no
+GUI and no imagery:
+
+```python
+import orbit_core as oc
+
+bbox = oc.bbox_from_center(57.6968, 11.9865, radius_m=150)
+osm = oc.osm_data_from_overpass(bbox)      # or osm_data_from_file("area.osm")
+oc.opendrive_from_osm_data(osm, bbox, "out.xodr")
+```
+
+See [orbit-core/README.md](orbit-core/README.md) for details.
+
+### [opendrive-map](opendrive-map/)
+
+Read-only OpenDRIVE road-network and lane-geometry model — parses a `.xodr` into lane
+polygons, centrelines and junctions, with point-to-lane lookup. Shared across the
+toolchain (COSMO's `trajectory-explorer`, `data-metrics`). See
+[opendrive-map/README.md](opendrive-map/README.md).
+
 ### [orbit-georef](orbit-georef/)
 
-Standalone Python library for pixel↔geo coordinate transformation. Use it to work with ORBIT's georeferencing outside the GUI — for example, converting pixel coordinates to lat/lon in scripts or downstream tooling. Install separately with `pip install orbit-georef`. See [orbit-georef/README.md](orbit-georef/README.md) for details.
+Standalone Python library for pixel↔geo coordinate transformation. Use it to work with ORBIT's georeferencing outside the GUI — for example, converting pixel coordinates to lat/lon in scripts or downstream tooling. See [orbit-georef/README.md](orbit-georef/README.md) for details.
 
 ---
 
@@ -147,14 +173,20 @@ Standalone Python library for pixel↔geo coordinate transformation. Use it to w
 
 ```
 orbit/
-├── models/       # Data models (Road, Polyline, Junction, ParkingSpace, Signal, etc.)
 ├── gui/          # PyQt6 GUI (MainWindow, ImageView, dialogs, widgets)
-├── export/       # OpenDRIVE XML generation (writers, builders)
-├── import/       # OSM and OpenDRIVE importers (loaded via importlib in code)
-├── signs/        # Traffic sign libraries (country-specific)
-└── utils/        # Coordinate transforms, geometry utilities
-orbit-georef/     # Standalone georeferencing library (separate package)
+└── signs/        # Traffic sign libraries (country-specific)
+orbit-core/       # Headless core, MIT (separate package)
+└── src/orbit_core/
+    ├── models/       # Data models (Road, Polyline, Junction, ParkingSpace, Signal, ...)
+    ├── importers/    # OSM and OpenDRIVE importers
+    ├── export/       # OpenDRIVE XML generation (writers, builders)
+    └── utils/        # Coordinate transforms, geometry utilities
+opendrive-map/    # Read-only OpenDRIVE lane geometry, MIT (separate package)
+orbit-georef/     # Standalone georeferencing library, MIT (separate package)
 ```
+
+The GUI is a shell over `orbit-core`: all road-building logic lives in the library, and
+nothing in it imports PyQt.
 
 ### Project Files
 

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from orbit_core.models import Project
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -21,8 +22,6 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
     QWidget,
 )
-
-from orbit.models import Project
 
 from ..utils.message_helpers import show_error, show_info, show_warning
 from .base_dialog import BaseDialog

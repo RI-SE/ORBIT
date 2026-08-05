@@ -6,6 +6,9 @@ Allows editing of road properties including lanes, speed, type, etc.
 
 from typing import Optional
 
+from orbit_core.models import LineType, Project, Road, RoadType
+from orbit_core.utils import format_enum_name
+from orbit_core.utils.logging_config import get_logger
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -28,10 +31,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-from orbit.models import LineType, Project, Road, RoadType
-from orbit.utils import format_enum_name
-from orbit.utils.logging_config import get_logger
 
 from ..utils import set_combo_by_data
 from ..utils.message_helpers import ask_yes_no
@@ -117,8 +116,7 @@ class RoadPropertiesDialog(QDialog):
         self.speed_limit_spin.setValue(0)
         basic_layout.addRow("Speed Limit:", self.speed_limit_spin)
 
-        import importlib
-        _osm_mappings = importlib.import_module('orbit.import.osm_mappings')
+        from orbit_core.importers import osm_mappings as _osm_mappings
 
         self.surface_combo = QComboBox()
         self.surface_combo.addItem("—", None)
@@ -575,8 +573,7 @@ class RoadPropertiesDialog(QDialog):
             self.speed_limit_spin.setValue(0)
 
         # Set surface and condition combos from OSM tags or lane materials
-        import importlib
-        _osm_mappings = importlib.import_module('orbit.import.osm_mappings')
+        from orbit_core.importers import osm_mappings as _osm_mappings
 
         surface_key = None
         roughness_val = None
@@ -696,8 +693,7 @@ class RoadPropertiesDialog(QDialog):
         self.road.speed_limit = speed if speed > 0 else None
 
         # Surface and condition
-        import importlib
-        _osm_mappings = importlib.import_module('orbit.import.osm_mappings')
+        from orbit_core.importers import osm_mappings as _osm_mappings
 
         if not self.road.osm_tags:
             self.road.osm_tags = {}
@@ -856,13 +852,13 @@ class RoadPropertiesDialog(QDialog):
             logger.debug("calculate_suggested_widths called for road: %s", self.road.name)
 
         try:
-            from orbit.export.lane_analyzer import LaneAnalyzer
+            from orbit_core.export.lane_analyzer import LaneAnalyzer
 
             # Get scale factors from georeferencing if available
             scale_factors = None
             if self.project.has_georeferencing():
                 try:
-                    from orbit.export import create_transformer
+                    from orbit_core.export import create_transformer
                     transformer = create_transformer(self.project.control_points)
                     if transformer:
                         scale_factors = transformer.get_scale_factor()

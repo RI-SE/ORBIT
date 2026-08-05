@@ -2,6 +2,8 @@
 Dialog for OpenDrive import configuration.
 """
 
+from orbit_core.models.object import ObjectType
+from orbit_core.utils.enum_formatting import format_enum_name
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -16,9 +18,6 @@ from PyQt6.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
 )
-
-from orbit.models.object import ObjectType
-from orbit.utils.enum_formatting import format_enum_name
 
 from ..utils.message_helpers import show_warning
 from .base_dialog import BaseDialog
@@ -201,8 +200,7 @@ class OpenDriveImportDialog(BaseDialog):
         if not p or not Path(p).is_file():
             return
         try:
-            import importlib
-            mod = importlib.import_module('orbit.import.opendrive_importer')
+            from orbit_core.importers import opendrive_importer as mod
             counts = mod.scan_xodr_feature_categories(p)
         except Exception:
             return

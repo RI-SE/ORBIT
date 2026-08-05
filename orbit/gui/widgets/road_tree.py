@@ -6,6 +6,8 @@ Displays hierarchical view of roads and their polylines with management capabili
 
 from typing import List, Optional, Tuple
 
+from orbit_core.models import LaneType, Polyline, Project, Road
+from orbit_core.utils.geometry_validator import GeometryIssue, validate_project_geometry
 from PyQt6.QtCore import QEvent, QMimeData, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QDrag
 from PyQt6.QtWidgets import (
@@ -24,9 +26,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-from orbit.models import LaneType, Polyline, Project, Road
-from orbit.utils.geometry_validator import GeometryIssue, validate_project_geometry
 
 from ..utils.message_helpers import ask_yes_no, show_info
 
@@ -302,7 +301,7 @@ class RoadTreeWidget(QWidget):
             return None
 
         try:
-            from orbit.export import create_transformer
+            from orbit_core.export import create_transformer
             transformer = create_transformer(self.project.control_points)
             if transformer is None:
                 return None
@@ -847,7 +846,7 @@ class RoadTreeWidget(QWidget):
 
     def edit_section(self, section_number: int, road_id: str):
         """Edit a lane section's properties."""
-        from orbit.export import create_transformer
+        from orbit_core.export import create_transformer
 
         from ..dialogs.section_properties_dialog import SectionPropertiesDialog
 

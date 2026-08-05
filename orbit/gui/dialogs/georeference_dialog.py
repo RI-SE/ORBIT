@@ -8,6 +8,8 @@ Supports both training (GCP) and validation (GVP) points.
 from typing import TYPE_CHECKING, Optional
 
 import numpy as np
+from orbit_core.models import ControlPoint, Project
+from orbit_core.utils.logging_config import get_logger
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
@@ -29,9 +31,6 @@ from PyQt6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
 )
-
-from orbit.models import ControlPoint, Project
-from orbit.utils.logging_config import get_logger
 
 from ..utils.message_helpers import ask_yes_no, show_error, show_info, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
@@ -241,7 +240,7 @@ class GeoreferenceDialog(BaseDialog):
     def _update_heading_validation(self):
         """Run heading estimation from GCPs and display the result."""
         try:
-            from orbit.utils.camera_model import DroneCameraModel
+            from orbit_core.utils.camera_model import DroneCameraModel
 
             md = self.project.drone_metadata
             if md is None:
@@ -290,7 +289,7 @@ class GeoreferenceDialog(BaseDialog):
         try:
             with open(path, encoding='utf-8') as f:
                 stats = json.load(f)
-            from orbit.models.project import DroneMetadata
+            from orbit_core.models.project import DroneMetadata
             self.project.drone_metadata = DroneMetadata.from_video_stats(stats)
             self._refresh_drone_status()
             self.drone_metadata_changed.emit()
@@ -641,7 +640,7 @@ class GeoreferenceDialog(BaseDialog):
 
     def update_validation(self):
         """Compute and display validation results."""
-        from orbit.utils import create_transformer
+        from orbit_core.utils import create_transformer
 
         # Count training points
         training_points = [cp for cp in self.project.control_points if not cp.is_validation]
@@ -734,7 +733,7 @@ class GeoreferenceDialog(BaseDialog):
 
         # GCP quality analysis summary
         if len(training_points) >= 4:
-            from orbit.utils.gcp_analyzer import analyze_control_points
+            from orbit_core.utils.gcp_analyzer import analyze_control_points
             analysis = analyze_control_points(transformer)
             if analysis:
                 report.append("GCP QUALITY ANALYSIS:")
@@ -878,8 +877,8 @@ class GeoreferenceDialog(BaseDialog):
         self.compute_monte_carlo_btn.setEnabled(True)
 
         try:
-            from orbit.utils import create_transformer
-            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit_core.utils import create_transformer
+            from orbit_core.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
             parent_window = self.parent()
@@ -980,8 +979,8 @@ class GeoreferenceDialog(BaseDialog):
             return
 
         try:
-            from orbit.utils import create_transformer
-            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit_core.utils import create_transformer
+            from orbit_core.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
             parent_window = self.parent()
@@ -1067,8 +1066,8 @@ class GeoreferenceDialog(BaseDialog):
             return
 
         try:
-            from orbit.utils import create_transformer
-            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit_core.utils import create_transformer
+            from orbit_core.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
             parent_window = self.parent()
@@ -1165,8 +1164,8 @@ class GeoreferenceDialog(BaseDialog):
     def suggest_gcp_locations(self):
         """Suggest where to add new control points based on uncertainty analysis."""
         try:
-            from orbit.utils import create_transformer
-            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit_core.utils import create_transformer
+            from orbit_core.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Get image dimensions
             parent_window = self.parent()
@@ -1263,8 +1262,8 @@ class GeoreferenceDialog(BaseDialog):
 
     def show_gcp_analysis(self):
         """Show detailed GCP quality analysis dialog."""
-        from orbit.utils import create_transformer
-        from orbit.utils.gcp_analyzer import analyze_control_points
+        from orbit_core.utils import create_transformer
+        from orbit_core.utils.gcp_analyzer import analyze_control_points
 
         training_points = [cp for cp in self.project.control_points if not cp.is_validation]
         if len(training_points) < 4:

@@ -6,6 +6,8 @@ Allows editing of lane-to-lane connections within a junction.
 
 from typing import List
 
+from orbit_core.models import Junction, LaneConnection, Project
+from orbit_core.models.road import Road
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -20,8 +22,6 @@ from PyQt6.QtWidgets import (
 )
 
 from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
-from orbit.models import Junction, LaneConnection, Project
-from orbit.models.road import Road
 
 from ..utils import ask_yes_no, show_error, show_info, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
@@ -457,9 +457,7 @@ class LaneConnectionDialog(BaseDialog):
 
         # Import junction analyzer
         try:
-            import importlib
-            junction_analyzer = importlib.import_module('orbit.import.junction_analyzer')
-            generate_junction_connections = junction_analyzer.generate_junction_connections
+            from orbit_core.importers.junction_analyzer import generate_junction_connections
         except ImportError as e:
             show_error(self, f"Failed to import junction analyzer: {e}", "Import Error")
             return
@@ -472,7 +470,7 @@ class LaneConnectionDialog(BaseDialog):
         scale = 1.0
         if len(self.project.control_points) >= 3:
             try:
-                from orbit.export.coordinate_transformer import CoordinateTransformer
+                from orbit_core.export.coordinate_transformer import CoordinateTransformer
                 transformer = CoordinateTransformer(self.project.control_points)
                 scale_x, scale_y = transformer.get_scale_factor()
                 scale = (scale_x + scale_y) / 2.0
@@ -635,7 +633,7 @@ class LaneConnectionDialog(BaseDialog):
 
     def _adjust_connecting_road_paths(self):
         """Adjust connecting road paths so lane polygons align with connected lanes."""
-        from orbit.utils.connecting_road_alignment import align_connecting_road_paths
+        from orbit_core.utils.connecting_road_alignment import align_connecting_road_paths
 
         scale = self._get_scale()
         align_connecting_road_paths(self.junction, self.project, scale)
@@ -644,7 +642,7 @@ class LaneConnectionDialog(BaseDialog):
         """Get meters-per-pixel scale factor."""
         if len(self.project.control_points) >= 3:
             try:
-                from orbit.export.coordinate_transformer import CoordinateTransformer
+                from orbit_core.export.coordinate_transformer import CoordinateTransformer
                 transformer = CoordinateTransformer(self.project.control_points)
                 sx, sy = transformer.get_scale_factor()
                 return (sx + sy) / 2.0

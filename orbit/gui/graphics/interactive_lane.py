@@ -6,11 +6,10 @@ Provides clickable, hoverable lane polygons for the image view.
 
 from typing import TYPE_CHECKING, List
 
+from orbit_core.models.lane import LaneType
 from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsPolygonItem
-
-from orbit.models.lane import LaneType
 
 if TYPE_CHECKING:
     from ..image_view import ImageView

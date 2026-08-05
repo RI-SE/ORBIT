@@ -15,7 +15,7 @@ from PyQt6.QtCore import QPointF
 from PyQt6.QtWidgets import QApplication
 
 from orbit.gui.graphics.object_graphics_item import ObjectGraphicsItem
-from orbit.models.object import ObjectType, RoadObject
+from orbit_core.models.object import ObjectType, RoadObject
 
 _app = QApplication.instance() or QApplication([])
 

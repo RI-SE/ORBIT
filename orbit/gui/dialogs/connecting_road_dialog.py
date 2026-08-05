@@ -7,6 +7,10 @@ Allows editing of connecting road properties including tangent adjustment for Pa
 import math
 from typing import Optional
 
+from orbit_core.models import Project
+from orbit_core.models.road import Road, RoadType
+from orbit_core.utils import format_enum_name
+from orbit_core.utils.geometry import generate_simple_connection_path
 from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -16,11 +20,6 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSpinBox,
 )
-
-from orbit.models import Project
-from orbit.models.road import Road, RoadType
-from orbit.utils import format_enum_name
-from orbit.utils.geometry import generate_simple_connection_path
 
 from .base_dialog import BaseDialog
 
@@ -483,8 +482,9 @@ class ConnectingRoadDialog(BaseDialog):
 
     def on_smooth_curve(self):
         """Redistribute inline_path points along a smooth Bezier curve."""
+        from orbit_core.utils.geometry import fit_smooth_curve_to_polyline, get_smooth_cr_tangents
+
         from orbit.gui.undo_commands import SmoothCRCommand
-        from orbit.utils.geometry import fit_smooth_curve_to_polyline, get_smooth_cr_tangents
 
         path = self.connecting_road.inline_path
         if not path or len(path) < 2:

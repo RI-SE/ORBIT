@@ -6,6 +6,9 @@ Allows editing of individual lane properties.
 
 from typing import TYPE_CHECKING, Optional
 
+from orbit_core.models import Lane, LaneType, LineType, Project, RoadMarkType
+from orbit_core.utils import format_enum_name
+from orbit_core.utils.lane_fitting import evaluate_fit_quality
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -28,15 +31,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from orbit.models import Lane, LaneType, LineType, Project, RoadMarkType
-from orbit.utils import format_enum_name
-from orbit.utils.lane_fitting import evaluate_fit_quality
-
 from ..utils import ask_yes_no, set_combo_by_data, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
 
 if TYPE_CHECKING:
-    from orbit.models.road import Road
+    from orbit_core.models.road import Road
 
 
 class LanePropertiesDialog(BaseDialog):
@@ -971,7 +970,7 @@ class LanePropertiesDialog(BaseDialog):
                 return
 
         # Import fitting function
-        from orbit.utils.lane_fitting import fit_single_lane_width
+        from orbit_core.utils.lane_fitting import fit_single_lane_width
 
         # Fit the polynomial (measures distance from centerline to outer boundary)
         try:
@@ -1211,7 +1210,7 @@ class LanePropertiesDialog(BaseDialog):
                 self.lane.right_boundary_id = None  # Inner is centerline or adjacent lane
 
             # Set boundary mode based on whether outer boundary is assigned
-            from orbit.models.lane import BoundaryMode
+            from orbit_core.models.lane import BoundaryMode
             if outer_boundary_id:
                 self.lane.boundary_mode = BoundaryMode.EXPLICIT
             else:

@@ -9,6 +9,8 @@ from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
+from orbit_core.models import Junction, LineType, ObjectType, Polyline, Project, Road, RoadObject, Signal
+from orbit_core.utils.coordinate_transform import TransformAdjustment
 from PyQt6.QtCore import QLineF, QPointF, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QFont, QImage, QKeyEvent, QMouseEvent, QPainter, QPen, QPixmap, QWheelEvent
 from PyQt6.QtWidgets import (
@@ -35,8 +37,6 @@ from orbit.gui.graphics import (
     PolylineGraphicsItem,
     RoadLanesGraphicsItem,
 )
-from orbit.models import Junction, LineType, ObjectType, Polyline, Project, Road, RoadObject, Signal
-from orbit.utils.coordinate_transform import TransformAdjustment
 
 from .graphics.object_graphics_item import ObjectGraphicsItem
 from .graphics.parking_item import ParkingGraphicsItem
@@ -1433,7 +1433,7 @@ class ImageView(QGraphicsView):
 
         if use_metric:
             try:
-                from orbit.export import create_transformer
+                from orbit_core.export import create_transformer
                 transformer = create_transformer(self.project.control_points)
                 if transformer:
                     # Convert all points to meters first
@@ -2141,8 +2141,8 @@ class ImageView(QGraphicsView):
             return ("No georef", QColor(255, 255, 255, 200))
 
         try:
-            from orbit.utils import create_transformer
-            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit_core.utils import create_transformer
+            from orbit_core.utils.uncertainty_estimator import UncertaintyEstimator
 
             # Create transformer
             transformer = create_transformer(project.control_points, project.transform_method, use_validation=True)
@@ -2336,7 +2336,7 @@ class ImageView(QGraphicsView):
         # Check if we have georeferencing to convert to meters
         if self.project and self.project.has_georeferencing():
             try:
-                from orbit.utils import create_transformer
+                from orbit_core.utils import create_transformer
 
                 # Create transformer
                 transformer = create_transformer(
@@ -2676,8 +2676,8 @@ class ImageView(QGraphicsView):
         Returns:
             True on success, False on failure
         """
-        from orbit.export.layout_mask_exporter import ExportMethod, LayoutMaskExporter
-        from orbit.export.reference_line_sampler import LanePolygonData
+        from orbit_core.export.layout_mask_exporter import ExportMethod, LayoutMaskExporter
+        from orbit_core.export.reference_line_sampler import LanePolygonData
 
         if not self.image_item:
             return False
@@ -2723,7 +2723,7 @@ class ImageView(QGraphicsView):
         # Create transformer if georeferencing available
         transformer = None
         if self.project and len(self.project.control_points) >= 3:
-            from orbit.export import create_transformer
+            from orbit_core.export import create_transformer
             transformer = create_transformer(
                 self.project.control_points,
                 self.project.transform_method,
@@ -3440,9 +3440,9 @@ class ImageView(QGraphicsView):
         """Smooth a regular road's centerline using adjacent road tangents."""
         import math as _math
 
-        from orbit.gui.project_controller import get_contact_pos_heading
+        from orbit_core.utils.geometry import fit_smooth_curve_to_polyline, get_contact_pos_heading
+
         from orbit.gui.undo_commands import ModifyPolylineCommand
-        from orbit.utils.geometry import fit_smooth_curve_to_polyline
 
         item = self.polyline_items.get(polyline_id)
         if not item:
@@ -3502,8 +3502,9 @@ class ImageView(QGraphicsView):
 
     def _show_cr_centerline_menu(self, view_pos, conn_road_id: str, point_index: int) -> None:
         """Context menu for a connecting road centerline (right-click on point or segment)."""
+        from orbit_core.utils.geometry import fit_smooth_curve_to_polyline, get_smooth_cr_tangents
+
         from orbit.gui.undo_commands import SmoothCRCommand
-        from orbit.utils.geometry import fit_smooth_curve_to_polyline, get_smooth_cr_tangents
 
         item = self.connecting_road_centerline_items.get(conn_road_id)
         if not item:

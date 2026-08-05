@@ -7,6 +7,10 @@ Provides the main GUI with menus, toolbar, status bar, and central view.
 from pathlib import Path
 from typing import Optional
 
+from orbit_core.models import Project
+from orbit_core.utils.coordinate_transform import TransformAdjustment
+from orbit_core.utils.logging_config import get_logger
+from orbit_core.utils.provenance import is_dataprov_available, record_export, record_project_save
 from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QAction, QKeySequence, QUndoStack
 from PyQt6.QtWidgets import (
@@ -21,10 +25,6 @@ from PyQt6.QtWidgets import (
 )
 
 from orbit.gui.graphics.adjustment_ghost_overlay import AdjustmentGhostOverlay
-from orbit.models import Project
-from orbit.utils.coordinate_transform import TransformAdjustment
-from orbit.utils.logging_config import get_logger
-from orbit.utils.provenance import is_dataprov_available, record_export, record_project_save
 
 from .image_view import ImageView
 from .project_controller import ProjectController
@@ -667,7 +667,7 @@ class MainWindow(QMainWindow):
         return True
 
     def _provenance_template(self) -> str:
-        from orbit.utils.provenance import DEFAULT_TEMPLATE
+        from orbit_core.utils.provenance import DEFAULT_TEMPLATE
         return self.settings.value("provenance/name_template", DEFAULT_TEMPLATE, type=str)
 
     def _record_project_provenance(self, orbit_path: Path, start_time) -> None:
@@ -940,7 +940,7 @@ class MainWindow(QMainWindow):
         """Export project to OpenStreetMap XML format (.osm)."""
         from pathlib import Path as _Path
 
-        from orbit.export.osm_writer import export_to_osm
+        from orbit_core.export.osm_writer import export_to_osm
 
         self._ensure_original_view_for_save()
 
@@ -1028,7 +1028,7 @@ class MainWindow(QMainWindow):
 
     def export_georeferencing(self):
         """Export georeferencing parameters to JSON file."""
-        from orbit.export import export_georeferencing
+        from orbit_core.export import export_georeferencing
 
         self._ensure_original_view_for_save()
 
@@ -1269,21 +1269,14 @@ class MainWindow(QMainWindow):
 
     def import_osm_data(self):
         """Import road network data from OpenStreetMap (API or file)."""
-        import importlib
 
-        from .dialogs.osm_import_dialog import OSMImportDialog
-        osm_import_module = importlib.import_module('orbit.import')
-        osm_parser_module = importlib.import_module('orbit.import.osm_parser')
-        osm_to_orbit_module = importlib.import_module('orbit.import.osm_to_orbit')
-        OSMImporter = osm_import_module.OSMImporter
-        ImportOptions = osm_import_module.ImportOptions
-        ImportMode = osm_import_module.ImportMode
-        DetailLevel = osm_import_module.DetailLevel
-        OSMParser = osm_parser_module.OSMParser
-        calculate_bbox_from_image = osm_to_orbit_module.calculate_bbox_from_image
-        calculate_bbox_from_center = osm_to_orbit_module.calculate_bbox_from_center
+        from orbit_core.importers import DetailLevel, ImportMode, ImportOptions, OSMImporter
+        from orbit_core.importers.osm_parser import OSMParser
+        from orbit_core.importers.osm_to_orbit import calculate_bbox_from_center, calculate_bbox_from_image
         from PyQt6.QtCore import QCoreApplication
         from PyQt6.QtWidgets import QProgressDialog
+
+        from .dialogs.osm_import_dialog import OSMImportDialog
 
         # Resolve bbox, transformer, and image dimensions
         setup = self._setup_osm_import(
@@ -1349,7 +1342,7 @@ class MainWindow(QMainWindow):
             else:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     osm_data = OSMParser.parse_xml(f.read())
-                result = importer._import_from_osm_data(osm_data, options, bbox=bbox)
+                result = importer.import_from_osm_data(osm_data, options, bbox=bbox)
             progress.close()
             self._process_osm_import_result(result, source_type, file_path)
         except Exception as e:
@@ -1360,7 +1353,7 @@ class MainWindow(QMainWindow):
     def _setup_osm_import(self, OSMImportDialog, calculate_bbox_from_image,
                           calculate_bbox_from_center):
         """Set up bbox, transformer, and image dimensions for OSM import. Returns None on cancel."""
-        from orbit.models.project import ControlPoint
+        from orbit_core.models.project import ControlPoint
 
         has_georef = len(self.project.control_points) >= 3
         has_image = self.image_view.image_item is not None
@@ -1470,18 +1463,14 @@ class MainWindow(QMainWindow):
 
     def import_opendrive_file(self):
         """Import road network from OpenDrive file."""
-        import importlib
+
+        from orbit_core.importers.opendrive_importer import ImportMode, ImportOptions, OpenDriveImporter
+        from orbit_core.importers.opendrive_parser import OpenDriveParser
+        from PyQt6.QtCore import QCoreApplication
+        from PyQt6.QtWidgets import QProgressDialog
 
         from .dialogs.import_report_dialog import show_opendrive_import_report
         from .dialogs.opendrive_import_dialog import OpenDriveImportDialog
-        opendrive_import_module = importlib.import_module('orbit.import.opendrive_importer')
-        OpenDriveImporter = opendrive_import_module.OpenDriveImporter
-        ImportOptions = opendrive_import_module.ImportOptions
-        ImportMode = opendrive_import_module.ImportMode
-        opendrive_parser_module = importlib.import_module('orbit.import.opendrive_parser')
-        OpenDriveParser = opendrive_parser_module.OpenDriveParser
-        from PyQt6.QtCore import QCoreApplication
-        from PyQt6.QtWidgets import QProgressDialog
 
         has_image = self.image_view.image_item is not None
 
@@ -1746,7 +1735,7 @@ class MainWindow(QMainWindow):
 
     def _on_roundabout_dialog_finished(self, result):
         """Handle roundabout wizard dialog result."""
-        from orbit.roundabout_creator import create_roundabout_from_params
+        from orbit_core.roundabout_creator import create_roundabout_from_params
 
         from .dialogs import RoundaboutWizardDialog
 
@@ -2118,7 +2107,7 @@ class MainWindow(QMainWindow):
         (homography inside the image, affine outside) is used consistently
         across all code paths — not just OSM import.
         """
-        from orbit.utils.coordinate_transform import create_transformer
+        from orbit_core.utils.coordinate_transform import create_transformer
 
         image_width, image_height = 0, 0
         if self.image_view.image_item:
@@ -2164,7 +2153,7 @@ class MainWindow(QMainWindow):
         if (self.project.transform_method != 'drone_assisted'
                 or not self.project.transform_adjustment):
             return new_adj
-        from orbit.utils.adjustment_fitter import decompose_to_adjustment
+        from orbit_core.utils.adjustment_fitter import decompose_to_adjustment
         base = TransformAdjustment.from_dict(self.project.transform_adjustment)
         M = new_adj.get_adjustment_matrix() @ base.get_adjustment_matrix()
         return decompose_to_adjustment(M, new_adj.pivot_x, new_adj.pivot_y)
@@ -2818,7 +2807,7 @@ class MainWindow(QMainWindow):
 
     def _on_autofit_compute(self):
         """Compute best-fit adjustment from collected point pairs."""
-        from orbit.utils.adjustment_fitter import fit_adjustment
+        from orbit_core.utils.adjustment_fitter import fit_adjustment
 
         pairs = self.image_view.autofit_pairs
         if len(pairs) < 3:
@@ -3001,7 +2990,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            from orbit.utils.uncertainty_estimator import UncertaintyEstimator
+            from orbit_core.utils.uncertainty_estimator import UncertaintyEstimator
 
             from .graphics.uncertainty_overlay import UncertaintyOverlay
 
@@ -3079,9 +3068,9 @@ class MainWindow(QMainWindow):
 
     def _switch_to_aerial(self):
         """Fetch aerial tiles and switch to aerial view."""
-        from orbit.utils.coordinate_transform import create_transformer_from_bounds
-        from orbit.utils.reproject import reproject_project_geometry
-        from orbit.utils.tile_fetcher import fetch_aerial_image
+        from orbit_core.utils.coordinate_transform import create_transformer_from_bounds
+        from orbit_core.utils.reproject import reproject_project_geometry
+        from orbit_core.utils.tile_fetcher import fetch_aerial_image
 
         bbox = self._get_project_geo_bbox()
         if bbox is None:
@@ -3235,7 +3224,7 @@ class MainWindow(QMainWindow):
 
     def _switch_to_original(self):
         """Switch back to the original drone/source image."""
-        from orbit.utils.reproject import reproject_project_geometry
+        from orbit_core.utils.reproject import reproject_project_geometry
 
         if self._original_image_np is None or self._original_transformer is None:
             self._aerial_view_active = False
@@ -3764,7 +3753,7 @@ class MainWindow(QMainWindow):
 
     def on_signal_placement_requested(self, x: float, y: float):
         """Handle signal placement request - show selection dialog."""
-        from orbit.models.signal import Signal, SignalType
+        from orbit_core.models.signal import Signal, SignalType
 
         from .dialogs.signal_selection_dialog import SignalSelectionDialog
 
@@ -3791,7 +3780,7 @@ class MainWindow(QMainWindow):
                     signal.custom_subtype = custom_subtype
                 # Set dimensions from library if available
                 if signal_type == SignalType.LIBRARY_SIGN and library_id and sign_id:
-                    from orbit.models.sign_library_manager import SignLibraryManager
+                    from orbit_core.models.sign_library_manager import SignLibraryManager
                     manager = SignLibraryManager.instance()
                     sign_def = manager.get_sign_definition(library_id, sign_id)
                     if sign_def:
@@ -3967,7 +3956,7 @@ class MainWindow(QMainWindow):
 
     def on_object_placement_requested(self, x: float, y: float, object_type):
         """Handle object placement request from ImageView (for point objects)."""
-        from orbit.models import RoadObject
+        from orbit_core.models import RoadObject
 
         # Create object at clicked position
         obj = RoadObject(
@@ -4017,7 +4006,7 @@ class MainWindow(QMainWindow):
 
     def on_parking_placement_requested(self, x: float, y: float, parking_type, access_type):
         """Handle parking placement request from ImageView."""
-        from orbit.models.parking import ParkingSpace
+        from orbit_core.models.parking import ParkingSpace
 
         # Create parking at clicked position
         parking = ParkingSpace(
@@ -4067,7 +4056,7 @@ class MainWindow(QMainWindow):
 
     def on_parking_polygon_completed(self, points: list, parking_type, access_type):
         """Handle parking polygon completion from ImageView."""
-        from orbit.models.parking import ParkingSpace
+        from orbit_core.models.parking import ParkingSpace
 
         if len(points) < 3:
             self.statusBar().showMessage("Polygon needs at least 3 points")
@@ -4178,7 +4167,7 @@ class MainWindow(QMainWindow):
 
     def on_object_polygon_completed(self, points: list, object_type):
         """Handle object polygon completion from ImageView (for land use etc.)."""
-        from orbit.models import RoadObject
+        from orbit_core.models import RoadObject
 
         if len(points) < 3:
             self.statusBar().showMessage("Polygon needs at least 3 points")

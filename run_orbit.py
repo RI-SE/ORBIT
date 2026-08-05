@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import QApplication
 
 from orbit import __version__
 from orbit.gui.main_window import MainWindow
-from orbit.utils import setup_logging
+from orbit_core.utils import setup_logging
 
 
 def parse_arguments():

@@ -6,6 +6,13 @@ Allows editing of junction properties and road connections.
 
 from typing import Optional
 
+from orbit_core.models import Junction, Project
+from orbit_core.models.junction import (
+    JunctionBoundary,
+    JunctionBoundarySegment,
+    JunctionElevationGrid,
+    JunctionElevationGridPoint,
+)
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -26,14 +33,6 @@ from PyQt6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
-)
-
-from orbit.models import Junction, Project
-from orbit.models.junction import (
-    JunctionBoundary,
-    JunctionBoundarySegment,
-    JunctionElevationGrid,
-    JunctionElevationGridPoint,
 )
 
 from ..utils.message_helpers import show_error, show_info, show_warning
@@ -459,8 +458,7 @@ class JunctionDialog(BaseDialog):
         # that now connect through this junction (OpenDRIVE compliance), and
         # set predecessor_junction_id / successor_junction_id on connected roads.
         if self.project:
-            import importlib
-            junction_analyzer = importlib.import_module('orbit.import.junction_analyzer')
+            from orbit_core.importers import junction_analyzer
             roads_dict = {road.id: road for road in self.project.roads}
             polylines_dict = {p.id: p for p in self.project.polylines}
             junction_analyzer.clear_cross_junction_links(self.junction, roads_dict)
@@ -532,11 +530,10 @@ class JunctionDialog(BaseDialog):
             )
             return
 
-        # Import the junction analyzer (using importlib to avoid 'import' keyword conflict)
         try:
-            import importlib
-            junction_analyzer = importlib.import_module('orbit.import.junction_analyzer')
-            generate_junction_connections = junction_analyzer.generate_junction_connections
+            from orbit_core.importers.junction_analyzer import (
+                generate_junction_connections,
+            )
         except ImportError as e:
             show_error(self, f"Failed to import junction analyzer: {e}", "Import Error")
             return
@@ -549,7 +546,7 @@ class JunctionDialog(BaseDialog):
         scale = 1.0  # Default for non-georeferenced projects
         if len(self.project.control_points) >= 3:
             try:
-                from orbit.export.coordinate_transformer import CoordinateTransformer
+                from orbit_core.export.coordinate_transformer import CoordinateTransformer
                 transformer = CoordinateTransformer(self.project.control_points)
                 scale_x, scale_y = transformer.get_scale_factor()
                 scale = (scale_x + scale_y) / 2.0
@@ -558,7 +555,7 @@ class JunctionDialog(BaseDialog):
                 scale = 1.0
 
         # Back up existing state before clearing so we can restore on failure
-        from orbit.models.road import Road as _Road
+        from orbit_core.models.road import Road as _Road
         backup_cr_ids = list(self.junction.connecting_road_ids)
         backup_cr_dicts = [
             self.project.get_road(cr_id).to_dict()
@@ -571,7 +568,7 @@ class JunctionDialog(BaseDialog):
             for cr_dict in backup_cr_dicts:
                 self.project.add_road(_Road.from_dict(cr_dict))
             self.junction.connecting_road_ids = backup_cr_ids
-            from orbit.models.lane_connection import LaneConnection as _LC
+            from orbit_core.models.lane_connection import LaneConnection as _LC
             self.junction.lane_connections = [_LC.from_dict(d) for d in backup_lane_connections]
 
         # Clear existing connections
