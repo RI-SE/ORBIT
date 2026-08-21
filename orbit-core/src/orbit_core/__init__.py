@@ -121,6 +121,7 @@ def opendrive_from_osm_data(
     options: Optional[ImportOptions] = None,
     export_options: Optional[ExportOptions] = None,
     pixel_grid: int = DEFAULT_PIXEL_GRID,
+    warnings_out: Optional[list[str]] = None,
 ) -> Path:
     """Convert parsed OSM data into an OpenDRIVE file.
 
@@ -133,6 +134,9 @@ def opendrive_from_osm_data(
         options: Import tuning. Defaults to moderate detail with junctions.
         export_options: Export tuning. Defaults to `carla_compat=True`.
         pixel_grid: Nominal image size backing the coordinate transform.
+        warnings_out: If given, receives any degradation warnings -- parts of the map the
+            writer had to omit. A degraded export still succeeds, so a caller that wants
+            to know the map is incomplete has to ask.
 
     Returns:
         The written path.
@@ -169,7 +173,10 @@ def opendrive_from_osm_data(
         transformer,
         options=export_options or ExportOptions(carla_compat=True),
     )
-    if not writer.write(str(out_path)):
+    written = writer.write(str(out_path))
+    if warnings_out is not None:
+        warnings_out.extend(writer.export_warnings)
+    if not written:
         raise RuntimeError(f"OpenDriveWriter failed to write {out_path}")
 
     return out_path

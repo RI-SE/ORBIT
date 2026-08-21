@@ -8,6 +8,34 @@ All notable changes to this project are documented in this file.
 
 > **Note**: entries for 0.7.0–0.14.0 were not recorded.
 
+## [Unreleased]
+
+### Fixed
+- **Signals could be exported past the end of the road carrying them**, which makes the
+  whole map unloadable (esmini: `Signal ... s value exceeds road length`). Signals are
+  projected onto the centerline, but the exported road length comes from fitted geometry,
+  so the two disagree; `s` is now clamped just inside the road it is written under.
+- **Signals were attached to the wrong road segment after a split.** The OSM-node index
+  was built from each road's originating way, but roads are split at junction nodes
+  before signals are attached, so one way's node list covers several roads -- every node
+  was offered to every segment and the first in the list won. The index is now built from
+  each road's own centerline, and a node shared by several roads (a junction node belongs
+  to every approach) goes to the road the signal actually stands closest to, preferring
+  regular roads over connecting roads.
+- **Junctions could reference roads that were not written**, leaving a dangling
+  `incomingRoad`/`connectingRoad` that makes readers reject the file. Roads may be dropped
+  during a write while the junction is still built from the project. Such connections are
+  now omitted and reported.
+
+### Added
+- `warnings_out` on `export_to_opendrive` and `opendrive_from_osm_data`, and
+  `OpenDriveWriter.export_warnings`: parts of the project the writer had to omit to keep
+  the file valid. A degraded export still succeeds and looks correct, so this is the only
+  way a caller learns the map is incomplete. Both parameters are optional; existing
+  callers are unaffected. The export dialog shows them.
+
+---
+
 ## [0.15.0] - 2026-08
 
 ### Changed

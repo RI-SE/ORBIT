@@ -510,6 +510,7 @@ class ExportDialog(BaseDialog):
             else:
                 geo_reference_string = proj_string
 
+            export_warnings: list[str] = []
             success = export_to_opendrive(
                 self.project,
                 export_transformer,
@@ -526,7 +527,20 @@ class ExportDialog(BaseDialog):
                 geo_reference_string=geo_reference_string,
                 export_object_types=self._get_export_object_types(),
                 carla_compat=self.carla_compat_checkbox.isChecked(),
+                warnings_out=export_warnings,
             )
+
+            if success and export_warnings:
+                # The file was written and is valid, but parts of the project are not in
+                # it -- say so, because nothing about the result looks wrong otherwise.
+                warning_text = "\n".join(export_warnings[:10])
+                if len(export_warnings) > 10:
+                    warning_text += f"\n... and {len(export_warnings) - 10} more"
+                show_warning(
+                    self,
+                    f"The export is incomplete:\n\n{warning_text}",
+                    "Degraded Export"
+                )
 
             if success:
                 # Check for dangling references

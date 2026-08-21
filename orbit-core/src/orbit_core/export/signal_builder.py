@@ -12,9 +12,38 @@ from lxml import etree
 from orbit_core.models import Road, Signal
 from orbit_core.models.sign_library_manager import SignLibraryManager
 from orbit_core.models.signal import SignalType, SpeedUnit
+from orbit_core.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
     from orbit_core.utils.coordinate_transform import CoordinateTransformer
+
+
+logger = get_logger(__name__)
+
+#: Kept clear of the road end by this much. A signal exactly at `s == length` has no
+#: lane section to belong to, since sections cover [start, end).
+_END_MARGIN_M = 0.01
+
+
+def _clamp_s_to_road(s: float, road_length: Optional[float], signal_id: str) -> float:
+    """Keep a signal's s inside the road that carries it.
+
+    The projection is clamped to the centerline, but the exported road length comes from
+    fitted geometry, so "the end of the centerline" and "the end of the road" are not the
+    same number. Anything outside is a placement error either way; pinning it just inside
+    keeps the map loadable instead of losing every signal on it.
+    """
+    if road_length is None or road_length <= 0:
+        return s
+
+    limit = max(0.0, road_length - _END_MARGIN_M)
+    if s > limit:
+        logger.debug(
+            "Signal %s at s=%.4f lies past its road (length %.4f); clamped to %.4f",
+            signal_id, s, road_length, limit,
+        )
+        return limit
+    return max(0.0, s)
 
 
 def _project_point_onto_polyline(px: float, py: float, pts: List[tuple]):
@@ -80,6 +109,7 @@ class SignalBuilder:
         signals: List[Signal],
         path_pixel: List[tuple],
         path_meters: Optional[List[tuple]] = None,
+        road_length: Optional[float] = None,
     ) -> Optional[etree.Element]:
         """
         Create signals element for a connecting road.
@@ -89,6 +119,8 @@ class SignalBuilder:
             signals: All signals in the project
             path_pixel: Connecting road path in pixel coordinates
             path_meters: Connecting road path in metric coordinates
+            road_length: Length written for this road, so a signal cannot be placed past
+                its end -- see `_clamp_s_to_road`
 
         Returns:
             signals XML element or None if no signals assigned to this connecting road
@@ -99,7 +131,7 @@ class SignalBuilder:
 
         signals_elem = etree.Element('signals')
         for signal in road_signals:
-            signal_elem = self._create_signal(signal, path_pixel, path_meters)
+            signal_elem = self._create_signal(signal, path_pixel, path_meters, road_length)
             if signal_elem is not None:
                 signals_elem.append(signal_elem)
 
@@ -111,6 +143,7 @@ class SignalBuilder:
         signals: List[Signal],
         centerline_points_pixel: List[tuple],
         centerline_points_meters: Optional[List[tuple]] = None,
+        road_length: Optional[float] = None,
     ) -> Optional[etree.Element]:
         """
         Create signals element for a road.
@@ -122,6 +155,8 @@ class SignalBuilder:
             centerline_points_meters: Centerline points in metric coordinates (metres).
                 When provided together with a transformer, signal positions are projected
                 in metric space for accurate s/t values independent of road orientation.
+            road_length: Length written for this road, so a signal cannot be placed past
+                its end -- see `_clamp_s_to_road`
 
         Returns:
             signals XML element or None if no signals for this road
@@ -135,7 +170,9 @@ class SignalBuilder:
         signals_elem = etree.Element('signals')
 
         for signal in road_signals:
-            signal_elem = self._create_signal(signal, centerline_points_pixel, centerline_points_meters)
+            signal_elem = self._create_signal(
+                signal, centerline_points_pixel, centerline_points_meters, road_length
+            )
             if signal_elem is not None:
                 signals_elem.append(signal_elem)
 
@@ -146,8 +183,18 @@ class SignalBuilder:
         signal: Signal,
         centerline_points_pixel: List[tuple],
         centerline_points_meters: Optional[List[tuple]] = None,
+        road_length: Optional[float] = None,
     ) -> Optional[etree.Element]:
-        """Create a single signal element."""
+        """Create a single signal element.
+
+        `road_length` is the length actually written for the road, which comes from the
+        *curve-fitted* geometry and so differs slightly from the raw centerline the
+        projection below measures against. Without it a signal at the very end of the
+        centerline can be emitted a fraction beyond the road it belongs to -- and a
+        consumer that resolves signals to lane sections rejects the entire map for it
+        (esmini: "No lane section found at s=23.24"), because lane sections are
+        half-open.
+        """
         # Prefer metric-space projection when the transformer and metric centerline are
         # available.  The pixel-space fallback (s_px × scale_x) is inaccurate when
         # the road runs at an angle or the homography scale varies across the image.
@@ -172,6 +219,8 @@ class SignalBuilder:
                 return None
             s_meters = s_position * self.scale_x
             t_meters = self._calculate_t_offset(signal.position, centerline_points_pixel, s_position)
+
+        s_meters = _clamp_s_to_road(s_meters, road_length, signal.id)
 
         # Create signal element
         signal_elem = etree.Element('signal')

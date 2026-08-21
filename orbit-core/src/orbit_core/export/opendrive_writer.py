@@ -149,6 +149,19 @@ class OpenDriveWriter:
 
         # Reference validation warnings (populated during write)
         self.reference_warnings: List[str] = []
+        #: Internal ids of roads that actually reached the file. A road can be dropped
+        #: during writing (no centerline, too few points, curve fitting yielding nothing)
+        #: while still existing in the project, so this is the only reliable answer to
+        #: "may a junction reference this?".
+        #:
+        #: `None` until a write pass fills it, which is not the same as empty: building a
+        #: junction element on its own has no write context to check against, and must not
+        #: therefore conclude that every road is missing.
+        self._written_road_ids: Optional[Set[str]] = None
+        #: Problems that made the written map less complete than the project. Distinct
+        #: from `reference_warnings`, which validates the project model and therefore
+        #: cannot see anything dropped at write time.
+        self.export_warnings: List[str] = []
 
         # Ensure geo_points are consistent with the current transformer
         refresh_stale_geo_points(self.project, self.transformer)
@@ -164,6 +177,10 @@ class OpenDriveWriter:
             True if successful
         """
         try:
+            # A writer can be reused for a second export; the last write's complaints are
+            # not this one's.
+            self.export_warnings = []
+
             # Run reference validation before export
             self.reference_warnings = validate_references(self.project)
             for warning in self.reference_warnings:
@@ -263,11 +280,13 @@ class OpenDriveWriter:
         # 3. Junction definitions
 
         # 1. Add regular roads (non-junction roads)
+        self._written_road_ids = set()
         for road in self.project.roads:
             if road.is_valid() and not road.junction_id:
                 road_elem = self._create_road(road)
                 if road_elem is not None:
                     root.append(road_elem)
+                    self._written_road_ids.add(road.id)
 
         # 2. Add connecting roads for each junction
         for junction in self.project.junctions:
@@ -286,6 +305,8 @@ class OpenDriveWriter:
                     if not connecting_road:
                         logger.warning(f"Connecting road {cr_id} not found for junction {junction_numeric_id}")
                         continue
+                    if not self._ends_are_written(connecting_road, junction_numeric_id):
+                        continue
                     conn_road_elem = self._create_connecting_road(
                         connecting_road,
                         junction_numeric_id,
@@ -293,6 +314,7 @@ class OpenDriveWriter:
                     )
                     if conn_road_elem is not None:
                         root.append(conn_road_elem)
+                        self._written_road_ids.add(connecting_road.id)
                     else:
                         logger.warning(f"Connecting road {idx} for junction {junction_numeric_id} returned None!")
 
@@ -314,6 +336,44 @@ class OpenDriveWriter:
                 root.append(jg_elem)
 
         return root
+
+    def _ends_are_written(self, connecting_road, junction_numeric_id: int) -> bool:
+        """Whether both roads a connecting road joins are in the file being written.
+
+        Every regular road is written before any connecting road, so a missing end means
+        that road was dropped during this export. Writing the movement anyway leaves a
+        link into nothing: readers reject the file over it, and repairing it to a stub
+        only moves the failure to the moment a vehicle drives onto it.
+        """
+        for end, road_id in (
+            ('predecessor', connecting_road.predecessor_id),
+            ('successor', connecting_road.successor_id),
+        ):
+            if road_id and not self._road_was_written(road_id):
+                self._note_degraded(
+                    f"Junction {junction_numeric_id}: omitted the movement via connecting "
+                    f"road {self._remap_road_id(connecting_road.id)}, whose {end} road "
+                    f"{road_id} is not in the exported file"
+                )
+                return False
+        return True
+
+    def _road_was_written(self, road_id: str) -> bool:
+        """Whether `road_id` made it into the file being written.
+
+        True outside a write pass: there is no set of written roads to judge against then,
+        and "unknown" must not be read as "missing".
+        """
+        return self._written_road_ids is None or road_id in self._written_road_ids
+
+    def _note_degraded(self, message: str) -> None:
+        """Record that the written map is less complete than the project, and say why.
+
+        Collected rather than only logged so a caller can surface it -- a map quietly
+        missing connections looks identical to a correct one.
+        """
+        self.export_warnings.append(message)
+        logger.warning(message)
 
     def _build_road_id_remap(self) -> dict[str, str]:
         """Build a mapping from internal road ID → export road ID.
@@ -714,7 +774,8 @@ class OpenDriveWriter:
 
         # Add signals for this road (pass metric centerline for accurate s/t projection)
         signals = self.signal_builder.create_signals(
-            road, self.project.signals, centerline_points_pixel, all_points_meters
+            road, self.project.signals, centerline_points_pixel, all_points_meters,
+            road_length=road_length,
         )
         if signals is not None:
             road_elem.append(signals)
@@ -1060,7 +1121,8 @@ class OpenDriveWriter:
 
         # Signals
         cr_signals = self.signal_builder.create_signals_for_connecting_road(
-            connecting_road, self.project.signals, connecting_road.inline_path, path_meters
+            connecting_road, self.project.signals, connecting_road.inline_path, path_meters,
+            road_length=road_length,
         )
         if cr_signals is not None:
             road_elem.append(cr_signals)
@@ -1517,8 +1579,20 @@ class OpenDriveWriter:
         # Create connection elements
         connection_id = 0
         for (from_road_id, connecting_road_id), lane_connections in connection_groups.items():
-            # Verify the connecting road exists
-            if connecting_road_id not in self.road_map:
+            # Both ends must have reached the file, not merely exist in the project. A
+            # connection naming a road that was dropped during writing leaves a dangling
+            # reference: consumers resolve it to (uint32)-1 and log an error per lookup,
+            # and `validate_references` cannot catch it because the project is intact.
+            missing = [
+                road_id
+                for road_id in (from_road_id, connecting_road_id)
+                if road_id not in self._written_road_ids
+            ] if self._written_road_ids is not None else []
+            if missing:
+                self._note_degraded(
+                    f"Junction {junction_numeric_id}: dropped a connection referencing "
+                    f"road(s) {', '.join(sorted(missing))}, which are not in the exported map"
+                )
                 continue
 
             connection = etree.SubElement(junction_elem, 'connection')
@@ -1653,6 +1727,7 @@ def export_to_opendrive(
     geo_reference_string: Optional[str] = None,
     export_object_types: Optional[set] = None,
     carla_compat: bool = False,
+    warnings_out: Optional[List[str]] = None,
 ) -> bool:
     """
     Export project to OpenDrive format.
@@ -1675,6 +1750,10 @@ def export_to_opendrive(
         export_object_types: If set, only export objects whose type is in this set.
             If None (default), all objects are exported.
         carla_compat: If True, export OpenDRIVE 1.4 compatible with CARLA simulator
+        warnings_out: If given, receives any degradation warnings the writer raised --
+            parts of the project it had to omit to keep the file valid. A degraded map
+            is written successfully and looks correct, so this is the only way a caller
+            learns it is incomplete.
 
     Returns:
         True if successful
@@ -1686,7 +1765,10 @@ def export_to_opendrive(
         offset_x, offset_y, geo_reference_string, export_object_types,
         carla_compat=carla_compat,
     )
-    return writer.write(output_path)
+    written = writer.write(output_path)
+    if warnings_out is not None:
+        warnings_out.extend(writer.export_warnings)
+    return written
 
 
 def validate_opendrive_file(

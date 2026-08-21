@@ -762,3 +762,80 @@ class TestImportOptionsValidation:
         assert options.simplify_geometry is True
         assert options.verbose is True
         assert options.filter_outside_image is True
+
+
+class TestAttachSignalsToRoads:
+    """Which road a signal lands on, once one OSM way has become several roads.
+
+    Roads are split at junction nodes before signals are attached, so the way a road came
+    from is no longer a description of that road -- its node list is the union of every
+    segment. Indexing by way therefore offered every node to every segment, and the first
+    one in the list won: a sign was exported 21 m along a 9 m road, which esmini rejects.
+    """
+
+    @pytest.fixture
+    def importer(self):
+        from orbit_core.models import Polyline, Road, Signal
+        from orbit_core.models.signal import SignalType
+
+        project = Project()
+        transformer = Mock()
+        importer = OSMImporter(project, transformer, 1000, 1000)
+
+        # One OSM way, split into two roads at the shared node 2.
+        for road_id, points, node_ids in (
+            ("road_a", [(0, 0), (10, 0)], [1, 2]),
+            ("road_b", [(10, 0), (20, 0), (30, 0)], [2, 3, 4]),
+        ):
+            centerline = Polyline(id=f"{road_id}_cl", points=points)
+            centerline.osm_node_ids = node_ids
+            project.add_polyline(centerline)
+            project.roads.append(Road(id=road_id, centerline_id=centerline.id))
+            # Both roads come from the same way -- the index that used to be consulted.
+            importer.road_to_osm_way[road_id] = 99
+
+        signal = Signal(signal_type=SignalType.STOP, position=(20, 0))
+        signal.id = "sig1"
+        project.signals.append(signal)
+        importer.signal_to_osm_node = {"sig1": 3}
+        return importer
+
+    def _signal(self, importer):
+        return importer.project.signals[0]
+
+    def test_signal_attaches_to_the_segment_holding_its_node(self, importer):
+        importer._attach_signals_to_roads(Mock(), ImportOptions())
+
+        assert self._signal(importer).road_id == "road_b"
+
+    def test_s_position_is_measured_along_that_segment(self, importer):
+        """The point of picking the right road: an s the road is long enough to hold.
+
+        Measured from road_b's own start, not from the start of the whole way -- the old
+        index would have produced the latter.
+        """
+        importer._attach_signals_to_roads(Mock(), ImportOptions())
+
+        signal = self._signal(importer)
+        segment = importer.project.get_polyline("road_b_cl").points
+        whole_way = [(0, 0)] + segment
+
+        assert signal.s_position == pytest.approx(signal.calculate_s_position(segment))
+        assert signal.s_position < signal.calculate_s_position(whole_way)
+
+    def test_a_shared_junction_node_goes_to_the_nearest_road(self, importer):
+        """Node 2 belongs to both segments; distance decides, not list order."""
+        signal = self._signal(importer)
+        signal.position = (11, 0)
+        importer.signal_to_osm_node = {"sig1": 2}
+
+        importer._attach_signals_to_roads(Mock(), ImportOptions())
+
+        assert signal.road_id == "road_b"
+
+    def test_an_unknown_node_leaves_the_signal_unassigned(self, importer):
+        importer.signal_to_osm_node = {"sig1": 12345}
+
+        importer._attach_signals_to_roads(Mock(), ImportOptions())
+
+        assert not self._signal(importer).road_id

@@ -4,6 +4,7 @@ Main OSM importer orchestrator for ORBIT.
 Coordinates the full import process: query, parse, convert, and create ORBIT objects.
 """
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Set
@@ -41,6 +42,22 @@ from .roundabout_handler import (
 )
 
 logger = get_logger(__name__)
+
+
+def _distance_to_polyline(point: tuple, points: List[tuple]) -> float:
+    """Shortest distance from a point to a polyline, in the polyline's own units."""
+    px, py = point[0], point[1]
+    best = float("inf")
+
+    for (x1, y1), (x2, y2) in zip(points, points[1:]):
+        dx, dy = x2 - x1, y2 - y1
+        length_sq = dx * dx + dy * dy
+        if length_sq == 0:
+            continue
+        t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / length_sq))
+        best = min(best, math.hypot(px - (x1 + t * dx), py - (y1 + t * dy)))
+
+    return best
 
 
 class ImportMode(Enum):
@@ -1054,6 +1071,30 @@ class OSMImporter:
             if options.verbose:
                 logger.debug("Imported traffic sign: %s at %s", signal.name, signal.position)
 
+    def _closest_road_to_signal(self, signal, candidate_ids: List[str]) -> Optional[str]:
+        """Of the roads sharing this signal's node, the one it actually stands on.
+
+        A junction node belongs to every approach, so membership alone cannot choose. The
+        perpendicular distance can, and it also catches the case where none of them is
+        plausible -- leaving the signal unattached is better than putting it on a road it
+        is nowhere near, which exports as a signal metres off the carriageway.
+        """
+        best_id, best_distance = None, float("inf")
+
+        for road_id in candidate_ids:
+            road = self.project.get_road(road_id)
+            if not road or not road.centerline_id:
+                continue
+            centerline = self.project.get_polyline(road.centerline_id)
+            if not centerline or len(centerline.points) < 2:
+                continue
+
+            distance = _distance_to_polyline(signal.position, centerline.points)
+            if distance < best_distance:
+                best_id, best_distance = road_id, distance
+
+        return best_id
+
     def _attach_signals_to_roads(self, osm_data: OSMData, options: ImportOptions) -> None:
         """
         Attach signals to roads if they are located on OSM nodes that are part of road ways.
@@ -1064,19 +1105,27 @@ class OSMImporter:
         if not self.signal_to_osm_node:
             return  # No signals with OSM node tracking
 
-        # Build reverse index: OSM node ID -> list of road IDs that contain this node
+        # Build reverse index: OSM node ID -> list of road IDs that contain this node.
+        #
+        # Taken from each road's own centerline rather than from the OSM way it came from.
+        # Roads are split at junction nodes before this runs, so several roads share one
+        # way -- and the way's node list is the union of all of them. Indexing by way put
+        # every node against every segment of it, so a signal was attached to whichever
+        # segment happened to come first, not the one it stands on. That is how a signal
+        # ended up 21 m to the side of a 9 m road.
         node_to_roads: Dict[int, List[str]] = {}
 
-        for road_id, osm_way_id in self.road_to_osm_way.items():
-            osm_way = osm_data.ways.get(osm_way_id)
-            if not osm_way or not osm_way.nodes:
+        for road in self.project.roads:
+            if not road.centerline_id:
+                continue
+            centerline = self.project.get_polyline(road.centerline_id)
+            if not centerline or not centerline.osm_node_ids:
                 continue
 
-            # For each node in this way, add this road to the node's road list
-            for node_id in osm_way.nodes:
-                if node_id not in node_to_roads:
-                    node_to_roads[node_id] = []
-                node_to_roads[node_id].append(road_id)
+            for node_id in centerline.osm_node_ids:
+                if node_id is None:
+                    continue
+                node_to_roads.setdefault(node_id, []).append(road.id)
 
         # Now attach signals to roads
         attached_count = 0
@@ -1095,13 +1144,17 @@ class OSMImporter:
             if not road_ids:
                 continue
 
-            # Attach to the road containing this node. If multiple roads share the node
-            # (e.g. at a junction), prefer regular roads over connecting roads.
+            # Attach to the road containing this node. If several share it (a junction
+            # node belongs to every approach), prefer regular roads over connecting roads
+            # and then the one the signal actually stands closest to -- list order says
+            # nothing about which road a sign belongs to.
             candidate_ids = [
                 rid for rid in road_ids
                 if not (self.project.get_road(rid) or Road()).junction_id
-            ]
-            road_id = candidate_ids[0] if candidate_ids else road_ids[0]
+            ] or road_ids
+            road_id = self._closest_road_to_signal(signal, candidate_ids)
+            if road_id is None:
+                continue
             road = self.project.get_road(road_id)
             if not road or not road.centerline_id:
                 continue

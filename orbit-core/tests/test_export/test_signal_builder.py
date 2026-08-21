@@ -380,3 +380,66 @@ class TestSignalValidity:
         validity = result.find('validity')
 
         assert validity is None
+
+
+class TestSignalStaysOnItsRoad:
+    """The exported `s` must lie inside the road length written for that road.
+
+    A signal past the end makes the whole map unloadable in esmini (`Signal ... s value
+    exceeds road length`), so the projection has to be reconciled with the fitted
+    geometry rather than trusted -- see `_clamp_s_to_road`.
+    """
+
+    @pytest.fixture
+    def builder(self):
+        return SignalBuilder(scale_x=0.1)
+
+    @pytest.fixture
+    def mock_road(self):
+        road = Mock()
+        road.id = "road1"
+        return road
+
+    @pytest.fixture
+    def centerline_points(self):
+        return [(0, 100), (100, 100), (200, 100)]
+
+    def _s_of(self, element):
+        return float(element[0].get('s'))
+
+    def test_signal_past_the_road_end_is_pulled_back(
+        self, builder, mock_road, centerline_points
+    ):
+        """The fitted road is shorter than the centerline the signal was projected onto."""
+        signal = Signal(signal_type=SignalType.STOP, position=(200, 100))
+        signal.road_id = "road1"
+
+        result = builder.create_signals(
+            mock_road, [signal], centerline_points, road_length=5.0
+        )
+
+        assert self._s_of(result) < 5.0
+
+    def test_a_signal_inside_the_road_is_left_alone(
+        self, builder, mock_road, centerline_points
+    ):
+        signal = Signal(signal_type=SignalType.STOP, position=(50, 100))
+        signal.road_id = "road1"
+
+        unclamped = builder.create_signals(mock_road, [signal], centerline_points)
+        clamped = builder.create_signals(
+            mock_road, [signal], centerline_points, road_length=1000.0
+        )
+
+        assert self._s_of(clamped) == self._s_of(unclamped)
+
+    def test_no_road_length_keeps_the_old_behaviour(
+        self, builder, mock_road, centerline_points
+    ):
+        """Callers that cannot supply a length must not have their signals moved."""
+        signal = Signal(signal_type=SignalType.STOP, position=(200, 100))
+        signal.road_id = "road1"
+
+        result = builder.create_signals(mock_road, [signal], centerline_points)
+
+        assert self._s_of(result) > 0

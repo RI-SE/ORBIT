@@ -748,6 +748,83 @@ class TestCreateJunction:
         assert lane_link.get('from') == '-1'
 
 
+class TestJunctionConnectionsPointAtWrittenRoads:
+    """A <connection> naming a road that is not in the file makes the map unloadable.
+
+    Roads can be dropped during a write -- too short to fit geometry, filtered out -- but
+    the junction is built from the project, which still lists them. esmini rejects the
+    whole file on the first dangling reference, so the connection has to go instead.
+    """
+
+    @pytest.fixture
+    def mock_transformer(self):
+        return MockTransformer()
+
+    def _junction_with_one_connection(self, project, from_road_id='road1'):
+        junction = Junction(id="1")
+        junction.connected_road_ids = ['road1', 'road2']
+        conn_road = Road(id="1001", junction_id="1",
+                         inline_path=[(0, 0), (10, 10)],
+                         predecessor_id='road1', successor_id='road2')
+        junction.connecting_road_ids.append(conn_road.id)
+        project.roads.append(conn_road)
+        junction.lane_connections.append(LaneConnection(
+            from_road_id=from_road_id,
+            to_road_id='road2',
+            from_lane_id=-1,
+            to_lane_id=-1,
+            connecting_road_id=conn_road.id,
+        ))
+        project.junctions.append(junction)
+        return junction
+
+    def test_a_connection_to_an_unwritten_road_is_omitted(self, mock_transformer):
+        project = Project()
+        junction = self._junction_with_one_connection(project)
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        writer._written_road_ids = {'1001'}   # the incoming road never made it out
+        junction_elem = writer._create_junction(junction, 1)
+
+        assert junction_elem.find('connection') is None
+
+    def test_omitting_a_connection_marks_the_export_degraded(self, mock_transformer):
+        """Silently dropping it would make an incomplete map look like a correct one."""
+        project = Project()
+        junction = self._junction_with_one_connection(project)
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        writer._written_road_ids = {'1001'}
+        writer._create_junction(junction, 1)
+
+        assert writer.export_warnings
+        assert 'road1' in ' '.join(writer.export_warnings)
+
+    def test_a_connection_to_a_written_road_is_kept(self, mock_transformer):
+        project = Project()
+        junction = self._junction_with_one_connection(project)
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        writer._written_road_ids = {'road1', '1001'}
+        junction_elem = writer._create_junction(junction, 1)
+
+        assert junction_elem.find('connection') is not None
+        assert not writer.export_warnings
+
+    def test_building_a_junction_outside_a_write_checks_nothing(self, mock_transformer):
+        """No write pass has run, so there is no set of written roads to judge against --
+        and "unknown" must not be read as "missing"."""
+        project = Project()
+        junction = self._junction_with_one_connection(project)
+
+        writer = OpenDriveWriter(project, mock_transformer)
+        junction_elem = writer._create_junction(junction, 1)
+
+        assert writer._written_road_ids is None
+        assert junction_elem.find('connection') is not None
+        assert not writer.export_warnings
+
+
 class TestCreateJunctionGroup:
     """Tests for OpenDriveWriter._create_junction_group method."""
 
