@@ -18,10 +18,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from orbit.models.lane import BoundaryMode, Lane, LaneType
-from orbit.models.lane_section import LaneSection
-from orbit.models.polyline import RoadMarkType
-from orbit.utils.enum_formatting import format_enum_name
+from orbit_core.models.lane import BoundaryMode, Lane, LaneType
+from orbit_core.models.lane_section import LaneSection
+from orbit_core.models.polyline import RoadMarkType
+from orbit_core.utils.enum_formatting import format_enum_name
 
 # Attributes checked for conflicts (width/links/materials/heights handled separately)
 CONFLICT_ATTRS: List[str] = [

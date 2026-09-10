@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 
 from PyQt6.QtWidgets import QButtonGroup, QComboBox, QLabel, QRadioButton
 
-from orbit.models.parking import ParkingAccess, ParkingType
+from orbit_core.models.parking import ParkingAccess, ParkingType
 
 from .base_dialog import BaseDialog
 

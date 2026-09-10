@@ -15,7 +15,7 @@ from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainterPath, QPen
 from PyQt6.QtWidgets import QGraphicsEllipseItem, QGraphicsItemGroup, QGraphicsPathItem
 
-from orbit.models.parking import ParkingAccess, ParkingSpace
+from orbit_core.models.parking import ParkingAccess, ParkingSpace
 
 # Color mapping by access type (30% opacity = 77 alpha, consistent with lanes)
 ACCESS_COLORS = {

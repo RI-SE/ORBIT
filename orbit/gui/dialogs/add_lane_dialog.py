@@ -8,7 +8,7 @@ from typing import Optional
 
 from PyQt6.QtWidgets import QComboBox, QDialog, QDoubleSpinBox, QLabel
 
-from orbit.models import Lane, LaneSection, LaneType, Road, RoadMarkType
+from orbit_core.models import Lane, LaneSection, LaneType, Road, RoadMarkType
 
 from .base_dialog import BaseDialog
 

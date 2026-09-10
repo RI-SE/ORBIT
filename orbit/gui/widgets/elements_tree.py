@@ -20,9 +20,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from orbit.models import Junction, ParkingSpace, Project, Signal
-from orbit.utils.enum_formatting import format_snake_case
-from orbit.utils.geometry_validator import validate_project_geometry
+from orbit_core.models import Junction, ParkingSpace, Project, Signal
+from orbit_core.utils.enum_formatting import format_snake_case
+from orbit_core.utils.geometry_validator import validate_project_geometry
 
 from ..utils.message_helpers import ask_yes_no
 
@@ -227,7 +227,7 @@ class ElementsTreeWidget(QWidget):
 
     def create_connecting_road_item(self, connecting_road) -> QTreeWidgetItem:
         """Create a tree item for a connecting road with centerline and lanes as children."""
-        from orbit.models.road import Road
+        from orbit_core.models.road import Road
 
         conn_road: Road = connecting_road
 
@@ -270,7 +270,7 @@ class ElementsTreeWidget(QWidget):
 
     def create_connecting_road_centerline_item(self, connecting_road) -> QTreeWidgetItem:
         """Create a tree item for a connecting road's centerline path."""
-        from orbit.models.road import Road
+        from orbit_core.models.road import Road
 
         conn_road: Road = connecting_road
 

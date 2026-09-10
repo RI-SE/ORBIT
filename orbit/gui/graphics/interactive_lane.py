@@ -10,7 +10,7 @@ from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsPolygonItem
 
-from orbit.models.lane import LaneType
+from orbit_core.models.lane import LaneType
 
 if TYPE_CHECKING:
     from ..image_view import ImageView

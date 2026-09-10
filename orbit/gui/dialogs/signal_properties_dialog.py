@@ -5,8 +5,8 @@ Dialog for editing signal properties.
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QLabel, QLineEdit, QVBoxLayout
 
-from orbit.models.signal import Signal, SignalType, SpeedUnit
-from orbit.utils.enum_formatting import format_enum_name
+from orbit_core.models.signal import Signal, SignalType, SpeedUnit
+from orbit_core.utils.enum_formatting import format_enum_name
 
 from ..utils import format_with_metric, get_scale_factors
 from .base_dialog import BaseDialog

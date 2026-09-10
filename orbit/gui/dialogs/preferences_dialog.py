@@ -16,8 +16,8 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
 )
 
-from orbit.models import Project, SignLibraryManager
-from orbit.utils.provenance import DEFAULT_TEMPLATE, is_dataprov_available
+from orbit_core.models import Project, SignLibraryManager
+from orbit_core.utils.provenance import DEFAULT_TEMPLATE, is_dataprov_available
 
 from .base_dialog import BaseDialog, InfoIconLabel
 

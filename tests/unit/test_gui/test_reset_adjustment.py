@@ -13,8 +13,8 @@ import types
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from orbit.gui.main_window import MainWindow
-from orbit.models.project import Project
-from orbit.utils.coordinate_transform import TransformAdjustment
+from orbit_core.models.project import Project
+from orbit_core.utils.coordinate_transform import TransformAdjustment
 
 
 class _FakeImageView:

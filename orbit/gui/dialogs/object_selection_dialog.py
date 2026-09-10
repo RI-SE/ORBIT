@@ -8,7 +8,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import QGridLayout, QGroupBox, QHBoxLayout, QPushButton
 
-from orbit.models.object import ObjectType
+from orbit_core.models.object import ObjectType
 
 from .base_dialog import BaseDialog
 

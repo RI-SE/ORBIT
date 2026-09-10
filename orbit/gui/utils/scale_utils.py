@@ -6,11 +6,11 @@ code duplication across dialog classes.
 
 from typing import TYPE_CHECKING, Optional, Tuple
 
-from orbit.utils.logging_config import get_logger
+from orbit_core.utils.logging_config import get_logger
 
 if TYPE_CHECKING:
-    from orbit.models import Project
-    from orbit.utils import CoordinateTransformer
+    from orbit_core.models import Project
+    from orbit_core.utils import CoordinateTransformer
 
 logger = get_logger(__name__)
 
@@ -34,7 +34,7 @@ def get_scale_factors(project: 'Project') -> Optional[Tuple[float, float]]:
         return None
 
     try:
-        from orbit.export import TransformMethod, create_transformer
+        from orbit_core.export import TransformMethod, create_transformer
 
         method = (TransformMethod.HOMOGRAPHY
                   if project.transform_method == 'homography'
@@ -62,7 +62,7 @@ def get_transformer(project: 'Project') -> Optional['CoordinateTransformer']:
         return None
 
     try:
-        from orbit.export import TransformMethod, create_transformer
+        from orbit_core.export import TransformMethod, create_transformer
 
         method = (TransformMethod.HOMOGRAPHY
                   if project.transform_method == 'homography'

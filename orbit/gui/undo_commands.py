@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from PyQt6.QtGui import QUndoCommand
 
-from orbit.models import Junction, LaneConnection, ParkingSpace, Polyline, Road, RoadObject, Signal
+from orbit_core.models import Junction, LaneConnection, ParkingSpace, Polyline, Road, RoadObject, Signal
 
 if TYPE_CHECKING:
     from .image_view import ImageView
@@ -188,7 +188,7 @@ class ModifyPolylineCommand(QUndoCommand):
             self.main_window.image_view._update_soffset_labels(self.polyline_id)
 
         # Update lane graphics for affected roads (if this is a centerline)
-        from orbit.models import LineType
+        from orbit_core.models import LineType
         if polyline.line_type == LineType.CENTERLINE:
             for road in self.main_window.project.roads:
                 if road.centerline_id == self.polyline_id:
@@ -758,7 +758,7 @@ class MergeSectionsCommand(QUndoCommand):
     def _apply_road_data(self, data: dict):
         # Restore lane sections in-place — do NOT remove/add road from project,
         # as remove_road clears predecessor_id/successor_id on connecting roads.
-        from orbit.models.lane_section import LaneSection as LS
+        from orbit_core.models.lane_section import LaneSection as LS
         road = self.main_window.project.get_road(self.road_id)
         if not road:
             return
@@ -801,7 +801,7 @@ class ChangeSectionLanesCommand(QUndoCommand):
         # Restore lane sections and junction lane connections in-place —
         # do NOT remove/add road or junction from project, as remove_road
         # clears predecessor_id/successor_id on connecting roads.
-        from orbit.models.lane_section import LaneSection as LS
+        from orbit_core.models.lane_section import LaneSection as LS
         road = self.main_window.project.get_road(self.road_id)
         if not road:
             return

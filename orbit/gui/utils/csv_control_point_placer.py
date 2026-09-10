@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from orbit.models import ControlPoint, Project
+from orbit_core.models import ControlPoint, Project
 
 from ..dialogs.csv_import_dialog import CSVControlPoint
 from .message_helpers import ask_yes_no, show_warning

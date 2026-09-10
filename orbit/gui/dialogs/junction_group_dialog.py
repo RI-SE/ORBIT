@@ -22,8 +22,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from orbit.models import Project
-from orbit.models.junction import JunctionGroup
+from orbit_core.models import Project
+from orbit_core.models.junction import JunctionGroup
 
 from .base_dialog import InfoIconLabel
 

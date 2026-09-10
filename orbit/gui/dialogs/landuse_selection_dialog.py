@@ -6,7 +6,7 @@ from typing import Optional
 
 from PyQt6.QtWidgets import QComboBox, QLabel
 
-from orbit.models.object import ObjectType
+from orbit_core.models.object import ObjectType
 
 from .base_dialog import BaseDialog
 

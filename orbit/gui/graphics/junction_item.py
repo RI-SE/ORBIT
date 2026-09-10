@@ -10,7 +10,7 @@ from PyQt6.QtCore import QPointF
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QGraphicsScene, QGraphicsTextItem
 
-from orbit.models import Junction
+from orbit_core.models import Junction
 
 
 class JunctionMarkerItem:

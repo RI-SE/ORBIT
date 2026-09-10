@@ -6,7 +6,7 @@ from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPen
 from PyQt6.QtWidgets import QGraphicsItemGroup, QGraphicsPathItem
 
-from orbit.models.object import ObjectType, RoadObject
+from orbit_core.models.object import ObjectType, RoadObject
 
 from .object_graphics import (
     create_building_path,

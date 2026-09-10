@@ -22,9 +22,9 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from orbit.models.sign_library import SignDefinition, SignLibrary
-from orbit.models.sign_library_manager import SignLibraryManager
-from orbit.models.signal import SignalType, SpeedUnit
+from orbit_core.models.sign_library import SignDefinition, SignLibrary
+from orbit_core.models.sign_library_manager import SignLibraryManager
+from orbit_core.models.signal import SignalType, SpeedUnit
 
 from ..graphics.signal_graphics import create_signal_pixmap
 from .base_dialog import BaseDialog

@@ -18,9 +18,9 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from orbit.models.lane import Lane
-from orbit.models.road import Road
-from orbit.utils.logging_config import get_logger
+from orbit_core.models.lane import Lane
+from orbit_core.models.road import Road
+from orbit_core.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 

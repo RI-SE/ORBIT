@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from orbit.utils.coordinate_transform import TransformAdjustment
+from orbit_core.utils.coordinate_transform import TransformAdjustment
 
 
 class AdjustmentPanel(QWidget):

@@ -13,9 +13,9 @@ Subpackages:
 """
 
 # Re-export main components for convenience
-from orbit.export import CoordinateTransformer, CurveFitter, OpenDriveWriter
 from orbit.gui import ImageView, MainWindow
-from orbit.models import (
+from orbit_core.export import CoordinateTransformer, CurveFitter, OpenDriveWriter
+from orbit_core.models import (
     ControlPoint,
     Junction,
     JunctionConnection,
@@ -35,7 +35,7 @@ from orbit.models import (
     SignalType,
     SpeedUnit,
 )
-from orbit.utils import TransformMethod, create_transformer
+from orbit_core.utils import TransformMethod, create_transformer
 
 try:
     from importlib.metadata import version as _get_version

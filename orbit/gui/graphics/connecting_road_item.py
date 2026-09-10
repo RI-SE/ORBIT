@@ -12,15 +12,15 @@ from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsScene
 
 from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
-from orbit.utils.geometry import calculate_directional_scale
-from orbit.utils.logging_config import get_logger
+from orbit_core.utils.geometry import calculate_directional_scale
+from orbit_core.utils.logging_config import get_logger
 
 from .interactive_lane import InteractiveLanePolygon
 
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from orbit.models.road import Road
+    from orbit_core.models.road import Road
 
     from ..image_view import ImageView
 

@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from orbit.models import Project
+from orbit_core.models import Project
 
 from ..utils.message_helpers import show_error, show_info, show_warning
 from .base_dialog import BaseDialog

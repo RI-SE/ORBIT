@@ -11,7 +11,7 @@ from PyQt6.QtCore import QPointF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPen, QPolygonF
 from PyQt6.QtWidgets import QGraphicsScene
 
-from orbit.models import LineType, Polyline, RoadMarkType
+from orbit_core.models import LineType, Polyline, RoadMarkType
 
 
 class PolylineGraphicsItem:
