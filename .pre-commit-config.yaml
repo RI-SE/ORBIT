@@ -10,7 +10,7 @@ repos:
     hooks:
       - id: pytest
         name: pytest
-        entry: env QT_QPA_PLATFORM=offscreen uv run python -m pytest tests/ --tb=short -q
+        entry: env QT_QPA_PLATFORM=offscreen uv run --no-sync python -m pytest tests/ --tb=short -q
         language: system
         pass_filenames: false
         always_run: true
