@@ -4717,6 +4717,12 @@ class MainWindow(QMainWindow):
             section_number: Section number containing the lane
             lane_id: Lane ID within the section
         """
+        road = self.project.get_road(road_id)
+        if road is not None and road.is_connecting_road:
+            # A connecting road's lanes are drawn as connecting-road graphics,
+            # so select_lane would find nothing to highlight.
+            self.highlight_connecting_road_lane(road_id, lane_id)
+            return
         # Clear connecting road selection
         self.clear_connecting_road_selection()
         # Select the lane visually in the image view

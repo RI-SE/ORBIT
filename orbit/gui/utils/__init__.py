@@ -9,6 +9,7 @@ from .scale_utils import (  # noqa: I001 - import order matters to avoid circula
 )
 from .message_helpers import ask_yes_no, show_error, show_info, show_warning
 from .csv_control_point_placer import CSVControlPointPlacer
+from .label_utils import apply_rich_text_delegate, entity_label, format_id
 
 __all__ = [
     'set_combo_by_data',
@@ -21,4 +22,7 @@ __all__ = [
     'show_info',
     'ask_yes_no',
     'CSVControlPointPlacer',
+    'entity_label',
+    'format_id',
+    'apply_rich_text_delegate',
 ]

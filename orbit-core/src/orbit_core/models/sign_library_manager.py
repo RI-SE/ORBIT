@@ -19,7 +19,7 @@ class SignLibraryManager:
     Singleton manager for sign library discovery and loading.
 
     Libraries are discovered from two locations:
-    - Application directory: orbit/signs/ (bundled with app)
+    - Application directory: orbit_core/signs/ (bundled with the library)
     - User directory: ~/.orbit/signs/ (user-added libraries)
 
     User libraries with the same ID override application libraries.

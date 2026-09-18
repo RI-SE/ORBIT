@@ -39,6 +39,16 @@ class LaneSection:
         """Get the length of this section in pixels."""
         return self.s_end - self.s_start
 
+    def lane_counts(self) -> Tuple[int, int]:
+        """Number of (left, right) lanes actually in this section.
+
+        Derived from the lanes themselves, so it can never drift from them.
+        The center lane (id 0) counts as neither side.
+        """
+        left = sum(1 for lane in self.lanes if lane.id > 0)
+        right = sum(1 for lane in self.lanes if lane.id < 0)
+        return left, right
+
     def contains_s_coordinate(self, s: float) -> bool:
         """
         Check if the given s-coordinate falls within this section.

@@ -463,7 +463,7 @@ class SignLibrary:
 ```
 
 **SignLibraryManager** is a singleton that discovers and loads sign libraries from two locations:
-- **App signs path**: `orbit/signs/` (shipped with the application)
+- **App signs path**: `orbit-core/src/orbit_core/signs/` (shipped with orbit-core)
 - **User signs path**: `~/.orbit/signs/` (user-installed libraries)
 
 Libraries are discovered via `manifest.json` files in each library directory.
@@ -778,7 +778,7 @@ success = writer.write(output_path)
 
 ### Export Process
 
-1. **Validate references** via `ReferenceValidator`
+1. **Validate references** via `ReferenceValidator`, then junction consistency via `JunctionValidator`
 2. **Create header** with geoReference (PROJ4 string)
 3. **For each road**:
    - Convert centerline to meters
@@ -841,6 +841,26 @@ warnings = validate_references(project)
 ```
 
 Checks references across all entity types: roads, junctions, connecting roads, lane connections, signals, objects, parking spaces, junction groups, and lane boundary polylines.
+
+### JunctionValidator
+
+Checks that each junction's movements are wired consistently (`export/junction_validator.py`).
+
+```python
+from orbit_core.export.junction_validator import validate_junctions
+
+warnings = validate_junctions(project)
+# Returns list of human-readable warning strings, empty if all consistent
+```
+
+Reports movements naming a lane that does not exist (on the connecting road or
+on the incident road), connecting road lanes and junction-adjacent driving lanes
+that carry no movement, and width steps larger than `WIDTH_STEP_TOLERANCE_M`
+between a connecting road lane and the road lane it meets. All of these are
+schema-valid OpenDRIVE, so nothing else reports them. Width steps are usually
+fixed by `sync_connecting_road_lane_widths`
+(`utils/connecting_road_alignment.py`), which the junction dialog exposes as
+**Refresh Widths From Roads** and which every CR re-alignment runs first.
 
 ### GeorefExporter
 

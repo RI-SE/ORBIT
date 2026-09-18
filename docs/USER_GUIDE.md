@@ -455,6 +455,13 @@ Lane connections define the lane-level mappings through junctions — which inco
    - **Priority**: Connection priority value
 3. Use **Auto-Generate** to automatically create lane connections based on road geometry and lane counts
 
+Connecting road lane widths are taken from the road lanes each movement
+connects, and follow later edits to those lanes. After changing lane widths on
+an approach road, use **Refresh Widths From Roads** in the junction dialog (or
+re-align the junction) to pull the new widths into the connecting roads. Export
+reports any movement whose lanes do not exist, any lane left without a movement,
+and any remaining width step at a junction boundary.
+
 ---
 
 ## Signals & Objects

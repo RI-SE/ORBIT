@@ -36,6 +36,7 @@ from orbit_core.models.junction import (
     JunctionElevationGridPoint,
 )
 
+from ..utils import entity_label
 from ..utils.message_helpers import show_error, show_info, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
 
@@ -134,6 +135,16 @@ class JunctionDialog(BaseDialog):
         )
         self.auto_generate_btn.clicked.connect(self.auto_generate_connections)
         connections_layout.addWidget(self.auto_generate_btn)
+
+        # Refresh widths button
+        self.refresh_widths_btn = QPushButton("Refresh Widths From Roads")
+        self.refresh_widths_btn.setToolTip(
+            "Set every connecting road lane's start and end width from the road\n"
+            "lane its movement connects, without regenerating the connections.\n"
+            "Use after editing lane widths on an approach road."
+        )
+        self.refresh_widths_btn.clicked.connect(self.refresh_connecting_road_widths)
+        connections_layout.addWidget(self.refresh_widths_btn)
 
         connections_group.setLayout(connections_layout)
         self.get_main_layout().addWidget(connections_group)
@@ -390,8 +401,8 @@ class JunctionDialog(BaseDialog):
         # Load roads from project
         if self.project:
             for road in self.project.roads:
-                road_id_short = road.id[:8]
-                display_text = f"{road.name} ({road_id_short}, {road.road_type.value})"
+                display_text = (f"{entity_label(road.id, road.name, kind='Road')} "
+                                f"({road.road_type.value})")
                 if road.id not in self.junction.connected_road_ids:
                     item = QListWidgetItem(display_text)
                     item.setData(Qt.ItemDataRole.UserRole, road.id)
@@ -629,6 +640,32 @@ class JunctionDialog(BaseDialog):
             )
             import traceback
             traceback.print_exc()
+
+    def refresh_connecting_road_widths(self):
+        """Re-read connecting road lane widths from the connected roads."""
+        if not self.project:
+            show_warning(self, "Cannot refresh widths without a project context.", "No Project")
+            return
+
+        from orbit_core.utils.connecting_road_alignment import (
+            sync_connecting_road_lane_widths,
+        )
+
+        modified = sync_connecting_road_lane_widths(self.junction, self.project)
+        if modified:
+            show_info(
+                self,
+                "Updated lane widths on connecting road(s): "
+                f"{', '.join(modified)}.",
+                "Widths Refreshed",
+            )
+        else:
+            show_info(
+                self,
+                "All connecting road lane widths already match the connected "
+                "road lanes.",
+                "Nothing To Refresh",
+            )
 
     @classmethod
     def edit_junction(cls, junction: Junction, project: Project, parent=None) -> Optional[Junction]:

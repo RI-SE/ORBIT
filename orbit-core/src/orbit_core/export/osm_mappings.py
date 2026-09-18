@@ -66,13 +66,14 @@ def _apply_lane_tags(road: Road, tags: Dict[str, str]) -> None:
     Sets lanes, lanes:forward/backward, width, and width:lanes:forward/backward.
     Right lanes (negative IDs) map to OSM forward, left lanes (positive IDs) to backward.
     """
-    # Lane counts
-    total = road.lane_info.left_count + road.lane_info.right_count
+    # Lane counts, from the lanes themselves rather than the generation template
+    left_count, right_count = road.lane_counts()
+    total = left_count + right_count
     if total != 2:
         tags['lanes'] = str(total)
-    if road.lane_info.left_count != road.lane_info.right_count:
-        tags['lanes:forward'] = str(road.lane_info.right_count)
-        tags['lanes:backward'] = str(road.lane_info.left_count)
+    if left_count != right_count:
+        tags['lanes:forward'] = str(right_count)
+        tags['lanes:backward'] = str(left_count)
 
     # Lane widths from first lane section
     if not road.lane_sections:

@@ -86,8 +86,14 @@ class ProjectController:
                 )
 
     def refresh_connecting_road_geo_path(self, conn_road) -> None:
-        """Regenerate a CR's geo_path from its current pixel path."""
-        if not conn_road.inline_geo_path:
+        """Regenerate a CR's geo_path from its current pixel path.
+
+        Guards on the pixel path, not the geo path: re-alignment clears
+        inline_geo_path precisely so the shifted pixels win, and this is what
+        puts it back. Guarding on the geo path made the rebuild unreachable
+        after every re-align.
+        """
+        if not conn_road.inline_path:
             return
         if not self.project.has_georeferencing():
             return

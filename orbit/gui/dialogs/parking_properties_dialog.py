@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QComboBox, QDoubleSpinBox, QLabel, QLineEdit, QSpinB
 
 from orbit_core.models.parking import ParkingAccess, ParkingSpace, ParkingType
 
+from ..utils import entity_label
 from .base_dialog import BaseDialog
 
 
@@ -121,7 +122,8 @@ class ParkingPropertiesDialog(BaseDialog):
         self.road_combo = QComboBox()
         self.road_combo.addItem("(None)", None)
         for road in self.project.roads:
-            self.road_combo.addItem(road.name or f"Road {road.id[:8]}", road.id)
+            self.road_combo.addItem(
+                entity_label(road.id, road.name, kind="Road"), road.id)
         road_layout.addRow("Assigned Road:", self.road_combo)
 
         # S/T position info (read-only)

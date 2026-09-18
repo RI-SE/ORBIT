@@ -21,9 +21,11 @@ from PyQt6.QtWidgets import (
 )
 
 from orbit_core.models import Junction, ParkingSpace, Project, Signal
+from orbit_core.models.lane import LaneType
 from orbit_core.utils.enum_formatting import format_snake_case
 from orbit_core.utils.geometry_validator import validate_project_geometry
 
+from ..utils import apply_rich_text_delegate, entity_label
 from ..utils.message_helpers import ask_yes_no
 
 
@@ -72,6 +74,7 @@ class ElementsTreeWidget(QWidget):
         # Tree widget
         self.tree = QTreeWidget()
         self.tree.setHeaderLabel("Elements")
+        apply_rich_text_delegate(self.tree)
         self.tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
@@ -211,7 +214,8 @@ class ElementsTreeWidget(QWidget):
         """Create a tree item for a junction with connecting roads as children."""
         road_count = len(junction.connected_road_ids)
         conn_count = len(junction.connecting_road_ids)
-        text = f"{junction.name} ({road_count} roads, {conn_count} connections)"
+        text = (f"{entity_label(junction.id, junction.name, kind='Junction', rich=True)} "
+                f"({road_count} roads, {conn_count} connections)")
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "junction", "id": junction.id})
@@ -238,17 +242,16 @@ class ElementsTreeWidget(QWidget):
         if self.project:
             pred_road = self.project.get_road(conn_road.predecessor_id)
             if pred_road:
-                pred_id_short = pred_road.id[:8]
-                predecessor_name = f"{pred_road.name} ({pred_id_short})" if pred_road.name else f"Road {pred_id_short}"
+                predecessor_name = entity_label(
+                    pred_road.id, pred_road.name, kind="Road", rich=True)
 
             succ_road = self.project.get_road(conn_road.successor_id)
             if succ_road:
-                succ_id_short = succ_road.id[:8]
-                successor_name = f"{succ_road.name} ({succ_id_short})" if succ_road.name else f"Road {succ_id_short}"
+                successor_name = entity_label(
+                    succ_road.id, succ_road.name, kind="Road", rich=True)
 
-        # Display text showing connecting road ID and which roads are connected
-        conn_id_short = conn_road.id[:8] if len(conn_road.id) > 8 else conn_road.id
-        text = f"[{conn_id_short}] {predecessor_name} → {successor_name}"
+        text = (f"{entity_label(conn_road.id, conn_road.name, kind='Connecting road', rich=True)}"
+                f": {predecessor_name} → {successor_name}")
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {
@@ -256,15 +259,23 @@ class ElementsTreeWidget(QWidget):
             "id": conn_road.id
         })
 
-        # Add centerline as first child (similar to regular roads)
-        centerline_item = self.create_connecting_road_centerline_item(conn_road)
-        item.addChild(centerline_item)
+        # Lanes first, then geometry -- the same order as a road in the road
+        # tree, and read from the lane objects so type, order and the center
+        # lane match what that tree shows.
+        conn_road.ensure_cr_lanes_initialized()
+        for section in conn_road.lane_sections:
+            for lane in section.get_lanes_sorted():
+                item.addChild(
+                    self.create_connecting_road_lane_item(conn_road.id, lane))
 
-        # Add lanes as children
-        lane_ids = conn_road.get_cr_lane_ids()
-        for lane_id in lane_ids:
-            lane_item = self.create_connecting_road_lane_item(conn_road.id, lane_id)
-            item.addChild(lane_item)
+        geometry_item = QTreeWidgetItem(["Geometry"])
+        geometry_item.setData(
+            0, Qt.ItemDataRole.UserRole,
+            {"type": "geometry", "connecting_road_id": conn_road.id},
+        )
+        geometry_item.addChild(
+            self.create_connecting_road_centerline_item(conn_road))
+        item.addChild(geometry_item)
 
         return item
 
@@ -294,22 +305,13 @@ class ElementsTreeWidget(QWidget):
 
         return item
 
-    def create_connecting_road_lane_item(self, conn_road_id: str, lane_id: int) -> QTreeWidgetItem:
+    def create_connecting_road_lane_item(self, conn_road_id: str, lane) -> QTreeWidgetItem:
         """Create a tree item for a lane in a connecting road."""
-        # Format position like regular lanes: "Left 1", "Right 1", etc.
-        # Note: In OpenDRIVE, positive IDs are LEFT lanes, negative are RIGHT
-        if lane_id == 0:
-            position = "Center"
-        elif lane_id > 0:
-            position = f"Left {lane_id}"
-        else:
-            position = f"Right {abs(lane_id)}"
-
-        # Connecting roads typically have driving lanes
-        lane_type_name = "Driving"
-
-        # Format: "Lane -1 (Right 1) - Driving"
-        text = f"Lane {lane_id} ({position}) - {lane_type_name}"
+        lane_id = lane.id
+        lane_type_name = (lane.lane_type.value.title()
+                          if lane.lane_type != LaneType.NONE else "None")
+        text = (f"Lane {lane_id} ({lane.get_display_position()}) "
+                f"- {lane_type_name}")
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {

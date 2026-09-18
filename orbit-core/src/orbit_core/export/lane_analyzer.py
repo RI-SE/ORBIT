@@ -356,8 +356,7 @@ class LaneAnalyzer:
         warnings = []
 
         # Check if boundary count matches lane count
-        expected_left = road.lane_info.left_count
-        expected_right = road.lane_info.right_count
+        expected_left, expected_right = road.lane_counts()
 
         if left_count != expected_left:
             warnings.append(

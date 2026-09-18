@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 from orbit_core.models import Project
 from orbit_core.models.junction import JunctionGroup
 
+from ..utils import entity_label
 from .base_dialog import InfoIconLabel
 
 
@@ -196,7 +197,7 @@ class JunctionGroupDialog(QDialog):
         self.group_junctions_list.clear()
 
         for junction in self.project.junctions:
-            display_text = f"{junction.name} ({junction.id[:8]}...)"
+            display_text = entity_label(junction.id, junction.name, kind="Junction")
             if junction.id in group.junction_ids:
                 item = QListWidgetItem(display_text)
                 item.setData(Qt.ItemDataRole.UserRole, junction.id)

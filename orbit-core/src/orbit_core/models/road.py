@@ -267,51 +267,63 @@ class Road:
         if self.lane_sections:
             return
 
-        # Determine width from connecting road fields
-        width_start = self.lane_width_start if self.lane_width_start is not None else self.lane_info.lane_width
-        width_end = self.lane_width_end if self.lane_width_end is not None else self.lane_info.lane_width
+        section = LaneSection(
+            section_number=1,
+            s_start=0.0,
+            s_end=self.get_inline_path_length() or 1000.0,
+            lanes=self._build_cr_lanes({}),
+        )
+        self.lane_sections.append(section)
 
-        lanes = []
-        # Center lane (lane 0)
-        center = Lane(
+    def resize_cr_lanes(self, left_count: int, right_count: int) -> None:
+        """
+        Set a connecting road's lane counts, keeping the surviving lanes as they are.
+
+        Lanes beyond the new counts are dropped and missing ones are created from
+        lane_width_start/lane_width_end; widths and other properties of the lanes
+        that remain are preserved. Road marks follow the outermost-solid
+        convention, which depends on the counts, so they are always re-applied.
+        """
+        if not self.is_connecting_road:
+            return
+        self.cr_lane_count_left = left_count
+        self.cr_lane_count_right = right_count
+        if not self.lane_sections:
+            self.ensure_cr_lanes_initialized()
+            return
+        section = self.lane_sections[0]
+        existing = {lane.id: lane for lane in section.lanes}
+        section.lanes = self._build_cr_lanes(existing)
+
+    def _build_cr_lanes(self, existing: Dict[int, Lane]) -> List[Lane]:
+        """Connecting-road lanes for the current counts, reusing existing lanes."""
+        width_start = (self.lane_width_start if self.lane_width_start is not None
+                       else self.lane_info.lane_width)
+        width_end = (self.lane_width_end if self.lane_width_end is not None
+                     else self.lane_info.lane_width)
+
+        center = existing.get(0) or Lane(
             id=0,
             lane_type=LaneType.NONE,
             road_mark_type=RoadMarkType.NONE,
             width=0.0
         )
-        lanes.append(center)
+        lanes = [center]
 
-        # Right lanes (negative IDs)
-        for i in range(1, self.cr_lane_count_right + 1):
-            mark = RoadMarkType.SOLID if i == self.cr_lane_count_right else RoadMarkType.BROKEN
-            lane = Lane(
-                id=-i,
-                lane_type=LaneType.DRIVING,
-                road_mark_type=mark,
-                width=width_start,
-                width_end=width_end if abs(width_end - width_start) > 0.001 else None
-            )
-            lanes.append(lane)
-
-        # Left lanes (positive IDs)
-        for i in range(1, self.cr_lane_count_left + 1):
-            mark = RoadMarkType.SOLID if i == self.cr_lane_count_left else RoadMarkType.BROKEN
-            lane = Lane(
-                id=i,
-                lane_type=LaneType.DRIVING,
-                road_mark_type=mark,
-                width=width_start,
-                width_end=width_end if abs(width_end - width_start) > 0.001 else None
-            )
-            lanes.append(lane)
-
-        section = LaneSection(
-            section_number=1,
-            s_start=0.0,
-            s_end=self.get_inline_path_length() or 1000.0,
-            lanes=lanes
-        )
-        self.lane_sections.append(section)
+        for count, sign in ((self.cr_lane_count_right, -1),
+                            (self.cr_lane_count_left, 1)):
+            for i in range(1, count + 1):
+                lane = existing.get(sign * i) or Lane(
+                    id=sign * i,
+                    lane_type=LaneType.DRIVING,
+                    width=width_start,
+                    width_end=(width_end if abs(width_end - width_start) > 0.001
+                               else None)
+                )
+                lane.road_mark_type = (RoadMarkType.SOLID if i == count
+                                       else RoadMarkType.BROKEN)
+                lanes.append(lane)
+        return lanes
 
     def get_cr_lane(self, lane_id: int) -> Optional[Lane]:
         """Get a lane by ID from connecting road lane sections."""
@@ -494,8 +506,30 @@ class Road:
         )
 
     def total_lanes(self) -> int:
-        """Return total number of lanes."""
-        return self.lane_info.left_count + self.lane_info.right_count
+        """Return total number of lanes in the first section."""
+        left, right = self.lane_counts()
+        return left + right
+
+    def lane_counts(self, section_number: Optional[int] = None) -> Tuple[int, int]:
+        """Number of (left, right) lanes actually present, by section.
+
+        Counts differ between sections, so section_number selects one; without
+        it the first section is used. Falls back to lane_info -- the template
+        generate_lanes() builds from -- only while the road has no lanes yet.
+        """
+        section = None
+        if self.lane_sections:
+            if section_number is None:
+                section = self.lane_sections[0]
+            else:
+                section = next(
+                    (sec for sec in self.lane_sections
+                     if sec.section_number == section_number),
+                    None,
+                )
+        if section is None:
+            return self.lane_info.left_count, self.lane_info.right_count
+        return section.lane_counts()
 
     # Lane management (now uses lane sections)
     def generate_lanes(self, centerline_length: float = 1000.0) -> None:
