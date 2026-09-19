@@ -52,6 +52,12 @@ class LaneConnectionDialog(BaseDialog):
         self._original_lane_connections = [
             LaneConnection.from_dict(lc.to_dict()) for lc in junction.lane_connections
         ]
+        # Connecting roads that carried a movement when this dialog opened; only
+        # these may be deleted as orphans on save.
+        self._initially_referenced_cr_ids = {
+            lc.connecting_road_id for lc in junction.lane_connections
+            if lc.connecting_road_id
+        }
         self.setup_ui()
         self.load_properties()
 
@@ -605,7 +611,10 @@ class LaneConnectionDialog(BaseDialog):
         # Adjust connecting road paths for changed lane targets
         self._adjust_connecting_road_paths()
 
-        # Clean up orphaned connecting roads (roads no longer referenced by any lane connection)
+        # Clean up connecting roads this dialog orphaned by removing the last
+        # movement that used them. Ones that were already unreferenced when the
+        # dialog opened are left alone -- they may have just been created by
+        # hand and not wired up yet, and deleting them here would lose work.
         referenced_conn_road_ids = {
             conn.connecting_road_id for conn in self.connections
             if conn.connecting_road_id
@@ -613,6 +622,7 @@ class LaneConnectionDialog(BaseDialog):
         orphaned_ids = [
             cr_id for cr_id in self.junction.connecting_road_ids
             if cr_id not in referenced_conn_road_ids
+            and cr_id in self._initially_referenced_cr_ids
         ]
         for cr_id in orphaned_ids:
             self.junction.remove_connecting_road(cr_id)

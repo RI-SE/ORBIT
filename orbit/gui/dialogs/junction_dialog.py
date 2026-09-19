@@ -146,6 +146,15 @@ class JunctionDialog(BaseDialog):
         self.refresh_widths_btn.clicked.connect(self.refresh_connecting_road_widths)
         connections_layout.addWidget(self.refresh_widths_btn)
 
+        # Build one connecting road by hand
+        self.add_cr_btn = QPushButton("Add Connecting Road...")
+        self.add_cr_btn.setToolTip(
+            "Create a single connecting road between two of this junction's\n"
+            "roads, without regenerating the others."
+        )
+        self.add_cr_btn.clicked.connect(self.add_connecting_road)
+        connections_layout.addWidget(self.add_cr_btn)
+
         connections_group.setLayout(connections_layout)
         self.get_main_layout().addWidget(connections_group)
 
@@ -640,6 +649,23 @@ class JunctionDialog(BaseDialog):
             )
             import traceback
             traceback.print_exc()
+
+    def add_connecting_road(self):
+        """Hand the request to the main window, which owns undo and graphics."""
+        self.save_data()
+        main_window = self.parent()
+        while main_window is not None and not hasattr(
+                main_window, "on_connecting_road_add_requested"):
+            main_window = main_window.parent()
+        if main_window is None:
+            show_warning(
+                self,
+                "Connecting roads can only be added from the main window.",
+                "Unavailable Here",
+            )
+            return
+        main_window.on_connecting_road_add_requested(self.junction.id)
+        self.update_connection_summary()
 
     def refresh_connecting_road_widths(self):
         """Re-read connecting road lane widths from the connected roads."""

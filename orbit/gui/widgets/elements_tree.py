@@ -37,6 +37,7 @@ class ElementsTreeWidget(QWidget):
     junction_modified = pyqtSignal(str)  # Emits junction ID
     junction_deleted = pyqtSignal(str)  # Emits junction ID
     junction_realign_requested = pyqtSignal(str)  # Emits junction ID needing CR re-alignment
+    connecting_road_add_requested = pyqtSignal(str)  # Emits junction ID to add a CR to
     signal_selected = pyqtSignal(str)  # Emits signal ID
     signal_modified = pyqtSignal(str)  # Emits signal ID
     signal_deleted = pyqtSignal(str)  # Emits signal ID
@@ -416,6 +417,12 @@ class ElementsTreeWidget(QWidget):
             lane_connections_action = QAction("Edit Lane Connections", self)
             lane_connections_action.triggered.connect(lambda: self.edit_lane_connections(data["id"]))
             menu.addAction(lane_connections_action)
+
+            add_cr_action = QAction("Add Connecting Road...", self)
+            add_cr_action.triggered.connect(
+                lambda checked=False, jid=data["id"]:
+                    self.connecting_road_add_requested.emit(jid))
+            menu.addAction(add_cr_action)
 
             menu.addSeparator()
 

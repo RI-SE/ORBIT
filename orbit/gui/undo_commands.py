@@ -998,6 +998,58 @@ class AddJunctionCommand(QUndoCommand):
         self.main_window._refresh_trees()
 
 
+class AddConnectingRoadCommand(QUndoCommand):
+    """Command for adding a hand-made connecting road to a junction."""
+
+    def __init__(self, main_window: 'MainWindow', junction_id: str,
+                 connecting_road, lane_connection_ids):
+        super().__init__(f"Add Connecting Road '{connecting_road.id}'")
+        self.main_window = main_window
+        self.junction_id = junction_id
+        self.cr_id = connecting_road.id
+        self.cr_data = connecting_road.to_dict()
+        # The builder creates the movements that make the CR usable; they are
+        # part of the same action and must come and go with it.
+        self.lane_connection_ids = list(lane_connection_ids)
+        self._lane_connection_data = []
+        junction = main_window.project.get_junction(junction_id)
+        if junction:
+            self._lane_connection_data = [
+                lc.to_dict() for lc in junction.lane_connections
+                if lc.id in self.lane_connection_ids
+            ]
+        self._first_redo = True
+
+    def redo(self):
+        if self._first_redo:
+            self._first_redo = False
+            return
+        junction = self.main_window.project.get_junction(self.junction_id)
+        if junction is None:
+            return
+        cr = Road.from_dict(self.cr_data)
+        self.main_window.project.add_road(cr)
+        junction.add_connecting_road(cr.id)
+        for data in self._lane_connection_data:
+            junction.lane_connections.append(LaneConnection.from_dict(data))
+        self.main_window.image_view.add_connecting_road_graphics(
+            cr, self.main_window.get_current_scale())
+        self.main_window._refresh_trees()
+
+    def undo(self):
+        junction = self.main_window.project.get_junction(self.junction_id)
+        if junction is None:
+            return
+        junction.lane_connections = [
+            lc for lc in junction.lane_connections
+            if lc.id not in self.lane_connection_ids
+        ]
+        junction.remove_connecting_road(self.cr_id)
+        self.main_window.project.remove_road(self.cr_id)
+        self.main_window.image_view.remove_connecting_road_graphics(self.cr_id)
+        self.main_window._refresh_trees()
+
+
 class DeleteJunctionCommand(QUndoCommand):
     """Command for deleting a junction."""
 
