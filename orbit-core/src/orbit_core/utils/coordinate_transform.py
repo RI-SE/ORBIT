@@ -291,6 +291,13 @@ class CoordinateTransformer:
         """Check if an adjustment is currently applied."""
         return self.adjustment is not None and not self.adjustment.is_identity()
 
+    # Minimum number of training points needed to fit the transformation
+    MIN_TRAINING_POINTS = 3
+
+    def refit(self, control_points: List['ControlPoint']) -> 'CoordinateTransformer':
+        """New transformer of the same kind and settings, fitted to control_points (no adjustment)."""
+        return type(self)(control_points, self.use_validation, export_proj_string=self._export_proj_string)
+
     def _init_export_proj(self, export_proj_string: Optional[str]):
         """Initialize the export projection (single place — see a13a6d7 bug class)."""
         self._export_proj_string: Optional[str] = export_proj_string
@@ -525,94 +532,56 @@ class CoordinateTransformer:
         """
         Compute reprojection error for training points (GCPs).
 
-        Measures how well the transformation fits the training data by
-        transforming pixel -> geo -> pixel and comparing.
+        Measures how well the transformation fits the training data: pixel errors compare the
+        clicked pixel with the projection of the known geo position, metre errors compare the
+        known position with the transformed clicked pixel.
 
         Returns:
             Dictionary with error metrics
         """
         if not self.training_points:
             return {}
-
-        errors_pixels = []
-        errors_meters = []
-        per_point_errors = []
-
-        for cp in self.training_points:
-            # Forward: pixel -> geo
-            lon_calc, lat_calc = self.pixel_to_geo(cp.pixel_x, cp.pixel_y)
-
-            # Backward: geo -> pixel
-            px_calc, py_calc = self.geo_to_pixel(lon_calc, lat_calc)
-
-            # Pixel error
-            error_px = math.sqrt((px_calc - cp.pixel_x)**2 + (py_calc - cp.pixel_y)**2)
-            errors_pixels.append(error_px)
-
-            # Calculate error in metric space (more robust than geographic distance)
-            # This correctly measures transformation accuracy
-            pred_mx, pred_my = self.pixel_to_meters(cp.pixel_x, cp.pixel_y)
-            actual_mx, actual_my = self.latlon_to_meters(cp.latitude, cp.longitude)
-            error_m = math.sqrt((pred_mx - actual_mx)**2 + (pred_my - actual_my)**2)
-            errors_meters.append(error_m)
-
-            per_point_errors.append({
-                'name': cp.name or f"GCP {self.training_points.index(cp) + 1}",
-                'error_pixels': error_px,
-                'error_meters': error_m
-            })
-
-        self.reprojection_error = {
-            'rmse_pixels': math.sqrt(np.mean(np.array(errors_pixels)**2)),
-            'mean_error_pixels': np.mean(errors_pixels),
-            'max_error_pixels': np.max(errors_pixels),
-            'rmse_meters': math.sqrt(np.mean(np.array(errors_meters)**2)),
-            'mean_error_meters': np.mean(errors_meters),
-            'max_error_meters': np.max(errors_meters),
-            'per_point_errors': per_point_errors
-        }
-
+        self.reprojection_error = self._point_errors(self.training_points, "GCP")
         return self.reprojection_error
 
     def compute_validation_error(self) -> Dict:
         """
         Compute validation error for validation points (GVPs).
 
-        Measures transformation accuracy on unseen data by transforming
-        pixel -> geo and comparing to known geo coordinates.
+        Same metrics as compute_reprojection_error, on points not used for fitting.
 
         Returns:
             Dictionary with error metrics (empty if no validation points)
         """
         if not self.validation_points:
             return {}
+        self.validation_error = self._point_errors(self.validation_points, "GVP")
+        return self.validation_error
 
+    def _point_errors(self, points: List['ControlPoint'], label: str) -> Dict:
+        """Residuals of control points in pixels (geo -> pixel) and metres (pixel -> metres)."""
         errors_pixels = []
         errors_meters = []
         per_point_errors = []
 
-        for cp in self.validation_points:
-            # Transform pixel to geo
-            lon_calc, lat_calc = self.pixel_to_geo(cp.pixel_x, cp.pixel_y)
+        for index, cp in enumerate(points):
+            px_calc, py_calc = self.geo_to_pixel(cp.longitude, cp.latitude)
+            error_px = math.sqrt((px_calc - cp.pixel_x)**2 + (py_calc - cp.pixel_y)**2)
+            errors_pixels.append(error_px)
 
-            # Calculate error in metric space (correctly measures transformation accuracy)
+            # Metric space is more robust than geographic distance
             pred_mx, pred_my = self.pixel_to_meters(cp.pixel_x, cp.pixel_y)
             actual_mx, actual_my = self.latlon_to_meters(cp.latitude, cp.longitude)
             error_m = math.sqrt((pred_mx - actual_mx)**2 + (pred_my - actual_my)**2)
             errors_meters.append(error_m)
 
-            # Calculate pixel error by transforming known geo back to pixels
-            px_calc, py_calc = self.geo_to_pixel(cp.longitude, cp.latitude)
-            error_px = math.sqrt((px_calc - cp.pixel_x)**2 + (py_calc - cp.pixel_y)**2)
-            errors_pixels.append(error_px)
-
             per_point_errors.append({
-                'name': cp.name or f"GVP {self.validation_points.index(cp) + 1}",
+                'name': cp.name or f"{label} {index + 1}",
                 'error_pixels': error_px,
                 'error_meters': error_m
             })
 
-        self.validation_error = {
+        return {
             'rmse_pixels': math.sqrt(np.mean(np.array(errors_pixels)**2)),
             'mean_error_pixels': np.mean(errors_pixels),
             'max_error_pixels': np.max(errors_pixels),
@@ -621,8 +590,6 @@ class CoordinateTransformer:
             'max_error_meters': np.max(errors_meters),
             'per_point_errors': per_point_errors
         }
-
-        return self.validation_error
 
     def get_metric_origin(self) -> Tuple[float, float]:
         """
@@ -733,7 +700,7 @@ class AffineTransformer(CoordinateTransformer):
                  export_proj_string: Optional[str] = None):
         super().__init__(control_points, use_validation, export_proj_string=export_proj_string)
 
-        if len(self.training_points) < 3:
+        if len(self.training_points) < self.MIN_TRAINING_POINTS:
             raise ValueError("Affine transformation requires at least 3 training control points")
 
         self._set_reference_point()
@@ -868,11 +835,13 @@ class HomographyTransformer(CoordinateTransformer):
     Uses Direct Linear Transform (DLT) with SVD and coordinate normalization.
     """
 
+    MIN_TRAINING_POINTS = 4
+
     def __init__(self, control_points: List['ControlPoint'], use_validation: bool = True,
                  export_proj_string: Optional[str] = None):
         super().__init__(control_points, use_validation, export_proj_string=export_proj_string)
 
-        if len(self.training_points) < 4:
+        if len(self.training_points) < self.MIN_TRAINING_POINTS:
             raise ValueError("Homography transformation requires at least 4 training control points")
 
         self._set_reference_point()
@@ -1058,6 +1027,8 @@ class HybridTransformer(CoordinateTransformer):
     artifacts (w->0 singularity) for points far from control points.
     """
 
+    MIN_TRAINING_POINTS = HomographyTransformer.MIN_TRAINING_POINTS
+
     def __init__(self, control_points: List['ControlPoint'],
                  use_validation: bool = True,
                  export_proj_string: Optional[str] = None,
@@ -1085,9 +1056,16 @@ class HybridTransformer(CoordinateTransformer):
         self.adjustment = None
 
         # Image bounds for blend zone
+        self._use_validation = use_validation
         self._image_width = image_width
         self._image_height = image_height
         self._margin = 0.2 * min(image_width, image_height) if image_width > 0 else 0
+
+    def refit(self, control_points: List['ControlPoint']) -> 'HybridTransformer':
+        """New hybrid transformer with the same image bounds, fitted to control_points."""
+        return HybridTransformer(control_points, self._use_validation,
+                                 export_proj_string=self._export_proj_string,
+                                 image_width=self._image_width, image_height=self._image_height)
 
     def _signed_distance_from_bounds(self, px: float, py: float) -> float:
         """Signed distance from image boundary. Positive = inside."""
@@ -1275,6 +1253,9 @@ class DroneAssistedTransformer(CoordinateTransformer):
     The transform_matrix maps pixel [u,v,1] → local ENU [E,N,w] in metres.
     """
 
+    # Works from flight parameters alone; GCPs only refine the focal length
+    MIN_TRAINING_POINTS = 0
+
     def __init__(
         self,
         metadata: 'DroneMetadata',
@@ -1287,6 +1268,8 @@ class DroneAssistedTransformer(CoordinateTransformer):
         from .camera_model import DroneCameraModel
 
         super().__init__(control_points, use_validation, export_proj_string=export_proj_string)
+        self._metadata = metadata
+        self._image_size = (image_width, image_height)
 
         # Override reference point to drone nadir
         self.reference_lat = metadata.latitude
@@ -1451,6 +1434,13 @@ def create_transformer(
         logger.error(f"Error creating transformer: {e}")
         return None
 
+    def refit(self, control_points: List['ControlPoint']) -> 'DroneAssistedTransformer':
+        """New drone-assisted transformer with the same flight metadata, fitted to control_points."""
+        return DroneAssistedTransformer(
+            metadata=self._metadata, control_points=control_points,
+            image_width=self._image_size[0], image_height=self._image_size[1],
+            use_validation=self.use_validation, export_proj_string=self._export_proj_string)
+
 
 class WebMercatorTransformer(CoordinateTransformer):
     """Exact pixel<->geo mapping for imagery on a Web-Mercator pixel grid.
@@ -1461,6 +1451,10 @@ class WebMercatorTransformer(CoordinateTransformer):
     the same corner bounds misplaces mid-image latitudes by
     ~R*tan(lat)*dlat^2/8 (meters), growing quadratically with bbox height.
     """
+
+    def refit(self, control_points: List['ControlPoint']) -> 'CoordinateTransformer':
+        """Not applicable: the mapping comes from the tile bounds, not from fitted control points."""
+        raise NotImplementedError("WebMercatorTransformer is not fitted to control points")
 
     def __init__(self, image_width: int, image_height: int,
                  min_lon: float, min_lat: float,

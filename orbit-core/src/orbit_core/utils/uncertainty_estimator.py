@@ -72,17 +72,10 @@ class UncertaintyEstimator:
 
         residuals_list = []
         for cp in self.transformer.training_points:
-            # Transform pixel to geo and back
-            lon, lat = self.transformer.pixel_to_geo(cp.pixel_x, cp.pixel_y)
-            pred_x, pred_y = self.transformer.geo_to_pixel(lon, lat)
-
-            # Calculate residual in pixels
-            residual_px = math.sqrt((pred_x - cp.pixel_x)**2 + (pred_y - cp.pixel_y)**2)
-
-            # Convert to meters using local scale
-            mx1, my1 = self.transformer.pixel_to_meters(cp.pixel_x, cp.pixel_y)
-            mx2, my2 = self.transformer.pixel_to_meters(cp.pixel_x + residual_px, cp.pixel_y)
-            residual_m = math.sqrt((mx2 - mx1)**2 + (my2 - my1)**2)
+            # Fit residual: transformed clicked pixel vs known position
+            pred_mx, pred_my = self.transformer.pixel_to_meters(cp.pixel_x, cp.pixel_y)
+            actual_mx, actual_my = self.transformer.latlon_to_meters(cp.latitude, cp.longitude)
+            residual_m = math.sqrt((pred_mx - actual_mx)**2 + (pred_my - actual_my)**2)
 
             self.gcp_residuals[(cp.pixel_x, cp.pixel_y)] = residual_m
             residuals_list.append(residual_m)
@@ -370,14 +363,6 @@ class UncertaintyEstimator:
         position_samples_x = np.zeros((n_iterations, rows, cols))
         position_samples_y = np.zeros((n_iterations, rows, cols))
 
-        # Get transformer class
-        if hasattr(self.transformer, 'H'):
-            from .coordinate_transform import HomographyTransformer
-            TransformerClass = HomographyTransformer
-        else:
-            from .coordinate_transform import AffineTransformer
-            TransformerClass = AffineTransformer
-
         # Get training points
         training_points = self.transformer.training_points
         validation_points = self.transformer.validation_points
@@ -399,8 +384,8 @@ class UncertaintyEstimator:
                 # Combine with validation points (don't add noise to those)
                 all_points = noisy_gcps + validation_points
 
-                # Recompute transformation with noisy points
-                noisy_transformer = TransformerClass(all_points, use_validation=True)
+                # Recompute the same kind of transformation with noisy points
+                noisy_transformer = self.transformer.refit(all_points)
 
                 # Sample position at each grid point
                 for i, y in enumerate(y_coords):
@@ -411,11 +396,9 @@ class UncertaintyEstimator:
                         position_samples_y[iteration, i, j] = my
 
             except Exception:
-                # If transformation fails (singular matrix), skip this iteration
-                # Use previous iteration's values
-                if iteration > 0:
-                    position_samples_x[iteration, :, :] = position_samples_x[iteration - 1, :, :]
-                    position_samples_y[iteration, :, :] = position_samples_y[iteration - 1, :, :]
+                # Singular fit: leave this sample out (copying a neighbour would bias the spread low)
+                position_samples_x[iteration, :, :] = np.nan
+                position_samples_y[iteration, :, :] = np.nan
 
             # Report progress (every iteration to keep UI responsive)
             if progress_callback:
@@ -424,8 +407,8 @@ class UncertaintyEstimator:
 
         # Calculate position uncertainty as RMS of X and Y standard deviations
         # This is the uncertainty in transformed position (meters)
-        std_x = np.std(position_samples_x, axis=0)
-        std_y = np.std(position_samples_y, axis=0)
+        std_x = np.nanstd(position_samples_x, axis=0)
+        std_y = np.nanstd(position_samples_y, axis=0)
 
         # Combined positional uncertainty (RSS)
         uncertainty_grid = np.sqrt(std_x**2 + std_y**2)
@@ -682,14 +665,6 @@ class UncertaintyEstimator:
         training_points = self.transformer.training_points
         n_points = len(training_points)
 
-        # Get transformer method
-        if hasattr(self.transformer, 'H'):
-            from .coordinate_transform import HomographyTransformer
-            TransformerClass = HomographyTransformer
-        else:
-            from .coordinate_transform import AffineTransformer
-            TransformerClass = AffineTransformer
-
         for iteration in range(n_iterations):
             # Resample with replacement
             indices = np.random.choice(n_points, size=n_points, replace=True)
@@ -699,7 +674,7 @@ class UncertaintyEstimator:
                 # Create new transformer with resampled points
                 # Combine with validation points (don't resample those)
                 all_points = resampled_points + self.transformer.validation_points
-                resampled_transformer = TransformerClass(all_points, use_validation=True)
+                resampled_transformer = self.transformer.refit(all_points)
 
                 # Calculate scale at each grid point
                 for i, y in enumerate(y_coords):
@@ -712,9 +687,8 @@ class UncertaintyEstimator:
                         scale_samples[iteration, i, j] = scale
 
             except Exception:
-                # Resampling may create singular matrices occasionally
-                # Skip this iteration
-                continue
+                # Resampling may create singular matrices occasionally: leave this sample out
+                scale_samples[iteration, :, :] = np.nan
 
             # Report progress (every iteration to keep UI responsive)
             if progress_callback:
@@ -722,7 +696,7 @@ class UncertaintyEstimator:
                 progress_callback(percent)
 
         # Calculate standard deviation across iterations at each point
-        uncertainty_grid = np.std(scale_samples, axis=0)
+        uncertainty_grid = np.nanstd(scale_samples, axis=0)
 
         if progress_callback:
             progress_callback(100)

@@ -231,3 +231,26 @@ class TestAffineTransformer:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_unknown_transform_method_with_affine_matrix_is_rejected(tmp_path):
+    """An unknown method with no perspective terms is ambiguous; it used to be applied as affine silently."""
+    path = tmp_path / "unknown_georef.json"
+    path.write_text(json.dumps({
+        "format": "ORBIT Georeferencing Data", "version": "1.0", "transform_method": "unknown",
+        "transformation_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        "inverse_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        "reference_point": {"longitude": 12.0, "latitude": 57.7},
+    }))
+    with pytest.raises(ValueError, match="Unsupported transform method"):
+        load_georef(path)
+
+
+def test_legacy_unknown_projective_georef_is_read_as_homography():
+    """ORBIT <= 0.8.0 labelled GUI homography exports 'unknown'; the perspective row identifies them."""
+    example = Path(__file__).resolve().parents[2] / "examples" / "SaroRoundNew" / "VIDp_2025-10-16T134059CEST_D_ff_georef.json"
+    if not example.exists():
+        pytest.skip("example georef not available")
+    with pytest.warns(UserWarning, match="read as homography"):
+        transformer = load_georef(example)
+    assert transformer.method == "homography"

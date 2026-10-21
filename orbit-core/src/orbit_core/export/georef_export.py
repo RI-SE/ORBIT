@@ -25,7 +25,8 @@ from orbit_core.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-GEOREF_FORMAT_VERSION = "1.1"
+# 1.2: rmse_pixels of training points is a true residual (before: pixel->geo->pixel round trip, ~0)
+GEOREF_FORMAT_VERSION = "1.2"
 
 
 def export_georeferencing(

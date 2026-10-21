@@ -3,6 +3,7 @@ I/O functions for orbit-georef.
 """
 
 import json
+import warnings
 from pathlib import Path
 from typing import Union
 
@@ -10,6 +11,24 @@ import numpy as np
 
 from .models import ControlPoint
 from .transformer import GeoTransformer
+
+# Exports from the GUI's HybridTransformer were labelled "unknown" until ORBIT 0.8.0 (commit 0015a0f, 2026-04-01)
+LEGACY_UNKNOWN_METHOD = "unknown"
+
+
+def _resolve_method(method: str, transform_matrix: np.ndarray, path: Path) -> str:
+    """Map a legacy "unknown" method to homography when the matrix is visibly projective."""
+    if method != LEGACY_UNKNOWN_METHOD:
+        return method
+    if np.any(transform_matrix[2, :2] != 0.0):
+        warnings.warn(
+            f"{path}: transform_method 'unknown' (legacy ORBIT export) read as homography, "
+            "since the matrix has perspective terms",
+            stacklevel=3,
+        )
+        return "homography"
+    # An affine-looking matrix could be either an affine (degrees) or a homography (metres) export
+    return method
 
 
 def load_georef(path: Union[str, Path]) -> GeoTransformer:
@@ -71,7 +90,7 @@ def load_georef(path: Union[str, Path]) -> GeoTransformer:
     scale_y = scale_factors.get("y_meters_per_pixel", 1.0)
 
     # Parse method
-    method = data.get("transform_method", "homography")
+    method = _resolve_method(data.get("transform_method", "homography"), transform_matrix, path)
 
     # Parse proj_string (None for old files → backward compat)
     proj_string = data.get("proj_string")

@@ -13,6 +13,9 @@ import pyproj
 
 from .models import ControlPoint
 
+# Methods whose matrices this class can apply; anything else (e.g. "unknown") must not be guessed
+SUPPORTED_METHODS = frozenset({"homography", "affine"})
+
 
 class GeoTransformer:
     """
@@ -53,6 +56,11 @@ class GeoTransformer:
             control_points: Optional list of control points used
             source_info: Optional dict with project_file and image_path from ORBIT export
         """
+        if method not in SUPPORTED_METHODS:
+            raise ValueError(
+                f"Unsupported transform method {method!r}; expected one of {sorted(SUPPORTED_METHODS)}. "
+                "Re-export the georeference from ORBIT with a homography or affine transformation."
+            )
         self.transform_matrix = transform_matrix
         self.inverse_matrix = inverse_matrix
         self.reference_lon = reference_lon
