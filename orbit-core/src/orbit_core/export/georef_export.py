@@ -7,13 +7,14 @@ tools for pixel↔geo coordinate conversion.
 """
 
 import json
+import math
 from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from orbit_core.models.project import Project
+from orbit_core.models.project import ControlPoint, Project
 from orbit_core.utils.coordinate_transform import (
     AffineTransformer,
     CoordinateTransformer,
@@ -27,6 +28,33 @@ logger = get_logger(__name__)
 
 # 1.2: rmse_pixels of training points is a true residual (before: pixel->geo->pixel round trip, ~0)
 GEOREF_FORMAT_VERSION = "1.2"
+
+
+# Pixel grid (per axis) sampled to refit a drone-assisted mapping in the export projection
+PROJECTED_FIT_GRID = 9
+# Largest acceptable deviation of the refitted homography from the sampled mapping
+PROJECTED_FIT_TOLERANCE_M = 0.01
+
+
+def _projected_matrices(transformer: DroneAssistedTransformer, image_size: Tuple[int, int],
+                        proj_string: str) -> Tuple[np.ndarray, np.ndarray]:
+    """Pixel -> projected homography (and inverse) equivalent to a drone-assisted transformer.
+
+    Fitted to the transformer's own pixel -> geo mapping on a pixel grid, so it includes any
+    active adjustment. Local ENU -> projection is near-affine over an image footprint, so the
+    result stays a homography; the fit deviation is logged.
+    """
+    width, height = image_size
+    grid = [ControlPoint(pixel_x=float(u), pixel_y=float(v), longitude=lon, latitude=lat)
+            for u in np.linspace(0, width, PROJECTED_FIT_GRID)
+            for v in np.linspace(0, height, PROJECTED_FIT_GRID)
+            for lon, lat in [transformer.pixel_to_geo(u, v)]]
+    fitted = HomographyTransformer(grid, use_validation=False, export_proj_string=proj_string)
+    deviation = max(math.dist(fitted.pixel_to_meters(cp.pixel_x, cp.pixel_y),
+                              fitted.latlon_to_projected(cp.latitude, cp.longitude)) for cp in grid)
+    if deviation > PROJECTED_FIT_TOLERANCE_M:
+        logger.warning(f"Drone-assisted georef: projected homography deviates up to {deviation:.3f} m")
+    return fitted.transform_matrix, fitted.inverse_matrix
 
 
 def export_georeferencing(
@@ -120,7 +148,11 @@ def build_georef_data(
     # For ENU→pixel  (inverse_matrix):   effective = A @ inverse_matrix
     transform_matrix = transformer.transform_matrix
     inverse_matrix = transformer.inverse_matrix
-    if transformer.adjustment is not None and not transformer.adjustment.is_identity():
+    proj_string = getattr(transformer, '_export_proj_string', None)
+    if isinstance(transformer, DroneAssistedTransformer) and proj_string:
+        # Its matrices map to local ENU around the nadir; consumers read them in proj_string's frame
+        transform_matrix, inverse_matrix = _projected_matrices(transformer, image_size, proj_string)
+    elif transformer.adjustment is not None and not transformer.adjustment.is_identity():
         A = transformer.adjustment.get_adjustment_matrix()
         A_inv = np.linalg.inv(A)
         if transform_matrix is not None:
@@ -167,7 +199,6 @@ def build_georef_data(
         }
 
     # Add proj_string if the transformer was built with one (UTM or other CRS)
-    proj_string = getattr(transformer, '_export_proj_string', None)
     if proj_string:
         data["proj_string"] = proj_string
 

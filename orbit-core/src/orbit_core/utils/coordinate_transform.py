@@ -1350,6 +1350,13 @@ class DroneAssistedTransformer(CoordinateTransformer):
     def _set_reference_point(self):
         """Overridden: reference point is drone nadir, set in __init__."""
 
+    def refit(self, control_points: List['ControlPoint']) -> 'DroneAssistedTransformer':
+        """New drone-assisted transformer with the same flight metadata, fitted to control_points."""
+        return DroneAssistedTransformer(
+            metadata=self._metadata, control_points=control_points,
+            image_width=self._image_size[0], image_height=self._image_size[1],
+            use_validation=self.use_validation, export_proj_string=self._export_proj_string)
+
 
 def create_transformer(
     control_points: List['ControlPoint'],
@@ -1434,12 +1441,6 @@ def create_transformer(
         logger.error(f"Error creating transformer: {e}")
         return None
 
-    def refit(self, control_points: List['ControlPoint']) -> 'DroneAssistedTransformer':
-        """New drone-assisted transformer with the same flight metadata, fitted to control_points."""
-        return DroneAssistedTransformer(
-            metadata=self._metadata, control_points=control_points,
-            image_width=self._image_size[0], image_height=self._image_size[1],
-            use_validation=self.use_validation, export_proj_string=self._export_proj_string)
 
 
 class WebMercatorTransformer(CoordinateTransformer):
