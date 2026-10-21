@@ -79,6 +79,37 @@ The JSON export format includes:
 - Scale factors (meters per pixel)
 - Reprojection error metrics
 
+### Quality information (georef format 1.2)
+
+From format 1.2, ORBIT also writes optional quality keys, following the `georef` profile of
+[scenario-uncertainty](https://github.com/das-rise/scenario-uncertainty):
+- `leave_one_out`: each training point predicted by a fit without it.
+- `validation`: with at least 3 validation points, split into a common `datum` part (shift, rotation, scale) and the
+  `internal` remainder.
+- `terrain`: the deviation of surveyed altitudes from a plane.
+- `adjustment`: how far a manual alignment moved the georeference, with the fit to the original clicks.
+- Per point: `residual_m`/`residual_px`, RTK `sigma_h_m`/`sigma_v_m`, `altitude_m`, and the pick zoom.
+- `transform_source`: what produced the matrix (`homography`, `hybrid`, `affine` or `drone_assisted`).
+
+Older files simply lack these keys. They are available as `transformer.quality`, and two helpers use them:
+
+```python
+J = transformer.jacobian(px, py)              # 2x2 metres per pixel at (px, py)
+cov = transformer.position_covariance(px, py)
+cov["image"]    # 2x2 m^2: local error of the mapping; affects relative positions
+cov["datum"]    # 2x2 m^2: shared by everything georeferenced with this file; cancels in distances
+cov["basis"], cov["source"]   # measured / derived / assumed / unknown, and which key it came from
+sigma_ground = J @ sigma_px @ J.T + cov["image"]   # e.g. a detection's pixel covariance mapped to the ground
+```
+
+In this version both covariance parts are constant over the image. The image part is taken from the most
+direct figure available, in this order:
+1. validation internal error;
+2. per-point residuals (drone-assisted only, where the points are an independent check);
+3. leave-one-out;
+4. validation RMSE;
+5. twice the training RMSE.
+
 ## License
 
 This library is licensed under the [MIT License](LICENSE).

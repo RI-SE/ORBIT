@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from orbit_core.models.project import ControlPoint, Project
+from orbit_core.utils import georef_quality
 from orbit_core.utils.coordinate_transform import (
     AffineTransformer,
     CoordinateTransformer,
@@ -26,7 +27,8 @@ from orbit_core.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# 1.2: rmse_pixels of training points is a true residual (before: pixel->geo->pixel round trip, ~0)
+# 1.2: rmse_pixels of training points is a true residual (before: pixel->geo->pixel round trip, ~0);
+#      optional quality keys of the scenario-uncertainty `georef` profile (see add_quality)
 GEOREF_FORMAT_VERSION = "1.2"
 
 
@@ -79,6 +81,7 @@ def export_georeferencing(
     """
     try:
         data = build_georef_data(project, transformer, image_size, project_file)
+        add_quality(data, project, transformer, image_size)
 
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
@@ -89,6 +92,25 @@ def export_georeferencing(
     except Exception as e:
         logger.error(f"Failed to export georeferencing: {e}")
         return False
+
+
+def add_quality(data: Dict[str, Any], project: Project, transformer: CoordinateTransformer,
+                image_size: Tuple[int, int]) -> None:
+    """Add the georef 1.2 quality keys (scenario-uncertainty `georef` profile) to exported data.
+
+    A failure here must not cost the user the export: the geometry is still written, the problem is
+    logged and recorded as `quality_error`.
+    """
+    try:
+        for entry, cp in zip(data["control_points"], project.control_points, strict=True):
+            residual_m = georef_quality.metric_residuals(transformer, [cp])[0]
+            residual_px = georef_quality.pixel_residuals(transformer, [cp])[0]
+            entry.update(georef_quality.control_point_quality(cp, residual_m, residual_px))
+        data.update(georef_quality.quality_keys(project, transformer, image_size,
+                                                np.array(data["transformation_matrix"])))
+    except Exception as e:
+        logger.warning(f"Georef quality information not exported: {e}")
+        data["quality_error"] = str(e)
 
 
 def build_georef_data(

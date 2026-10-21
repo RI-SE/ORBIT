@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pyproj
 
+from . import uncertainty
 from .models import ControlPoint
 
 # Methods whose matrices this class can apply; anything else (e.g. "unknown") must not be guessed
@@ -39,6 +40,7 @@ class GeoTransformer:
         control_points: Optional[List[ControlPoint]] = None,
         source_info: Optional[Dict[str, Any]] = None,
         proj_string: Optional[str] = None,
+        quality: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize transformer with precomputed matrices.
@@ -55,6 +57,7 @@ class GeoTransformer:
             scale_y: Y scale factor (meters per pixel)
             control_points: Optional list of control points used
             source_info: Optional dict with project_file and image_path from ORBIT export
+            quality: Optional quality keys of the georef file (see uncertainty.QUALITY_KEYS)
         """
         if method not in SUPPORTED_METHODS:
             raise ValueError(
@@ -71,6 +74,7 @@ class GeoTransformer:
         self.control_points = control_points or []
         self.source_info = source_info or {}
         self.proj_string = proj_string
+        self.quality = quality or {}
 
     @classmethod
     def from_file(cls, path: str) -> "GeoTransformer":
@@ -283,6 +287,14 @@ class GeoTransformer:
             List of (pixel_x, pixel_y) tuples
         """
         return [self.geo_to_pixel(lon, lat) for lon, lat in points]
+
+    def jacobian(self, pixel_x: float, pixel_y: float) -> np.ndarray:
+        """2x2 metres-per-pixel derivative of ground position at a pixel (see uncertainty.jacobian)."""
+        return uncertainty.jacobian(self, pixel_x, pixel_y)
+
+    def position_covariance(self, pixel_x: Optional[float] = None, pixel_y: Optional[float] = None) -> Dict[str, Any]:
+        """Georeference error as {"datum": 2x2, "image": 2x2} m^2 (see uncertainty.position_covariance)."""
+        return uncertainty.position_covariance(self, pixel_x, pixel_y)
 
     def get_scale(self) -> Tuple[float, float]:
         """

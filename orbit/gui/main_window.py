@@ -36,6 +36,18 @@ from .widgets.road_tree import RoadTreeWidget
 logger = get_logger(__name__)
 
 
+
+def _georef_provenance_quality(georef_path: Path) -> Optional[dict]:
+    """Quality summary of an exported georef for its provenance sidecar (None if it can't be read)."""
+    import json
+
+    from orbit_core.utils.georef_quality import provenance_summary
+    try:
+        return provenance_summary(json.loads(georef_path.read_text(encoding="utf-8")))
+    except (OSError, ValueError) as e:
+        logger.warning(f"Georef quality not recorded in provenance: {e}")
+        return None
+
 class MainWindow(QMainWindow):
     """Main application window for ORBIT."""
 
@@ -677,13 +689,14 @@ class MainWindow(QMainWindow):
             return
         record_project_save(self.project, orbit_path, start_time, self._provenance_template())
 
-    def _record_export_provenance(self, output_path: Path, operation: str, output_format: str, start_time) -> None:
+    def _record_export_provenance(self, output_path: Path, operation: str, output_format: str, start_time,
+                                  quality: Optional[dict] = None) -> None:
         """Record a provenance step for an export, if enabled."""
         if not self._provenance_enabled():
             return
         record_export(
             output_path, self.current_project_file, operation, output_format,
-            start_time, self._provenance_template(),
+            start_time, self._provenance_template(), quality=quality,
         )
 
     def open_project(self):
@@ -1135,7 +1148,8 @@ class MainWindow(QMainWindow):
         start_time = datetime.now(timezone.utc)
         if export_georeferencing(self.project, Path(file_path), transformer, image_size, self.current_project_file):
             self.statusBar().showMessage(f"Georeferencing exported to {file_path}")
-            self._record_export_provenance(Path(file_path), "georeferencing parameter export", "JSON", start_time)
+            self._record_export_provenance(Path(file_path), "georeferencing parameter export", "JSON", start_time,
+                                           quality=_georef_provenance_quality(Path(file_path)))
         else:
             show_error(self, "Failed to export georeferencing parameters.", "Export Error")
 
@@ -2036,6 +2050,8 @@ class MainWindow(QMainWindow):
 
         Updates the transformer and scale display without recreating graphics items.
         """
+        control_point.pick_zoom = self.image_view.current_zoom()
+        control_point.pixel_clicked = [control_point.pixel_x, control_point.pixel_y]
         self._invalidate_cached_transformer()
         self.update_scale_display()
         # Keep georef dialog validation display up to date if open
@@ -2098,7 +2114,7 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"Roundabout center set at ({x:.1f}, {y:.1f})")
             self._roundabout_pick_mode = None
         elif hasattr(self, 'georef_dialog') and self.georef_dialog:
-            self.georef_dialog.set_picked_point(x, y)
+            self.georef_dialog.set_picked_point(x, y, zoom=self.image_view.current_zoom())
             self.statusBar().showMessage(f"Point selected at ({x:.1f}, {y:.1f})")
         else:
             self.statusBar().showMessage("Ready")
@@ -2208,6 +2224,19 @@ class MainWindow(QMainWindow):
         adj = self.image_view.current_adjustment
         return adj is not None and not adj.is_identity()
 
+    def _bake_into_control_points(self, adjustment: TransformAdjustment):
+        """Move all control-point pixels by the adjustment, keeping the clicks and a record of the adjustment.
+
+        The fit then follows the adjusted pixels as before; the georef export uses pixel_clicked and
+        baked_adjustments to report the fit to the original clicks and the size of the correction.
+        """
+        for cp in self.project.control_points:
+            if cp.pixel_clicked is None:
+                cp.pixel_clicked = [cp.pixel_x, cp.pixel_y]
+            cp.pixel_x, cp.pixel_y = adjustment.apply_to_point(cp.pixel_x, cp.pixel_y)
+        self.project.baked_adjustments.append({
+            "matrix": adjustment.get_adjustment_matrix().tolist(), "params": adjustment.to_dict()})
+
     def _bake_adjustment_into_control_points(self):
         """Bake the current adjustment into CP pixel positions and clear it (no dialog).
 
@@ -2227,8 +2256,7 @@ class MainWindow(QMainWindow):
             self._apply_active_adjustment(self._cached_transformer)
             self.refresh_imported_geometry()
             return
-        for cp in self.project.control_points:
-            cp.pixel_x, cp.pixel_y = adj.apply_to_point(cp.pixel_x, cp.pixel_y)
+        self._bake_into_control_points(adj)
         self.image_view.reset_adjustment()
         self._remove_adjustment_ghost()
         self._invalidate_cached_transformer()
@@ -2922,10 +2950,7 @@ class MainWindow(QMainWindow):
             return
 
         # Apply adjustment to each control point
-        for cp in self.project.control_points:
-            new_x, new_y = adjustment.apply_to_point(cp.pixel_x, cp.pixel_y)
-            cp.pixel_x = new_x
-            cp.pixel_y = new_y
+        self._bake_into_control_points(adjustment)
 
         # Clear the adjustment (already baked into control points)
         self.image_view.reset_adjustment()

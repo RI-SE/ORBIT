@@ -498,15 +498,16 @@ class GeoreferenceDialog(BaseDialog):
         self.pick_point_btn.setText("Click on image...")
         self.pick_point_btn.setEnabled(False)
 
-    def set_picked_point(self, x: float, y: float):
-        """Set the picked point coordinates."""
+    def set_picked_point(self, x: float, y: float, zoom: Optional[float] = None):
+        """Set the picked point coordinates and the image-view zoom they were picked at."""
         # If CSV placer dialog is active, route to it
         if self.csv_placer_dialog:
-            self.csv_placer_dialog.set_picked_point(x, y)
+            self.csv_placer_dialog.set_picked_point(x, y, zoom=zoom)
             return
 
         # Otherwise, use normal workflow
         self.pending_pixel_coords = (x, y)
+        self.pending_pick_zoom = zoom
         self.picked_coords_label.setText(f"({x:.1f}, {y:.1f})")
         self.pick_point_btn.setText("Pick Point on Image")
         self.pick_point_btn.setEnabled(True)
@@ -525,7 +526,9 @@ class GeoreferenceDialog(BaseDialog):
             longitude=self.longitude_spin.value(),
             latitude=self.latitude_spin.value(),
             name=f"CP{len(self.project.control_points) + 1}",
-            is_validation=self.validation_check.isChecked()
+            is_validation=self.validation_check.isChecked(),
+            pick_zoom=getattr(self, 'pending_pick_zoom', None),
+            pixel_clicked=list(self.pending_pixel_coords),
         )
 
         # Add to project
@@ -833,17 +836,8 @@ class GeoreferenceDialog(BaseDialog):
             show_warning(self, "The georef file contains no control points.", "Import Warning")
             return
 
-        new_points = [
-            ControlPoint(
-                pixel_x=cp["pixel_x"],
-                pixel_y=cp["pixel_y"],
-                longitude=cp["longitude"],
-                latitude=cp["latitude"],
-                name=cp.get("name", ""),
-                is_validation=cp.get("is_validation", False),
-            )
-            for cp in raw_points
-        ]
+        # from_dict also takes the optional quality fields (altitude, sigma, ...) of newer exports
+        new_points = [ControlPoint.from_dict({"name": "", **cp}) for cp in raw_points]
 
         self.project.control_points.clear()
         self.project.control_points.extend(new_points)

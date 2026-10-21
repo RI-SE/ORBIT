@@ -9,6 +9,7 @@ from typing import Union
 
 import numpy as np
 
+from . import uncertainty
 from .models import ControlPoint
 from .transformer import GeoTransformer
 
@@ -117,7 +118,18 @@ def load_georef(path: Union[str, Path]) -> GeoTransformer:
         control_points=control_points,
         source_info=source_info,
         proj_string=proj_string,
+        quality=_quality(data),
     )
+
+
+def _quality(data: dict) -> dict:
+    """Quality keys of a georef file; per-point residuals of training points as training_residuals_m."""
+    quality = {key: data[key] for key in uncertainty.QUALITY_KEYS if key in data}
+    residuals = [cp["residual_m"] for cp in data.get("control_points", [])
+                 if "residual_m" in cp and not cp.get("is_validation", False)]
+    if residuals:
+        quality["training_residuals_m"] = residuals
+    return quality
 
 
 def save_georef(transformer: GeoTransformer, path: Union[str, Path]) -> None:

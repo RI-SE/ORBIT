@@ -23,6 +23,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    "scenario-uncertainty",
     "numpy>=1.24.0",
     "scipy>=1.11.0",
     "pyproj>=3.6.0",

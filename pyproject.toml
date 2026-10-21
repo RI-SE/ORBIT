@@ -53,6 +53,9 @@ build-backend = "hatchling.build"
 
 [tool.uv.sources]
 orbit-core = { workspace = true }
+# TEMPORARY (uncertainty work): local checkout until das-rise/scenario-uncertainty is pushed; then use
+# { git = "https://github.com/das-rise/scenario-uncertainty.git" } (and later a tag)
+scenario-uncertainty = { path = "../scenario-uncertainty", editable = true }
 
 [tool.uv.workspace]
 members = ["orbit-core", "orbit-georef", "opendrive-map"]

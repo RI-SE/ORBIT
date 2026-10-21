@@ -36,6 +36,9 @@ class CSVControlPoint:
     latitude: float
     longitude: float
     altitude: Optional[float] = None
+    sigma_h_m: Optional[float] = None  # surveyed horizontal standard deviation (m)
+    sigma_v_m: Optional[float] = None  # surveyed vertical standard deviation (m)
+    point_type: Optional[str] = None
     status: str = "pending"  # pending, placed, skipped, error
     pixel_x: Optional[float] = None
     pixel_y: Optional[float] = None
@@ -48,6 +51,10 @@ LATITUDE_ALIASES = ['latitude', 'lat', 'y', 'northing', 'north']
 LONGITUDE_ALIASES = ['longitude', 'lon', 'long', 'lng', 'x', 'easting', 'east']
 NAME_ALIASES = ['point_name', 'name', 'id', 'point_id', 'marker', 'label']
 ALTITUDE_ALIASES = ['altitude', 'alt', 'elevation', 'z', 'height']
+# RTK survey exports use "horizontal SD"/"vertical SD"; SAVANT's marker CSVs also allow the short forms
+SIGMA_H_ALIASES = ['horizontal sd', 'horiz sd', 'sigma_h', 'sigma_h_m', 'hsd']
+SIGMA_V_ALIASES = ['vertical sd', 'vert sd', 'sigma_v', 'sigma_v_m', 'vsd']
+POINT_TYPE_ALIASES = ['point_type', 'point type']
 
 
 def find_column_index(headers: List[str], aliases: List[str]) -> Optional[int]:
@@ -83,7 +90,20 @@ def detect_columns(headers: List[str]) -> dict:
         'latitude': find_column_index(headers, LATITUDE_ALIASES),
         'longitude': find_column_index(headers, LONGITUDE_ALIASES),
         'altitude': find_column_index(headers, ALTITUDE_ALIASES),
+        'sigma_h_m': find_column_index(headers, SIGMA_H_ALIASES),
+        'sigma_v_m': find_column_index(headers, SIGMA_V_ALIASES),
+        'point_type': find_column_index(headers, POINT_TYPE_ALIASES),
     }
+
+
+def _optional_float(row: List[str], index: Optional[int]) -> Optional[float]:
+    """Numeric cell or None when the column is absent, empty or not a number (e.g. "/" in survey exports)."""
+    if index is None or index >= len(row):
+        return None
+    try:
+        return float(row[index])
+    except ValueError:
+        return None
 
 
 def parse_csv_file(filepath: Path) -> Tuple[List[CSVControlPoint], str]:
@@ -181,6 +201,10 @@ def parse_csv_file(filepath: Path) -> Tuple[List[CSVControlPoint], str]:
                     latitude=latitude,
                     longitude=longitude,
                     altitude=altitude,
+                    sigma_h_m=_optional_float(row, columns['sigma_h_m']),
+                    sigma_v_m=_optional_float(row, columns['sigma_v_m']),
+                    point_type=(row[columns['point_type']].strip() or None
+                                if columns['point_type'] is not None and columns['point_type'] < len(row) else None),
                     selected=True
                 ))
 

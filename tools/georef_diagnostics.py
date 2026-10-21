@@ -18,13 +18,13 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import math
 from pathlib import Path
 
 import numpy as np
 
 from orbit_core.models.project import ControlPoint
 from orbit_core.utils.coordinate_transform import HomographyTransformer
+from orbit_core.utils.georef_quality import metric_residuals, rms, similarity_split
 
 # Below this fit RMSE with more than the minimum points, pixels cannot have been clicked independently
 EXACT_FIT_M = 0.001
@@ -41,17 +41,6 @@ def load_control_points(georef: dict) -> list[ControlPoint]:
                          latitude=c["latitude"], name=c.get("name", ""),
                          is_validation=bool(c.get("is_validation", False)))
             for c in georef["control_points"]]
-
-
-def residuals(transformer: HomographyTransformer, points: list[ControlPoint]) -> np.ndarray:
-    """(n, 2) metric residuals: transformed clicked pixel minus known position."""
-    return np.array([np.subtract(transformer.pixel_to_meters(cp.pixel_x, cp.pixel_y),
-                                 transformer.latlon_to_meters(cp.latitude, cp.longitude))
-                     for cp in points]).reshape(-1, 2)
-
-
-def rms(vectors: np.ndarray) -> float:
-    return float(np.sqrt(np.mean(np.sum(vectors ** 2, axis=1)))) if len(vectors) else float("nan")
 
 
 def exported_matrix_check(georef: dict, points: list[ControlPoint]) -> dict | None:
@@ -81,23 +70,8 @@ def leave_one_out(points: list[ControlPoint], proj: str) -> np.ndarray:
     out = []
     for i, cp in enumerate(training):
         others = training[:i] + training[i + 1:]
-        out.append(residuals(HomographyTransformer(others, export_proj_string=proj), [cp])[0])
+        out.append(metric_residuals(HomographyTransformer(others, export_proj_string=proj), [cp])[0])
     return np.array(out)
-
-
-def similarity_split(predicted: np.ndarray, true: np.ndarray) -> dict:
-    """Split georef errors (predicted - true) into a common 2D similarity (datum) and the internal remainder."""
-    centre = true.mean(0)
-    q = true - centre
-    design = np.zeros((2 * len(q), 4))
-    design[0::2] = np.c_[q[:, 0], -q[:, 1], np.ones(len(q)), np.zeros(len(q))]
-    design[1::2] = np.c_[q[:, 1], q[:, 0], np.zeros(len(q)), np.ones(len(q))]
-    a, b, tx, ty = np.linalg.lstsq(design, predicted.reshape(-1), rcond=None)[0]
-    fitted = (design @ [a, b, tx, ty]).reshape(-1, 2)
-    return {"shift_m": [round(float(tx - centre[0]), 3), round(float(ty - centre[1]), 3)],
-            "rotation_deg": round(math.degrees(math.atan2(b, a)), 4),
-            "scale_ppm": round((math.hypot(a, b) - 1) * 1e6),
-            "internal_rms_m": round(rms(predicted - fitted), 3)}
 
 
 def load_altitudes(rtk_csv: Path) -> dict[str, float]:
@@ -144,7 +118,7 @@ def diagnose(path: Path, rtk_csv: Path | None = None, flight_record: Path | None
     # Metric frame shared by all refits: the export's projection, else UTM from the points
     proj = georef.get("proj_string") or HomographyTransformer(points).get_utm_projection_string()
     transformer = HomographyTransformer(points, export_proj_string=proj)
-    fit = residuals(transformer, training)
+    fit = metric_residuals(transformer, training)
     result["fit_rms_m"] = round(rms(fit), 3)
     exported = exported_matrix_check(georef, training)
     if exported:
@@ -168,7 +142,7 @@ def diagnose(path: Path, rtk_csv: Path | None = None, flight_record: Path | None
     if len(training) < RECOMMENDED_MIN_POINTS:
         result["warnings"].append(f"only {len(training)} training points (recommended >= {RECOMMENDED_MIN_POINTS})")
     if validation:
-        val = residuals(transformer, validation)
+        val = metric_residuals(transformer, validation)
         result["validation_rms_m"] = round(rms(val), 3)
         if len(validation) >= MIN_POINTS_FOR_SPLIT:
             true = np.array([transformer.latlon_to_meters(cp.latitude, cp.longitude) for cp in validation])

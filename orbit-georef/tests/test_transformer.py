@@ -255,3 +255,64 @@ def test_legacy_unknown_projective_georef_is_read_as_homography():
     with pytest.warns(UserWarning, match="read as homography"):
         transformer = load_georef(example)
     assert transformer.method == "homography"
+
+
+# ---------------------------------------------------------------------------
+# Uncertainty: Jacobian and position covariance
+# ---------------------------------------------------------------------------
+
+def _homography_transformer(quality=None):
+    h = np.array([[0.05, 0.002, 400000.0], [0.001, -0.05, 6400000.0], [1e-6, 2e-6, 1.0]])
+    return GeoTransformer(h, np.linalg.inv(h), 12.0, 57.7, method="homography",
+                          proj_string="+proj=utm +zone=33 +north +datum=WGS84 +units=m", quality=quality)
+
+
+def test_jacobian_matches_finite_difference():
+    t = _homography_transformer()
+    u, v, step = 1200.0, 700.0, 0.01
+    numeric = np.column_stack([
+        (np.array(t.pixel_to_ground(u + step, v)) - np.array(t.pixel_to_ground(u - step, v))) / (2 * step),
+        (np.array(t.pixel_to_ground(u, v + step)) - np.array(t.pixel_to_ground(u, v - step))) / (2 * step),
+    ])
+    np.testing.assert_allclose(t.jacobian(u, v), numeric, rtol=1e-6)
+
+
+def test_covariance_prefers_validation_then_leave_one_out_then_training():
+    validated = _homography_transformer({
+        "validation": {"internal": {"value": 0.3}, "datum": {"shift_m": [0.5, -0.2]}},
+        "leave_one_out": {"value": 0.9}})
+    cov = validated.position_covariance(100, 100)
+    np.testing.assert_allclose(cov["image"], np.eye(2) * 0.3 ** 2 / 2)
+    np.testing.assert_allclose(cov["datum"], np.diag([0.25, 0.04]))
+    assert cov["basis"] == {"image": "measured", "datum": "derived"}
+
+    loo = _homography_transformer({"leave_one_out": {"value": 0.9}}).position_covariance()
+    np.testing.assert_allclose(loo["image"], np.eye(2) * 0.81 / 2)
+    assert loo["basis"]["datum"] == "assumed" and loo["source"]["datum"] == "same as image"
+
+    old = _homography_transformer({"reprojection_error": {"rmse_meters": 0.4}}).position_covariance()
+    np.testing.assert_allclose(old["image"], np.eye(2) * 0.8 ** 2 / 2)
+    assert old["basis"]["image"] == "assumed"
+
+
+def test_covariance_unknown_without_quality_information():
+    cov = _homography_transformer().position_covariance()
+    assert cov["image"] is None and cov["datum"] is None and cov["basis"]["image"] == "unknown"
+
+
+def test_quality_keys_are_loaded_from_file(tmp_path):
+    t = _homography_transformer()
+    path = tmp_path / "georef.json"
+    save_georef(t, path)
+    data = json.loads(path.read_text())
+    data["leave_one_out"] = {"value": 0.7, "unit": "m", "stat": "rms", "level": "image", "basis": "derived"}
+    path.write_text(json.dumps(data))
+    assert load_georef(path).quality["leave_one_out"]["value"] == 0.7
+
+
+def test_drone_assisted_uses_point_residuals_as_independent_check():
+    t = _homography_transformer({"transform_source": "drone_assisted", "training_residuals_m": [[3.0, 0.0], [0.0, 4.0]],
+                                 "reprojection_error": {"rmse_meters": 9.0}})
+    cov = t.position_covariance()
+    np.testing.assert_allclose(cov["image"], np.eye(2) * (12.5 / 2))  # rms^2 = (9 + 16) / 2
+    assert cov["basis"]["image"] == "measured" and cov["source"]["image"] == "control_points.residual_m"
