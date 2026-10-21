@@ -248,7 +248,8 @@ def test_unknown_transform_method_with_affine_matrix_is_rejected(tmp_path):
 
 def test_legacy_unknown_projective_georef_is_read_as_homography():
     """ORBIT <= 0.8.0 labelled GUI homography exports 'unknown'; the perspective row identifies them."""
-    example = Path(__file__).resolve().parents[2] / "examples" / "SaroRoundNew" / "VIDp_2025-10-16T134059CEST_D_ff_georef.json"
+    example_dir = Path(__file__).resolve().parents[2] / "examples" / "SaroRoundNew"
+    example = example_dir / "VIDp_2025-10-16T134059CEST_D_ff_georef.json"
     if not example.exists():
         pytest.skip("example georef not available")
     with pytest.warns(UserWarning, match="read as homography"):
