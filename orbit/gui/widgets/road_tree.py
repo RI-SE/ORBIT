@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 from orbit_core.models import LaneType, Polyline, Project, Road
 from orbit_core.utils.geometry_validator import GeometryIssue, validate_project_geometry
 
+from ..utils import apply_rich_text_delegate, entity_label
 from ..utils.message_helpers import ask_yes_no, show_info
 
 
@@ -200,6 +201,7 @@ class RoadTreeWidget(QWidget):
         # Tree widget with drag-drop support
         self.tree = DraggableTreeWidget()
         self.tree.setHeaderLabel("Roads & Polylines")
+        apply_rich_text_delegate(self.tree)
         self.tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
@@ -361,19 +363,31 @@ class RoadTreeWidget(QWidget):
 
     def create_road_item(self, road: Road) -> QTreeWidgetItem:
         """Create a tree item for a road."""
-        # Format display text with ID (shortened to 8 chars)
-        road_id_short = road.id[:8] if len(road.id) > 8 else road.id
-        text = f"{road.name} ({road_id_short})"
+        text = entity_label(road.id, road.name, kind="Road", rich=True)
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "road", "id": road.id})
 
-        # Add polylines as children
-        for polyline_id in road.polyline_ids:
-            polyline = self.project.get_polyline(polyline_id)
-            if polyline:
-                polyline_item = self.create_polyline_item(polyline, road)
-                item.addChild(polyline_item)
+        # Lane sections belong to the road, as in OpenDRIVE where laneSection
+        # is a child of road and the reference line is a sibling -- not to the
+        # centerline polyline, which can be reassigned without moving them.
+        for section in road.lane_sections:
+            item.addChild(self.create_section_item(section, road.id))
+
+        # The road's polylines, grouped so they do not compete with the lanes.
+        polylines = [
+            self.project.get_polyline(pid) for pid in road.polyline_ids
+        ]
+        polylines = [pl for pl in polylines if pl]
+        if polylines:
+            geometry_item = QTreeWidgetItem(["Geometry"])
+            geometry_item.setData(
+                0, Qt.ItemDataRole.UserRole,
+                {"type": "geometry", "road_id": road.id},
+            )
+            for polyline in polylines:
+                geometry_item.addChild(self.create_polyline_item(polyline, road))
+            item.addChild(geometry_item)
 
         # Apply warning icon if any issues exist for this road
         road_issues = self._issues_for_road(road.id)
@@ -383,13 +397,6 @@ class RoadTreeWidget(QWidget):
 
     def create_polyline_item(self, polyline: Polyline, road: Optional[Road] = None) -> QTreeWidgetItem:
         """Create a tree item for a polyline."""
-        # Find polyline number in project
-        polyline_number = None
-        for i, p in enumerate(self.project.polylines):
-            if p.id == polyline.id:
-                polyline_number = i + 1
-                break
-
         # Check if this is the centerline
         is_centerline = (road is not None and
                         road.centerline_id == polyline.id and
@@ -402,20 +409,11 @@ class RoadTreeWidget(QWidget):
             line_type_str = "Centerline" if polyline.line_type.value == "centerline" else "Boundary"
 
         # Format text with number if found
-        if polyline_number is not None:
-            text = f"Polyline {polyline_number} ({polyline.point_count()} pts) - {line_type_str}"
-        else:
-            text = f"Polyline ({polyline.point_count()} pts) - {line_type_str}"
+        text = (f"{entity_label(polyline.id, kind=line_type_str, rich=True)} "
+                f"({polyline.point_count()} pts)")
 
         item = QTreeWidgetItem([text])
         item.setData(0, Qt.ItemDataRole.UserRole, {"type": "polyline", "id": polyline.id})
-
-        # If this is the centerline, add lane sections as children
-        if is_centerline and road:
-            for section in road.lane_sections:
-                section_item = self.create_section_item(section, road.id)
-                item.addChild(section_item)
-
         return item
 
     def create_section_item(self, section, road_id: str) -> QTreeWidgetItem:
@@ -432,7 +430,9 @@ class RoadTreeWidget(QWidget):
             # Show in pixels
             range_str = f"{section.s_start:.0f} - {section.s_end:.0f} px"
 
-        text = f"Section {section.section_number} ({range_str})"
+        left_count, right_count = section.lane_counts()
+        text = (f"Section {section.section_number} ({range_str}) "
+                f"- {left_count}L/{right_count}R")
         if section.single_side:
             text += f" [{section.single_side} only]"
 
@@ -621,6 +621,9 @@ class RoadTreeWidget(QWidget):
 
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not isinstance(data, dict):
+            return
+
+        if data["type"] == "geometry":
             return
 
         menu = QMenu(self)

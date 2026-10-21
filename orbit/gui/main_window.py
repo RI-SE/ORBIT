@@ -559,6 +559,7 @@ class MainWindow(QMainWindow):
         self.elements_tree.connecting_road_selected.connect(self.on_connecting_road_selected)
         self.elements_tree.connecting_road_modified.connect(self.on_connecting_road_modified)
         self.elements_tree.junction_realign_requested.connect(self.on_junction_realign_requested)
+        self.elements_tree.connecting_road_add_requested.connect(self.on_connecting_road_add_requested)
         self.elements_tree.connecting_road_lane_selected.connect(self.on_connecting_road_lane_selected)
 
         # Roads dock with tree widget
@@ -3522,6 +3523,69 @@ class MainWindow(QMainWindow):
         """Apply lane alignment to all junctions' connecting roads."""
         self.controller.align_all_junction_crs(scale_factors)
 
+    def on_connecting_road_add_requested(self, junction_id: str):
+        """Create one connecting road in a junction, chosen by hand."""
+        from orbit_core.importers.junction_analyzer import create_connecting_road
+
+        from .dialogs.add_connecting_road_dialog import AddConnectingRoadDialog
+        from .undo_commands import AddConnectingRoadCommand
+
+        junction = self.project.get_junction(junction_id)
+        if junction is None:
+            return
+        if len(junction.connected_road_ids) < 2:
+            show_warning(
+                self,
+                "A junction needs at least two connected roads before a "
+                "connecting road can be built between them.\n\n"
+                "Add roads to it in Edit Junction first.",
+                "Not Enough Roads",
+            )
+            return
+
+        selection = AddConnectingRoadDialog.choose(junction, self.project, self)
+        if selection is None:
+            return
+        from_road_id, to_road_id, turn_type, from_lane_id, to_lane_id = selection
+
+        existing_lc_ids = {lc.id for lc in junction.lane_connections}
+        connecting_road = create_connecting_road(
+            junction,
+            from_road_id,
+            to_road_id,
+            {road.id: road for road in self.project.roads},
+            {polyline.id: polyline for polyline in self.project.polylines},
+            transformer=self._create_transformer(),
+            project=self.project,
+            turn_type=turn_type,
+            from_lane_id=from_lane_id,
+            to_lane_id=to_lane_id,
+        )
+        if connecting_road is None:
+            show_warning(
+                self,
+                "Could not work out where those roads meet the junction. "
+                "Check that both have a centerline and end near it.",
+                "Connecting Road Not Created",
+            )
+            return
+
+        new_lc_ids = [lc.id for lc in junction.lane_connections
+                      if lc.id not in existing_lc_ids]
+        self.undo_stack.push(AddConnectingRoadCommand(
+            self, junction_id, connecting_road, new_lc_ids))
+
+        scale_factors = self.get_current_scale()
+        self.image_view.add_connecting_road_graphics(connecting_road, scale_factors)
+        self.controller.align_junction_crs(junction_id, scale_factors)
+        self.image_view.update_connecting_road_graphics(connecting_road.id, scale_factors)
+        self._refresh_trees()
+        self.modified = True
+        self.statusBar().showMessage(
+            f"Added connecting road {connecting_road.id} "
+            f"({len(new_lc_ids)} movement(s))"
+        )
+
     def on_junction_realign_requested(self, junction_id: str):
         """Re-align one junction's CRs and refresh their graphics."""
         scale_factors = self.get_current_scale()
@@ -4717,6 +4781,12 @@ class MainWindow(QMainWindow):
             section_number: Section number containing the lane
             lane_id: Lane ID within the section
         """
+        road = self.project.get_road(road_id)
+        if road is not None and road.is_connecting_road:
+            # A connecting road's lanes are drawn as connecting-road graphics,
+            # so select_lane would find nothing to highlight.
+            self.highlight_connecting_road_lane(road_id, lane_id)
+            return
         # Clear connecting road selection
         self.clear_connecting_road_selection()
         # Select the lane visually in the image view

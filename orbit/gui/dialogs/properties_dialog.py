@@ -33,7 +33,7 @@ from orbit_core.models import LineType, Project, Road, RoadType
 from orbit_core.utils import format_enum_name
 from orbit_core.utils.logging_config import get_logger
 
-from ..utils import set_combo_by_data
+from ..utils import entity_label, set_combo_by_data
 from ..utils.message_helpers import ask_yes_no
 from .base_dialog import InfoIconLabel
 
@@ -62,11 +62,24 @@ class RoadPropertiesDialog(QDialog):
 
     def setup_ui(self):
         """Setup the dialog UI."""
-        road_id_short = self.road.id[:8] if len(self.road.id) > 8 else self.road.id
-        self.setWindowTitle(f"Road Properties - ID: {road_id_short}")
+        self.setWindowTitle(
+            f"Road Properties - {entity_label(self.road.id, self.road.name)}")
         self.setMinimumWidth(400)
 
-        layout = QVBoxLayout(self)
+        # The content is taller than many screens. Without a scroll area Qt
+        # compresses widgets to fit, and combo boxes were clipped to half
+        # height; scrolling keeps every row at its natural size.
+        outer_layout = QVBoxLayout(self)
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        scroll_area.setWidget(content)
+        outer_layout.addWidget(scroll_area)
 
         id_label = QLabel(f"<b>Road ID:</b> {self.road.id}")
         id_label.setWordWrap(True)
@@ -94,7 +107,8 @@ class RoadPropertiesDialog(QDialog):
         )
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
+        # Outside the scroll area so OK/Cancel stay reachable.
+        outer_layout.addWidget(button_box)
 
     def _create_basic_properties_section(self, layout):
         """Create the basic road properties group."""
@@ -195,8 +209,8 @@ class RoadPropertiesDialog(QDialog):
         self.predecessor_junction_combo.addItem("(Auto-detect)", _AUTO)
         self.predecessor_junction_combo.addItem("(None — road link only)", "__none__")
         for junction in self.project.junctions:
-            jid = junction.id[:8] + "..." if len(junction.id) > 8 else junction.id
-            self.predecessor_junction_combo.addItem(f"{junction.name} ({jid})", junction.id)
+            self.predecessor_junction_combo.addItem(
+                entity_label(junction.id, junction.name, kind="Junction"), junction.id)
         self.predecessor_junction_combo.setToolTip(
             "Auto-detect: exporter checks spatial proximity at export time.\n"
             "None: no junction link — road link below is used instead.\n"
@@ -213,7 +227,8 @@ class RoadPropertiesDialog(QDialog):
         self.predecessor_combo.addItem("(No predecessor road)", None)
         for other_road in self.project.roads:
             if other_road.id != self.road.id:
-                display_text = f"{other_road.name} (ID: {other_road.id[:8]}...)"
+                display_text = entity_label(
+                    other_road.id, other_road.name, kind="Road")
                 self.predecessor_combo.addItem(display_text, other_road.id)
         pred_layout.addRow("Road:", self.predecessor_combo)
 
@@ -233,8 +248,8 @@ class RoadPropertiesDialog(QDialog):
         self.successor_junction_combo.addItem("(Auto-detect)", _AUTO)
         self.successor_junction_combo.addItem("(None — road link only)", "__none__")
         for junction in self.project.junctions:
-            jid = junction.id[:8] + "..." if len(junction.id) > 8 else junction.id
-            self.successor_junction_combo.addItem(f"{junction.name} ({jid})", junction.id)
+            self.successor_junction_combo.addItem(
+                entity_label(junction.id, junction.name, kind="Junction"), junction.id)
         self.successor_junction_combo.setToolTip(
             "Auto-detect: exporter checks spatial proximity at export time.\n"
             "None: no junction link — road link below is used instead.\n"
@@ -251,7 +266,8 @@ class RoadPropertiesDialog(QDialog):
         self.successor_combo.addItem("(No successor road)", None)
         for other_road in self.project.roads:
             if other_road.id != self.road.id:
-                display_text = f"{other_road.name} (ID: {other_road.id[:8]}...)"
+                display_text = entity_label(
+                    other_road.id, other_road.name, kind="Road")
                 self.successor_combo.addItem(display_text, other_road.id)
         succ_layout.addRow("Road:", self.successor_combo)
 
@@ -298,7 +314,25 @@ class RoadPropertiesDialog(QDialog):
         self.right_lanes_spin.setPrefix("Right: ")
         lane_count_layout.addWidget(self.right_lanes_spin)
         lane_count_layout.addStretch()
-        lane_layout.addRow("Number of Lanes:", lane_count_layout)
+        self._lane_count_row = QWidget()
+        self._lane_count_row.setLayout(lane_count_layout)
+        lane_layout.addRow("Generate Lanes:", self._lane_count_row)
+
+        self.generate_hint_label = QLabel(
+            "<i>Lanes are generated once from these counts. Afterwards, add and "
+            "remove lanes per section from the road tree.</i>"
+        )
+        self.generate_hint_label.setWordWrap(True)
+        lane_layout.addRow("", self.generate_hint_label)
+
+        # Generation is a road-creation step. Once a road has lanes, editing
+        # them belongs in the tree, so these controls disappear rather than
+        # offering to rebuild -- and there is nothing left to destroy.
+        self._can_generate_lanes = not any(
+            lane.id != 0 for sec in self.road.lane_sections for lane in sec.lanes
+        )
+        self._lane_count_row.setVisible(self._can_generate_lanes)
+        self.generate_hint_label.setVisible(self._can_generate_lanes)
 
         self.lane_width_spin = QDoubleSpinBox()
         self.lane_width_spin.setRange(1.0, 10.0)
@@ -307,6 +341,14 @@ class RoadPropertiesDialog(QDialog):
         self.lane_width_spin.setSuffix(" m")
         self.lane_width_spin.setToolTip("Default lane width in meters")
         lane_layout.addRow("Lane Width:", self.lane_width_spin)
+
+        # Values the dialog opened with; save_data regenerates only when the
+        # user moves away from these. Overwritten by load_data.
+        self._loaded_lane_config = (
+            self.left_lanes_spin.value(),
+            self.right_lanes_spin.value(),
+            self.lane_width_spin.value(),
+        )
 
         self.measured_width_label = QLabel("<i>Calculating from boundaries...</i>")
         self.measured_width_label.setWordWrap(True)
@@ -319,11 +361,9 @@ class RoadPropertiesDialog(QDialog):
         lane_layout.addRow("", self.apply_measured_button)
 
         self.total_lanes_label = QLabel()
+        self.total_lanes_label.setWordWrap(True)
         self.update_total_lanes()
-        lane_layout.addRow("Total Lanes:", self.total_lanes_label)
-
-        self.left_lanes_spin.valueChanged.connect(self.update_total_lanes)
-        self.right_lanes_spin.valueChanged.connect(self.update_total_lanes)
+        lane_layout.addRow("Current Lanes:", self.total_lanes_label)
 
         lane_group.setLayout(lane_layout)
         layout.addWidget(lane_group)
@@ -662,10 +702,18 @@ class RoadPropertiesDialog(QDialog):
             self._update_pred_junction_note()
             self._update_succ_junction_note()
 
-        # Set lane info
-        self.left_lanes_spin.setValue(self.road.lane_info.left_count)
-        self.right_lanes_spin.setValue(self.road.lane_info.right_count)
+        # Seed the generation spinners from the lanes the road actually has,
+        # so leaving them alone never regenerates. lane_info is only the
+        # template generate_lanes() builds from and drifts from reality.
+        current_left, current_right = self.road.lane_counts()
+        self.left_lanes_spin.setValue(current_left)
+        self.right_lanes_spin.setValue(current_right)
         self.lane_width_spin.setValue(self.road.lane_info.lane_width)
+        self._loaded_lane_config = (
+            self.left_lanes_spin.value(),
+            self.right_lanes_spin.value(),
+            self.lane_width_spin.value(),
+        )
 
         # Load profile tables
         self._load_profile_table(self.elevation_table, self.road.elevation_profile)
@@ -760,9 +808,14 @@ class RoadPropertiesDialog(QDialog):
             self.project.enforce_road_link_coordinates(self.road.id)
 
         # Lane info
-        old_left_count = self.road.lane_info.left_count
-        old_right_count = self.road.lane_info.right_count
-        old_lane_width = self.road.lane_info.lane_width
+        old_left_count, old_right_count, old_lane_width = self._loaded_lane_config
+
+        if not self._can_generate_lanes:
+            # Counts are not editable for a road that already has lanes; only
+            # the default width can change, and that must not rebuild anything.
+            self.road.lane_info.lane_width = self.lane_width_spin.value()
+            self._save_profile_tables()
+            return
 
         new_left_count = self.left_lanes_spin.value()
         new_right_count = self.right_lanes_spin.value()
@@ -783,22 +836,40 @@ class RoadPropertiesDialog(QDialog):
                 self.road.lane_info.right_count = old_right_count
                 self.road.lane_info.lane_width = old_lane_width
 
-        # Save profile tables
+        self._save_profile_tables()
+
+    def _save_profile_tables(self):
+        """Write the elevation/superelevation/offset/CRG tables back to the road."""
         self.road.elevation_profile = self._get_profile_from_table(self.elevation_table)
         self.road.superelevation_profile = self._get_profile_from_table(self.superelevation_table)
         self.road.lane_offset = self._get_profile_from_table(self.lane_offset_table)
         self.road.surface_crg = self._get_crg_from_table()
 
     def _confirm_lane_regeneration(self) -> bool:
-        """Ask before replacing custom lane sections with one uniform section."""
-        num_sections = len(self.road.lane_sections)
-        if num_sections <= 1:
+        """Ask before replacing existing lanes with one uniform section.
+
+        A single section is just as much hand-built work as several, so the
+        prompt is driven by whether there are lanes to lose, not by how many
+        sections hold them.
+        """
+        sections = self.road.lane_sections
+        lane_count = sum(
+            len([lane for lane in sec.lanes if lane.id != 0]) for sec in sections
+        )
+        if lane_count == 0:
             return True
+        detail = "\n".join(
+            f"  Section {sec.section_number}: {sec.lane_counts()[0]} left, "
+            f"{sec.lane_counts()[1]} right"
+            for sec in sections
+        )
         return ask_yes_no(
             self,
-            f"Changing the lane configuration will regenerate all lanes and "
-            f"replace this road's {num_sections} lane sections with a single "
-            f"uniform section.\n\nContinue?",
+            f"Changing the lane configuration regenerates all lanes and "
+            f"replaces this road's current lanes with a single uniform "
+            f"section.\n\nThis discards:\n{detail}\n\n"
+            f"Per-lane widths, types, road marks and links are lost. "
+            f"Continue?",
             "Replace Lane Sections?"
         )
 
@@ -837,10 +908,22 @@ class RoadPropertiesDialog(QDialog):
                 "background-color: #d4edda; border-radius: 3px; }"
             )
 
+    def _current_lanes_text(self) -> str:
+        """Per-section lane counts as they are, not as lane_info claims."""
+        if not self.road.lane_sections:
+            return "<i>No lanes yet</i>"
+        parts = []
+        for section in self.road.lane_sections:
+            left, right = section.lane_counts()
+            parts.append(
+                f"Section {section.section_number}: "
+                f"<b>{left}</b> left, <b>{right}</b> right"
+            )
+        return "<br>".join(parts)
+
     def update_total_lanes(self):
-        """Update the total lanes display."""
-        total = self.left_lanes_spin.value() + self.right_lanes_spin.value()
-        self.total_lanes_label.setText(f"{total} lanes")
+        """Refresh the read-out of the lanes the road currently has."""
+        self.total_lanes_label.setText(self._current_lanes_text())
 
     def calculate_suggested_widths(self):
         """Calculate suggested lane widths from boundaries."""

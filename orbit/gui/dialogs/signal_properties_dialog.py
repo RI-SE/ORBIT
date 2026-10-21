@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, Q
 from orbit_core.models.signal import Signal, SignalType, SpeedUnit
 from orbit_core.utils.enum_formatting import format_enum_name
 
-from ..utils import format_with_metric, get_scale_factors
+from ..utils import entity_label, format_with_metric, get_scale_factors
 from .base_dialog import BaseDialog
 
 
@@ -120,20 +120,21 @@ class SignalPropertiesDialog(BaseDialog):
         self.road_combo = QComboBox()
         self.road_combo.addItem("(None)", None)
         for road in self.project.roads:
-            road_id_short = road.id[:8]
-            label = f"{road.name} ({road_id_short})" if road.name else f"Road {road_id_short}"
-            self.road_combo.addItem(label, road.id)
+            self.road_combo.addItem(
+                entity_label(road.id, road.name, kind="Road"), road.id)
         for junction in self.project.junctions:
             for cr_id in junction.connecting_road_ids:
                 cr = self.project.get_road(cr_id)
                 if not cr:
                     continue
-                cr_id_short = cr.id[:8]
                 pred = self.project.get_road(cr.predecessor_id)
                 succ = self.project.get_road(cr.successor_id)
-                pred_name = pred.name if pred and pred.name else f"Road {cr.predecessor_id[:6]}"
-                succ_name = succ.name if succ and succ.name else f"Road {cr.successor_id[:6]}"
-                label = f"CR: {pred_name} → {succ_name} ({cr_id_short})"
+                pred_name = entity_label(
+                    cr.predecessor_id, pred.name if pred else None, kind="Road")
+                succ_name = entity_label(
+                    cr.successor_id, succ.name if succ else None, kind="Road")
+                label = (f"{entity_label(cr.id, kind='Connecting road')}: "
+                         f"{pred_name} → {succ_name}")
                 self.road_combo.addItem(label, cr.id)
         self.road_combo.currentIndexChanged.connect(self.on_road_changed)
         road_layout.addRow("Assigned Road:", self.road_combo)

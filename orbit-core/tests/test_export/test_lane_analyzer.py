@@ -138,6 +138,8 @@ class TestAnalyzeRoad:
         road.lane_info.lane_width = 3.5
         road.lane_info.left_count = 1
         road.lane_info.right_count = 1
+        # Boundary validation compares against the lanes actually present.
+        road.lane_counts.return_value = (1, 1)
         return road
 
     def test_no_centerline(self, mock_project, mock_road):
@@ -400,8 +402,8 @@ class TestValidateBoundaryAssignment:
     def mock_road(self):
         """Create mock road."""
         road = Mock()
-        road.lane_info.left_count = 1
-        road.lane_info.right_count = 1
+        # Expected boundary counts come from the lanes actually present.
+        road.lane_counts.return_value = (1, 1)
         return road
 
     def test_no_warning_when_correct(self, analyzer, mock_road):
@@ -410,8 +412,7 @@ class TestValidateBoundaryAssignment:
         # since std_offset > (negative * 0.3) is always true for positive std_offset.
         # Only positive avg_offset boundaries work correctly with this check.
         # Using only positive avg_offset boundaries for this test.
-        mock_road.lane_info.left_count = 2
-        mock_road.lane_info.right_count = 0
+        mock_road.lane_counts.return_value = (2, 0)
 
         boundary_infos = [
             BoundaryInfo('p1', Mock(), avg_offset=3.5, std_offset=0.5),   # 0.5/3.5 = 14% < 30%
@@ -529,6 +530,8 @@ class TestSuggestLaneWidths:
         road.lane_info.lane_width = 3.5
         road.lane_info.left_count = 1
         road.lane_info.right_count = 1
+        # Boundary validation compares against the lanes actually present.
+        road.lane_counts.return_value = (1, 1)
         return road
 
     def test_suggests_widths(self, mock_project, mock_road):
@@ -731,6 +734,8 @@ class TestAnalyzeRoadVerbose:
         road.lane_info.lane_width = 3.5
         road.lane_info.left_count = 1
         road.lane_info.right_count = 1
+        # Boundary validation compares against the lanes actually present.
+        road.lane_counts.return_value = (1, 1)
         return road
 
     def test_verbose_mode(self, mock_project, mock_road):

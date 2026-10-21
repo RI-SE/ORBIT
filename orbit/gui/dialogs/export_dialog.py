@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from orbit_core.export import CoordinateTransformer, create_transformer, export_to_opendrive, validate_opendrive_file
+from orbit_core.export.junction_validator import validate_junctions
 from orbit_core.export.reference_validator import validate_references
 from orbit_core.models import Project
 from orbit_core.models.object import ObjectType
@@ -562,6 +563,24 @@ class ExportDialog(BaseDialog):
                 else:
                     ref_msg = "\n\nReference check: Passed"
 
+                # Check junction consistency (schema-valid but wrong wiring)
+                junction_warnings = validate_junctions(self.project)
+                if junction_warnings:
+                    logger.warning("Junction Warnings (%d):", len(junction_warnings))
+                    for w in junction_warnings:
+                        logger.warning("  %s", w)
+                    junction_text = "\n".join(junction_warnings[:10])
+                    if len(junction_warnings) > 10:
+                        junction_text += f"\n... and {len(junction_warnings) - 10} more"
+                    show_warning(
+                        self,
+                        f"Junction connections are inconsistent:\n\n{junction_text}",
+                        "Junction Warnings"
+                    )
+                    junction_msg = f"\n\nJunction check: {len(junction_warnings)} warning(s)"
+                else:
+                    junction_msg = "\n\nJunction check: Passed"
+
                 # Validate against schema if path was provided
                 validation_msg = ""
                 if self.xodr_schema_path:
@@ -589,7 +608,9 @@ class ExportDialog(BaseDialog):
 
                 show_info(self, f"OpenDrive file exported successfully to:\n{self.output_path}\n\n"
                     f"Roads: {len(self.project.roads)}\n"
-                    f"Junctions: {len(self.project.junctions)}{ref_msg}{validation_msg}", "Export Successful")
+                    f"Junctions: {len(self.project.junctions)}"
+                    f"{ref_msg}{junction_msg}{validation_msg}",
+                    "Export Successful")
                 self.accept()
             else:
                 show_error(self, "Failed to export OpenDrive file. Check console for errors.", "Export Failed")

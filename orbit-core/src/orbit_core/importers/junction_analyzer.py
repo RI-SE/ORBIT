@@ -790,6 +790,89 @@ def _create_unidirectional_cr(junction, pattern, endpoint_lookup,
     )
     _add_cr_to_project_and_junction(connecting_road, junction, project)
     _add_lane_connections(junction, connecting_road.id, from_endpoint, to_endpoint, pattern)
+    return connecting_road
+
+
+def create_connecting_road(junction: Junction,
+                           from_road_id: str,
+                           to_road_id: str,
+                           roads_dict: Dict[str, Road],
+                           polylines_dict: Dict[str, Polyline],
+                           transformer=None,
+                           project=None,
+                           turn_type: Optional[str] = None,
+                           priority: int = 0,
+                           from_lane_id: Optional[int] = None,
+                           to_lane_id: Optional[int] = None) -> Optional[Road]:
+    """
+    Build one connecting road between two roads of a junction.
+
+    Same construction as the analyzer's automatic pass -- geometry, paramPoly3
+    coefficients, contacts, lane counts and lane connections -- but for a road
+    pair chosen by hand rather than detected from geometry. Returns the new
+    connecting road, or None if either road's endpoint cannot be resolved.
+
+    from_lane_id/to_lane_id name the lanes the movement joins. Without them the
+    lanes are derived the way the automatic pass does, which pairs lanes by
+    position and can land on a median.
+    """
+    analysis = analyze_junction_geometry(
+        junction, roads_dict, polylines_dict, skip_distance_check=True
+    )
+    endpoint_lookup = {ep.road_id: ep for ep in analysis.get('endpoints', [])}
+    from_endpoint = endpoint_lookup.get(from_road_id)
+    to_endpoint = endpoint_lookup.get(to_road_id)
+    if not from_endpoint or not to_endpoint:
+        logger.warning(
+            "Cannot create connecting road %s -> %s: endpoint not resolved",
+            from_road_id, to_road_id,
+        )
+        return None
+
+    if turn_type is None:
+        turn_angle = normalize_angle(to_endpoint.heading - from_endpoint.heading)
+        turn_type = classify_turn_type(turn_angle)
+    else:
+        turn_angle = 0.0
+
+    pattern = ConnectionPattern(
+        from_road_id=from_road_id,
+        to_road_id=to_road_id,
+        turn_type=turn_type,
+        turn_angle=turn_angle,
+        from_endpoint=from_endpoint,
+        to_endpoint=to_endpoint,
+        priority=priority,
+    )
+    if from_lane_id is not None and to_lane_id is not None:
+        existing_ids = {lc.id for lc in junction.lane_connections}
+        connecting_road = _create_unidirectional_cr(
+            junction, pattern, endpoint_lookup, transformer, project
+        )
+        if connecting_road is not None:
+            # Replace the position-derived movements with the chosen pair.
+            junction.lane_connections = [
+                lc for lc in junction.lane_connections if lc.id in existing_ids
+            ]
+            junction.add_lane_connection(LaneConnection(
+                from_road_id=from_road_id,
+                from_lane_id=from_lane_id,
+                to_road_id=to_road_id,
+                to_lane_id=to_lane_id,
+                connecting_road_id=connecting_road.id,
+                turn_type=turn_type,
+                priority=priority,
+            ))
+    else:
+        connecting_road = _create_unidirectional_cr(
+            junction, pattern, endpoint_lookup, transformer, project
+        )
+    if connecting_road is not None and project is not None:
+        # The movements are created without a connecting-road lane; fill it in
+        # now so a hand-made connecting road is complete on the spot rather
+        # than on the next project load.
+        project.link_lane_connections_to_connecting_roads()
+    return connecting_road
 
 
 def _compute_max_curvature(points: List[Tuple[float, float]]) -> float:

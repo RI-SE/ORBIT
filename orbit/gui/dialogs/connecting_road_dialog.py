@@ -22,6 +22,7 @@ from orbit_core.models.road import Road, RoadType
 from orbit_core.utils import format_enum_name
 from orbit_core.utils.geometry import generate_simple_connection_path
 
+from ..utils import entity_label
 from .base_dialog import BaseDialog
 
 
@@ -49,8 +50,7 @@ class ConnectingRoadDialog(BaseDialog):
         self.predecessor_road_combo = QComboBox()
         self.predecessor_road_combo.addItem("(None)", None)
         for road in non_connecting_roads:
-            id_short = road.id[:8]
-            label = f"{road.name} ({id_short})" if road.name else f"Road {id_short}"
+            label = entity_label(road.id, road.name, kind="Road")
             self.predecessor_road_combo.addItem(label, road.id)
         idx = self.predecessor_road_combo.findData(self.connecting_road.predecessor_id)
         if idx >= 0:
@@ -60,8 +60,7 @@ class ConnectingRoadDialog(BaseDialog):
         self.successor_road_combo = QComboBox()
         self.successor_road_combo.addItem("(None)", None)
         for road in non_connecting_roads:
-            id_short = road.id[:8]
-            label = f"{road.name} ({id_short})" if road.name else f"Road {id_short}"
+            label = entity_label(road.id, road.name, kind="Road")
             self.successor_road_combo.addItem(label, road.id)
         idx = self.successor_road_combo.findData(self.connecting_road.successor_id)
         if idx >= 0:
@@ -543,15 +542,12 @@ class ConnectingRoadDialog(BaseDialog):
         new_left = self.lane_count_left_spin.value()
         new_right = self.lane_count_right_spin.value()
 
-        # Update lane counts
-        self.connecting_road.cr_lane_count_left = new_left
-        self.connecting_road.cr_lane_count_right = new_right
-
-        # Regenerate lanes if counts changed
+        # Update lane counts, keeping the widths of the lanes that survive
         if old_left != new_left or old_right != new_right:
-            # Clear lane sections to force reinitialization with new counts
-            self.connecting_road.lane_sections = []
-            self.connecting_road.ensure_cr_lanes_initialized()
+            self.connecting_road.resize_cr_lanes(new_left, new_right)
+        else:
+            self.connecting_road.cr_lane_count_left = new_left
+            self.connecting_road.cr_lane_count_right = new_right
 
         # Save contact points
         self.connecting_road.predecessor_contact = self.predecessor_contact_combo.currentData()

@@ -8,6 +8,7 @@ Tests road creation, polyline management, lane sections, and serialization.
 import pytest
 
 from orbit_core.models import Lane, LaneInfo, LaneSection, LaneType, Road, RoadType
+from orbit_core.models.polyline import RoadMarkType
 
 
 class TestRoadCreation:
@@ -1143,3 +1144,100 @@ class TestSectionLaneEditing:
         assert s2.get_lane(1).no_successor
         # Through lane back at ID 1, still linked to S2.2
         assert s3.get_lane(1).predecessor_id == 2
+
+
+class TestResizeCrLanes:
+    """Changing a connecting road's lane counts keeps the surviving lanes."""
+
+    @staticmethod
+    def _cr():
+        cr = Road(id="cr1", name="CR", junction_id="j1")
+        cr.cr_lane_count_left = 2
+        cr.cr_lane_count_right = 1
+        cr.ensure_cr_lanes_initialized()
+        cr.get_cr_lane(1).width = 5.0
+        cr.get_cr_lane(1).width_end = 7.0
+        cr.get_cr_lane(-1).width = 4.0
+        return cr
+
+    def test_growing_keeps_existing_widths(self):
+        cr = self._cr()
+        cr.resize_cr_lanes(3, 1)
+        assert cr.get_cr_lane(1).width == 5.0
+        assert cr.get_cr_lane(1).width_end == 7.0
+        assert cr.get_cr_lane(-1).width == 4.0
+        assert cr.get_cr_lane(3) is not None
+
+    def test_shrinking_drops_outer_lanes_only(self):
+        cr = self._cr()
+        cr.resize_cr_lanes(1, 1)
+        assert cr.get_cr_lane(1).width == 5.0
+        assert cr.get_cr_lane(2) is None
+        assert cr.cr_lane_count_left == 1
+
+    def test_outermost_lane_is_solid(self):
+        cr = self._cr()
+        cr.resize_cr_lanes(1, 1)
+        assert cr.get_cr_lane(1).road_mark_type == RoadMarkType.SOLID
+
+    def test_center_lane_kept(self):
+        cr = self._cr()
+        cr.resize_cr_lanes(2, 2)
+        lane_ids = [lane.id for lane in cr.lane_sections[0].lanes]
+        assert lane_ids.count(0) == 1
+        assert sorted(lane_ids) == [-2, -1, 0, 1, 2]
+
+    def test_uninitialised_cr_gets_lanes(self):
+        cr = Road(id="cr2", name="CR", junction_id="j1")
+        cr.resize_cr_lanes(1, 1)
+        assert cr.get_cr_lane(1) is not None
+        assert cr.get_cr_lane(-1) is not None
+
+
+class TestDerivedLaneCounts:
+    """Lane counts come from the lanes present, never from the template."""
+
+    @staticmethod
+    def _road_with(lane_ids, section_number=1):
+        section = LaneSection(
+            section_number=section_number, s_start=0.0, s_end=100.0,
+            lanes=[Lane(id=i) for i in lane_ids],
+        )
+        road = Road(id="r", name="R")
+        road.lane_sections = [section]
+        return road
+
+    def test_counts_actual_lanes_not_lane_info(self):
+        """The SaroT case: lane_info says 1/1 while the section holds 4 and 2."""
+        road = self._road_with([-2, -1, 0, 1, 2, 3, 4])
+        assert road.lane_info.left_count == 1  # untouched template
+        assert road.lane_counts() == (4, 2)
+        assert road.total_lanes() == 6
+
+    def test_center_lane_counts_for_neither_side(self):
+        assert self._road_with([0]).lane_counts() == (0, 0)
+
+    def test_falls_back_to_template_without_lanes(self):
+        road = Road(id="r", name="R")
+        road.lane_info.left_count = 3
+        road.lane_info.right_count = 2
+        assert road.lane_counts() == (3, 2)
+
+    def test_counts_are_per_section(self):
+        road = self._road_with([-1, 0, 1, 2])
+        road.lane_sections.append(
+            LaneSection(section_number=2, s_start=100.0, s_end=200.0,
+                        lanes=[Lane(id=i) for i in (-1, 0, 1)])
+        )
+        assert road.lane_counts(1) == (2, 1)
+        assert road.lane_counts(2) == (1, 1)
+        assert road.lane_counts() == (2, 1)  # first section by default
+
+    def test_unknown_section_falls_back_to_template(self):
+        road = self._road_with([-1, 0, 1])
+        assert road.lane_counts(99) == (1, 1)
+
+    def test_counts_follow_lane_removal(self):
+        road = self._road_with([-1, 0, 1, 2])
+        road.remove_lane_in_section(1, 2)
+        assert road.lane_counts() == (1, 1)

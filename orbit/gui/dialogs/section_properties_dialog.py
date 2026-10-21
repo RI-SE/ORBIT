@@ -180,9 +180,12 @@ class SectionPropertiesDialog(BaseDialog):
             percentage_label = QLabel(f"{percentage:.1f}% of total road")
             info_layout.addRow("Coverage:", percentage_label)
 
-        # Number of lanes (read-only)
-        num_lanes = len([lane for lane in self.section.lanes if lane.id != 0])  # Exclude center lane
-        lanes_label = QLabel(f"{num_lanes} lanes")
+        # Number of lanes (read-only), split by side as the road model has them
+        left_count, right_count = self.section.lane_counts()
+        lanes_label = QLabel(
+            f"{left_count + right_count} lanes "
+            f"(<b>{left_count}</b> left, <b>{right_count}</b> right)"
+        )
         info_layout.addRow("Lanes in Section:", lanes_label)
 
         # OpenDRIVE properties group

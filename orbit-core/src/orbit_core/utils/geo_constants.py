@@ -3,8 +3,8 @@ Shared geodetic constants.
 
 Single source for the spherical-Earth approximation used across the
 codebase so scale computations agree with latlon_to_meters (M4 in
-development.md). Stdlib-only on purpose — importable from modules that
-must not pull in numpy/pyproj.
+dev_plans/development.md, not tracked in the repo). Stdlib-only on purpose —
+importable from modules that must not pull in numpy/pyproj.
 """
 
 import math

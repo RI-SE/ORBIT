@@ -23,7 +23,7 @@ from orbit.gui.constants import DEFAULT_SCALE_M_PER_PX
 from orbit_core.models import Junction, LaneConnection, Project
 from orbit_core.models.road import Road
 
-from ..utils import ask_yes_no, show_error, show_info, show_warning
+from ..utils import ask_yes_no, entity_label, show_error, show_info, show_warning
 from .base_dialog import BaseDialog, InfoIconLabel
 
 # Valid turn types for the dropdown
@@ -52,6 +52,12 @@ class LaneConnectionDialog(BaseDialog):
         self._original_lane_connections = [
             LaneConnection.from_dict(lc.to_dict()) for lc in junction.lane_connections
         ]
+        # Connecting roads that carried a movement when this dialog opened; only
+        # these may be deleted as orphans on save.
+        self._initially_referenced_cr_ids = {
+            lc.connecting_road_id for lc in junction.lane_connections
+            if lc.connecting_road_id
+        }
         self.setup_ui()
         self.load_properties()
 
@@ -214,9 +220,7 @@ class LaneConnectionDialog(BaseDialog):
         for road_id in self.junction.connected_road_ids:
             road = self.project.get_road(road_id)
             if road:
-                road_id_short = road.id[:8]
-                name = f"{road.name} ({road_id_short})" if road.name else f"Road {road_id_short}"
-                combo.addItem(name, road_id)
+                combo.addItem(entity_label(road.id, road.name, kind="Road"), road_id)
 
     def _populate_lane_combo(self, combo: QComboBox, road_id: str):
         """Populate a combo box with lanes from a road."""
@@ -267,19 +271,14 @@ class LaneConnectionDialog(BaseDialog):
             cr = self.project.get_road(cr_id)
             if not cr:
                 continue
-            # Build readable label: [id_short] PredName -> SuccName
-            cr_id_short = cr.id[:8] if len(cr.id) > 8 else cr.id
-            pred_name = "?"
-            succ_name = "?"
             pred_road = self.project.get_road(cr.predecessor_id)
-            if pred_road:
-                pred_id_short = pred_road.id[:8]
-                pred_name = pred_road.name if pred_road.name else f"Road {pred_id_short}"
             succ_road = self.project.get_road(cr.successor_id)
-            if succ_road:
-                succ_id_short = succ_road.id[:8]
-                succ_name = succ_road.name if succ_road.name else f"Road {succ_id_short}"
-            label = f"[{cr_id_short}] {pred_name} \u2192 {succ_name}"
+            pred_name = (entity_label(cr.predecessor_id, pred_road.name, kind="Road")
+                         if pred_road else "?")
+            succ_name = (entity_label(cr.successor_id, succ_road.name, kind="Road")
+                         if succ_road else "?")
+            label = (f"{entity_label(cr.id, kind='Connecting road')}: "
+                     f"{pred_name} \u2192 {succ_name}")
             combo.addItem(label, cr.id)
 
     def _populate_connecting_lane_combo(self, combo: QComboBox, connecting_road_id: str | None):
@@ -612,7 +611,10 @@ class LaneConnectionDialog(BaseDialog):
         # Adjust connecting road paths for changed lane targets
         self._adjust_connecting_road_paths()
 
-        # Clean up orphaned connecting roads (roads no longer referenced by any lane connection)
+        # Clean up connecting roads this dialog orphaned by removing the last
+        # movement that used them. Ones that were already unreferenced when the
+        # dialog opened are left alone -- they may have just been created by
+        # hand and not wired up yet, and deleting them here would lose work.
         referenced_conn_road_ids = {
             conn.connecting_road_id for conn in self.connections
             if conn.connecting_road_id
@@ -620,6 +622,7 @@ class LaneConnectionDialog(BaseDialog):
         orphaned_ids = [
             cr_id for cr_id in self.junction.connecting_road_ids
             if cr_id not in referenced_conn_road_ids
+            and cr_id in self._initially_referenced_cr_ids
         ]
         for cr_id in orphaned_ids:
             self.junction.remove_connecting_road(cr_id)

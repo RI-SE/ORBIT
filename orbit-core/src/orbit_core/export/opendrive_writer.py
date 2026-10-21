@@ -18,6 +18,7 @@ from orbit_core.utils.geo_sync import polyline_to_metric_points, refresh_stale_g
 from orbit_core.utils.logging_config import get_logger
 
 from .curve_fitting import CurveFitter, GeometryElement, GeometryType
+from .junction_validator import validate_junctions
 from .lane_analyzer import LaneAnalyzer
 from .lane_builder import LaneBuilder
 from .object_builder import ObjectBuilder
@@ -149,6 +150,10 @@ class OpenDriveWriter:
 
         # Reference validation warnings (populated during write)
         self.reference_warnings: List[str] = []
+        #: Junction consistency complaints from the last write -- see
+        #: junction_validator. Like reference_warnings these describe the project
+        #: model, not the written file.
+        self.junction_warnings: List[str] = []
         #: Internal ids of roads that actually reached the file. A road can be dropped
         #: during writing (no centerline, too few points, curve fitting yielding nothing)
         #: while still existing in the project, so this is the only reliable answer to
@@ -185,6 +190,12 @@ class OpenDriveWriter:
             self.reference_warnings = validate_references(self.project)
             for warning in self.reference_warnings:
                 logger.warning(f"Reference check: {warning}")
+
+            # Junction consistency: unconnected lanes and width steps are
+            # schema-valid, so nothing downstream would report them.
+            self.junction_warnings = validate_junctions(self.project)
+            for warning in self.junction_warnings:
+                logger.warning(f"Junction check: {warning}")
 
             root = self._create_opendrive_root()
 
@@ -1198,12 +1209,7 @@ class OpenDriveWriter:
                 pred_target_lane_id = primary_conn.to_lane_id
                 succ_target_lane_id = primary_conn.from_lane_id
 
-        # Get CR lane width at each endpoint
         connecting_road.ensure_cr_lanes_initialized()
-        cr_lane_obj = connecting_road.get_cr_lane(cr_lane_id)
-        cr_width_start = cr_lane_obj.width if cr_lane_obj else connecting_road.lane_info.lane_width
-        cr_width_end = (cr_lane_obj.get_width_at_end() if cr_lane_obj
-                        else connecting_road.lane_info.lane_width)
 
         # Snap start to predecessor road endpoint
         pred_road = self.road_map.get(connecting_road.predecessor_id)
@@ -1216,8 +1222,8 @@ class OpenDriveWriter:
                     snap_pt = self._apply_lane_offset_to_snap_point(
                         snap_pt, pred_road, pred_road.centerline_id,
                         connecting_road.predecessor_contact,
-                        pred_target_lane_id, cr_lane_id,
-                        cr_width_start,
+                        pred_target_lane_id, connecting_road, cr_lane_id,
+                        "start",
                         path_meters, is_start=True,
                     )
                 path_meters[0] = snap_pt
@@ -1233,8 +1239,8 @@ class OpenDriveWriter:
                     snap_pt = self._apply_lane_offset_to_snap_point(
                         snap_pt, succ_road, succ_road.centerline_id,
                         connecting_road.successor_contact,
-                        succ_target_lane_id, cr_lane_id,
-                        cr_width_end,
+                        succ_target_lane_id, connecting_road, cr_lane_id,
+                        "end",
                         path_meters, is_start=False,
                     )
                 path_meters[-1] = snap_pt
@@ -1243,7 +1249,7 @@ class OpenDriveWriter:
 
     def _apply_lane_offset_to_snap_point(
         self, snap_pt, road, centerline_id, contact_point,
-        target_lane_id, cr_lane_id, cr_lane_width,
+        target_lane_id, connecting_road, cr_lane_id, cr_contact,
         path_meters=None, is_start=True,
     ):
         """Offset a snap point perpendicular to road heading for lane alignment.
@@ -1252,14 +1258,10 @@ class OpenDriveWriter:
         the CR lane offset is negated so the exported geometry stays on the
         correct side.
         """
-        from orbit_core.utils.connecting_road_alignment import (
-            _get_road_lane_width,
-            _lane_center_offset,
-        )
+        from orbit_core.utils.connecting_road_alignment import lane_center_offset
 
-        road_lane_width = _get_road_lane_width(road, contact_point)
-        road_lane_off = _lane_center_offset(target_lane_id, road_lane_width)
-        cr_lane_off = _lane_center_offset(cr_lane_id, cr_lane_width)
+        road_lane_off = lane_center_offset(road, target_lane_id, contact_point)
+        cr_lane_off = lane_center_offset(connecting_road, cr_lane_id, cr_contact)
 
         # Heading-sign correction: check if CR and road perpendiculars are
         # anti-aligned (headings ~180° apart) and negate CR offset if so.
