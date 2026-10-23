@@ -61,3 +61,23 @@ The fits use `orbit_core`'s `HomographyTransformer`, so the numbers match ORBIT'
   position and height above ground are used. The test needs altitudes for all training points.
 - **Projection.** Files without `proj_string` (format 1.0) are analysed in UTM. That is computed from the points
   and does not change the results.
+
+## attach_altitudes.py
+
+Fills in surveyed altitudes, RTK SDs and point type from a survey CSV (e.g. `*_coords_visualmarkers.csv`) on the
+control points of an existing ORBIT project, matched by point name. Projects made before ORBIT stored altitudes have
+none, and the CSV import re-places points by clicking; with altitudes, the georef export fits the camera model over
+terrain and the OpenDRIVE export can write road elevation.
+
+```bash
+uv run python tools/attach_altitudes.py project.orbit survey.csv            # report only
+uv run python tools/attach_altitudes.py project.orbit survey.csv --write    # update; backup project.orbit.bak
+```
+
+- Names match case-insensitively, ignoring surrounding spaces. A match whose surveyed position is more than
+  `--max-distance` (default 1 m) from the point's coordinates is rejected (wrong CSV or reused name); names repeated
+  in the CSV are skipped.
+- Fields that are already set are kept unless `--overwrite`. Only the control points' survey fields change; the rest
+  of the `.orbit` file is written back unchanged.
+- Re-export the georeference afterwards (and the OpenDRIVE map with "Road elevation from control-point altitudes").
+

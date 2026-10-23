@@ -35,7 +35,7 @@ Changelog = "https://github.com/RI-SE/ORBIT/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 provenance = [
-    "dataprov>=3.0",
+    "dataprov>=3.4.0",
 ]
 dev = [
     "pytest>=7.4.0",

@@ -17,10 +17,18 @@ All notable changes to this project are documented in this file.
   (`pixel_to_ground_3d`, `ground_to_pixel_3d`, `terrain_height`, `fit_camera_model`, `georef_from_data`); the
   homography is unchanged. On campaign georefs it lowers leave-one-out error at hilly sites (GbgSaroRound
   0.95 → 0.84 m, BorasEkas 2025-09-25 0.85 → 0.67 m) and is slightly worse on flat ones; both figures are recorded.
+- Provenance of saves and exports marks the written file with the dataprov output role `primary`; requires
+  `dataprov>=3.4.0` (provenance extra).
+- **`tools/attach_altitudes.py`:** attaches surveyed altitudes, RTK SDs and point type from a survey CSV to an
+  existing project's control points by name (rejects matches more than 1 m apart), so older projects can use the
+  camera model and road elevation. CSV parsing moved to `orbit_core.utils.control_point_csv` (shared with the import
+  dialog).
 - **Road elevation from terrain:** OpenDRIVE export option "Road elevation from control-point altitudes"
   (`elevation_from_terrain`, off by default): elevation profiles follow the terrain surface (absolute altitude).
 
 ### Fixed
+- CSV import dropped a whole point when its altitude was `/` (survey exports' "not measured"); it is now read as
+  unknown, like the SD columns.
 - **Signals could be exported past the end of the road carrying them**, which makes the
   whole map unloadable (esmini: `Signal ... s value exceeds road length`). Signals are
   projected onto the centerline, but the exported road length comes from fitted geometry,

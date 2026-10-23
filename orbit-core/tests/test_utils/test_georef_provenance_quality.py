@@ -45,3 +45,4 @@ def test_export_sidecar_carries_the_summary(tmp_path):
     activity = next(iter(prov["activity"].values()))
     assert "[su:nonplanar_terrain]" in activity["dataprov:warnings"]
     assert activity["su:adjustment_magnitude"]["value"] == 2.5
+    assert [g.get("prov:role") for g in prov["wasGeneratedBy"].values()] == ["dataprov:PrimaryOutput"]
