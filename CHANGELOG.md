@@ -10,6 +10,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Camera model over terrain (G11):** georef export adds an optional `camera_model` section when at least 6
+  control points have RTK altitude and the view is oblique: pinhole camera (focal from the homography, refined
+  with the pose on the 3D points) plus a smooth terrain surface fitted to the altitudes. orbit-georef reads it
+  (`pixel_to_ground_3d`, `ground_to_pixel_3d`, `terrain_height`, `fit_camera_model`, `georef_from_data`); the
+  homography is unchanged. On campaign georefs it lowers leave-one-out error at hilly sites (GbgSaroRound
+  0.95 → 0.84 m, BorasEkas 2025-09-25 0.85 → 0.67 m) and is slightly worse on flat ones; both figures are recorded.
+- **Road elevation from terrain:** OpenDRIVE export option "Road elevation from control-point altitudes"
+  (`elevation_from_terrain`, off by default): elevation profiles follow the terrain surface (absolute altitude).
+
 ### Fixed
 - **Signals could be exported past the end of the road carrying them**, which makes the
   whole map unloadable (esmini: `Signal ... s value exceeds road length`). Signals are

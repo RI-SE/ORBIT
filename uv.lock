@@ -474,6 +474,7 @@ source = { editable = "orbit-core" }
 dependencies = [
     { name = "lxml" },
     { name = "numpy" },
+    { name = "orbit-georef" },
     { name = "pyproj" },
     { name = "scenario-uncertainty" },
     { name = "scipy" },
@@ -506,6 +507,7 @@ requires-dist = [
     { name = "lxml", specifier = ">=4.9.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "opencv-python", marker = "extra == 'imagery'", specifier = ">=4.8.0" },
+    { name = "orbit-georef", editable = "orbit-georef" },
     { name = "pyproj", specifier = ">=3.6.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },

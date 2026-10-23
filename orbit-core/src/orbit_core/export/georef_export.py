@@ -82,6 +82,7 @@ def export_georeferencing(
     try:
         data = build_georef_data(project, transformer, image_size, project_file)
         add_quality(data, project, transformer, image_size)
+        add_camera_model(data, image_size)
 
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
@@ -111,6 +112,32 @@ def add_quality(data: Dict[str, Any], project: Project, transformer: CoordinateT
     except Exception as e:
         logger.warning(f"Georef quality information not exported: {e}")
         data["quality_error"] = str(e)
+
+
+def add_camera_model(data: Dict[str, Any], image_size: Tuple[int, int]) -> None:
+    """Add the optional "camera_model" section: pinhole camera over a terrain fitted to the RTK altitudes (G11).
+
+    Needs a homography and enough training points with altitude; otherwise the export stays as it was. The
+    homography itself is unchanged, so readers that don't know the section are unaffected.
+    """
+    try:
+        from orbit_georef import georef_from_data
+
+        if data.get("transform_method") != "homography":
+            return
+        model = georef_from_data(data).fit_camera_model(tuple(image_size))
+        if model is None:
+            logger.info("No camera model exported: too few control points with altitude, or a near-nadir view")
+            return
+        homography_loo = (data.get("leave_one_out") or {}).get("value")
+        if homography_loo is not None:  # so readers can pick the better model for this site
+            model.fit["homography_leave_one_out_m"] = round(float(homography_loo), 3)
+        data["camera_model"] = model.to_dict()
+        logger.info(f"Camera model: {model.fit['rms_px']:.2f} px RMS, leave-one-out "
+                    f"{model.fit['leave_one_out_m']} m, terrain {model.terrain.to_dict()['type']}")
+    except Exception as e:
+        logger.warning(f"Camera model not exported: {e}")
+        data["camera_model_error"] = str(e)
 
 
 def build_georef_data(

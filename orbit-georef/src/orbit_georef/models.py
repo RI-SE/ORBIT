@@ -3,6 +3,7 @@ Data models for orbit-georef.
 """
 
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -17,6 +18,7 @@ class ControlPoint:
         latitude: Latitude in decimal degrees
         name: Optional name for the control point
         is_validation: If True, point is used for validation only (GVP), not training (GCP)
+        altitude: Surveyed altitude in metres (RTK), if known; used by the camera model
     """
     pixel_x: float
     pixel_y: float
@@ -24,3 +26,4 @@ class ControlPoint:
     latitude: float
     name: str = ""
     is_validation: bool = False
+    altitude: Optional[float] = None

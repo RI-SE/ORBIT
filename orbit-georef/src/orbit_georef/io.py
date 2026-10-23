@@ -10,6 +10,7 @@ from typing import Union
 import numpy as np
 
 from . import uncertainty
+from .camera_model import CameraModel
 from .models import ControlPoint
 from .transformer import GeoTransformer
 
@@ -53,7 +54,15 @@ def load_georef(path: Union[str, Path]) -> GeoTransformer:
 
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
+    return georef_from_data(data, path)
 
+
+def georef_from_data(data: dict, path: Union[str, Path, None] = None) -> GeoTransformer:
+    """GeoTransformer from a parsed georef document (e.g. one ORBIT is about to export).
+
+    path is only used in messages.
+    """
+    path = Path(path) if path is not None else Path("<georef data>")
     # Validate format (optional, for files created by ORBIT 0.4.0+)
     file_format = data.get("format")
     if file_format and file_format != "ORBIT Georeferencing Data":
@@ -74,6 +83,7 @@ def load_georef(path: Union[str, Path]) -> GeoTransformer:
             latitude=cp_data["latitude"],
             name=cp_data.get("name", ""),
             is_validation=cp_data.get("is_validation", False),
+            altitude=cp_data.get("altitude_m", cp_data.get("altitude")),
         ))
 
     # Parse matrices
@@ -119,6 +129,7 @@ def load_georef(path: Union[str, Path]) -> GeoTransformer:
         source_info=source_info,
         proj_string=proj_string,
         quality=_quality(data),
+        camera_model=CameraModel.from_dict(data["camera_model"]) if data.get("camera_model") else None,
     )
 
 
@@ -177,6 +188,11 @@ def save_georef(transformer: GeoTransformer, path: Union[str, Path]) -> None:
 
     if transformer.proj_string:
         data["proj_string"] = transformer.proj_string
+    for entry, cp in zip(data["control_points"], transformer.control_points):
+        if cp.altitude is not None:
+            entry["altitude_m"] = cp.altitude
+    if transformer.camera_model is not None:
+        data["camera_model"] = transformer.camera_model.to_dict()
 
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)

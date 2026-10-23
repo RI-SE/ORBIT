@@ -110,6 +110,28 @@ direct figure available, in this order:
 4. validation RMSE;
 5. twice the training RMSE.
 
+### Camera model over terrain (optional)
+
+A homography maps the image onto one plane; ground above or below it is misplaced by about d·Δz/H (distance from
+nadir × height difference / camera height). When enough control points have surveyed altitudes, ORBIT also exports
+an optional `camera_model` section: a pinhole camera (focal length from the homography, refined with the pose on
+the 3D points) and a smooth terrain surface fitted to the altitudes (quadratic, ridge chosen by leave-one-out, or a
+plane; held constant beyond the points). The homography is unchanged, so readers that ignore the section are
+unaffected.
+
+```python
+if transformer.camera_model is not None:
+    east, north, altitude = transformer.pixel_to_ground_3d(px, py)   # where the pixel's ray meets the terrain
+    px, py = transformer.ground_to_pixel_3d(east, north)              # on the terrain, or pass altitude=
+    z = transformer.terrain_height(east, north)
+    fit = transformer.camera_model.fit   # rms_px, focal_px, camera_height_m, leave_one_out_m,
+                                         # homography_leave_one_out_m: use it where it is the smaller one
+transformer.fit_camera_model(image_size)  # fit from control points with altitude (ControlPoint.altitude)
+```
+
+Coordinates are those of the homography (its `proj_string` CRS, or ORBIT's local metres); altitude in metres.
+Near-nadir views (< 10° tilt) or fewer than 6 points with altitude give no camera model.
+
 ## License
 
 This library is licensed under the [MIT License](LICENSE).
