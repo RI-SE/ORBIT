@@ -423,7 +423,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "orbit"
-version = "0.16.1"
+version = "0.17.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -513,7 +513,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.11.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
-    { name = "scenario-uncertainty", git = "https://github.com/das-rise/scenario-uncertainty.git" },
+    { name = "scenario-uncertainty", git = "https://github.com/das-rise/scenario-uncertainty.git?tag=v0.1.0" },
     { name = "scipy", specifier = ">=1.11.0" },
     { name = "xmlschema", marker = "extra == 'validation'", specifier = ">=4.2.0" },
 ]
@@ -521,7 +521,7 @@ provides-extras = ["imagery", "camera", "validation", "provenance", "dev"]
 
 [[package]]
 name = "orbit-georef"
-version = "0.1.2"
+version = "0.2.0"
 source = { editable = "orbit-georef" }
 dependencies = [
     { name = "numpy" },
@@ -857,7 +857,7 @@ wheels = [
 [[package]]
 name = "scenario-uncertainty"
 version = "0.1.0"
-source = { git = "https://github.com/das-rise/scenario-uncertainty.git#6d417fdb79564e3ed3845ff9924afb18ce26e9bb" }
+source = { git = "https://github.com/das-rise/scenario-uncertainty.git?tag=v0.1.0#f0d59bc3946352437fe3982ae3c4b86da40451a1" }
 
 [[package]]
 name = "scipy"

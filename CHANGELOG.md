@@ -2,15 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
-**Current Version**: 0.15.0
+**Current Version**: 0.17.0
 
 ---
 
-> **Note**: entries for 0.7.0–0.14.0 were not recorded.
+> **Note**: entries for 0.6.1–0.14.0, 0.15.1 and 0.16.x were written afterwards from the commit history
+> (2026-10-29), so they are less detailed than the others.
 
-## [Unreleased]
+## [0.17.0] - 2026-10-29
+
+Packages: `orbit-georef` 0.2.0 (tag `orbit-georef-v0.2.0`); `orbit-core` and `opendrive-map` unchanged in version.
 
 ### Added
+- **Georef format 1.2 with quality information**, following the `georef` profile of
+  [scenario-uncertainty](https://github.com/das-rise/scenario-uncertainty) 0.1.0:
+  - leave-one-out errors;
+  - validation split into a common `datum` part (shift, rotation, scale) and the `internal` remainder;
+  - terrain deviation from a plane;
+  - how far a manual adjustment moved the georeference;
+  - per point: residuals, RTK SDs, altitude and pick zoom;
+  - `transform_source` (`homography`, `hybrid`, `affine` or `drone_assisted`).
+
+  Older files simply lack these keys. Control points keep RTK SDs and altitude from the CSV import, and the
+  provenance records headline quality numbers and `[su:*]` warnings.
 - **Camera model over terrain (G11):** georef export adds an optional `camera_model` section when at least 6
   control points have RTK altitude and the view is oblique: pinhole camera (focal from the homography, refined
   with the pose on the 3D points) plus a smooth terrain surface fitted to the altitudes. orbit-georef reads it
@@ -26,9 +40,63 @@ All notable changes to this project are documented in this file.
 - **Road elevation from terrain:** OpenDRIVE export option "Road elevation from control-point altitudes"
   (`elevation_from_terrain`, off by default): elevation profiles follow the terrain surface (absolute altitude).
 
+- **`tools/georef_diagnostics.py`:** checks a georef JSON:
+  - leave-one-out and validation errors;
+  - terrain effect;
+  - computed (not clicked) control points;
+  - drone-assisted exports written with the bug fixed below.
+
 ### Fixed
 - CSV import dropped a whole point when its altitude was `/` (survey exports' "not measured"); it is now read as
   unknown, like the SD columns.
+- **Georef quality numbers were wrong:**
+  - training `rmse_pixels` was a pixel→geo→pixel round trip, and so ~0; it is now the true residual;
+  - Monte Carlo, bootstrap and leave-one-out refitted a plain homography instead of the project's transformer
+    (hybrid / drone-assisted);
+  - failed Monte Carlo samples were not left out.
+- **Drone-assisted projects exported an erroneous georeference:** it was not in the declared projection, lacked the
+  manual adjustment and the grid rotation, and lost the flight metadata on refit. Re-export affected georefs;
+  `tools/georef_diagnostics.py` detects them.
+
+### orbit-georef 0.2.0
+- `transformer.quality` with the 1.2 quality keys, plus:
+  - `jacobian(px, py)`;
+  - `position_covariance(px, py)`, split into `image` and `datum` parts.
+- `CameraModel`, `TerrainSurface`, `fit_camera_model`, `focal_from_homography`, `georef_from_data`, and on the
+  transformer `pixel_to_ground_3d`, `ground_to_pixel_3d` and `terrain_height`. These are used only when the file has a
+  `camera_model` section.
+- Control points read and write `altitude_m`.
+- A legacy `transform_method: "unknown"` is read as homography when the matrix has perspective terms (with a
+  warning). Unsupported methods raise a clear error.
+
+---
+
+## [0.16.1] - 2026-10-21
+
+### Added
+- **Add a connecting road to a junction by hand** (with undo): pick the two roads, and the geometry, lane counts and
+  lane connections are built by the same code the junction analyzer uses.
+- **Junction validator** (`orbit_core.export.junction_validator`), with results shown in the export dialog:
+  - movements wired to missing lanes;
+  - connecting-road lanes of mismatched width;
+  - driving lanes left without a movement.
+
+### Changed
+- One label format for entities with an ID everywhere in the GUI: `[11] Name (seg 1/2)`.
+- Lane, road, section, signal and junction property dialogs reworked for consistency.
+- Sign images moved into `orbit_core` (`orbit_core/signs/`).
+
+---
+
+## [0.16.0] - 2026-09-10
+
+Release of the `orbit-core` extraction (0.15.0) and the 0.15.1 fixes (PR #32); dependency lock updated.
+
+---
+
+## [0.15.1] - 2026-08-22
+
+### Fixed
 - **Signals could be exported past the end of the road carrying them**, which makes the
   whole map unloadable (esmini: `Signal ... s value exceeds road length`). Signals are
   projected onto the centerline, but the exported road length comes from fitted geometry,
@@ -93,6 +161,110 @@ All notable changes to this project are documented in this file.
 - CI now lints and tests `orbit-core/`, and measures coverage over both packages.
   After the extraction it was checking only the GUI shell -- 34k lines and 2,562 tests
   had silently dropped out of the pipeline.
+
+---
+
+## [0.14.0] - 2026-07-08
+### Added
+- Lane edit tools for turn lanes.
+### Fixed
+- Tool deactivation inconsistencies; visualisation of lane connection reassignment.
+### Changed
+- User guide updated.
+
+## [0.13.0] - 2026-06-29
+### Added
+- **`opendrive-map`**: a reusable library for reading OpenDRIVE maps, including parking spaces and robustness checks.
+### Changed
+- `orbit-georef` API updated (0.1.2).
+
+## [0.12.1] - 2026-06-23
+### Fixed
+- Objects not updated properly when an adjustment is applied.
+
+## [0.12.0] - 2026-06-18
+### Changed
+- Improved precision for road rendering.
+### Fixed
+- Core dump when switching to aerial view; reset of the correction; moving connection points.
+- Normal/aerial round trip with drone-assisted homography; an OpenDRIVE import bug.
+
+## [0.11.1] - 2026-06-17
+### Fixed
+- Coordinate-handling review (prioritised fixes):
+  - aerial view now uses Web Mercator correctly;
+  - pixel edits made in one view are no longer reverted when switching view (`geo_stale` tracking);
+  - exports switch back to the original view first, like save does;
+  - a mismatched number of geo points is rebuilt from the pixels;
+  - falsy-zero bounds in auto-georeference;
+  - OpenDRIVE `header_offset_hdg` is applied;
+  - explicit local-metre frames;
+  - one shared metres-per-degree constant.
+
+## [0.11.0] - 2026-05-10
+### Added
+- Georef import; OpenDRIVE import of newer features.
+- dataprov provenance support (with a warning if dataprov is missing).
+- **Drone-parameter assisted homography**, with composable adjustments.
+- Smooth-road function for junction editing; pre-commit hooks (ruff).
+### Fixed
+- Lane display, guardrail and sign placement, OSM import centre point, the xodr export with the hybrid transformer,
+  a cleanup crash, and `width_end = None` in the lane builder (contributed by BastianHavers).
+
+## [0.10.1] - 2026-04-16
+### Fixed
+- Junction problems; guardrail and parking-space placement in aerial view.
+
+## [0.10.0] - 2026-04-08
+### Added
+- Georef includes the PROJ string, to match the xodr geo data.
+- Editing of land use (already supported by the OSM import); a lane-section merge function.
+### Fixed
+- Unapplied geo-position adjustments were used; variable lane width issues.
+
+## [0.9.0] - 2026-04-02
+### Added
+- OpenDRIVE 1.4 / CARLA compatibility mode for the xodr export (keeps vendor data and userData).
+- Unified link-editing UI for roads and connecting roads, with a lane-links editor.
+- Two-way road support in the junction import.
+### Fixed
+- Missing lane links on junction-connected roads, the lane-change attribute, broken road marks.
+- All export paths now apply the manual alignment adjustment.
+- Junction/road ID overlap for CARLA; speed import/export.
+- Variable-width roads; lane connections between 1- and 2-lane roads; parking-area edit persistence.
+- An erroneous adjust-on-load for `.orbit` files was removed.
+
+## [0.8.0] - 2026-03-23
+### Added
+- **Automatic homography adjustment** from picked points (least squares), with a ghost overlay of the original lines.
+- Objects can be assigned to connecting roads.
+### Changed
+- Large refactoring: connecting roads and regular roads share one code path; large functions and test files split;
+  maintainability report in CI.
+### Fixed
+- Homography/affine blending: inside the image the homography is always used.
+- Bad road geometry warnings and deletion of negative-size lane segments; signals outside the road.
+- OSM junction import, undo of polylines, sign/object ID conflict, aerial view issues.
+
+## [0.7.0] - 2026-03-06
+### Added
+- Custom origin point; new aerial view.
+### Fixed
+- Road connection logic in the xodr export.
+- Pixel-to-metric conversion of some objects (several places used the scale directly).
+- Map centring when imported without a georeference.
+
+## [0.6.1] - 2026-02-24
+### Added
+- Segmentation-mask export.
+- OSM export (with lane width and road surface); import of more OSM objects (forest, farmland, buildings, …) and
+  their export to xodr.
+- Load OpenDRIVE/OSM without an image; remember the last directory for file operations.
+- Hybrid transform for imports larger than the image.
+- Batch conversion via PROJ strings; latitude of true scale set for much higher precision (pyproj).
+### Fixed
+- Roundabout wizard; connecting road adjustment; building rotation and placement; OSM junction import; OSM
+  attribution and licence information.
 
 ---
 
