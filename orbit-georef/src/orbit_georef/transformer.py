@@ -11,7 +11,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pyproj
 
+from . import uncertainty
+from .camera_model import CameraModel, fit_camera_model
 from .models import ControlPoint
+
+# Methods whose matrices this class can apply; anything else (e.g. "unknown") must not be guessed
+SUPPORTED_METHODS = frozenset({"homography", "affine"})
 
 
 class GeoTransformer:
@@ -36,6 +41,8 @@ class GeoTransformer:
         control_points: Optional[List[ControlPoint]] = None,
         source_info: Optional[Dict[str, Any]] = None,
         proj_string: Optional[str] = None,
+        quality: Optional[Dict[str, Any]] = None,
+        camera_model: Optional[CameraModel] = None,
     ):
         """
         Initialize transformer with precomputed matrices.
@@ -52,7 +59,14 @@ class GeoTransformer:
             scale_y: Y scale factor (meters per pixel)
             control_points: Optional list of control points used
             source_info: Optional dict with project_file and image_path from ORBIT export
+            quality: Optional quality keys of the georef file (see uncertainty.QUALITY_KEYS)
+            camera_model: Optional camera over terrain (georef "camera_model" section), for the *_3d methods
         """
+        if method not in SUPPORTED_METHODS:
+            raise ValueError(
+                f"Unsupported transform method {method!r}; expected one of {sorted(SUPPORTED_METHODS)}. "
+                "Re-export the georeference from ORBIT with a homography or affine transformation."
+            )
         self.transform_matrix = transform_matrix
         self.inverse_matrix = inverse_matrix
         self.reference_lon = reference_lon
@@ -63,6 +77,8 @@ class GeoTransformer:
         self.control_points = control_points or []
         self.source_info = source_info or {}
         self.proj_string = proj_string
+        self.quality = quality or {}
+        self.camera_model = camera_model
 
     @classmethod
     def from_file(cls, path: str) -> "GeoTransformer":
@@ -231,11 +247,7 @@ class GeoTransformer:
         """
         if self.method == "homography":
             # Homography: geo → projected coords → pixel
-            if self.proj_string:
-                t = pyproj.Transformer.from_crs("EPSG:4326", self.proj_string, always_xy=True)
-                east, north = t.transform(longitude, latitude)
-            else:
-                east, north = self._latlon_to_meters(latitude, longitude)
+            east, north = self.geo_to_ground(longitude, latitude)
             ground_homo = np.array([east, north, 1.0])
             pixel_homo = self.inverse_matrix @ ground_homo
             return pixel_homo[0] / pixel_homo[2], pixel_homo[1] / pixel_homo[2]
@@ -244,6 +256,47 @@ class GeoTransformer:
             point = np.array([longitude, latitude, 1.0])
             result = self.inverse_matrix @ point
             return result[0], result[1]
+
+    def geo_to_ground(self, longitude: float, latitude: float) -> Tuple[float, float]:
+        """Geographic → the homography's native ground frame (proj_string CRS, or ORBIT's local metres)."""
+        if self.proj_string:
+            t = pyproj.Transformer.from_crs("EPSG:4326", self.proj_string, always_xy=True)
+            east, north = t.transform(longitude, latitude)
+            return float(east), float(north)
+        return self._latlon_to_meters(latitude, longitude)
+
+    # --- Camera model over terrain (optional; see camera_model.py) ---------------------------------
+
+    def pixel_to_ground_3d(self, pixel_x: float, pixel_y: float) -> Tuple[float, float, float]:
+        """Pixel → (E, N, altitude) on the terrain, in the native ground frame. Needs camera_model."""
+        return self._require_camera_model().pixel_to_ground(pixel_x, pixel_y)
+
+    def ground_to_pixel_3d(self, east: float, north: float, altitude: Optional[float] = None) -> Tuple[float, float]:
+        """Native-frame ground point (on the terrain unless altitude is given) → pixel. Needs camera_model."""
+        model = self._require_camera_model()
+        return model.ground_to_pixel(east, north) if altitude is None else model.project(east, north, altitude)
+
+    def terrain_height(self, east: float, north: float) -> float:
+        """Terrain altitude (m) at a native-frame ground point. Needs camera_model."""
+        return float(self._require_camera_model().terrain.height(east, north))
+
+    def fit_camera_model(self, image_size: Tuple[int, int], focal_px: Optional[float] = None) -> Optional[CameraModel]:
+        """Fit (and keep) a camera model from the training control points with altitude; None if not possible.
+
+        Needs a homography and at least camera_model.MIN_POINTS points with altitude.
+        """
+        points = [cp for cp in self.control_points if not cp.is_validation and cp.altitude is not None]
+        if self.method != "homography" or not points:
+            return None
+        world = np.array([(*self.geo_to_ground(cp.longitude, cp.latitude), cp.altitude) for cp in points])
+        pixels = np.array([(cp.pixel_x, cp.pixel_y) for cp in points])
+        self.camera_model = fit_camera_model(world, pixels, self.transform_matrix, image_size, focal_px)
+        return self.camera_model
+
+    def _require_camera_model(self) -> CameraModel:
+        if self.camera_model is None:
+            raise ValueError("This georeference has no camera model (fit_camera_model, or re-export from ORBIT)")
+        return self.camera_model
 
     def pixels_to_geo_batch(
         self,
@@ -275,6 +328,14 @@ class GeoTransformer:
             List of (pixel_x, pixel_y) tuples
         """
         return [self.geo_to_pixel(lon, lat) for lon, lat in points]
+
+    def jacobian(self, pixel_x: float, pixel_y: float) -> np.ndarray:
+        """2x2 metres-per-pixel derivative of ground position at a pixel (see uncertainty.jacobian)."""
+        return uncertainty.jacobian(self, pixel_x, pixel_y)
+
+    def position_covariance(self, pixel_x: Optional[float] = None, pixel_y: Optional[float] = None) -> Dict[str, Any]:
+        """Georeference error as {"datum": 2x2, "image": 2x2} m^2 (see uncertainty.position_covariance)."""
+        return uncertainty.position_covariance(self, pixel_x, pixel_y)
 
     def get_scale(self) -> Tuple[float, float]:
         """

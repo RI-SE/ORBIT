@@ -12,15 +12,19 @@ Example usage:
     px, py = georef.geo_to_pixel(12.945, 57.720)
 """
 
-from .io import load_georef, save_georef
+from .camera_model import CameraModel, TerrainSurface
+from .io import georef_from_data, load_georef, save_georef
 from .models import ControlPoint
 from .transformer import GeoTransformer
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"
 
 __all__ = [
     "GeoTransformer",
     "ControlPoint",
+    "CameraModel",
+    "TerrainSurface",
+    "georef_from_data",
     "load_georef",
     "save_georef",
 ]

@@ -196,6 +196,18 @@ class ExportDialog(BaseDialog):
         )
         options_layout.addRow("Compatibility:", self.carla_compat_checkbox)
 
+        # Elevation from the control points' RTK altitudes (terrain surface, ORBIT G11)
+        n_altitudes = sum(cp.altitude is not None for cp in self.project.control_points)
+        self.elevation_checkbox = QCheckBox("Road elevation from control-point altitudes")
+        self.elevation_checkbox.setChecked(False)
+        self.elevation_checkbox.setEnabled(n_altitudes >= 3)
+        self.elevation_checkbox.setToolTip(
+            "Fit a smooth terrain to the control points' surveyed altitudes and write road elevation\n"
+            "profiles from it (absolute altitudes in metres). Roads with an imported elevation keep it.\n"
+            f"Needs at least 3 control points with altitude ({n_altitudes} in this project)."
+        )
+        options_layout.addRow("Elevation:", self.elevation_checkbox)
+
         # Feature categories (only shown if project has non-road objects)
         self.feature_checkboxes: dict[ObjectType, QCheckBox] = {}
         self._setup_feature_categories()
@@ -529,6 +541,7 @@ class ExportDialog(BaseDialog):
                 export_object_types=self._get_export_object_types(),
                 carla_compat=self.carla_compat_checkbox.isChecked(),
                 warnings_out=export_warnings,
+                elevation_from_terrain=self.elevation_checkbox.isChecked(),
             )
 
             if success and export_warnings:

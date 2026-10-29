@@ -121,6 +121,7 @@ def record_project_save(
             input_formats=input_formats,
             outputs=[str(orbit_path)],
             output_formats=["ORBIT"],
+            output_roles=["primary"],
             source=_ORBIT_SOURCE,
             capture_agent=True,
             capture_environment=True,
@@ -142,10 +143,12 @@ def record_export(
     output_format: str,
     start_time: datetime,
     template: str = DEFAULT_TEMPLATE,
+    quality: dict | None = None,
 ) -> bool:
     """Create a provenance sidecar for an exported file.
 
-    Links to the .orbit project's own provenance chain when available.
+    Links to the .orbit project's own provenance chain when available. `quality` adds the
+    scenario-uncertainty summary: {"custom_properties": ..., "warning_lines": [...]}.
     Returns True on success, False if dataprov is unavailable or an error occurs.
     """
     if not is_dataprov_available():
@@ -168,11 +171,14 @@ def record_export(
             orbit_prov = prov_path_for(orbit_path, template)
             input_provenance_files.append(str(orbit_prov) if orbit_prov.exists() else None)
 
+        from scenario_uncertainty import provenance as quality_provenance
+
         chain = ProvenanceChain.create(
             entity_id=f"orbit_{output_format.lower()}_export",
             initial_source=str(orbit_path) if orbit_path else str(output_path),
             description=f"ORBIT export: {output_path.name}",
             tags=["orbit", "export", output_format.lower()],
+            custom_namespaces=quality_provenance.namespaces() if quality else None,
         )
 
         chain.add(
@@ -185,10 +191,13 @@ def record_export(
             input_formats=input_formats,
             outputs=[str(output_path)],
             output_formats=[output_format],
+            output_roles=["primary"],
             input_provenance_files=input_provenance_files if any(input_provenance_files) else None,
             source=_ORBIT_SOURCE,
             capture_agent=True,
             capture_environment=True,
+            warnings=quality_provenance.join_warnings(quality["warning_lines"]) if quality else "",
+            custom_properties=(quality or {}).get("custom_properties") or None,
         )
 
         chain.save(str(prov_file))

@@ -208,8 +208,6 @@ def _calculate_correlation(x_values: List[float], y_values: List[float]) -> floa
 
 def _compute_leave_one_out(transformer, errors, point_analyses, original_rmse):
     """Compute leave-one-out RMSE improvement for each point."""
-    from .coordinate_transform import AffineTransformer, HomographyTransformer
-
     all_cps = transformer.training_points + transformer.validation_points
 
     for i, e in enumerate(errors):
@@ -219,7 +217,7 @@ def _compute_leave_one_out(transformer, errors, point_analyses, original_rmse):
         filtered_cps = [cp for cp in all_cps if cp != cp_to_remove]
 
         # Check if we have enough points
-        min_points = 4 if isinstance(transformer, HomographyTransformer) else 3
+        min_points = transformer.MIN_TRAINING_POINTS
         training_remaining = len([cp for cp in filtered_cps if not cp.is_validation])
 
         if training_remaining < min_points:
@@ -227,11 +225,8 @@ def _compute_leave_one_out(transformer, errors, point_analyses, original_rmse):
             continue
 
         try:
-            # Create new transformer without this point
-            if isinstance(transformer, HomographyTransformer):
-                new_transformer = HomographyTransformer(filtered_cps, use_validation=True)
-            else:
-                new_transformer = AffineTransformer(filtered_cps, use_validation=True)
+            # Same kind of transformer, without this point
+            new_transformer = transformer.refit(filtered_cps)
 
             # Calculate new RMSE on remaining training points
             new_errors = []

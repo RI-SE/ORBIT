@@ -186,13 +186,14 @@ class CSVControlPointPlacer(QDialog):
         # Minimize this dialog so user can see image
         self.showMinimized()
 
-    def set_picked_point(self, x: float, y: float):
+    def set_picked_point(self, x: float, y: float, zoom: Optional[float] = None):
         """
-        Set the picked point coordinates.
+        Set the picked point coordinates and the image-view zoom they were picked at.
 
         Called by parent when user clicks on image.
         """
         self.pending_pixel_coords = (x, y)
+        self.pending_pick_zoom = zoom
         self.picked_coords_label.setText(f"({x:.1f}, {y:.1f})")
         self.pick_point_btn.setText("Pick Point on Image")
         self.pick_point_btn.setEnabled(True)
@@ -305,7 +306,13 @@ class CSVControlPointPlacer(QDialog):
             pixel_y=self.pending_pixel_coords[1],
             longitude=point.longitude,
             latitude=point.latitude,
-            name=point_name
+            name=point_name,
+            altitude=point.altitude,
+            sigma_h_m=point.sigma_h_m,
+            sigma_v_m=point.sigma_v_m,
+            point_type=point.point_type,
+            pick_zoom=getattr(self, 'pending_pick_zoom', None),
+            pixel_clicked=list(self.pending_pixel_coords),
         )
 
         # Add to project

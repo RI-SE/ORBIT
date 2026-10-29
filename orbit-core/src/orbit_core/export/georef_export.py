@@ -7,13 +7,15 @@ tools for pixel↔geo coordinate conversion.
 """
 
 import json
+import math
 from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from orbit_core.models.project import Project
+from orbit_core.models.project import ControlPoint, Project
+from orbit_core.utils import georef_quality
 from orbit_core.utils.coordinate_transform import (
     AffineTransformer,
     CoordinateTransformer,
@@ -25,7 +27,36 @@ from orbit_core.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-GEOREF_FORMAT_VERSION = "1.1"
+# 1.2: rmse_pixels of training points is a true residual (before: pixel->geo->pixel round trip, ~0);
+#      optional quality keys of the scenario-uncertainty `georef` profile (see add_quality)
+GEOREF_FORMAT_VERSION = "1.2"
+
+
+# Pixel grid (per axis) sampled to refit a drone-assisted mapping in the export projection
+PROJECTED_FIT_GRID = 9
+# Largest acceptable deviation of the refitted homography from the sampled mapping
+PROJECTED_FIT_TOLERANCE_M = 0.01
+
+
+def _projected_matrices(transformer: DroneAssistedTransformer, image_size: Tuple[int, int],
+                        proj_string: str) -> Tuple[np.ndarray, np.ndarray]:
+    """Pixel -> projected homography (and inverse) equivalent to a drone-assisted transformer.
+
+    Fitted to the transformer's own pixel -> geo mapping on a pixel grid, so it includes any
+    active adjustment. Local ENU -> projection is near-affine over an image footprint, so the
+    result stays a homography; the fit deviation is logged.
+    """
+    width, height = image_size
+    grid = [ControlPoint(pixel_x=float(u), pixel_y=float(v), longitude=lon, latitude=lat)
+            for u in np.linspace(0, width, PROJECTED_FIT_GRID)
+            for v in np.linspace(0, height, PROJECTED_FIT_GRID)
+            for lon, lat in [transformer.pixel_to_geo(u, v)]]
+    fitted = HomographyTransformer(grid, use_validation=False, export_proj_string=proj_string)
+    deviation = max(math.dist(fitted.pixel_to_meters(cp.pixel_x, cp.pixel_y),
+                              fitted.latlon_to_projected(cp.latitude, cp.longitude)) for cp in grid)
+    if deviation > PROJECTED_FIT_TOLERANCE_M:
+        logger.warning(f"Drone-assisted georef: projected homography deviates up to {deviation:.3f} m")
+    return fitted.transform_matrix, fitted.inverse_matrix
 
 
 def export_georeferencing(
@@ -50,6 +81,8 @@ def export_georeferencing(
     """
     try:
         data = build_georef_data(project, transformer, image_size, project_file)
+        add_quality(data, project, transformer, image_size)
+        add_camera_model(data, image_size)
 
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
@@ -60,6 +93,51 @@ def export_georeferencing(
     except Exception as e:
         logger.error(f"Failed to export georeferencing: {e}")
         return False
+
+
+def add_quality(data: Dict[str, Any], project: Project, transformer: CoordinateTransformer,
+                image_size: Tuple[int, int]) -> None:
+    """Add the georef 1.2 quality keys (scenario-uncertainty `georef` profile) to exported data.
+
+    A failure here must not cost the user the export: the geometry is still written, the problem is
+    logged and recorded as `quality_error`.
+    """
+    try:
+        for entry, cp in zip(data["control_points"], project.control_points, strict=True):
+            residual_m = georef_quality.metric_residuals(transformer, [cp])[0]
+            residual_px = georef_quality.pixel_residuals(transformer, [cp])[0]
+            entry.update(georef_quality.control_point_quality(cp, residual_m, residual_px))
+        data.update(georef_quality.quality_keys(project, transformer, image_size,
+                                                np.array(data["transformation_matrix"])))
+    except Exception as e:
+        logger.warning(f"Georef quality information not exported: {e}")
+        data["quality_error"] = str(e)
+
+
+def add_camera_model(data: Dict[str, Any], image_size: Tuple[int, int]) -> None:
+    """Add the optional "camera_model" section: pinhole camera over a terrain fitted to the RTK altitudes (G11).
+
+    Needs a homography and enough training points with altitude; otherwise the export stays as it was. The
+    homography itself is unchanged, so readers that don't know the section are unaffected.
+    """
+    try:
+        from orbit_georef import georef_from_data
+
+        if data.get("transform_method") != "homography":
+            return
+        model = georef_from_data(data).fit_camera_model(tuple(image_size))
+        if model is None:
+            logger.info("No camera model exported: too few control points with altitude, or a near-nadir view")
+            return
+        homography_loo = (data.get("leave_one_out") or {}).get("value")
+        if homography_loo is not None:  # so readers can pick the better model for this site
+            model.fit["homography_leave_one_out_m"] = round(float(homography_loo), 3)
+        data["camera_model"] = model.to_dict()
+        logger.info(f"Camera model: {model.fit['rms_px']:.2f} px RMS, leave-one-out "
+                    f"{model.fit['leave_one_out_m']} m, terrain {model.terrain.to_dict()['type']}")
+    except Exception as e:
+        logger.warning(f"Camera model not exported: {e}")
+        data["camera_model_error"] = str(e)
 
 
 def build_georef_data(
@@ -119,7 +197,11 @@ def build_georef_data(
     # For ENU→pixel  (inverse_matrix):   effective = A @ inverse_matrix
     transform_matrix = transformer.transform_matrix
     inverse_matrix = transformer.inverse_matrix
-    if transformer.adjustment is not None and not transformer.adjustment.is_identity():
+    proj_string = getattr(transformer, '_export_proj_string', None)
+    if isinstance(transformer, DroneAssistedTransformer) and proj_string:
+        # Its matrices map to local ENU around the nadir; consumers read them in proj_string's frame
+        transform_matrix, inverse_matrix = _projected_matrices(transformer, image_size, proj_string)
+    elif transformer.adjustment is not None and not transformer.adjustment.is_identity():
         A = transformer.adjustment.get_adjustment_matrix()
         A_inv = np.linalg.inv(A)
         if transform_matrix is not None:
@@ -166,7 +248,6 @@ def build_georef_data(
         }
 
     # Add proj_string if the transformer was built with one (UTM or other CRS)
-    proj_string = getattr(transformer, '_export_proj_string', None)
     if proj_string:
         data["proj_string"] = proj_string
 

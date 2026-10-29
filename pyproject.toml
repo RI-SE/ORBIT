@@ -1,6 +1,6 @@
 [project]
 name = "orbit"
-version = "0.16.1"
+version = "0.17.0"
 description = "OpenDrive Road Builder from Imagery Tool"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,7 +35,7 @@ Changelog = "https://github.com/RI-SE/ORBIT/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 provenance = [
-    "dataprov>=3.0",
+    "dataprov>=3.4.0",
 ]
 dev = [
     "pytest>=7.4.0",
@@ -53,6 +53,9 @@ build-backend = "hatchling.build"
 
 [tool.uv.sources]
 orbit-core = { workspace = true }
+orbit-georef = { workspace = true }
+# Follows scenario-uncertainty main; pin a tag once the library is released
+scenario-uncertainty = { git = "https://github.com/das-rise/scenario-uncertainty.git", tag = "v0.1.0" }
 
 [tool.uv.workspace]
 members = ["orbit-core", "orbit-georef", "opendrive-map"]

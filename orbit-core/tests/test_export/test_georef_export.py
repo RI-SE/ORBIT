@@ -553,3 +553,62 @@ class TestHybridTransformerDetection:
         data = build_georef_data(project, transformer, (1000, 1000))
 
         assert data["transform_method"] == "homography"
+
+
+# ---------------------------------------------------------------------------
+# Drone-assisted export in the declared projection
+# ---------------------------------------------------------------------------
+
+DRONE_UTM = "+proj=utm +zone=33 +north +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+DRONE_IMAGE = (3840, 2160)
+
+
+@pytest.fixture
+def drone_transformer():
+    from orbit_core.models.project import DroneMetadata
+    from orbit_core.utils.coordinate_transform import DroneAssistedTransformer
+
+    metadata = DroneMetadata(latitude=57.73975, longitude=12.89942, alt_agl=120.0, gimbal_yaw=150.0,
+                             gimbal_pitch=-65.0, gimbal_roll=0.0, hfov_deg=71.5)
+    return DroneAssistedTransformer(metadata=metadata, control_points=[], image_width=DRONE_IMAGE[0],
+                                    image_height=DRONE_IMAGE[1], export_proj_string=DRONE_UTM)
+
+
+def _max_deviation_from_mapping(data, transformer):
+    """Largest distance between the exported matrix and the transformer's pixel->geo mapping, in UTM."""
+    from pyproj import Proj
+
+    proj = Proj(data["proj_string"])
+    matrix = np.array(data["transformation_matrix"])
+    worst = 0.0
+    for u in np.linspace(0, DRONE_IMAGE[0], 7):
+        for v in np.linspace(0, DRONE_IMAGE[1], 7):
+            q = matrix @ [u, v, 1.0]
+            lon, lat = transformer.pixel_to_geo(u, v)
+            worst = max(worst, float(np.linalg.norm(q[:2] / q[2] - np.array(proj(lon, lat)))))
+    return worst
+
+
+def test_drone_assisted_export_is_in_the_declared_projection(drone_transformer):
+    # Before the fix the matrix mapped to local ENU around the nadir: ~400 km / 6400 km off in UTM
+    data = build_georef_data(Mock(control_points=[], image_path=None), drone_transformer, DRONE_IMAGE)
+    assert _max_deviation_from_mapping(data, drone_transformer) < 0.01
+    # The inverse maps projected positions back to the same pixels
+    forward, inverse = np.array(data["transformation_matrix"]), np.array(data["inverse_matrix"])
+    pixel = np.array([1200.0, 800.0, 1.0])
+    back = inverse @ (forward @ pixel)
+    np.testing.assert_allclose(back[:2] / back[2], pixel[:2], atol=1e-3)
+
+
+def test_drone_assisted_export_includes_the_adjustment(drone_transformer):
+    from orbit_core.utils.coordinate_transform import TransformAdjustment
+
+    drone_transformer.set_adjustment(TransformAdjustment(translation_x=25.0, rotation=0.5))
+    data = build_georef_data(Mock(control_points=[], image_path=None), drone_transformer, DRONE_IMAGE)
+    assert _max_deviation_from_mapping(data, drone_transformer) < 0.01
+
+
+def test_drone_assisted_refit_keeps_flight_metadata(drone_transformer):
+    refitted = drone_transformer.refit([])
+    assert type(refitted) is type(drone_transformer)
+    assert refitted._metadata is drone_transformer._metadata

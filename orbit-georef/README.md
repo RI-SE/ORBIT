@@ -79,6 +79,59 @@ The JSON export format includes:
 - Scale factors (meters per pixel)
 - Reprojection error metrics
 
+### Quality information (georef format 1.2)
+
+From format 1.2, ORBIT also writes optional quality keys, following the `georef` profile of
+[scenario-uncertainty](https://github.com/das-rise/scenario-uncertainty):
+- `leave_one_out`: each training point predicted by a fit without it.
+- `validation`: with at least 3 validation points, split into a common `datum` part (shift, rotation, scale) and the
+  `internal` remainder.
+- `terrain`: the deviation of surveyed altitudes from a plane.
+- `adjustment`: how far a manual alignment moved the georeference, with the fit to the original clicks.
+- Per point: `residual_m`/`residual_px`, RTK `sigma_h_m`/`sigma_v_m`, `altitude_m`, and the pick zoom.
+- `transform_source`: what produced the matrix (`homography`, `hybrid`, `affine` or `drone_assisted`).
+
+Older files simply lack these keys. They are available as `transformer.quality`, and two helpers use them:
+
+```python
+J = transformer.jacobian(px, py)              # 2x2 metres per pixel at (px, py)
+cov = transformer.position_covariance(px, py)
+cov["image"]    # 2x2 m^2: local error of the mapping; affects relative positions
+cov["datum"]    # 2x2 m^2: shared by everything georeferenced with this file; cancels in distances
+cov["basis"], cov["source"]   # measured / derived / assumed / unknown, and which key it came from
+sigma_ground = J @ sigma_px @ J.T + cov["image"]   # e.g. a detection's pixel covariance mapped to the ground
+```
+
+In this version both covariance parts are constant over the image. The image part is taken from the most
+direct figure available, in this order:
+1. validation internal error;
+2. per-point residuals (drone-assisted only, where the points are an independent check);
+3. leave-one-out;
+4. validation RMSE;
+5. twice the training RMSE.
+
+### Camera model over terrain (optional)
+
+A homography maps the image onto one plane; ground above or below it is misplaced by about d·Δz/H (distance from
+nadir × height difference / camera height). When enough control points have surveyed altitudes, ORBIT also exports
+an optional `camera_model` section: a pinhole camera (focal length from the homography, refined with the pose on
+the 3D points) and a smooth terrain surface fitted to the altitudes (quadratic, ridge chosen by leave-one-out, or a
+plane; held constant beyond the points). The homography is unchanged, so readers that ignore the section are
+unaffected.
+
+```python
+if transformer.camera_model is not None:
+    east, north, altitude = transformer.pixel_to_ground_3d(px, py)   # where the pixel's ray meets the terrain
+    px, py = transformer.ground_to_pixel_3d(east, north)              # on the terrain, or pass altitude=
+    z = transformer.terrain_height(east, north)
+    fit = transformer.camera_model.fit   # rms_px, focal_px, camera_height_m, leave_one_out_m,
+                                         # homography_leave_one_out_m: use it where it is the smaller one
+transformer.fit_camera_model(image_size)  # fit from control points with altitude (ControlPoint.altitude)
+```
+
+Coordinates are those of the homography (its `proj_string` CRS, or ORBIT's local metres); altitude in metres.
+Near-nadir views (< 10° tilt) or fewer than 6 points with altitude give no camera model.
+
 ## License
 
 This library is licensed under the [MIT License](LICENSE).

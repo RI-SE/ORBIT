@@ -25,6 +25,7 @@ from .object_builder import ObjectBuilder
 from .parking_builder import ParkingBuilder
 from .reference_validator import validate_references
 from .signal_builder import SignalBuilder
+from .terrain_elevation import control_point_terrain, elevation_profile
 
 logger = get_logger(__name__)
 
@@ -41,6 +42,8 @@ class ExportOptions:
     geo_reference_string: Optional[str] = None
     export_object_types: Optional[Set] = None
     carla_compat: bool = False
+    # Elevation profiles from a terrain fitted to the control points' altitudes (needs >= 3 with altitude)
+    elevation_from_terrain: bool = False
 
 
 class OpenDriveWriter:
@@ -61,6 +64,7 @@ class OpenDriveWriter:
         export_object_types: Optional[set] = None,
         options: Optional[ExportOptions] = None,
         carla_compat: bool = False,
+        elevation_from_terrain: bool = False,
     ):
         """Initialize OpenDrive writer.
 
@@ -82,6 +86,7 @@ class OpenDriveWriter:
             geo_reference_string=geo_reference_string,
             export_object_types=export_object_types,
             carla_compat=carla_compat,
+            elevation_from_terrain=elevation_from_terrain,
         )
         self.right_hand_traffic = opts.right_hand_traffic
         self.country_code = opts.country_code.lower()
@@ -91,6 +96,8 @@ class OpenDriveWriter:
         self.geo_reference_string = opts.geo_reference_string
         self.export_object_types = opts.export_object_types
         self.carla_compat = opts.carla_compat
+        self.terrain = (control_point_terrain(project, transformer)
+                        if opts.elevation_from_terrain and project.has_georeferencing() else None)
 
         # Build lookup maps
         self.polyline_map = {p.id: p for p in project.polylines}
@@ -665,6 +672,26 @@ class OpenDriveWriter:
             'west': min(xs)
         }
 
+    def _terrain_profile(self, geometry_elements) -> Optional[list]:
+        return elevation_profile(geometry_elements, self.terrain) if self.terrain is not None else None
+
+    @staticmethod
+    def _add_elevation(road_elem: etree.Element, records: Optional[list]) -> None:
+        """elevationProfile with (s, a, b, c, d) records; flat when there are none."""
+        elevation = etree.SubElement(road_elem, 'elevationProfile')
+        if not records:
+            elev = etree.SubElement(elevation, 'elevation')
+            for attr in ('s', 'a', 'b', 'c', 'd'):
+                elev.set(attr, '0.0')
+            return
+        for s, a, b, c, d in records:
+            elev = etree.SubElement(elevation, 'elevation')
+            elev.set('s', f'{s:.6g}')
+            elev.set('a', f'{a:.6g}')
+            elev.set('b', f'{b:.6g}')
+            elev.set('c', f'{c:.6g}')
+            elev.set('d', f'{d:.6g}')
+
     def _create_road(self, road: Road) -> Optional[etree.Element]:
         """Create a road element."""
         if not road.centerline_id:
@@ -742,26 +769,8 @@ class OpenDriveWriter:
         plan_view = self._create_plan_view(geometry_elements)
         road_elem.append(plan_view)
 
-        # Add elevation profile (use stored profile or flat)
-        elevation = etree.SubElement(road_elem, 'elevationProfile')
-        if road.elevation_profile:
-            # Use stored elevation polynomials for round-trip preservation
-            for elev_data in road.elevation_profile:
-                s, a, b, c, d = elev_data
-                elev = etree.SubElement(elevation, 'elevation')
-                elev.set('s', f'{s:.6g}')
-                elev.set('a', f'{a:.6g}')
-                elev.set('b', f'{b:.6g}')
-                elev.set('c', f'{c:.6g}')
-                elev.set('d', f'{d:.6g}')
-        else:
-            # Default flat profile
-            elev = etree.SubElement(elevation, 'elevation')
-            elev.set('s', '0.0')
-            elev.set('a', '0.0')
-            elev.set('b', '0.0')
-            elev.set('c', '0.0')
-            elev.set('d', '0.0')
+        # Elevation profile: stored (imported, round-trip), else from the terrain if asked, else flat
+        self._add_elevation(road_elem, road.elevation_profile or self._terrain_profile(geometry_elements))
 
         # Add lateral profile (superelevation/crossfall)
         lateral = etree.SubElement(road_elem, 'lateralProfile')
@@ -1101,11 +1110,8 @@ class OpenDriveWriter:
         # Plan view
         road_elem.append(self._create_plan_view(geometry_elements))
 
-        # Elevation (flat)
-        elevation = etree.SubElement(road_elem, 'elevationProfile')
-        elev = etree.SubElement(elevation, 'elevation')
-        for attr in ('s', 'a', 'b', 'c', 'd'):
-            elev.set(attr, '0.0')
+        # Elevation: from the terrain if asked, else flat
+        self._add_elevation(road_elem, self._terrain_profile(geometry_elements))
 
         # Lateral profile
         etree.SubElement(road_elem, 'lateralProfile')
@@ -1730,6 +1736,7 @@ def export_to_opendrive(
     export_object_types: Optional[set] = None,
     carla_compat: bool = False,
     warnings_out: Optional[List[str]] = None,
+    elevation_from_terrain: bool = False,
 ) -> bool:
     """
     Export project to OpenDrive format.
@@ -1752,6 +1759,8 @@ def export_to_opendrive(
         export_object_types: If set, only export objects whose type is in this set.
             If None (default), all objects are exported.
         carla_compat: If True, export OpenDRIVE 1.4 compatible with CARLA simulator
+        elevation_from_terrain: If True, elevation profiles follow a terrain fitted to the control points'
+            RTK altitudes (absolute altitudes, m); roads with an imported profile keep it
         warnings_out: If given, receives any degradation warnings the writer raised --
             parts of the project it had to omit to keep the file valid. A degraded map
             is written successfully and looks correct, so this is the only way a caller
@@ -1765,7 +1774,7 @@ def export_to_opendrive(
         project, transformer, curve_fitter, right_hand_traffic,
         country_code, use_tmerc, use_german_codes,
         offset_x, offset_y, geo_reference_string, export_object_types,
-        carla_compat=carla_compat,
+        carla_compat=carla_compat, elevation_from_terrain=elevation_from_terrain,
     )
     written = writer.write(output_path)
     if warnings_out is not None:

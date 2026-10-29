@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+from orbit_core.utils.coordinate_transform import AffineTransformer
 from orbit_core.utils.uncertainty_estimator import UncertaintyEstimator
 
 # ==== Test Fixtures ====
@@ -57,10 +58,17 @@ def mock_transformer(mock_control_point):
             # 0.1 m/pixel scale
             return (px * 0.1, py * 0.1)
 
+        def latlon_to_meters(lat, lon):
+            # Consistent with the two mappings above: 1e-5 deg/pixel at 0.1 m/pixel
+            return ((lon - 12.0) * 10000, (lat - 57.7) * 10000)
+
         transformer.pixel_to_geo = pixel_to_geo
         transformer.geo_to_pixel = geo_to_pixel
         transformer.pixel_to_meters = pixel_to_meters
+        transformer.latlon_to_meters = latlon_to_meters
         transformer.get_scale_factor = Mock(return_value=(0.1, 0.1))
+        # Monte Carlo / bootstrap refit the transformer's own kind; an affine fit stands in here
+        transformer.refit = lambda points: AffineTransformer(points, use_validation=True)
 
         return transformer
 

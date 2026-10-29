@@ -23,6 +23,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    "scenario-uncertainty",
+    "orbit-georef",
     "numpy>=1.24.0",
     "scipy>=1.11.0",
     "pyproj>=3.6.0",
@@ -36,7 +38,7 @@ imagery = ["opencv-python>=4.8.0"]
 camera = ["geomag>=0.9.2015"]
 # XSD validation of exported OpenDRIVE against the ASAM schema.
 validation = ["xmlschema>=4.2.0"]
-provenance = ["dataprov>=3.0"]
+provenance = ["dataprov>=3.4.0"]
 dev = ["pytest>=7.4.0", "pytest-cov>=4.1.0", "pytest-mock>=3.11.0", "ruff>=0.8.0"]
 
 [tool.hatch.build.targets.wheel]

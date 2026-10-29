@@ -42,6 +42,10 @@ def _get_version() -> str:
 logger = get_logger(__name__)
 
 
+# Optional per-point quality inputs (scenario-uncertainty georef profile); absent in older projects
+CONTROL_POINT_QUALITY_FIELDS = ('altitude', 'sigma_h_m', 'sigma_v_m', 'point_type', 'pick_zoom', 'pixel_clicked')
+
+
 @dataclass
 class ControlPoint:
     """
@@ -54,6 +58,13 @@ class ControlPoint:
         latitude: Latitude in decimal degrees
         name: Optional name for the control point
         is_validation: If True, point is used for validation only (GVP), not training (GCP)
+        altitude: Surveyed altitude in metres (e.g. from an RTK CSV), if known
+        sigma_h_m, sigma_v_m: Surveyed horizontal/vertical standard deviation in metres, if known
+        point_type: Survey point type from the CSV (e.g. "Check Point"), if known
+        pick_zoom: Image-view zoom (screen px per image px) when the pixel was last placed;
+            the pixel can only be placed to about 1/zoom image px
+        pixel_clicked: [x, y] where the user last placed the point. pixel_x/pixel_y can differ from it
+            after an alignment adjustment was baked into the points (see Project.baked_adjustments)
     """
     pixel_x: float
     pixel_y: float
@@ -61,10 +72,16 @@ class ControlPoint:
     latitude: float
     name: Optional[str] = None
     is_validation: bool = False
+    altitude: Optional[float] = None
+    sigma_h_m: Optional[float] = None
+    sigma_v_m: Optional[float] = None
+    point_type: Optional[str] = None
+    pick_zoom: Optional[float] = None
+    pixel_clicked: Optional[List[float]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        return {
+        """Convert to dictionary; optional quality fields are written only when known."""
+        data = {
             'pixel_x': self.pixel_x,
             'pixel_y': self.pixel_y,
             'longitude': self.longitude,
@@ -72,6 +89,10 @@ class ControlPoint:
             'name': self.name,
             'is_validation': bool(self.is_validation)
         }
+        for key in CONTROL_POINT_QUALITY_FIELDS:
+            if getattr(self, key) is not None:
+                data[key] = getattr(self, key)
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ControlPoint':
@@ -82,7 +103,8 @@ class ControlPoint:
             longitude=data['longitude'],
             latitude=data['latitude'],
             name=data.get('name'),
-            is_validation=data.get('is_validation', False)  # Default to False for backwards compatibility
+            is_validation=data.get('is_validation', False),  # Default to False for backwards compatibility
+            **{key: data.get(key) for key in CONTROL_POINT_QUALITY_FIELDS},
         )
 
 
@@ -233,6 +255,8 @@ class Project:
     synthetic_canvas_width: Optional[int] = None  # Synthetic canvas width in pixels (no real image)
     synthetic_canvas_height: Optional[int] = None  # Synthetic canvas height in pixels (no real image)
     transform_adjustment: Optional[Dict[str, float]] = None  # Persisted geo-alignment adjustment
+    # Adjustments baked into the control-point pixels, oldest first: {"matrix": 3x3, "params": {...}}
+    baked_adjustments: List[Dict[str, Any]] = field(default_factory=list)
     drone_metadata: Optional['DroneMetadata'] = None  # Flight log data for drone-assisted georef
     source_files: List[Dict[str, str]] = field(default_factory=list)  # Imported input files for provenance tracking
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -1853,6 +1877,7 @@ class Project:
             'synthetic_canvas_width': self.synthetic_canvas_width,
             'synthetic_canvas_height': self.synthetic_canvas_height,
             'transform_adjustment': self.transform_adjustment,
+            'baked_adjustments': self.baked_adjustments,
             'drone_metadata': self.drone_metadata.to_dict() if self.drone_metadata else None,
             'source_files': self.source_files,
             'id_counters': {
@@ -1916,6 +1941,7 @@ class Project:
             synthetic_canvas_width=data.get('synthetic_canvas_width'),
             synthetic_canvas_height=data.get('synthetic_canvas_height'),
             transform_adjustment=data.get('transform_adjustment'),
+            baked_adjustments=data.get('baked_adjustments', []),
             drone_metadata=(
                 DroneMetadata.from_dict(data['drone_metadata'])
                 if data.get('drone_metadata') else None

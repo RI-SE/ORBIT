@@ -1828,6 +1828,10 @@ class ImageView(QGraphicsView):
             # Clean up any partial polygon
             self._cancel_parking_polygon()
 
+    def current_zoom(self) -> float:
+        """Screen pixels per image pixel; a click places a point to about 1/zoom image px."""
+        return abs(self.transform().m11())
+
     def set_pick_point_mode(self, enabled: bool):
         """Enable or disable point picking mode for georeferencing."""
         self.pick_point_mode = enabled
