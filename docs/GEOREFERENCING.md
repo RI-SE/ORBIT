@@ -32,7 +32,7 @@ Georeferencing converts pixel coordinates in images to real-world geographic coo
 - At least 3-4 control points with known coordinates
 
 ### Basic Workflow
-1. **Open Georeferencing**: Tools → Georeferencing
+1. **Open Georeferencing**: Georeferencing → Control Points
 2. **Add Control Points**: Either manually or via CSV import
 3. **Validate**: Check reprojection errors (should be <3 pixels)
 4. **Analyze Uncertainty** (optional): Run Monte Carlo analysis
@@ -220,7 +220,7 @@ ORBIT provides three methods to add control points:
 **Best for**: Small number of points, first-time setup
 
 **Steps**:
-1. Open **Tools → Georeferencing**
+1. Open **Georeferencing → Control Points**
 2. Click **"Pick Point on Image"**
    - Dialog minimizes, allowing you to see the image
 3. **Click on the image** at a distinctive feature
@@ -259,7 +259,7 @@ CP3,57.742858304,12.894386332
 - **Altitude** (optional): `altitude`, `alt`, `elevation`, `z`, `height`
 
 **Steps**:
-1. Open **Tools → Georeferencing**
+1. Open **Georeferencing → Control Points**
 2. Click **"Import from CSV..."**
 3. Select your CSV file
 4. Review detected points in table
@@ -361,7 +361,7 @@ ORBIT uses **Monte Carlo simulation** with measurement error:
 ### Running Uncertainty Analysis
 
 **Steps**:
-1. Open **Tools → Georeferencing**
+1. Open **Georeferencing → Control Points**
 2. Add at least 4 training control points
 3. Configure parameters (optional):
    - **Measurement error**: σ in pixels
@@ -387,7 +387,7 @@ ORBIT uses **Monte Carlo simulation** with measurement error:
    - **Red**: >0.4m (poor - add control points here!)
 
 **Scale Tool with Uncertainty**:
-1. Enable Tools → Measure Scale Factor (Ctrl+M)
+1. Enable Georeferencing → Measure Distance (Ctrl+M)
 2. Draw a line segment on the image
 3. See scale with uncertainty ranges:
    ```

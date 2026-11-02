@@ -116,7 +116,7 @@ orbit --xodr_schema /path/to/OpenDRIVE_Core.xsd
 ### Basic Workflow
 
 1. **Load image** — File → Load Image or pass path on command line
-2. **Add control points** — Tools → Georeferencing (minimum 4 points (oblique imagery) or 3 (nadir imagery))
+2. **Add control points** — Georeferencing → Control Points (minimum 4 points (oblique imagery) or 3 (nadir imagery))
 3. **Import or draw** — Either import an existing map from OpenStreetMap or OpenDRIVE, or draw roads directly in ORBIT.
 4. **Edit** — Edit roads. Add signs, parking, land use areas, and objects.
 5. **Export** — File → Export → Export to OpenDrive

@@ -214,7 +214,7 @@ After import, you'll see:
 **Cause**: Less than 3 control points defined
 
 **Solution**:
-1. Go to **Tools → Georeferencing**
+1. Go to **Georeferencing → Control Points**
 2. Add at least 3 control points with pixel and lat/lon coordinates
 3. Ensure points are not collinear (form a triangle or polygon)
 
@@ -247,7 +247,7 @@ ORBIT creates a synthetic canvas with an affine transform from those parameters.
 **Cause**: Inaccurate georeferencing or control points
 
 **Solution**:
-1. Review control points in **Tools → Georeferencing**
+1. Review control points in **Georeferencing → Control Points**
 2. Verify lat/lon coordinates are correct
 3. Add more control points for better transformation accuracy
 4. Check that image and OSM data use same projection/datum
@@ -369,7 +369,7 @@ convention for unsaved data.
 ### Example 1: Basic Road Import
 ```
 1. Load image: File → Load Image → aerial_photo.jpg
-2. Georeference: Tools → Georeferencing
+2. Georeference: Georeferencing → Control Points
    - Add control point 1: pixel (100, 100) = lat/lon (59.33, 18.06)
    - Add control point 2: pixel (2000, 100) = lat/lon (59.34, 18.08)
    - Add control point 3: pixel (1000, 1500) = lat/lon (59.32, 18.07)

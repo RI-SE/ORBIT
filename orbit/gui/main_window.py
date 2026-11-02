@@ -1054,7 +1054,7 @@ class MainWindow(QMainWindow):
             show_warning(
                 self,
                 "Cannot export: At least 3 control points are required.\n"
-                "Use Tools → Georeferencing to add control points.",
+                "Use Georeferencing → Control Points to add control points.",
                 "Insufficient Control Points"
             )
             return

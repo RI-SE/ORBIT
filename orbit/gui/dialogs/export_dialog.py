@@ -330,7 +330,7 @@ class ExportDialog(BaseDialog):
             self.georef_status_label.setText(
                 f"<b style='color: orange;'>⚠ No Georeferencing</b><br>"
                 f"Need at least {3 - num_control_points} more control points.<br>"
-                f"Go to Tools → Georeferencing to add control points."
+                f"Go to Georeferencing → Control Points to add control points."
             )
             self.georef_status_label.setStyleSheet("color: orange;")
             self.transform_info.setText("Georeferencing not configured.")
